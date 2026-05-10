@@ -1,0 +1,470 @@
+# Fivvle.io — Cursor Project Rules
+
+## Project Overview
+
+Fivvle.io is an AI-powered startup idea validation platform. Founders submit ideas; the system runs cognitive validation (AI refinement + multi-step agentic market research) and lightweight behavioral validation (auto-generated tracked landing pages with waitlist conversion + source-tag analytics).
+
+The project has three authoritative reference documents at the project root:
+- `ARCHITECTURE.md` — technical contract: data model, state machine, component architecture, sequence diagrams, trust boundaries, ADRs.
+- `USER_FLOW.md` — product contract: complete founder journey across 8 stages.
+- `AGENTS.md` — security rules. Non-negotiable. If guidance there conflicts with this file, AGENTS.md wins.
+
+Architectural decision history lives in `docs/adr/`. Read these when reasoning about why something is the way it is.
+
+Always reference the relevant document when generating code. Match class names, state names, sequence steps, and stage numbers exactly.
+
+## Architectural Choice: Modular Monolith
+
+Fivvle uses a **modular monolith**, NOT microservices. Documented in ARCHITECTURE.md ADR and `docs/adr/0001-modular-monolith.md`.
+
+- One FastAPI codebase for user-facing API
+- Cloud Functions for long-running background work (research engine, insight generator, auto-archive) — targeted process isolation, NOT a path toward microservices
+- Service-to-service calls within backend are Python function calls, not HTTP
+- Do NOT propose Kafka, RabbitMQ, gRPC, service mesh, or splitting FastAPI into multiple services
+
+## MVP Scope (binding)
+
+**In scope:**
+- AI idea refinement
+- Multi-step agentic AI research engine (5 phases) over Tavily + Reddit free tier + Google Trends + news
+- Validation report with structured findings and citations
+- Auto-generated landing pages: 5 designer-built templates with bounded customization, ISR-cached
+- Page view + source tag + waitlist signup tracking
+- Insight report combining research + behavior
+- Cost tracking infrastructure
+
+**Out of scope for MVP:**
+- Multi-platform video posting, comment harvesting, video upload
+- Social account OAuth
+- Phone verification
+- Payments
+- Reddit posting (read-only research only)
+- TikTok integration
+- Custom domains per landing page
+- Free-form HTML/CSS template editing
+- AI-generated landing page layouts (templates with bounded customization only)
+- Phase 2 research enhancements (Exa, Firecrawl, deep multi-loop reflection)
+- Truly multi-agent architecture
+- Microservices, service mesh, message queues
+
+If asked to build any out-of-scope feature, push back and ask whether the architecture documents should be updated first.
+
+## Tech Stack
+
+### Frontend
+- Next.js 14+ App Router with TypeScript strict mode
+- Tailwind CSS only (no shadcn/ui, Radix, Headless UI, MUI, etc.)
+- Firebase Auth Web SDK
+- Native `fetch` with typed wrapper in `lib/api.ts`
+- Hosted on Vercel or Firebase App Hosting
+- Public landing pages use Incremental Static Regeneration (ISR)
+- No Server Actions for backend logic
+- Icons: `lucide-react` (only UI library exception)
+- Fonts: `next/font/google`
+- Images: `next/image`
+
+### Backend
+- FastAPI on Python 3.11+
+- `uv` for package management (not pip, not poetry)
+- uvicorn (dev), gunicorn + uvicorn workers (prod)
+- SQLAlchemy 2.0 async + asyncpg for Cloud SQL Postgres
+- Alembic for migrations
+- Pydantic v2 for validation, Instructor for structured LLM outputs
+- Firebase Admin SDK (Python) for token verification
+- Hosted on Google Cloud Run
+
+### Background Jobs
+- Python Cloud Functions (2nd gen)
+- Cloud Scheduler (cron) + HTTP triggers from FastAPI
+- No Celery, no Redis
+
+### Research Engine
+- Multi-step single-agent workflow with 5 phases — NOT truly multi-agent
+- Plain `asyncio` + Pydantic, NOT LangGraph/AutoGen/CrewAI
+- Phases: Planner → Searcher → Reader → Reflector → Synthesizer
+- Total time 2-4 minutes; cost target $0.25-$0.70 per run
+
+### LLM Layer
+- Anthropic Claude for reasoning-heavy calls (refinement, all research phases, insight, landing page generation)
+- Groq for high-volume low-stakes only
+- All calls through `/backend/app/llm/client.py` — never import provider SDKs elsewhere
+- Every call writes to `LLMCall` table
+
+### External APIs
+- Tavily — primary search/extraction
+- Reddit (PRAW free tier) — read-only research only, under 60 req/min
+- pytrends — Google Trends with fallback
+- NOT in MVP: Exa, Firecrawl, Anthropic web search tool
+
+### Data
+- Cloud SQL Postgres (direct, NOT Firebase Data Connect)
+- Firebase Auth (identity only)
+- No Firestore
+
+### Secrets
+- Google Cloud Secret Manager in production
+- `.env` for local dev only, never committed
+
+## Repository Structure
+
+Monorepo:
+
+```
+fivvle/
+├── .cursorrules
+├── AGENTS.md
+├── ARCHITECTURE.md
+├── USER_FLOW.md
+├── README.md
+├── .gitignore
+├── docs/
+│   └── adr/                          # Architecture Decision Records
+├── frontend/
+│   ├── package.json
+│   ├── next.config.js
+│   ├── tsconfig.json
+│   ├── tailwind.config.ts
+│   ├── app/
+│   │   ├── (auth)/
+│   │   ├── (dashboard)/
+│   │   └── e/[slug]/                 # public landing pages, ISR
+│   ├── components/
+│   │   ├── landing-templates/
+│   │   │   ├── types.ts
+│   │   │   ├── registry.ts
+│   │   │   ├── Minimal.tsx
+│   │   │   ├── Vibrant.tsx
+│   │   │   ├── Indie.tsx
+│   │   │   ├── PremiumDark.tsx
+│   │   │   └── Editorial.tsx
+│   │   └── ...
+│   ├── lib/
+│   │   ├── api.ts
+│   │   ├── auth.ts
+│   │   └── analytics.ts
+│   └── types/
+└── backend/
+    ├── pyproject.toml
+    ├── uv.lock
+    ├── alembic.ini
+    ├── Dockerfile
+    ├── app/
+    │   ├── main.py
+    │   ├── config.py
+    │   ├── auth/
+    │   ├── routers/
+    │   ├── services/
+    │   ├── integrations/
+    │   ├── llm/
+    │   │   ├── client.py
+    │   │   ├── prompts/
+    │   │   └── cost.py
+    │   ├── reliability/
+    │   ├── db/
+    │   ├── schemas/
+    │   ├── utils/
+    │   │   └── safe_fetch.py         # SSRF-protected URL fetcher
+    │   └── ...
+    ├── functions/
+    │   ├── research_engine/
+    │   │   ├── main.py
+    │   │   ├── phases/
+    │   │   │   ├── planner.py
+    │   │   │   ├── searcher.py
+    │   │   │   ├── reader.py
+    │   │   │   ├── reflector.py
+    │   │   │   └── synthesizer.py
+    │   │   └── prompts/
+    │   ├── insight_generator/
+    │   └── auto_archive/
+    └── tests/
+        └── eval/                     # evaluation set for research engine
+```
+
+## Conventions
+
+### Python (Backend)
+- Type hints everywhere, no untyped code
+- `async def` for all I/O-bound code
+- Pydantic v2 for request/response, separate from SQLAlchemy `models.py`
+- SQLAlchemy 2.0 syntax only (`select()`, `Mapped`, `mapped_column`)
+- Ruff for lint and format
+- Pydantic Settings for config
+
+### TypeScript (Frontend)
+- Strict mode always
+- Default to React Server Components, Client Components only when needed
+- No Server Actions for backend logic
+- No client-side data fetching libraries for MVP
+
+### API Design
+- Routers thin (5-15 lines)
+- Services own business logic
+- Database access never leaks out of services
+- Every authenticated endpoint verifies Firebase token via `Depends()`
+- Every endpoint with a resource ID verifies ownership (see AGENTS.md)
+
+### State Machine
+- `Experiment.status` enum matches ARCHITECTURE.md State Machine exactly
+- State transitions are explicit functions on experiment service
+- Research phases are sub-states — Cloud Function updates as it transitions
+
+### Research Engine
+- `asyncio` + Pydantic, NOT a framework
+- Each phase is a separate function with typed input/output
+- Reflection loops cap at 1-2
+- Prompts in `functions/research_engine/prompts/` as named module constants
+- Each phase logs LLM call(s) to `LLMCall` with phase name
+- Searches parallel within phase via `asyncio.gather()`
+- Citations are first-class data
+- Quality > token efficiency — use Claude for all phases
+
+### LLM Calls
+- All through `/backend/app/llm/client.py`
+- Prompts in `/backend/app/llm/prompts/` or `/backend/functions/research_engine/prompts/`
+- Every call MUST log to `LLMCall` table — enforced in client wrapper
+- Use Instructor for structured outputs
+
+### Cost Tracking & Limits
+- `LLMCall` and `ExternalAPICall` tables capture every paid operation
+- LLM client wrapper computes cost from price table in `/backend/app/llm/cost.py`
+- Soft limits enforced in code:
+  - 5 refinement regenerations per experiment
+  - 5 landing page field regenerations per page
+  - 1-2 reflection loops in research engine
+  - 6-minute hard timeout on research engine
+- Per-experiment cost target: under $1.50
+- Admin endpoints (NOT exposed to founders): `/admin/cost/experiment/{id}`, `/admin/cost/user/{id}`, `/admin/cost/daily`, `/admin/cost/per-phase`
+
+---
+
+## Frontend/Backend Boundary
+
+For the canonical frontend/backend security boundary, see **AGENTS.md "Secrets management"** and **AGENTS.md "Frontend-specific security"** sections. Summary:
+
+- All API keys, business logic, external API calls, LLM calls, database access live in the backend
+- Frontend handles UI, Firebase Auth client, page view beacons, display of backend data only
+- Streaming responses pass through backend, never direct frontend → LLM provider
+
+## Reliability & Fault Tolerance
+
+Fault isolation through code and process design, not service splits.
+
+### Circuit breakers around external APIs
+- Every external API call wrapped in circuit breaker
+- After 5 consecutive failures, breaker opens for 60s cooldown
+- Live in `/backend/app/reliability/circuit_breakers.py`
+
+### Required timeouts
+- LLM calls: 60s for refinement, 120s per research phase
+- Tavily: 30s
+- Reddit: 15s
+- Google Trends: 15s
+- DB queries: 10s default, 30s for analytics rollups
+- HTTP fetches: 30s
+- No call ever runs without a timeout
+
+### Retry policy
+- Exponential backoff with jitter
+- Max 3 retries on transient failures
+- No retries on 4xx (except 408, 429)
+- Idempotency keys for any external mutation
+
+### Graceful degradation
+- Anthropic unavailable: fall back to Groq for non-critical phases (reflector); for critical phases, surface error and retry
+- Tavily down: return partial results from sources that succeeded; mark report partial
+- Reddit rate-limited: skip Reddit signals; note in report
+- Trends flaky: retry 3x then continue without; note in report
+- DB briefly unavailable: retry with backoff, fail cleanly if persistent
+
+### Health checks
+- `GET /health` — liveness
+- `GET /health/ready` — readiness (DB connection, secrets loaded)
+
+### Error tracking
+- Sentry from day one (see AGENTS.md for redaction rules)
+- All unhandled exceptions captured with context (user_id, experiment_id, request_id)
+
+### Structured logging
+- `structlog` for Python, structured logger for Next.js
+- See AGENTS.md "Logging hygiene" for what NEVER to log
+
+### Per-endpoint rate limits
+- Authenticated: 60 req/min/user
+- Public (analytics, waitlist): 30 req/min/IP
+- 429 with retry-after header
+
+## Quality Discipline
+
+### Research Engine Quality
+
+- **Prompt engineering is the differentiator, not architecture.** Plan 1+ week each on the planner, reader, and synthesizer prompts. Iterate against real founder ideas.
+- **Eval methodology required from day one.** Maintain an eval set in `/backend/tests/eval/` of 10-20 founder ideas with "gold standard" expected reports. Run eval before shipping any prompt change.
+- **Specificity over summary in synthesis.** The synthesizer prompt must produce specific quotes, specific competitor names, specific numbers, specific user complaints — not generic summaries.
+- **Citations are non-negotiable.** Every claim has a source URL.
+- **Source selection > source quantity.** Tavily is sufficient for MVP. Don't add more sources until usage data shows they're needed.
+- **Don't downgrade models to save pennies.** Use Claude for all research phases.
+- **Build a 3-phase POC first.** Before building the full 5-phase pipeline (step 8 in build order), build a minimal Tavily + planner + synthesizer version (step 7) to validate prompt quality and cost. Adding reader and reflector phases happens only after the simpler version produces reports you'd be willing to ship.
+
+### Landing Page Quality
+
+- Templates are designer-built, not LLM-generated.
+- AI's role is bounded selection within templates, not generation.
+- The default draft must look great out of the box.
+- Bounded customization only. Founders pick from dropdowns and edit text inline. No HTML/CSS/component injection.
+- Mobile-first. Every template tested on mobile before merge.
+- Accessibility AA minimum. Color contrast, keyboard navigation, alt text, semantic HTML, visible focus states.
+
+## Landing Page Template Implementation
+
+### The 5 templates for MVP
+
+| ID | Name | Best for | Mood |
+|---|---|---|---|
+| `minimal` | Minimal | B2B SaaS, productivity, dev tools | Confident, premium, understated |
+| `vibrant` | Bold/Vibrant | Consumer, design-forward | Energetic, modern |
+| `indie` | Indie | Solo founder projects, side projects | Authentic, approachable |
+| `premium-dark` | Dark/Premium | Dev tools, AI products | Sleek, technical |
+| `editorial` | Editorial | Content-first, social impact | Thoughtful, narrative |
+
+### Template Stack
+- React Server Components (default), Client Components only for interactive bits
+- TypeScript strict mode
+- Tailwind CSS only — no styled-components, no CSS modules, no plain CSS files
+- No UI libraries (no shadcn/ui, Radix, Headless UI, MUI, etc.)
+- `lucide-react` for icons (only allowed UI library)
+- `next/font/google` for fonts
+- `next/image` for images
+- Plain HTML form elements styled with Tailwind
+- Animations: Tailwind utilities first; Framer Motion only if necessary
+
+### Mandatory props interface
+
+Every template implements `LandingPageProps` and exports `metadata: TemplateMetadata` (defined in `frontend/components/landing-templates/types.ts`). See ARCHITECTURE.md for full type definitions.
+
+---
+
+## Architectural Decision Records (ADR maintenance)
+
+ADRs live in `docs/adr/` and capture the reasoning behind major decisions. They are the project's institutional memory. Both human contributors and coding agents are expected to keep them current.
+
+### When the agent MUST propose a new ADR
+
+When generating code or making changes that involve any of the following, the agent MUST stop, propose a new ADR, and wait for human approval before proceeding:
+
+- Adding, removing, or replacing a major dependency (a framework, database, queue, ML library, payment provider, etc. — not routine library version bumps)
+- Changing the architecture diagram in any non-trivial way (adding a new service, splitting a component, changing how two components communicate)
+- Reversing or modifying a decision documented in an existing ADR
+- Adding a new external API integration (e.g., Exa, Firecrawl, a new LLM provider, a new payment processor)
+- Adding a new persistent data store (a new database, cache layer, message queue, blob store)
+- Changing the authentication, authorization, or session model
+- Changing the LLM provider or moving prompts between providers in ways that affect cost or quality meaningfully
+- Adding a new deployment target (e.g., a second cloud region, a new Cloud Run service, a new Cloud Function)
+- Introducing a paywall, billing model, or pricing tier
+- Reversing any "out of scope for MVP" item — i.e., adding video posting, comments, payments, OAuth providers, phone verification, etc.
+
+### How to write an ADR
+
+Use the existing ADRs in `docs/adr/` as templates. Format:
+
+1. **Filename:** `XXXX-short-kebab-case-title.md` where `XXXX` is the next sequential number (4-digit, zero-padded). Check the highest-numbered existing ADR and add 1.
+2. **Required sections:**
+   - **Title** as the H1 (e.g., `# ADR 0008: Add Exa for semantic competitor search`)
+   - **Status** (Proposed, Accepted, Superseded by ADR XXXX, Deprecated)
+   - **Date** (ISO month: 2026-MM)
+   - **Context** — what's going on, what forces are at play, what problem we're solving
+   - **Decision** — what we're doing about it (concrete, not aspirational)
+   - **Reasoning** — why this option, what alternatives were considered, what tradeoffs were accepted
+   - **Consequences** — what becomes easier and harder, what we accept
+   - **Related** — references to other ADRs, ARCHITECTURE.md sections, or `.cursorrules` rules
+
+### Status workflow
+
+- New ADRs start as `Status: Proposed` when the agent or a human first writes them
+- Move to `Status: Accepted` after the team has reviewed and approved (the agent does NOT promote its own ADR to Accepted — a human does)
+- When superseding an old ADR, update the OLD ADR's status to `Superseded by ADR XXXX` and create the new ADR with reasoning for the change. NEVER delete or overwrite an old ADR.
+
+### Updating the ADR README
+
+When adding a new ADR, update `docs/adr/README.md` to add the new entry to the index table.
+
+### When the agent should NOT write an ADR
+
+- Routine bug fixes
+- Adding new endpoints that follow existing patterns
+- Adding new database columns to existing tables
+- Refactoring within an existing service module
+- Library version bumps that don't change semantics
+- Style and formatting changes
+- Adding tests
+- Performance tuning that doesn't change architecture
+
+These are normal development. ADRs are for decisions that future contributors will reasonably ask "why did we do it this way?" about.
+
+### Updating other documentation
+
+When making changes that affect data model, state machine, sequence diagrams, or user flow, also update:
+
+- `ARCHITECTURE.md` — class diagrams, state machine, sequence diagrams must reflect reality
+- `USER_FLOW.md` — if user-facing flow changes
+- `.cursorrules` — if conventions or rules change
+- The relevant ADR — if the change is significant enough to warrant one
+
+The agent should propose these documentation updates alongside the code change in the same PR or commit, not as a follow-up.
+
+---
+
+## What NOT to do
+
+- Do not call third-party APIs directly from React components or FastAPI route handlers
+- Do not use `localStorage` or `sessionStorage` for app state
+- Do not introduce a new dependency without confirmation (and an ADR if it's substantial)
+- Do not generate code for any out-of-scope MVP feature
+- Do not surface infrastructure details to the founder
+- Do not use Firebase Data Connect — direct Cloud SQL Postgres via SQLAlchemy
+- Do not generate Server Actions for backend logic
+- Do not allow free-form HTML/CSS in landing page templates
+- Do not skip cost tracking on any LLM or paid API call
+- Do not build the research engine as truly multi-agent
+- Do not split the backend into microservices
+- Do not put API keys, business logic, or external API calls in the frontend
+- Do not give LLMs/agents the ability to call Fivvle's user-facing endpoints
+- Do not eval LLM outputs or use them as code
+- Do not skip circuit breakers or timeouts on external calls
+- Do not generate AI-generated landing page layouts (templates only)
+- Do not downgrade models in research engine to save tokens
+- Do not violate any rule in AGENTS.md — security violations are non-negotiable
+- Do not modify or delete existing ADRs (supersede them with new ADRs instead)
+
+## Build Order
+
+Build vertical slices end-to-end (frontend + backend + DB) for each stage rather than horizontal layers across stages.
+
+1. **Backend foundation** — FastAPI init with uv, Pydantic Settings, Firebase Admin SDK, `/health` endpoint
+2. **Database** — SQLAlchemy 2.0 async, Alembic, models including `LLMCall` and `ExternalAPICall`, first migration
+3. **Auth** — Firebase token verification middleware, `/users/sync`, `get_current_user` dependency
+4. **Cost tracking infrastructure** — LLM client wrapper, integration wrappers, admin rollup endpoints
+5. **Reliability infrastructure** — circuit breakers, retry, structured logging, Sentry, SSRF-safe URL fetcher
+6. **Frontend foundation** — Next.js init, Tailwind, Firebase Auth client, signup/login, API client
+7. **Idea intake + AI refinement** — USER_FLOW Stage 2, full vertical slice
+8. **Research engine — single-source proof of concept** — Tavily + planner + synthesizer (3-phase mini), prove quality before adding complexity. Build eval set during this step.
+9. **Research engine — full 5-phase workflow** — add reader, reflector, parallel multi-source searches
+10. **Validation report viewer** — USER_FLOW Stage 3.4
+11. **Landing page templates** — receive 5 templates from marketing/design lead, integrate, register, build template registry, build AI selection logic
+12. **Landing page editor + ISR rendering** — USER_FLOW Stage 4
+13. **Analytics tracking** — JS beacon, FastAPI `/analytics/page-view` and `/waitlist`
+14. **Founder dashboard** — list view, status, live metrics
+15. **Insight generation Cloud Function** — USER_FLOW Stage 6
+16. **Insight report viewer + decision UI** — USER_FLOW Stage 6.2 and 6.3
+
+When asked to build something out of order, push back and ask if prerequisites are done.
+
+## Operational Notes
+
+- Local dev: `uv run uvicorn app.main:app --reload` (backend), `npm run dev` (frontend)
+- Cloud Run deploy: `gcloud run deploy` from `/backend`
+- Cloud Functions deploy: each function is a separate `gcloud functions deploy`
+- Migrations via Alembic in CI/CD before deployment
+- Research engine timeout: 6 minutes (Cloud Function max 9 min)
+- All Firebase, Cloud SQL, Cloud Run, Cloud Functions in same Google Cloud project
+- LLM price tables in `/backend/app/llm/cost.py` need updating when providers change pricing
