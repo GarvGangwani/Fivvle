@@ -36,26 +36,32 @@ settings = get_settings()
 async def lifespan(app: FastAPI):  # type: ignore[type-arg]
     """Application lifespan handler.
 
-    Startup:
+    Startup order:
     1. Configure structlog (must happen before any logging).
-    2. Initialize Firebase Admin SDK.
-    3. Initialize Sentry if DSN is configured (optional in dev).
+    2. Initialize DB engine (before Firebase so the pool is ready when API starts).
+    3. Initialize Firebase Admin SDK.
+    4. Initialize Sentry if DSN is configured (optional in dev).
 
-    Shutdown:
-    - Placeholder — DB pool teardown will be added in build step 2.
+    Shutdown order:
+    1. Dispose DB engine (drains the connection pool cleanly).
     """
     # 1. Logging — must be first so all subsequent startup messages are captured.
     configure_logging(settings)
     logger = get_logger(__name__)
     logger.info("starting fivvle api", environment=settings.environment)
 
-    # 2. Firebase Admin SDK
+    # 2. Database engine — initialize before Firebase so the pool is ready.
+    from app.db.session import dispose_engine, init_engine
+
+    init_engine(settings)
+
+    # 3. Firebase Admin SDK
     # Import here (after logging is configured) so any init errors are logged.
     from app.auth.firebase import init_firebase
 
     init_firebase(settings)
 
-    # 3. Sentry — only when a DSN is explicitly configured.
+    # 4. Sentry — only when a DSN is explicitly configured.
     if settings.sentry_dsn is not None:
         sentry_sdk.init(
             dsn=settings.sentry_dsn,
@@ -68,7 +74,7 @@ async def lifespan(app: FastAPI):  # type: ignore[type-arg]
     yield
 
     # --- Shutdown ----------------------------------------------------------
-    # DB connection pool teardown will be added in build step 2.
+    await dispose_engine()
     logger.info("shutting down fivvle api")
 
 

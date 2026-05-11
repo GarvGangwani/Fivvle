@@ -1,0 +1,106 @@
+"""SQLAlchemy model for the Experiment table."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import TYPE_CHECKING
+from uuid import UUID, uuid4
+
+from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.db.base import Base
+from app.db.enums import ExperimentStatus
+
+if TYPE_CHECKING:
+    from app.db.models.external_api_call import ExternalAPICall
+    from app.db.models.insight_report import InsightReport
+    from app.db.models.landing_page import LandingPage
+    from app.db.models.llm_call import LLMCall
+    from app.db.models.page_view import PageView
+    from app.db.models.user import User
+    from app.db.models.validation_report import ValidationReport
+    from app.db.models.waitlist_signup import WaitlistSignup
+
+
+class Experiment(Base):
+    __tablename__ = "experiments"
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid4,
+    )
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    slug: Mapped[str] = mapped_column(
+        String(50),
+        unique=True,
+        nullable=False,
+        index=True,
+    )
+    raw_idea: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+    )
+    refined_idea: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    status: Mapped[ExperimentStatus] = mapped_column(
+        SQLEnum(
+            ExperimentStatus,
+            name="experiment_status",
+            native_enum=False,
+            length=50,
+        ),
+        nullable=False,
+        default=ExperimentStatus.DRAFT,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    # --- Relationships ---
+    user: Mapped[User] = relationship(back_populates="experiments")
+    validation_report: Mapped[ValidationReport | None] = relationship(
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    landing_page: Mapped[LandingPage | None] = relationship(
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    insight_report: Mapped[InsightReport | None] = relationship(
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    page_views: Mapped[list[PageView]] = relationship(
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+    )
+    waitlist_signups: Mapped[list[WaitlistSignup]] = relationship(
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+    )
+    # No cascade — LLMCall/ExternalAPICall are audit records; survive experiment deletion.
+    llm_calls: Mapped[list[LLMCall]] = relationship(back_populates="experiment")
+    external_api_calls: Mapped[list[ExternalAPICall]] = relationship(
+        back_populates="experiment"
+    )
