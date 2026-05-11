@@ -1,0 +1,69 @@
+"""
+Application configuration via Pydantic Settings.
+
+All values are loaded from environment variables (or .env in local dev).
+In production, environment variables are injected from Google Cloud Secret Manager.
+Never log or print any setting value — see AGENTS.md "Logging hygiene".
+"""
+
+from functools import lru_cache
+from typing import Literal
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="forbid",
+    )
+
+    # --- Database ---
+    database_url: str
+
+    # --- Firebase Admin ---
+    firebase_project_id: str
+    google_application_credentials: str
+
+    # --- LLM and search APIs ---
+    anthropic_api_key: str
+    groq_api_key: str
+    tavily_api_key: str
+
+    # --- Reddit (read-only research) ---
+    reddit_client_id: str
+    reddit_client_secret: str
+    reddit_user_agent: str
+
+    # --- Observability ---
+    sentry_dsn: str | None = None  # Optional — missing in dev is fine
+
+    # --- Runtime config ---
+    environment: Literal["development", "staging", "production"] = "development"
+    # Comma-separated list of allowed CORS origins; use cors_origins_list for the parsed form.
+    cors_allowed_origins: str = "http://localhost:3000"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
+    # ------------------------------------------------------------------
+    # Derived helpers (not env vars)
+    # ------------------------------------------------------------------
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment == "production"
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """Parse the comma-separated CORS origins into a list, stripping whitespace."""
+        return [origin.strip() for origin in self.cors_allowed_origins.split(",") if origin.strip()]
+
+
+@lru_cache
+def get_settings() -> Settings:
+    """Return the cached Settings singleton.
+
+    The cache is intentional — Settings construction reads from disk/.env on
+    first call; subsequent calls return the same object with zero I/O.
+    """
+    return Settings()
