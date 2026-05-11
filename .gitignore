@@ -29,6 +29,7 @@ firebase-debug.log
 firestore-debug.log
 *-debug.log
 serviceAccountKey.json
+service-account.json
 *-firebase-adminsdk-*.json
 
 # python
@@ -42,6 +43,11 @@ htmlcov/
 
 # uv
 .python-version
+# Keep `backend/uv.lock` and `frontend/package-lock.json` committed (do not ignore).
+
+# local env files (templates `*.env.example` are tracked)
+backend/.env
+frontend/.env
 
 # editor / OS
 .DS_Store
