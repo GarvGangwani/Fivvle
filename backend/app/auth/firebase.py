@@ -1,16 +1,17 @@
 """
-Firebase Admin SDK initialization.
-
-This module owns only SDK initialization — it does NOT verify tokens.
-Token verification is implemented in build step 3 (auth middleware).
+Firebase Admin SDK initialization and token verification.
 
 Design decisions:
 - Idempotent: safe to import or call init_firebase() multiple times.
 - Module-level flag avoids the SDK's own ValueError for re-initialization.
 - No credentials or paths are ever logged (AGENTS.md "Logging hygiene").
+- verify_id_token is a thin wrapper so tests can patch one location.
 """
 
+from typing import Any
+
 import firebase_admin
+from firebase_admin import auth as firebase_auth
 from firebase_admin import credentials
 
 from app.config import Settings
@@ -53,3 +54,25 @@ def init_firebase(settings: Settings) -> None:
 def is_initialized() -> bool:
     """Return True if the Firebase Admin SDK has been initialized."""
     return _initialized
+
+
+def verify_id_token(token: str) -> dict[str, Any]:
+    """Verify a Firebase ID token and return the decoded claims.
+
+    Raises:
+        firebase_admin.auth.InvalidIdTokenError: token signature is invalid,
+            expired, or malformed.
+        firebase_admin.auth.ExpiredIdTokenError: token expired.
+        firebase_admin.auth.RevokedIdTokenError: token revoked server-side.
+
+    These exceptions are caught and converted to HTTP 401 in the
+    get_current_user dependency.
+
+    Args:
+        token: the raw token string from the Authorization: Bearer header
+            (without the "Bearer " prefix — the dependency strips that).
+
+    Returns:
+        Decoded token claims. The "uid" key is the Firebase user ID.
+    """
+    return firebase_auth.verify_id_token(token)

@@ -1,0 +1,137 @@
+"""Shared pytest fixtures.
+
+Includes:
+- mock_firebase: patches verify_id_token to return a fake decoded token,
+  avoiding real network calls to Firebase during tests.
+- _skip_firebase_init: prevents real Firebase Admin SDK initialization when
+  the TestClient lifespan runs (no service account file needed in tests).
+- _init_db_engine: ensures the async DB engine is ready before any test.
+- client: full async test client connected to live Docker Postgres,
+  with test-user cleanup after each test.
+"""
+
+from collections.abc import AsyncGenerator, Generator
+from unittest.mock import patch
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.config import get_settings
+from app.db.session import init_engine
+
+# A canonical fake decoded token used across most tests.
+FAKE_FIREBASE_UID = "test-firebase-uid-abc123"
+FAKE_EMAIL = "test@example.com"
+FAKE_DECODED_TOKEN = {
+    "uid": FAKE_FIREBASE_UID,
+    "email": FAKE_EMAIL,
+    "email_verified": True,
+}
+
+
+@pytest.fixture
+def mock_firebase() -> Generator[None, None, None]:
+    """Patch verify_id_token to return a fake decoded token.
+
+    Any test using this fixture can pass any string as the Bearer token
+    and the patched verify_id_token will return FAKE_DECODED_TOKEN.
+
+    Patching is done in three places because `from app.auth.firebase import
+    verify_id_token` in each module copies the function reference into that
+    module's namespace. Patching only `app.auth.firebase.verify_id_token`
+    would leave the copies in dependencies.py and routers/users.py unchanged.
+    All three import sites must be patched.
+
+    To simulate auth failures, override the patch inside the test:
+        with patch("app.routers.users.verify_id_token", side_effect=...):
+            ...
+    """
+    with patch(
+        "app.auth.firebase.verify_id_token",
+        return_value=FAKE_DECODED_TOKEN,
+    ), patch(
+        "app.auth.dependencies.verify_id_token",
+        return_value=FAKE_DECODED_TOKEN,
+    ), patch(
+        "app.routers.users.verify_id_token",
+        return_value=FAKE_DECODED_TOKEN,
+    ):
+        yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _skip_firebase_init() -> Generator[None, None, None]:
+    """Prevent real Firebase Admin SDK initialization during the test session.
+
+    The TestClient context manager triggers the app lifespan, which calls
+    init_firebase(settings). Without this fixture, that call would attempt to
+    read a real service account JSON file — which doesn't exist in CI or local
+    dev test environments. Patching init_firebase to a no-op is the cleanest
+    approach: we don't need a real Firebase app to test auth endpoints because
+    verify_id_token is patched separately via mock_firebase.
+    """
+    with patch("app.auth.firebase.init_firebase"):
+        yield
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _init_db_engine() -> Generator[None, None, None]:
+    """Initialize the DB engine for the test session.
+
+    Tests need the engine populated (so get_session works inside route handlers),
+    but the FastAPI lifespan doesn't run during TestClient construction by default.
+    This autouse session fixture solves that.
+    """
+    settings = get_settings()
+    init_engine(settings)
+    yield
+    # dispose_engine is async; pytest's session teardown runs sync. We
+    # rely on process exit to dispose; not ideal but acceptable for tests.
+
+
+@pytest.fixture
+def client() -> Generator[TestClient, None, None]:
+    """A TestClient that exercises the full FastAPI app, including dependencies.
+
+    Each test gets its own client. Database state persists across tests within
+    a session (we explicitly clean up users in test teardown to avoid bleed).
+    """
+    from app.main import app
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+@pytest.fixture(autouse=True)
+async def _cleanup_test_users() -> AsyncGenerator[None, None]:
+    """Delete the fake test user after each test to ensure idempotency.
+
+    Without this, the second test run for /users/sync would hit the
+    "already exists" branch unintentionally.
+
+    We create a completely standalone engine here rather than reusing the
+    module-level one from app.db.session. The `client` fixture runs the full
+    FastAPI lifespan as a context manager — including shutdown, which calls
+    dispose_engine() and sets the module-level engine to None. This fixture
+    runs AFTER the client fixture tears down, so the module-level engine is
+    already gone. A standalone engine created inside this async context uses
+    the current event loop and is fully disposed before the fixture exits,
+    avoiding cross-event-loop asyncpg contamination.
+    """
+    yield
+
+    from sqlalchemy import delete  # noqa: PLC0415
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: PLC0415
+
+    from app.db.models.user import User  # noqa: PLC0415
+
+    engine = create_async_engine(get_settings().database_url, pool_size=1, max_overflow=0)
+    sm = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    try:
+        async with sm() as session:
+            await session.execute(
+                delete(User).where(User.firebase_uid == FAKE_FIREBASE_UID)
+            )
+            await session.commit()
+    finally:
+        await engine.dispose()
