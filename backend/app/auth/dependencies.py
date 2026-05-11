@@ -10,6 +10,7 @@ endpoint MUST use this dependency. Resource-ownership checks are SEPARATE
 
 from typing import Annotated
 
+import sentry_sdk
 from fastapi import Depends, HTTPException, Request, status
 from firebase_admin import auth as firebase_auth
 from sqlalchemy import select
@@ -99,6 +100,11 @@ async def get_current_user(
             detail="User not provisioned. Sync user record before authenticating.",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Enrich Sentry scope with the resolved user. Internal UUID only — never
+    # email or firebase_uid (AGENTS.md "Logging hygiene").
+    request.state.current_user = user
+    sentry_sdk.set_user({"id": str(user.id)})
 
     return user
 

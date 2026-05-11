@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     sentry_dsn: str | None = None  # Optional — missing in dev is fine
 
     # --- Runtime config ---
-    environment: Literal["development", "staging", "production"] = "development"
+    environment: Literal["development", "staging", "production", "test"] = "development"
     # Comma-separated list of allowed CORS origins; use cors_origins_list for the parsed form.
     cors_allowed_origins: str = "http://localhost:3000"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
