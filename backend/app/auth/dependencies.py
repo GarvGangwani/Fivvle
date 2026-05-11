@@ -101,3 +101,21 @@ async def get_current_user(
         )
 
     return user
+
+
+async def get_current_admin_user(
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> User:
+    """Require the authenticated user to have admin role.
+
+    Returns 403 (NOT 401) when the user is authenticated but not admin —
+    authentication succeeded, authorization failed. Per AGENTS.md,
+    admin role is determined server-side from the User.is_admin column;
+    never from a header, JWT claim, or anything the client could spoof.
+    """
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user

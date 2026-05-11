@@ -6,7 +6,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, Integer, String, func
+import sqlalchemy as sa
+from sqlalchemy import Boolean, DateTime, Integer, String, func
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -49,6 +50,12 @@ class User(Base):
         Integer,
         nullable=False,
         default=0,
+    )
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        server_default=sa.text("false"),
+        default=False,
     )
 
     # --- Relationships ---
