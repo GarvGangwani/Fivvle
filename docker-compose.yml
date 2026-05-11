@@ -1,0 +1,34 @@
+# LOCAL DEVELOPMENT ONLY — never use these credentials in production.
+# Production database is Cloud SQL Postgres on Google Cloud (see docs/adr/0003-cloud-sql-direct.md).
+#
+# Local connection string (put this in backend/.env as DATABASE_URL):
+#   postgresql+asyncpg://fivvle:fivvle_dev_password@localhost:5432/fivvle
+#
+# Usage:
+#   docker compose up -d          — start Postgres in the background
+#   docker compose down           — stop and remove containers (data volume survives)
+#   docker compose down -v        — stop and wipe data volume (full reset)
+#   docker compose logs postgres  — tail Postgres logs
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: fivvle-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: fivvle
+      POSTGRES_PASSWORD: fivvle_dev_password
+      POSTGRES_DB: fivvle
+    volumes:
+      - fivvle_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fivvle -d fivvle"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+volumes:
+  fivvle_postgres_data:
