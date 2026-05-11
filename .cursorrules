@@ -52,7 +52,7 @@ If asked to build any out-of-scope feature, push back and ask whether the archit
 ## Tech Stack
 
 ### Frontend
-- Next.js 14+ App Router with TypeScript strict mode
+- Next.js 15+ App Router with React 19 and TypeScript strict mode
 - Tailwind CSS only (no shadcn/ui, Radix, Headless UI, MUI, etc.)
 - Firebase Auth Web SDK
 - Native `fetch` with typed wrapper in `lib/api.ts`
