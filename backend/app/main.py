@@ -46,6 +46,7 @@ from app.middleware.sentry_context import SentryContextMiddleware
 from app.observability.sentry import init_sentry
 from app.reliability.rate_limit import limiter, rate_limit_exceeded_handler
 from app.routers.admin import router as admin_router
+from app.routers.experiments import router as experiments_router
 from app.routers.health import router as health_router
 from app.routers.users import router as users_router
 
@@ -191,4 +192,5 @@ app.add_middleware(
 
 app.include_router(health_router)
 app.include_router(users_router)
+app.include_router(experiments_router)
 app.include_router(admin_router)

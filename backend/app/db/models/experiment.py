@@ -6,7 +6,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+import sqlalchemy as sa
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -40,10 +41,10 @@ class Experiment(Base):
         nullable=False,
         index=True,
     )
-    slug: Mapped[str] = mapped_column(
+    slug: Mapped[str | None] = mapped_column(
         String(50),
         unique=True,
-        nullable=False,
+        nullable=True,
         index=True,
     )
     raw_idea: Mapped[str] = mapped_column(
@@ -51,6 +52,12 @@ class Experiment(Base):
         nullable=False,
     )
     refined_idea: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    refinement_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=sa.text("0"),
+    )
     status: Mapped[ExperimentStatus] = mapped_column(
         SQLEnum(
             ExperimentStatus,
