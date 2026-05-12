@@ -167,3 +167,55 @@ async def test_structured_multi_attempt_accumulates_usage(mock_firebase, db_sess
     assert rows[0].completion_tokens == expected_completion
     await db_session.delete(rows[0])
     await db_session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Test 3 — max_retries is forwarded to create_with_completion
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_structured_max_retries_forwarded(mock_firebase, db_session):
+    """max_retries passed to complete_structured is forwarded to create_with_completion.
+
+    Verifies the plumbing only — what Instructor does with max_retries is its
+    own contract.
+    """
+    parsed_instance = _Reply(message="ok")
+
+    fake_raw = MagicMock()
+    fake_raw.id = "msg_max_retries_001"
+    fake_raw.usage = MagicMock(input_tokens=150, output_tokens=60)
+
+    captured_kwargs: dict = {}
+
+    async def _fake_create_with_completion(**kwargs):
+        captured_kwargs.update(kwargs)
+        hooks = kwargs.get("hooks")
+        if hooks is not None:
+            hooks.emit_completion_response(fake_raw)
+        return (parsed_instance, fake_raw)
+
+    fake_instructor = MagicMock()
+    fake_instructor.create_with_completion = _fake_create_with_completion
+
+    with patch("app.llm.client._instructor_anthropic_client", fake_instructor):
+        await complete_structured(
+            db_session,
+            provider="anthropic",
+            model="claude-sonnet-4-5",
+            prompt_name="max_retries_test",
+            system="respond with JSON",
+            user="give me a message",
+            response_model=_Reply,
+            max_retries=1,
+        )
+        await db_session.commit()
+
+    assert captured_kwargs.get("max_retries") == 1
+
+    stmt = select(LLMCall).where(LLMCall.request_id == "msg_max_retries_001")
+    rows = (await db_session.execute(stmt)).scalars().all()
+    assert len(rows) == 1
+    await db_session.delete(rows[0])
+    await db_session.commit()

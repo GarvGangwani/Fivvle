@@ -314,6 +314,7 @@ async def complete_structured(
     response_model: type[T],
     max_tokens: int = 4096,
     temperature: float = 0.3,  # lower default for structured — less drift
+    max_retries: int = 3,
     experiment_id: UUID | None = None,
     phase: str | None = None,
 ) -> tuple[T, LLMResult]:
@@ -369,6 +370,7 @@ async def complete_structured(
                     model=model,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    max_retries=max_retries,
                     system=system,
                     messages=[{"role": "user", "content": user}],
                     response_model=response_model,
@@ -418,6 +420,7 @@ async def complete_structured(
                     model=model,
                     max_tokens=max_tokens,
                     temperature=temperature,
+                    max_retries=max_retries,
                     messages=[
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},
