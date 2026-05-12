@@ -26,6 +26,7 @@ from uuid import UUID
 import anthropic
 import groq
 import instructor
+from instructor.core.hooks import Hooks
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -345,6 +346,24 @@ async def complete_structured(
         if provider == "anthropic":
             iclient = _get_instructor_anthropic()
 
+            # Accumulate usage across all Instructor attempts (schema retries are
+            # billed by Anthropic on every attempt, not just the final success).
+            _usage_acc: dict[str, int] = {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "attempts": 0,
+            }
+
+            def _accumulate_anthropic_usage(response: object) -> None:
+                _usage_acc["attempts"] += 1
+                usage = getattr(response, "usage", None)
+                if usage is not None:
+                    _usage_acc["prompt_tokens"] += getattr(usage, "input_tokens", 0)
+                    _usage_acc["completion_tokens"] += getattr(usage, "output_tokens", 0)
+
+            call_hooks = Hooks()
+            call_hooks.on("completion:response", _accumulate_anthropic_usage)
+
             async def _do_anthropic_structured():
                 return await iclient.create_with_completion(
                     model=model,
@@ -353,6 +372,7 @@ async def complete_structured(
                     system=system,
                     messages=[{"role": "user", "content": user}],
                     response_model=response_model,
+                    hooks=call_hooks,
                 )
 
             @retry_async()
@@ -360,12 +380,38 @@ async def complete_structured(
                 return await get_breaker("anthropic").call(_do_anthropic_structured)
 
             parsed, raw = await _call_anthropic_structured_with_retry()
-            prompt_tokens = raw.usage.input_tokens
-            completion_tokens = raw.usage.output_tokens
+            # Use accumulated totals so schema retries are included in cost.
+            # Fall back to the final response when hooks never fired (e.g. mocks
+            # in tests that don't simulate the Instructor callback loop).
+            if _usage_acc["attempts"] > 0:
+                prompt_tokens = _usage_acc["prompt_tokens"]
+                completion_tokens = _usage_acc["completion_tokens"]
+            else:
+                prompt_tokens = raw.usage.input_tokens
+                completion_tokens = raw.usage.output_tokens
             request_id: str | None = raw.id
+            instructor_attempts = _usage_acc["attempts"]
 
         elif provider == "groq":
             iclient = _get_instructor_groq()
+
+            _usage_acc = {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "attempts": 0,
+            }
+
+            def _accumulate_groq_usage(response: object) -> None:
+                _usage_acc["attempts"] += 1
+                usage = getattr(response, "usage", None)
+                if usage is not None:
+                    _usage_acc["prompt_tokens"] += getattr(usage, "prompt_tokens", 0)
+                    _usage_acc["completion_tokens"] += getattr(
+                        usage, "completion_tokens", 0
+                    )
+
+            call_hooks = Hooks()
+            call_hooks.on("completion:response", _accumulate_groq_usage)
 
             async def _do_groq_structured():
                 return await iclient.create_with_completion(
@@ -377,6 +423,7 @@ async def complete_structured(
                         {"role": "user", "content": user},
                     ],
                     response_model=response_model,
+                    hooks=call_hooks,
                 )
 
             @retry_async()
@@ -384,9 +431,14 @@ async def complete_structured(
                 return await get_breaker("groq").call(_do_groq_structured)
 
             parsed, raw = await _call_groq_structured_with_retry()
-            prompt_tokens = raw.usage.prompt_tokens if raw.usage else 0
-            completion_tokens = raw.usage.completion_tokens if raw.usage else 0
+            if _usage_acc["attempts"] > 0:
+                prompt_tokens = _usage_acc["prompt_tokens"]
+                completion_tokens = _usage_acc["completion_tokens"]
+            else:
+                prompt_tokens = raw.usage.prompt_tokens if raw.usage else 0
+                completion_tokens = raw.usage.completion_tokens if raw.usage else 0
             request_id = raw.id
+            instructor_attempts = _usage_acc["attempts"]
 
         else:
             raise ValueError(f"unknown provider: {provider}")
@@ -418,6 +470,7 @@ async def complete_structured(
             cost_usd=str(cost_usd),
             latency_ms=latency_ms,
             response_model=response_model.__name__,
+            instructor_attempts=instructor_attempts,
         )
 
         result = LLMResult(
