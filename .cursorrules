@@ -304,7 +304,7 @@ Fault isolation through code and process design, not service splits.
 - **Citations are non-negotiable.** Every claim has a source URL.
 - **Source selection > source quantity.** Tavily is sufficient for MVP. Don't add more sources until usage data shows they're needed.
 - **Don't downgrade models to save pennies.** Use Claude for all research phases.
-- **Build a 3-phase POC first.** Before building the full 5-phase pipeline (step 8 in build order), build a minimal Tavily + planner + synthesizer version (step 7) to validate prompt quality and cost. Adding reader and reflector phases happens only after the simpler version produces reports you'd be willing to ship.
+- **Build a 3-phase POC first.** Before building the full 5-phase pipeline, build a minimal Tavily + planner + synthesizer version first (Build Order step B3) to validate prompt quality and cost. Adding reader and reflector phases (step B4) happens only after the simpler version produces reports you'd be willing to ship.
 
 ### Landing Page Quality
 
@@ -417,7 +417,7 @@ The agent should propose these documentation updates alongside the code change i
 ## What NOT to do
 
 - Do not call third-party APIs directly from React components or FastAPI route handlers
-- Do not use `localStorage` or `sessionStorage` for app state
+- Do not use `localStorage` or `sessionStorage` for app state (theme preference and other purely-UI settings are exempt — they are not security state)
 - Do not introduce a new dependency without confirmation (and an ADR if it's substantial)
 - Do not generate code for any out-of-scope MVP feature
 - Do not surface infrastructure details to the founder
@@ -438,26 +438,39 @@ The agent should propose these documentation updates alongside the code change i
 
 ## Build Order
 
-Build vertical slices end-to-end (frontend + backend + DB) for each stage rather than horizontal layers across stages.
+Originally designed as vertical slices (frontend + backend + DB per stage). Revised May 2026 to a two-phase order: build the entire backend AI core first (steps F1–F6 and B1–B5), then collapse all founder-facing UI into a coordinated frontend assembly phase (FE1–FE6) once design decisions are locked.
 
-1. **Backend foundation** — FastAPI init with uv, Pydantic Settings, Firebase Admin SDK, `/health` endpoint
-2. **Database** — SQLAlchemy 2.0 async, Alembic, models including `LLMCall` and `ExternalAPICall`, first migration
-3. **Auth** — Firebase token verification middleware, `/users/sync`, `get_current_user` dependency
-4. **Cost tracking infrastructure** — LLM client wrapper, integration wrappers, admin rollup endpoints
-5. **Reliability infrastructure** — circuit breakers, retry, structured logging, Sentry, SSRF-safe URL fetcher
-6. **Frontend foundation** — Next.js init, Tailwind, Firebase Auth client, signup/login, API client
-7. **Idea intake + AI refinement** — USER_FLOW Stage 2, full vertical slice
-8. **Research engine — single-source proof of concept** — Tavily + planner + synthesizer (3-phase mini), prove quality before adding complexity. Build eval set during this step.
-9. **Research engine — full 5-phase workflow** — add reader, reflector, parallel multi-source searches
-10. **Validation report viewer** — USER_FLOW Stage 3.4
-11. **Landing page templates** — receive 5 templates from marketing/design lead, integrate, register, build template registry, build AI selection logic
-12. **Landing page editor + ISR rendering** — USER_FLOW Stage 4
-13. **Analytics tracking** — JS beacon, FastAPI `/analytics/page-view` and `/waitlist`
-14. **Founder dashboard** — list view, status, live metrics
-15. **Insight generation Cloud Function** — USER_FLOW Stage 6
-16. **Insight report viewer + decision UI** — USER_FLOW Stage 6.2 and 6.3
+**Why the change.** The frontend's visual language depends on co-founder design decisions still being worked through. Building the backend AI core first means: (1) prompt-engineering work (the actual product differentiator) gets started immediately, (2) when the frontend phase begins, every screen renders real data from working endpoints rather than mocks, (3) the founder-facing surfaces can be designed with full knowledge of what the data actually looks like.
 
-When asked to build something out of order, push back and ask if prerequisites are done.
+### Phase 1 — Foundation (completed)
+
+F1. **Backend foundation** — FastAPI init with uv, Pydantic Settings, Firebase Admin SDK, `/health` endpoint ✅
+F2. **Database** — SQLAlchemy 2.0 async, Alembic, models including `LLMCall` and `ExternalAPICall`, first migration ✅
+F3. **Auth** — Firebase token verification middleware, `/users/sync`, `get_current_user` dependency ✅
+F4. **Cost tracking infrastructure** — LLM client wrapper, integration wrappers, admin rollup endpoints ✅
+F5. **Reliability infrastructure** — circuit breakers, retry, structured logging, Sentry, SSRF-safe URL fetcher, per-endpoint rate limiting ✅
+F6. **Frontend foundation** — Next.js init, Tailwind, Firebase Auth client, signup/login, API client ✅ (placeholder UI only; real design lands in Phase 3)
+
+### Phase 2 — Backend AI core (next)
+
+B1. **Idea intake + AI refinement (backend only)** — Experiment model, `POST /experiments`, refinement service, refinement prompt, state machine transitions (`DRAFT → REFINING → REFINED`), regeneration endpoint with 5-per-experiment cap. Verify via curl + admin endpoints. No frontend in this commit.
+B2. **Research engine — 3-phase proof of concept** — Tavily + planner + synthesizer (minimal pipeline) wrapped as a Cloud Function. Prove prompt quality and cost before adding complexity. Build the eval set in `/backend/tests/eval/` during this step (10-20 founder ideas with gold-standard expected reports).
+B3. **Research engine — full 5-phase workflow** — add reader, reflector, parallel multi-source searches (Reddit, Trends). Run eval set before considering this done. State machine: `RESEARCHING → RESEARCH_PLANNING → RESEARCH_SEARCHING → RESEARCH_READING → RESEARCH_REFLECTING → RESEARCH_SYNTHESIZING → RESEARCH_READY`.
+B4. **Insight generation Cloud Function** — combines validation report + page view / waitlist data into the final insight report. Can be built before the frontend since it reads from the database and writes a structured row. Includes the auto-archive Cloud Function (cron-driven).
+B5. **Analytics + waitlist endpoints (backend only)** — `POST /analytics/page-view`, `POST /experiments/{slug}/waitlist`. Public endpoints, rate-limited per the policy already defined in F5. Verify by hitting them with curl. The page-view beacon and waitlist form on the frontend are built in Phase 3.
+
+### Phase 3 — Frontend assembly (after Phase 2)
+
+Build only after Phase 2 is complete and design decisions are locked with co-founders. Each step pairs to one or more USER_FLOW stages. Order within Phase 3 is flexible and depends on which screens are most critical to validate with friends-and-circle.
+
+FE1. **Theme system + restyled auth pages** — Tailwind config update (brand colors, Inter weights, light/dark theme tokens), `globals.css` tokens, theme provider with toggle, restyle the placeholder signup/login pages with the locked design system.
+FE2. **Founder dashboard shell** — top nav, user menu, theme toggle, dashboard home (experiment list with status badges, empty state, quick metrics per card). USER_FLOW Stages 1, 7, 8.
+FE3. **Idea intake + refinement UI** — submission textarea, refinement loading state, refinement review screen (editable fields, "Refine again" with feedback, "Accept and continue"). Wires to B1. USER_FLOW Stage 2.
+FE4. **Research progress + validation report viewer** — research-in-progress screen with live phase indicator, validation report viewer with scrollable findings + citations. Wires to B2/B3. USER_FLOW Stage 3.
+FE5. **Landing page templates + editor** — receive 5 templates from marketing/design lead, integrate into the template registry, build AI selection logic, build landing page editor with split view + bounded customization, ISR rendering for public `/e/[slug]` routes. USER_FLOW Stage 4.
+FE6. **Live metrics + insight report viewer + decision UI** — metrics widget on dashboard, insight report viewer combining cognitive + behavioral signals, decision buttons (iterate / proceed / pivot / kill). Wires to B4 and B5. USER_FLOW Stages 5 and 6.
+
+When asked to build something out of order, push back and ask if prerequisites are done. Never start a Phase 3 step without Phase 2 dependencies in place.
 
 ## Operational Notes
 
