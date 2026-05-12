@@ -28,6 +28,8 @@ from pydantic import BaseModel
 from app.config import get_settings
 from app.db.models.external_api_call import ExternalAPICall
 from app.logging_config import get_logger
+from app.reliability.circuit_breakers import get_breaker
+from app.reliability.retry import retry_async
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -172,10 +174,17 @@ async def search_subreddits(
     started_at = time.perf_counter()
 
     try:
-        posts = await asyncio.wait_for(
-            asyncio.to_thread(_fetch_subreddit_posts, query, subreddits, limit),
-            timeout=_TIMEOUT_SECONDS,
-        )
+        async def _do_reddit_search():
+            return await asyncio.wait_for(
+                asyncio.to_thread(_fetch_subreddit_posts, query, subreddits, limit),
+                timeout=_TIMEOUT_SECONDS,
+            )
+
+        @retry_async()
+        async def _call_reddit_search_with_retry():
+            return await get_breaker("reddit").call(_do_reddit_search)
+
+        posts = await _call_reddit_search_with_retry()
         latency_ms = int((time.perf_counter() - started_at) * 1000)
 
         await _log_api_call(
@@ -241,10 +250,17 @@ async def fetch_post_comments(
     started_at = time.perf_counter()
 
     try:
-        comments = await asyncio.wait_for(
-            asyncio.to_thread(_fetch_comments, post_id, limit),
-            timeout=_TIMEOUT_SECONDS,
-        )
+        async def _do_reddit_comments():
+            return await asyncio.wait_for(
+                asyncio.to_thread(_fetch_comments, post_id, limit),
+                timeout=_TIMEOUT_SECONDS,
+            )
+
+        @retry_async()
+        async def _call_reddit_comments_with_retry():
+            return await get_breaker("reddit").call(_do_reddit_comments)
+
+        comments = await _call_reddit_comments_with_retry()
         latency_ms = int((time.perf_counter() - started_at) * 1000)
 
         await _log_api_call(

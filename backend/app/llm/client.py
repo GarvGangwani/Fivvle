@@ -33,6 +33,8 @@ from app.config import get_settings
 from app.db.models.llm_call import LLMCall
 from app.llm.cost import compute_cost_usd, is_known_model
 from app.logging_config import get_logger
+from app.reliability.circuit_breakers import get_breaker
+from app.reliability.retry import retry_async
 
 if TYPE_CHECKING:
     pass
@@ -181,13 +183,21 @@ async def complete(
     try:
         if provider == "anthropic":
             client = _get_anthropic_client()
-            response = await client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system,
-                messages=[{"role": "user", "content": user}],
-            )
+
+            async def _do_anthropic_call():
+                return await client.messages.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    system=system,
+                    messages=[{"role": "user", "content": user}],
+                )
+
+            @retry_async()
+            async def _call_anthropic_with_retry():
+                return await get_breaker("anthropic").call(_do_anthropic_call)
+
+            response = await _call_anthropic_with_retry()
             text = response.content[0].text  # type: ignore[union-attr]
             prompt_tokens = response.usage.input_tokens
             completion_tokens = response.usage.output_tokens
@@ -195,15 +205,23 @@ async def complete(
 
         elif provider == "groq":
             client = _get_groq_client()
-            response = await client.chat.completions.create(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-            )
+
+            async def _do_groq_call():
+                return await client.chat.completions.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                )
+
+            @retry_async()
+            async def _call_groq_with_retry():
+                return await get_breaker("groq").call(_do_groq_call)
+
+            response = await _call_groq_with_retry()
             text = response.choices[0].message.content or ""
             prompt_tokens = response.usage.prompt_tokens if response.usage else 0
             completion_tokens = response.usage.completion_tokens if response.usage else 0
@@ -326,30 +344,46 @@ async def complete_structured(
     try:
         if provider == "anthropic":
             iclient = _get_instructor_anthropic()
-            parsed, raw = await iclient.create_with_completion(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                system=system,
-                messages=[{"role": "user", "content": user}],
-                response_model=response_model,
-            )
+
+            async def _do_anthropic_structured():
+                return await iclient.create_with_completion(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    system=system,
+                    messages=[{"role": "user", "content": user}],
+                    response_model=response_model,
+                )
+
+            @retry_async()
+            async def _call_anthropic_structured_with_retry():
+                return await get_breaker("anthropic").call(_do_anthropic_structured)
+
+            parsed, raw = await _call_anthropic_structured_with_retry()
             prompt_tokens = raw.usage.input_tokens
             completion_tokens = raw.usage.output_tokens
             request_id: str | None = raw.id
 
         elif provider == "groq":
             iclient = _get_instructor_groq()
-            parsed, raw = await iclient.create_with_completion(
-                model=model,
-                max_tokens=max_tokens,
-                temperature=temperature,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                response_model=response_model,
-            )
+
+            async def _do_groq_structured():
+                return await iclient.create_with_completion(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    response_model=response_model,
+                )
+
+            @retry_async()
+            async def _call_groq_structured_with_retry():
+                return await get_breaker("groq").call(_do_groq_structured)
+
+            parsed, raw = await _call_groq_structured_with_retry()
             prompt_tokens = raw.usage.prompt_tokens if raw.usage else 0
             completion_tokens = raw.usage.completion_tokens if raw.usage else 0
             request_id = raw.id

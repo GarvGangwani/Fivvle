@@ -31,6 +31,8 @@ from pytrends.request import TrendReq
 
 from app.db.models.external_api_call import ExternalAPICall
 from app.logging_config import get_logger
+from app.reliability.circuit_breakers import get_breaker
+from app.reliability.retry import retry_async
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -162,10 +164,17 @@ async def get_interest_over_time(
     started_at = time.perf_counter()
 
     try:
-        result = await asyncio.wait_for(
-            asyncio.to_thread(_fetch_interest_over_time, keywords, timeframe, geo),
-            timeout=_TIMEOUT_SECONDS,
-        )
+        async def _do_trends_call():
+            return await asyncio.wait_for(
+                asyncio.to_thread(_fetch_interest_over_time, keywords, timeframe, geo),
+                timeout=_TIMEOUT_SECONDS,
+            )
+
+        @retry_async()
+        async def _call_trends_with_retry():
+            return await get_breaker("google_trends").call(_do_trends_call)
+
+        result = await _call_trends_with_retry()
         latency_ms = int((time.perf_counter() - started_at) * 1000)
 
         await _log_api_call(

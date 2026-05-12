@@ -29,6 +29,8 @@ from tavily import TavilyClient
 from app.config import get_settings
 from app.db.models.external_api_call import ExternalAPICall
 from app.logging_config import get_logger
+from app.reliability.circuit_breakers import get_breaker
+from app.reliability.retry import retry_async
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -111,15 +113,22 @@ async def search(
     started_at = time.perf_counter()
 
     try:
-        raw = await asyncio.wait_for(
-            asyncio.to_thread(
-                _get_client().search,
-                query,
-                max_results=max_results,
-                search_depth=search_depth,
-            ),
-            timeout=_TIMEOUT_SECONDS,
-        )
+        async def _do_tavily_call():
+            return await asyncio.wait_for(
+                asyncio.to_thread(
+                    _get_client().search,
+                    query,
+                    max_results=max_results,
+                    search_depth=search_depth,
+                ),
+                timeout=_TIMEOUT_SECONDS,
+            )
+
+        @retry_async()
+        async def _call_tavily_with_retry():
+            return await get_breaker("tavily").call(_do_tavily_call)
+
+        raw = await _call_tavily_with_retry()
         latency_ms = int((time.perf_counter() - started_at) * 1000)
 
         results = [
