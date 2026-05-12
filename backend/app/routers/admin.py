@@ -17,11 +17,12 @@ from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_admin_user
+from app.reliability.rate_limit import AUTH_RATE_LIMIT, limiter, user_key
 from app.db.models.experiment import Experiment
 from app.db.models.external_api_call import ExternalAPICall
 from app.db.models.llm_call import LLMCall
@@ -50,10 +51,13 @@ _ZERO = Decimal("0")
     "/cost/experiment/{experiment_id}",
     response_model=ExperimentCostResponse,
 )
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
 async def get_experiment_cost(
+    request: Request,
     experiment_id: UUID,
     _admin: Annotated[User, Depends(get_current_admin_user)],
     db: Annotated[AsyncSession, Depends(get_session)],
+    response: Response,
 ) -> ExperimentCostResponse:
     """Return cost totals for a single experiment.
 
@@ -96,10 +100,13 @@ async def get_experiment_cost(
     "/cost/user/{user_id}",
     response_model=UserCostResponse,
 )
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
 async def get_user_cost(
+    request: Request,
     user_id: UUID,
     _admin: Annotated[User, Depends(get_current_admin_user)],
     db: Annotated[AsyncSession, Depends(get_session)],
+    response: Response,
 ) -> UserCostResponse:
     """Return cost totals rolled up across all of a user's experiments.
 
@@ -145,9 +152,12 @@ async def get_user_cost(
     "/cost/daily",
     response_model=DailyCostResponse,
 )
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
 async def get_daily_cost(
+    request: Request,
     _admin: Annotated[User, Depends(get_current_admin_user)],
     db: Annotated[AsyncSession, Depends(get_session)],
+    response: Response,
     days: int = Query(default=30, ge=1, le=365),
 ) -> DailyCostResponse:
     """Return daily cost totals for the last N days (default 30, max 365).
@@ -217,9 +227,12 @@ async def get_daily_cost(
     "/cost/per-phase",
     response_model=PerPhaseCostResponse,
 )
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
 async def get_per_phase_cost(
+    request: Request,
     _admin: Annotated[User, Depends(get_current_admin_user)],
     db: Annotated[AsyncSession, Depends(get_session)],
+    response: Response,
     days: int = Query(default=30, ge=1, le=365),
 ) -> PerPhaseCostResponse:
     """Return per-phase LLM cost breakdown for the last N days.

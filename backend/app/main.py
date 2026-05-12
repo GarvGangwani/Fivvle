@@ -6,6 +6,7 @@ Wires together:
 - CORS middleware (explicit allowlist — no wildcards, per AGENTS.md)
 - Security headers middleware (6 headers from AGENTS.md)
 - Request-ID middleware (generates/propagates X-Request-ID)
+- SlowAPI rate-limiting middleware (per-endpoint limits, step 5C)
 - Sentry context middleware (enriches Sentry scope per request)
 - Generic production error handler (no stack traces to clients)
 - Registered routers (health, users, admin)
@@ -15,11 +16,18 @@ Production: gunicorn -k uvicorn.workers.UvicornWorker app.main:app
 
 Middleware execution order (outermost → innermost, i.e. first to see a
 request → closest to the route handler):
-  CORS → security-headers → request-ID → Sentry context → handler
+  CORS → security-headers → request-ID → SlowAPI → Sentry context → handler
 
 In Starlette, the LAST call to add_middleware() becomes the outermost layer.
 So middlewares are registered here in the reverse of the execution order
 (innermost first, outermost last).
+
+SlowAPI is registered BEFORE RequestIDMiddleware (making it inner) so that:
+- RequestID runs first on every inbound request and sets request.state.request_id
+  before the rate-limit decorator on the route fires RateLimitExceeded.
+- 429 responses flow back out through RequestIDMiddleware (adds X-Request-ID
+  header) and then SecurityHeaders, satisfying both correlation and security
+  header requirements on rate-limited responses.
 """
 
 from contextlib import asynccontextmanager
@@ -27,6 +35,8 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.config import get_settings
 from app.logging_config import configure_logging, get_logger
@@ -34,6 +44,7 @@ from app.middleware.error_handler import generic_exception_handler
 from app.middleware.request_id import RequestIDMiddleware
 from app.middleware.sentry_context import SentryContextMiddleware
 from app.observability.sentry import init_sentry
+from app.reliability.rate_limit import limiter, rate_limit_exceeded_handler
 from app.routers.admin import router as admin_router
 from app.routers.health import router as health_router
 from app.routers.users import router as users_router
@@ -106,19 +117,36 @@ app = FastAPI(
 # (more-specific type wins), so HTTPExceptions never reach this handler.
 app.add_exception_handler(Exception, generic_exception_handler)  # type: ignore[arg-type]
 
+# RateLimitExceeded is a subclass of HTTPException. FastAPI dispatches to the
+# most-specific registered handler, so this takes precedence over the generic
+# Exception handler above and over Starlette's built-in HTTPException handler.
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)  # type: ignore[arg-type]
+
+# Make the limiter instance available to SlowAPIMiddleware via app.state.
+app.state.limiter = limiter
+
 # ---------------------------------------------------------------------------
 # Middleware — registration order matters.
 #
 # Starlette builds the middleware stack so the LAST add_middleware() call
 # becomes the OUTERMOST layer (first to process incoming requests).
 # Register innermost → outermost so execution order is:
-#   CORS → security-headers → request-ID → Sentry context → handler
+#   CORS → security-headers → request-ID → SlowAPI → Sentry context → handler
 # ---------------------------------------------------------------------------
 
 # 1. Sentry context — innermost; runs closest to the route handler.
 app.add_middleware(SentryContextMiddleware)
 
-# 2. Request ID — sets request_id before Sentry context reads it.
+# 2. SlowAPI — registered before RequestID so RequestID is outer.
+#    Execution order: RequestID (outer) → SlowAPI → Sentry → handler.
+#    When the rate-limit decorator fires RateLimitExceeded inside the route,
+#    SlowAPIMiddleware catches it and returns a 429.  That response then flows
+#    back out through RequestID (adds X-Request-ID) and SecurityHeaders.
+app.add_middleware(SlowAPIMiddleware)
+
+# 3. Request ID — outer of SlowAPI; sets request_id on every inbound request
+#    so request.state.request_id is available when rate_limit_exceeded_handler
+#    runs inside the SlowAPI layer.
 app.add_middleware(RequestIDMiddleware)
 
 

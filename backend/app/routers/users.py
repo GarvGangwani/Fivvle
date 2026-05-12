@@ -2,7 +2,7 @@
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from firebase_admin import auth as firebase_auth
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ from app.auth.firebase import verify_id_token
 from app.db.models.user import User
 from app.db.session import get_session
 from app.logging_config import get_logger
+from app.reliability.rate_limit import AUTH_RATE_LIMIT, limiter, user_key
 from app.schemas.user import UserResponse, UserSyncRequest
 
 _logger = get_logger(__name__)
@@ -20,10 +21,12 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 
 @router.post("/sync", response_model=UserResponse, status_code=status.HTTP_200_OK)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
 async def sync_user(
     request: Request,
     body: UserSyncRequest,
     db: Annotated[AsyncSession, Depends(get_session)],
+    response: Response,
 ) -> User:
     """Idempotent user sync — call from frontend after Firebase signup.
 
