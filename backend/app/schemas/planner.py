@@ -52,13 +52,13 @@ class ResearchQuestion(BaseModel):
         str,
         Field(
             min_length=1,
-            max_length=300,
+            max_length=500,  # Updated for B2.2 calibration: raised question max_length to 500.
             description=(
                 "The research question itself, stated as a single sentence. Must be sharp "
                 "and concrete — specific enough that a Tavily search would return relevant "
                 "results. Not a generic category ('what is the competitive landscape?') "
                 "but a pointed question ('does Notion AI's policy-bot feature already cover "
-                "what this idea proposes?'). Maximum 300 characters."
+                "what this idea proposes?'). Maximum 500 characters."
             ),
         ),
     ]

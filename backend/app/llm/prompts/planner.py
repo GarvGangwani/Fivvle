@@ -176,7 +176,11 @@ OUTPUT STRUCTURE
 Produce a ResearchPlan with 5-7 ResearchQuestion entries. Each entry must have:
 
   id         -- one of q1, q2, q3, q4, q5, q6, q7; all ids must be unique
-  question   -- one sentence, sharp and specific, max 300 characters
+  question   -- at most 500 characters; aim for 150-300 characters. Clear
+               and specific, not verbose. If a question would exceed 500
+               characters, split it into two narrower questions. Questions
+               are not the place for nested clauses, parenthetical asides,
+               or exhaustive enumeration; those belong in the rationale field.
   rationale  -- 1-2 sentences, explains why this question matters for THIS idea
                 and how it is investigable from public sources, max 400 characters
   search_queries -- 1-3 Tavily-ready queries, 3-8 words each, max 120 chars each
