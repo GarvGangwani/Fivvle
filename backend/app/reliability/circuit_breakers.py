@@ -31,6 +31,18 @@ from typing import TypeVar
 
 import httpx
 
+# Optional third-party imports — these SDKs may not always be available in
+# every deployment context, so import lazily and tolerate ImportError.
+try:
+    import anthropic
+except ImportError:  # pragma: no cover
+    anthropic = None  # type: ignore[assignment]
+
+try:
+    from pytrends.exceptions import TooManyRequestsError as PytrendsTooManyRequestsError
+except ImportError:  # pragma: no cover
+    PytrendsTooManyRequestsError = None  # type: ignore[assignment,misc]
+
 from app.logging_config import get_logger
 
 _logger = get_logger(__name__)
@@ -42,55 +54,56 @@ T = TypeVar("T")
 # Transient-failure predicate (shared with retry.py)
 # ---------------------------------------------------------------------------
 
+# Explicit allow-list of transient exception types.
+# Adding a new exception class here is a deliberate decision to retry on it.
+_TRANSIENT_EXCEPTION_TYPES: tuple[type[BaseException], ...] = tuple(
+    cls for cls in (
+        asyncio.TimeoutError,
+        httpx.TimeoutException,
+        httpx.ConnectError,
+        httpx.RemoteProtocolError,
+        httpx.ReadError,
+        httpx.WriteError,
+        httpx.PoolTimeout,
+        # Anthropic SDK transient errors
+        getattr(anthropic, "APIConnectionError", None),
+        getattr(anthropic, "APITimeoutError", None),
+        getattr(anthropic, "RateLimitError", None),
+        getattr(anthropic, "InternalServerError", None),
+        # pytrends transient errors
+        PytrendsTooManyRequestsError,
+    ) if cls is not None
+)
+
+# HTTP status codes considered transient.
+_TRANSIENT_STATUS_CODES: frozenset[int] = frozenset({408, 429, 500, 502, 503, 504})
+
+
 def _is_transient_failure(exc: BaseException) -> bool:
-    """Return True when *exc* represents a transient transport/service failure.
+    """Return True only when *exc* matches an explicit transient signal.
 
-    Conservative by design: when in doubt we treat an exception as transient
-    because the cost of an extra cooldown is small compared to silently missing
-    a real service outage.
+    Allow-list model: defaults to non-transient. Add new transient exception
+    types to _TRANSIENT_EXCEPTION_TYPES or new status codes to
+    _TRANSIENT_STATUS_CODES with deliberate intent — never via string-pattern
+    heuristics, which produce false positives that cause cost inflation
+    (see Bug B in commit history).
 
-    Covers:
-    - Direct asyncio / httpx transport exceptions.
-    - Exceptions from Anthropic/Groq/PRAW SDKs that expose a ``status_code``
-      attribute (or nest a ``response.status_code``).
-    - String-pattern matching for SDK-wrapped errors that don't expose a clean
-      status code (e.g., "Connection reset", "Service unavailable" text from
-      provider error messages).
+    Detection paths:
+      1. isinstance check against _TRANSIENT_EXCEPTION_TYPES
+      2. .status_code or .response.status_code in _TRANSIENT_STATUS_CODES
     """
-    # --- 1. Direct type checks -------------------------------------------
-    if isinstance(
-        exc,
-        (
-            asyncio.TimeoutError,
-            httpx.TimeoutException,
-            httpx.ConnectError,
-            httpx.RemoteProtocolError,
-        ),
-    ):
+    if isinstance(exc, _TRANSIENT_EXCEPTION_TYPES):
         return True
 
-    # --- 2. Status code check (Anthropic/Groq SDK, httpx.HTTPStatusError) -
-    # Try .status_code directly, then .response.status_code as fallback.
     status_code: int | None = getattr(exc, "status_code", None)
     if status_code is None:
         response_obj = getattr(exc, "response", None)
         if response_obj is not None:
             status_code = getattr(response_obj, "status_code", None)
-    if status_code in {408, 429, 500, 502, 503, 504}:
+    if status_code in _TRANSIENT_STATUS_CODES:
         return True
 
-    # --- 3. String-pattern matching for SDK-wrapped transient errors -------
-    exc_str = str(exc).lower()
-    _transient_markers = (
-        "connection",           # connection reset, connection refused, etc.
-        "timeout",              # various SDK timeout messages
-        "overloaded",           # Anthropic "overloaded_error"
-        "internal server",      # 500 phrasing
-        "service unavailable",  # 503 phrasing
-        "bad gateway",          # 502 phrasing
-        "gateway timeout",      # 504 phrasing
-    )
-    return any(marker in exc_str for marker in _transient_markers)
+    return False
 
 
 # ---------------------------------------------------------------------------

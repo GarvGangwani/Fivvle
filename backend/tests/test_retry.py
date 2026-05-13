@@ -14,6 +14,7 @@ Covers:
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -208,3 +209,94 @@ async def test_delay_values_follow_exponential_with_jitter():
 
     # attempt 2 → base 2.0 * uniform(0.75, 1.25) → [1.5, 2.5]
     assert 1.5 <= sleep_calls[2] <= 2.5, f"attempt-3 delay {sleep_calls[2]} out of range"
+
+
+# ---------------------------------------------------------------------------
+# BaseException → Exception fix (Bug B)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_retry_does_not_catch_keyboard_interrupt():
+    """KeyboardInterrupt must propagate immediately — never caught by retry."""
+    @retry_async()
+    async def _raise_ki():
+        raise KeyboardInterrupt()
+
+    with pytest.raises(KeyboardInterrupt):
+        await _raise_ki()
+
+
+@pytest.mark.asyncio
+async def test_retry_does_not_catch_system_exit():
+    """SystemExit must propagate immediately — never caught by retry."""
+    @retry_async()
+    async def _raise_se():
+        raise SystemExit(1)
+
+    with pytest.raises(SystemExit):
+        await _raise_se()
+
+
+@pytest.mark.asyncio
+async def test_retry_does_not_catch_generator_exit():
+    """GeneratorExit must propagate immediately — never caught by retry."""
+    @retry_async()
+    async def _raise_ge():
+        raise GeneratorExit()
+
+    with pytest.raises(GeneratorExit):
+        await _raise_ge()
+
+
+# ---------------------------------------------------------------------------
+# Allow-list semantics (Bug B)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_retry_still_retries_on_transient_exception():
+    """asyncio.TimeoutError is in the allow-list; 2 failures then success should return ok."""
+    call_count = 0
+
+    async def _twice_then_ok():
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 2:
+            raise asyncio.TimeoutError()
+        return "ok"
+
+    with patch("app.reliability.retry.asyncio.sleep", new_callable=AsyncMock):
+        @retry_async()
+        async def _wrapped():
+            return await _twice_then_ok()
+
+        result = await _wrapped()
+
+    assert result == "ok"
+    assert call_count == 3
+
+
+@pytest.mark.asyncio
+async def test_retry_does_not_retry_tavily_bad_request_error():
+    """End-to-end Bug B regression at the retry layer.
+
+    BadRequestError with a misleading 'connection' message must NOT be retried.
+    The function must be called exactly once.
+    """
+    from tavily import BadRequestError
+
+    call_count = 0
+
+    async def _raise_bad_request():
+        nonlocal call_count
+        call_count += 1
+        # Updated for Bug B: allow-list classifier; no string-pattern matching.
+        raise BadRequestError("connection error")
+
+    @retry_async()
+    async def _wrapped():
+        return await _raise_bad_request()
+
+    with pytest.raises(BadRequestError):
+        await _wrapped()
+
+    assert call_count == 1  # no retry — BadRequestError is non-transient

@@ -30,6 +30,7 @@ from pytrends.exceptions import ResponseError, TooManyRequestsError
 from pytrends.request import TrendReq
 
 from app.db.models.external_api_call import ExternalAPICall
+from app.db.session_lock import lock_for
 from app.logging_config import get_logger
 from app.reliability.circuit_breakers import get_breaker
 from app.reliability.retry import retry_async
@@ -87,8 +88,9 @@ async def _log_api_call(
         cost_usd=Decimal("0"),  # Google Trends free — always $0
         success=success,
     )
-    db.add(call)
-    await db.flush()
+    async with lock_for(db):
+        db.add(call)
+        await db.flush()
 
 
 def _fetch_interest_over_time(

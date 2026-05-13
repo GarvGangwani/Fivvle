@@ -121,8 +121,8 @@ async def test_tavily_retry_then_success_writes_one_row(db_session):
         nonlocal call_count
         call_count += 1
         if call_count < 3:
-            # Use a message string that triggers the "connection" transient marker.
-            raise OSError("connection refused by remote host")
+            # Updated for Bug B: allow-list classifier requires an explicit transient exception type.
+            raise httpx.ConnectError("connection refused by remote host")
         return fake_response
 
     fake_client = MagicMock()
@@ -205,7 +205,8 @@ async def test_reddit_retry_then_success_writes_one_row(db_session):
         nonlocal call_count
         call_count += 1
         if call_count < 3:
-            raise OSError("connection refused by remote host")
+            # Updated for Bug B: allow-list classifier requires an explicit transient exception type.
+            raise httpx.ConnectError("connection refused by remote host")
         return iter([fake_post])
 
     fake_sub.search = MagicMock(side_effect=_flaky_search)

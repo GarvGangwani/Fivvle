@@ -9,6 +9,8 @@ Policy (per .cursorrules "Retry policy"):
   - Only retry on *transient* failures (same predicate as circuit breakers).
   - Never retry on CircuitOpenError — the breaker already controls back-off.
   - Never retry on asyncio.CancelledError — honour cooperative cancellation.
+  - Allow-list classifier (see _is_transient_failure in circuit_breakers.py):
+    non-listed exceptions are never retried, regardless of message content.
 
 Usage:
     @retry_async(max_retries=3)
@@ -68,7 +70,7 @@ def retry_async(
                     # Retrying when the breaker is open is exactly what the
                     # breaker exists to prevent.  Propagate immediately.
                     raise
-                except BaseException as exc:
+                except Exception as exc:
                     is_last = attempt >= max_retries
                     if not _is_transient_failure(exc) or is_last:
                         raise

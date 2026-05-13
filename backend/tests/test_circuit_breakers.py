@@ -13,7 +13,9 @@ Covers:
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+import anthropic
 
 import httpx
 import pytest
@@ -276,8 +278,9 @@ def test_exception_with_400_status_code_is_not_transient():
     assert not _is_transient_failure(exc)
 
 
-def test_string_marker_overloaded_is_transient():
-    assert _is_transient_failure(Exception("The model is overloaded, please retry"))
+def test_string_marker_overloaded_is_not_transient():
+    # Updated for Bug B: allow-list classifier; no string-pattern matching.
+    assert not _is_transient_failure(Exception("The model is overloaded, please retry"))
 
 
 @pytest.mark.asyncio
@@ -290,3 +293,147 @@ async def test_non_transient_does_not_advance_failure_count():
     # Should still be CLOSED with 0 counted failures.
     assert breaker._state.value == "closed"
     assert breaker._consecutive_failures == 0
+
+
+# ---------------------------------------------------------------------------
+# Allow-list classifier (Bug B regression tests)
+# ---------------------------------------------------------------------------
+
+class TestIsTransientFailureAllowList:
+    """Pin the allow-list semantics introduced in Bug B.
+
+    Every test here documents a deliberate classification decision.
+    Tests named *_is_not_transient prove the delete of string-pattern matching;
+    tests named *_is_transient prove the allow-list still retries real signals.
+    """
+
+    def _mock_response(self, status_code: int) -> MagicMock:
+        """Minimal mock httpx.Response for Anthropic exception construction."""
+        r = MagicMock()
+        r.status_code = status_code
+        r.headers = MagicMock()
+        r.request = MagicMock()
+        return r
+
+    # --- Tavily ---
+
+    def test_tavily_bad_request_error_is_not_transient(self):
+        """Headline Bug B regression: message contains 'connection' but still NOT transient."""
+        from tavily import BadRequestError
+        # Updated for Bug B: allow-list classifier; no string-pattern matching.
+        exc = BadRequestError("connection refused")
+        assert _is_transient_failure(exc) is False
+
+    def test_tavily_invalid_api_key_error_is_not_transient(self):
+        from tavily import InvalidAPIKeyError
+        # Updated for Bug B: allow-list classifier; no string-pattern matching.
+        exc = InvalidAPIKeyError("invalid key")
+        assert _is_transient_failure(exc) is False
+
+    def test_tavily_usage_limit_exceeded_is_not_transient(self):
+        from tavily import UsageLimitExceededError
+        # Updated for Bug B: allow-list classifier; no string-pattern matching.
+        exc = UsageLimitExceededError("usage limit exceeded")
+        assert _is_transient_failure(exc) is False
+
+    # --- Anthropic non-transient ---
+
+    def test_anthropic_bad_request_is_not_transient(self):
+        """Message contains 'timeout' but status 400 is NOT in the transient set."""
+        # Updated for Bug B: allow-list classifier; no string-pattern matching.
+        exc = anthropic.BadRequestError(
+            message="Request timeout: invalid content type",
+            response=self._mock_response(400),
+            body=None,
+        )
+        assert _is_transient_failure(exc) is False
+
+    def test_anthropic_authentication_error_is_not_transient(self):
+        exc = anthropic.AuthenticationError(
+            message="authentication failed",
+            response=self._mock_response(401),
+            body=None,
+        )
+        assert _is_transient_failure(exc) is False
+
+    def test_anthropic_permission_denied_is_not_transient(self):
+        exc = anthropic.PermissionDeniedError(
+            message="permission denied",
+            response=self._mock_response(403),
+            body=None,
+        )
+        assert _is_transient_failure(exc) is False
+
+    def test_anthropic_not_found_is_not_transient(self):
+        exc = anthropic.NotFoundError(
+            message="not found",
+            response=self._mock_response(404),
+            body=None,
+        )
+        assert _is_transient_failure(exc) is False
+
+    # --- pytrends ---
+
+    def test_pytrends_response_error_is_not_transient(self):
+        from pytrends.exceptions import ResponseError
+        # Updated for Bug B: allow-list classifier; no string-pattern matching.
+        exc = ResponseError("response error", MagicMock())
+        assert _is_transient_failure(exc) is False
+
+    # --- Anthropic transient ---
+
+    def test_anthropic_rate_limit_error_is_transient(self):
+        exc = anthropic.RateLimitError(
+            message="rate limited",
+            response=self._mock_response(429),
+            body=None,
+        )
+        assert _is_transient_failure(exc) is True
+
+    def test_anthropic_api_connection_error_is_transient(self):
+        exc = anthropic.APIConnectionError(request=MagicMock())
+        assert _is_transient_failure(exc) is True
+
+    def test_anthropic_internal_server_error_is_transient(self):
+        exc = anthropic.InternalServerError(
+            message="internal server error",
+            response=self._mock_response(500),
+            body=None,
+        )
+        assert _is_transient_failure(exc) is True
+
+    def test_pytrends_too_many_requests_is_transient(self):
+        from pytrends.exceptions import TooManyRequestsError
+        exc = TooManyRequestsError("too many requests", MagicMock())
+        assert _is_transient_failure(exc) is True
+
+    # --- Message-content pins (prove string-pattern matching is gone) ---
+
+    def test_arbitrary_exception_with_misleading_message_is_not_transient(self):
+        """RuntimeError whose message matches every old string marker must NOT be transient."""
+        # Updated for Bug B: allow-list classifier; no string-pattern matching.
+        exc = RuntimeError(
+            "connection refused due to timeout overload internal server bad gateway"
+        )
+        assert _is_transient_failure(exc) is False
+
+    # --- Status code boundary tests ---
+
+    def test_status_code_4xx_is_not_transient(self):
+        exc = Exception("bad request")
+        exc.status_code = 400  # type: ignore[attr-defined]
+        # Updated for Bug B: allow-list classifier; no string-pattern matching.
+        assert _is_transient_failure(exc) is False
+
+    def test_status_code_503_is_transient(self):
+        exc = Exception("service unavailable")
+        exc.status_code = 503  # type: ignore[attr-defined]
+        assert _is_transient_failure(exc) is True
+
+    def test_status_code_via_response_attribute_is_detected(self):
+        """Covers the nested .response.status_code path used by some SDKs."""
+        exc = Exception("rate limited")
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        exc.response = mock_response  # type: ignore[attr-defined]
+        assert _is_transient_failure(exc) is True
