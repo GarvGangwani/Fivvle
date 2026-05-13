@@ -353,7 +353,7 @@ async def test_admin_per_phase_groups_by_phase(
     await db_session.commit()
 
     response = client.get(
-        "/admin/cost/per-phase?days=1",
+        f"/admin/cost/per-phase?days=1&user_id={user.id}",
         headers={"Authorization": "Bearer faketoken"},
     )
     assert response.status_code == 200
@@ -386,6 +386,262 @@ def test_admin_experiment_cost_returns_zeros_for_unknown_id(
     """Experiment with no calls returns zeros (not 404)."""
     # /users/sync creates the user, then we manually flip is_admin
     client.post("/users/sync", json={}, headers={"Authorization": "Bearer faketoken"})
+
+
+# ---------------------------------------------------------------------------
+# 5. user_id filter on /per-phase
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_admin_per_phase_with_user_id_scopes_results(
+    client: TestClient, mock_firebase: None, db_session: AsyncSession
+) -> None:
+    """When user_id is provided, only that user's phase rows are included."""
+    admin = await _create_admin_user(db_session)
+    user2 = User(
+        firebase_uid="other-firebase-uid-phase-scope",
+        email="phase-scope@example.com",
+        name="Phase Scope User",
+        is_admin=False,
+    )
+    db_session.add(user2)
+    await db_session.commit()
+    await db_session.refresh(user2)
+
+    exp1 = Experiment(user_id=admin.id, raw_idea="phase scope 1", slug="test-slug-phase-scope-1")
+    exp2 = Experiment(user_id=user2.id, raw_idea="phase scope 2", slug="test-slug-phase-scope-2")
+    db_session.add_all([exp1, exp2])
+    await db_session.commit()
+    await db_session.refresh(exp1)
+    await db_session.refresh(exp2)
+
+    # 2 planner calls for admin's experiment, 3 for user2's
+    for _ in range(2):
+        db_session.add(LLMCall(
+            experiment_id=exp1.id,
+            provider="anthropic",
+            model="claude-sonnet-4-5",
+            prompt_name="planner",
+            prompt_tokens=100,
+            completion_tokens=50,
+            cost_usd=Decimal("0.05"),
+            latency_ms=400,
+            phase="planner",
+        ))
+    for _ in range(3):
+        db_session.add(LLMCall(
+            experiment_id=exp2.id,
+            provider="anthropic",
+            model="claude-sonnet-4-5",
+            prompt_name="planner",
+            prompt_tokens=100,
+            completion_tokens=50,
+            cost_usd=Decimal("0.05"),
+            latency_ms=400,
+            phase="planner",
+        ))
+    await db_session.commit()
+
+    response = client.get(
+        f"/admin/cost/per-phase?days=1&user_id={admin.id}",
+        headers={"Authorization": "Bearer faketoken"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    rows_by_phase = {r["phase"]: r for r in body["rows"]}
+    assert "planner" in rows_by_phase
+    # Only admin's 2 rows — user2's 3 rows are excluded
+    assert rows_by_phase["planner"]["call_count"] == 2
+    assert Decimal(rows_by_phase["planner"]["llm_cost_usd"]) == Decimal("0.10")
+
+    # Cleanup
+    await db_session.execute(delete(LLMCall).where(LLMCall.experiment_id == exp1.id))
+    await db_session.execute(delete(LLMCall).where(LLMCall.experiment_id == exp2.id))
+    await db_session.delete(exp1)
+    await db_session.delete(exp2)
+    await db_session.execute(delete(User).where(User.id == user2.id))
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_admin_per_phase_without_user_id_is_global(
+    client: TestClient, mock_firebase: None, db_session: AsyncSession
+) -> None:
+    """Without user_id, the per-phase endpoint aggregates across all users."""
+    admin = await _create_admin_user(db_session)
+    user2 = User(
+        firebase_uid="other-firebase-uid-phase-global",
+        email="phase-global@example.com",
+        name="Phase Global User",
+        is_admin=False,
+    )
+    db_session.add(user2)
+    await db_session.commit()
+    await db_session.refresh(user2)
+
+    exp1 = Experiment(user_id=admin.id, raw_idea="phase global 1", slug="test-slug-phase-global-1")
+    exp2 = Experiment(user_id=user2.id, raw_idea="phase global 2", slug="test-slug-phase-global-2")
+    db_session.add_all([exp1, exp2])
+    await db_session.commit()
+    await db_session.refresh(exp1)
+    await db_session.refresh(exp2)
+
+    # One call per user under a unique phase name that won't collide with dev data
+    unique_phase = "test-global-phase-marker"
+    for exp in [exp1, exp2]:
+        db_session.add(LLMCall(
+            experiment_id=exp.id,
+            provider="anthropic",
+            model="claude-sonnet-4-5",
+            prompt_name="global-test",
+            prompt_tokens=100,
+            completion_tokens=50,
+            cost_usd=Decimal("0.01"),
+            latency_ms=400,
+            phase=unique_phase,
+        ))
+    await db_session.commit()
+
+    response = client.get(
+        "/admin/cost/per-phase?days=1",
+        headers={"Authorization": "Bearer faketoken"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    rows_by_phase = {r["phase"]: r for r in body["rows"]}
+    # Both users' rows appear under the unique phase in the global result
+    assert unique_phase in rows_by_phase
+    assert rows_by_phase[unique_phase]["call_count"] == 2
+
+    # Cleanup
+    await db_session.execute(delete(LLMCall).where(LLMCall.experiment_id == exp1.id))
+    await db_session.execute(delete(LLMCall).where(LLMCall.experiment_id == exp2.id))
+    await db_session.delete(exp1)
+    await db_session.delete(exp2)
+    await db_session.execute(delete(User).where(User.id == user2.id))
+    await db_session.commit()
+
+
+# ---------------------------------------------------------------------------
+# 6. user_id filter on /daily
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_admin_daily_with_user_id_scopes_results(
+    client: TestClient, mock_firebase: None, db_session: AsyncSession
+) -> None:
+    """When user_id is provided, daily endpoint only includes that user's rows."""
+    admin = await _create_admin_user(db_session)
+    user2 = User(
+        firebase_uid="other-firebase-uid-daily-scope",
+        email="daily-scope@example.com",
+        name="Daily Scope User",
+        is_admin=False,
+    )
+    db_session.add(user2)
+    await db_session.commit()
+    await db_session.refresh(user2)
+
+    exp1 = Experiment(user_id=admin.id, raw_idea="daily scope 1", slug="test-slug-daily-scope-1")
+    exp2 = Experiment(user_id=user2.id, raw_idea="daily scope 2", slug="test-slug-daily-scope-2")
+    db_session.add_all([exp1, exp2])
+    await db_session.commit()
+    await db_session.refresh(exp1)
+    await db_session.refresh(exp2)
+
+    # 1 LLM call for admin, 1 for user2
+    for exp in [exp1, exp2]:
+        db_session.add(LLMCall(
+            experiment_id=exp.id,
+            provider="anthropic",
+            model="claude-sonnet-4-5",
+            prompt_name="daily-scope-test",
+            prompt_tokens=100,
+            completion_tokens=50,
+            cost_usd=Decimal("0.07"),
+            latency_ms=400,
+            phase="daily-scope-test",
+        ))
+    await db_session.commit()
+
+    # Filter to admin only — should see exactly 1 call
+    response = client.get(
+        f"/admin/cost/daily?days=1&user_id={admin.id}",
+        headers={"Authorization": "Bearer faketoken"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["days_back"] == 1
+    total_llm_calls = sum(r["llm_call_count"] for r in body["rows"])
+    assert total_llm_calls == 1
+
+    # Cleanup
+    await db_session.execute(delete(LLMCall).where(LLMCall.experiment_id == exp1.id))
+    await db_session.execute(delete(LLMCall).where(LLMCall.experiment_id == exp2.id))
+    await db_session.delete(exp1)
+    await db_session.delete(exp2)
+    await db_session.execute(delete(User).where(User.id == user2.id))
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_admin_daily_without_user_id_is_global(
+    client: TestClient, mock_firebase: None, db_session: AsyncSession
+) -> None:
+    """Without user_id, the daily endpoint aggregates across all users."""
+    admin = await _create_admin_user(db_session)
+    user2 = User(
+        firebase_uid="other-firebase-uid-daily-global",
+        email="daily-global@example.com",
+        name="Daily Global User",
+        is_admin=False,
+    )
+    db_session.add(user2)
+    await db_session.commit()
+    await db_session.refresh(user2)
+
+    exp1 = Experiment(user_id=admin.id, raw_idea="daily global 1", slug="test-slug-daily-global-1")
+    exp2 = Experiment(user_id=user2.id, raw_idea="daily global 2", slug="test-slug-daily-global-2")
+    db_session.add_all([exp1, exp2])
+    await db_session.commit()
+    await db_session.refresh(exp1)
+    await db_session.refresh(exp2)
+
+    # 1 LLM call per user today
+    for exp in [exp1, exp2]:
+        db_session.add(LLMCall(
+            experiment_id=exp.id,
+            provider="anthropic",
+            model="claude-sonnet-4-5",
+            prompt_name="daily-global-test",
+            prompt_tokens=50,
+            completion_tokens=25,
+            cost_usd=Decimal("0.03"),
+            latency_ms=200,
+            phase="daily-global-test",
+        ))
+    await db_session.commit()
+
+    response = client.get(
+        "/admin/cost/daily?days=1",
+        headers={"Authorization": "Bearer faketoken"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["days_back"] == 1
+    # Both users' calls are included — today's total is >= 2
+    total_llm_calls = sum(r["llm_call_count"] for r in body["rows"])
+    assert total_llm_calls >= 2
+
+    # Cleanup
+    await db_session.execute(delete(LLMCall).where(LLMCall.experiment_id == exp1.id))
+    await db_session.execute(delete(LLMCall).where(LLMCall.experiment_id == exp2.id))
+    await db_session.delete(exp1)
+    await db_session.delete(exp2)
+    await db_session.execute(delete(User).where(User.id == user2.id))
+    await db_session.commit()
 
 
 @pytest.mark.asyncio

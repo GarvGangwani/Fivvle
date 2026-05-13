@@ -159,12 +159,23 @@ async def get_daily_cost(
     db: Annotated[AsyncSession, Depends(get_session)],
     response: Response,
     days: int = Query(default=30, ge=1, le=365),
+    user_id: UUID | None = Query(default=None),
 ) -> DailyCostResponse:
     """Return daily cost totals for the last N days (default 30, max 365).
 
     Results are ordered newest-first. Days with no activity are omitted.
+
+    When user_id is provided, scopes the query to that user's experiments only.
+    Default (no user_id) returns global aggregation across all experiments.
     """
     since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+
+    # Optional user filter: scope to experiments owned by the given user_id
+    user_exp_ids_subq = None
+    if user_id is not None:
+        user_exp_ids_subq = (
+            select(Experiment.id).where(Experiment.user_id == user_id).scalar_subquery()
+        )
 
     # Daily LLM aggregation
     llm_day_col = func.date_trunc("day", LLMCall.called_at).label("day")
@@ -177,6 +188,8 @@ async def get_daily_cost(
         .where(LLMCall.called_at >= since)
         .group_by(llm_day_col)
     )
+    if user_exp_ids_subq is not None:
+        llm_stmt = llm_stmt.where(LLMCall.experiment_id.in_(user_exp_ids_subq))
     llm_rows = (await db.execute(llm_stmt)).all()
     llm_by_day: dict[date, tuple[Decimal, int]] = {
         r.day.date(): (Decimal(str(r.cost)), r.cnt) for r in llm_rows
@@ -193,6 +206,8 @@ async def get_daily_cost(
         .where(ExternalAPICall.called_at >= since)
         .group_by(ext_day_col)
     )
+    if user_exp_ids_subq is not None:
+        ext_stmt = ext_stmt.where(ExternalAPICall.experiment_id.in_(user_exp_ids_subq))
     ext_rows = (await db.execute(ext_stmt)).all()
     ext_by_day: dict[date, tuple[Decimal, int]] = {
         r.day.date(): (Decimal(str(r.cost)), r.cnt) for r in ext_rows
@@ -234,12 +249,16 @@ async def get_per_phase_cost(
     db: Annotated[AsyncSession, Depends(get_session)],
     response: Response,
     days: int = Query(default=30, ge=1, le=365),
+    user_id: UUID | None = Query(default=None),
 ) -> PerPhaseCostResponse:
     """Return per-phase LLM cost breakdown for the last N days.
 
     Groups by LLMCall.phase. NULL phase (system-level calls not tied to a
     workflow phase) is included as phase=None. ExternalAPICall has no phase
     column, so this endpoint only queries LLMCall.
+
+    When user_id is provided, scopes the query to that user's experiments only.
+    Default (no user_id) returns global aggregation across all experiments.
     """
     since = datetime.now(tz=timezone.utc) - timedelta(days=days)
 
@@ -253,6 +272,13 @@ async def get_per_phase_cost(
         .group_by(LLMCall.phase)
         .order_by(func.coalesce(func.sum(LLMCall.cost_usd), _ZERO).desc())
     )
+
+    if user_id is not None:
+        user_exp_ids_subq = (
+            select(Experiment.id).where(Experiment.user_id == user_id).scalar_subquery()
+        )
+        stmt = stmt.where(LLMCall.experiment_id.in_(user_exp_ids_subq))
+
     rows = (await db.execute(stmt)).all()
 
     return PerPhaseCostResponse(
