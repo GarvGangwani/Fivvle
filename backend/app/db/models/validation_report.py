@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -33,21 +33,21 @@ class ValidationReport(Base):
         nullable=False,
         index=True,
     )
-    research_questions: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    findings_per_question: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    competitors: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    reddit_signals: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    search_trends: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    news_signals: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    citations: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Verbatim ValidationReport Pydantic payload — full structured report in one
+    # JSONB column.  Replaces the 9 legacy scalar JSONB columns dropped in B2.4.
+    # NOT NULL: the service must supply a value; '{}' sentinel never reaches here.
+    raw_report: Mapped[dict] = mapped_column(JSONB, nullable=False)
+
+    # --- Kept scalar columns (queryable aggregates, populated in B3) ---
+    # clarity_score: B3 synthesizer prompt will output this; B2.4 writes NULL.
     clarity_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    risks: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    market_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # reflection_loops_used: B3 reflector will populate this; B2.4 writes 0.
     reflection_loops_used: Mapped[int] = mapped_column(
         Integer,
         nullable=False,
         default=0,
     )
+    # generated_at: audit timestamp retained across all schema versions.
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

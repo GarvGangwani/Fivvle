@@ -80,6 +80,13 @@ class Experiment(Base):
         onupdate=func.now(),
         nullable=False,
     )
+    # Sanitized error string written by the state machine on RESEARCH_FAILED.
+    # NULL on success. Never contains raw stack traces or API keys — see
+    # research_engine_service.py _sanitize_error_detail().
+    research_error_detail: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
 
     # --- Relationships ---
     user: Mapped[User] = relationship(back_populates="experiments")

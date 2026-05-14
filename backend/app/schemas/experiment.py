@@ -70,3 +70,38 @@ class ExperimentResponse(BaseModel):
     refinement_count: int
     created_at: datetime
     updated_at: datetime
+
+
+class ConfirmResearchResponse(BaseModel):
+    """202 response for POST /experiments/{id}/confirm.
+
+    status_url is the absolute path to the polling endpoint so clients
+    can start polling without constructing the URL themselves.
+    """
+
+    experiment_id: UUID
+    status: ExperimentStatus
+    status_url: str
+
+
+class ResearchStatusResponse(BaseModel):
+    """Response for GET /experiments/{id}/research-status.
+
+    phase_label: human-readable string from research_phase_mapping.get_phase_label().
+        None for non-research statuses and terminal states (RESEARCH_READY,
+        RESEARCH_FAILED) where the frontend shows a different component.
+
+    phases_completed: ordered list of ExperimentStatus values the experiment
+        has passed through in the current research run.  Determined server-side
+        from the current status rather than stored separately — avoids a
+        separate audit log table for B2.4.
+
+    error_detail: populated only when status == RESEARCH_FAILED.
+        Sanitized by the state machine; safe to surface in the UI.
+    """
+
+    status: ExperimentStatus
+    phase_label: str | None
+    phases_completed: list[ExperimentStatus]
+    last_updated_at: datetime
+    error_detail: str | None
