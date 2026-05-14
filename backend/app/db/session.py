@@ -9,7 +9,8 @@ build step 2C (after the first Alembic migration exists).
 Public surface:
     init_engine(settings)     — startup hook
     dispose_engine()          — shutdown hook
-    get_session()             — FastAPI Depends() dependency
+    get_session()             — FastAPI Depends() dependency (request-scoped)
+    get_sessionmaker()        — returns the sessionmaker for background tasks
     check_db_health()         — readiness probe helper (wired in 2C)
 """
 
@@ -85,6 +86,25 @@ async def dispose_engine() -> None:
         _engine = None
         _sessionmaker = None
         _logger.info("db engine disposed")
+
+
+def get_sessionmaker() -> async_sessionmaker[AsyncSession]:
+    """Return the initialized sessionmaker for background-task use.
+
+    Use get_session() (the FastAPI Depends) for request-scoped DB access.
+    This function is for callers that manage their own session lifetime —
+    specifically InProcessDispatcher, which creates a session per pipeline
+    run rather than per HTTP request.
+
+    Raises:
+        RuntimeError: If init_engine() has not been called yet.
+    """
+    if _sessionmaker is None:
+        raise RuntimeError(
+            "DB sessionmaker is not initialized. "
+            "Did init_engine() run in the lifespan?"
+        )
+    return _sessionmaker
 
 
 async def get_session() -> AsyncGenerator[AsyncSession, None]:

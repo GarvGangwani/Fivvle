@@ -67,6 +67,7 @@ async def lifespan(app: FastAPI):  # type: ignore[type-arg]
     2. Initialise Sentry (before other init so startup errors are captured).
     3. Initialise DB engine (before Firebase so the pool is ready).
     4. Initialise Firebase Admin SDK.
+    5. Construct the ResearchDispatcher and store on app.state (after DB).
 
     Shutdown order:
     1. Dispose DB engine (drains the connection pool cleanly).
@@ -88,6 +89,16 @@ async def lifespan(app: FastAPI):  # type: ignore[type-arg]
     from app.auth.firebase import init_firebase  # noqa: PLC0415
 
     init_firebase(settings)
+
+    # 5. Research dispatcher (ADR 0009) — must run after init_engine so the
+    #    InProcessDispatcher can import AsyncSessionLocal safely.
+    from app.dispatchers.factory import get_dispatcher  # noqa: PLC0415
+
+    app.state.dispatcher = get_dispatcher(settings)
+    logger.info(
+        "research dispatcher initialised",
+        dispatcher_mode=settings.dispatcher_mode,
+    )
 
     yield
 

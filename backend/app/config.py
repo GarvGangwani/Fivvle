@@ -45,6 +45,15 @@ class Settings(BaseSettings):
     cors_allowed_origins: str = "http://localhost:3000"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
+    # --- Research dispatcher (ADR 0009) ---
+    # in_process: invokes the research engine directly via asyncio.create_task (dev/test).
+    # http: POSTs to the Cloud Function HTTPS endpoint with an OIDC token (staging/prod).
+    # Selection is explicit — never auto-detected from environment.
+    dispatcher_mode: Literal["in_process", "http"] = "in_process"
+    # Required when dispatcher_mode="http". Must be the full HTTPS URL of the Cloud Function.
+    # Leave unset in local dev (in_process mode ignores it).
+    research_engine_url: str | None = None
+
     # ------------------------------------------------------------------
     # Derived helpers (not env vars)
     # ------------------------------------------------------------------

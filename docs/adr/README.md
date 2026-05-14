@@ -24,6 +24,7 @@ Each ADR follows the Michael Nygard format:
 | 0006 | [Video posting and comment harvesting deferred to v2](0006-video-posting-deferred.md) | Accepted | 2026-05 |
 | 0007 | [No payments in MVP — free for everyone during launch phase](0007-no-payments-mvp.md) | Accepted | 2026-05 |
 | 0008 | [Upgrade Next.js 14 → 15 and React 18 → 19 to Address Unpatched RSC DoS Vulnerabilities](0008-nextjs-15-upgrade.md) | Proposed | 2026-05 |
+| 0009 | [Pluggable Research Dispatcher — In-Process for Dev, HTTP for Prod](0009-pluggable-research-dispatcher.md) | Accepted | 2026-05 |
 
 ## When to write a new ADR
 
