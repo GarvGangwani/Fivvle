@@ -25,7 +25,10 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.enums import ExperimentStatus
+from app.db.models.experiment import Experiment
 from app.schemas.refinement import RefinedIdea
+from app.services.experiment_service import create_experiment_with_refinement
 from app.services.refinement_service import (
     PROMPT_NAME,
     _REFINEMENT_MODEL,
@@ -82,6 +85,14 @@ def _make_mock_llm_result() -> MagicMock:
     return meta
 
 
+def _risk0_overflow_validation_error() -> ValidationError:
+    """Synthetic string_too_long at risks[0] for graceful-retry tests."""
+    long_risk = "r" * 251
+    with pytest.raises(ValidationError) as exc_info:
+        _make_valid_refined_idea(risks=[long_risk, _VALID_RISKS[1], _VALID_RISKS[2]])
+    return exc_info.value
+
+
 # ---------------------------------------------------------------------------
 # 1. Schema: valid model is accepted
 # ---------------------------------------------------------------------------
@@ -133,8 +144,8 @@ def test_refined_idea_schema_rejects_oversized_cta_text() -> None:
 
 
 def test_refined_idea_schema_rejects_oversized_risk_item() -> None:
-    """A risk item exceeding 200 chars should raise ValidationError."""
-    long_risk = "r" * 201
+    """A risk item exceeding 250 chars should raise ValidationError."""
+    long_risk = "r" * 251
     with pytest.raises(ValidationError) as exc_info:
         _make_valid_refined_idea(risks=[long_risk, "short risk a", "short risk b"])
     assert exc_info.value.errors()
@@ -205,6 +216,7 @@ async def test_refine_idea_calls_complete_structured_correctly(
     assert call_kwargs["response_model"] is RefinedIdea
     assert call_kwargs["experiment_id"] == experiment_id
     assert call_kwargs["phase"] == "refinement"
+    assert call_kwargs["max_retries"] == 0
 
 
 @pytest.mark.asyncio
@@ -390,3 +402,89 @@ async def test_refine_idea_passes_uuid_experiment_id(
 
     _, call_kwargs = mock_complete.call_args
     assert call_kwargs["experiment_id"] == eid
+
+
+# ---------------------------------------------------------------------------
+# 11. Service: graceful validation retry on string length overflow
+# ---------------------------------------------------------------------------
+
+_REFINEMENT_V1_RETRY = "refinement_v1_retry"
+
+
+@pytest.mark.asyncio
+async def test_refinement_validation_error_triggers_graceful_retry_then_succeeds(
+    valid_refined_idea: RefinedIdea,
+) -> None:
+    """When first LLM attempt fails Pydantic validation on field length,
+    service auto-retries ONCE with explicit length-correction instruction.
+    Founder sees normal REFINED state. Distinct prompt_name values correspond
+    to two LLMCall rows when complete_structured is not mocked."""
+
+    db = AsyncMock(spec=AsyncSession)
+    user = MagicMock()
+    user.id = uuid4()
+    mock_meta = _make_mock_llm_result()
+    ve_first = _risk0_overflow_validation_error()
+
+    mock_complete = AsyncMock(side_effect=[ve_first, (valid_refined_idea, mock_meta)])
+
+    with patch(
+        "app.services.refinement_service.llm_client.complete_structured",
+        mock_complete,
+    ):
+        experiment = await create_experiment_with_refinement(db, user, "B" * 50)
+
+    assert experiment.status == ExperimentStatus.REFINED
+    assert mock_complete.await_count == 2
+
+    first_kw = mock_complete.await_args_list[0].kwargs
+    second_kw = mock_complete.await_args_list[1].kwargs
+
+    assert first_kw["prompt_name"] == PROMPT_NAME
+    assert first_kw["max_retries"] == 0
+
+    assert second_kw["prompt_name"] == _REFINEMENT_V1_RETRY
+    assert second_kw["max_retries"] == 0
+    retry_user = second_kw["user"]
+    assert "risks[0]" in retry_user
+    assert "limit" in retry_user.lower()
+
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_refinement_two_validation_errors_returns_to_draft() -> None:
+    """When both LLM attempts fail Pydantic validation, service rolls back
+    experiment to DRAFT and re-raises. Distinct prompt_name values correspond
+    to two LLMCall rows when complete_structured is not mocked."""
+
+    db = AsyncMock(spec=AsyncSession)
+    user = MagicMock()
+    user.id = uuid4()
+
+    created_experiments: list[Experiment] = []
+
+    def _capture_add(obj: object) -> None:
+        if isinstance(obj, Experiment):
+            created_experiments.append(obj)
+
+    db.add.side_effect = _capture_add
+
+    ve = _risk0_overflow_validation_error()
+    mock_complete = AsyncMock(side_effect=[ve, ve])
+
+    with patch(
+        "app.services.refinement_service.llm_client.complete_structured",
+        mock_complete,
+    ):
+        with pytest.raises(ValidationError):
+            await create_experiment_with_refinement(db, user, "C" * 50)
+
+    assert len(created_experiments) == 1
+    assert created_experiments[0].status == ExperimentStatus.DRAFT
+    assert mock_complete.await_count == 2
+
+    assert mock_complete.await_args_list[0].kwargs["prompt_name"] == PROMPT_NAME
+    assert mock_complete.await_args_list[1].kwargs["prompt_name"] == _REFINEMENT_V1_RETRY
+
+    db.commit.assert_not_awaited()

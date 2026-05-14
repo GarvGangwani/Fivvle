@@ -21,7 +21,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field
 
 # Per-item constraint for the risks list: each risk is a single sentence, max 200 chars.
-_RiskStr = Annotated[str, Field(min_length=1, max_length=200)]
+_RiskStr = Annotated[str, Field(min_length=1, max_length=250)]
 
 
 class RefinedIdea(BaseModel):
@@ -115,7 +115,7 @@ class RefinedIdea(BaseModel):
         str,
         Field(
             min_length=1,
-            max_length=160,
+            max_length=190,
             description=(
                 "One supporting sentence that expands the headline with specifics. "
                 "Should answer either 'how does it work?' or 'exactly who is this for?'. "
