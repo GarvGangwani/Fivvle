@@ -1,0 +1,343 @@
+"""State-machine unit tests for run_research_engine_pipeline (B2.4).
+
+Seven tests, all sync (asyncio.get_event_loop().run_until_complete pattern,
+consistent with _force_experiment_status in the router tests):
+
+  1. Happy path: planner + searcher + synthesizer succeed → RESEARCH_READY.
+  2. Planner exception → RESEARCH_FAILED with "planner:" prefix in detail.
+  3. Searcher exception → RESEARCH_FAILED with "searcher:" prefix.
+  4. Synthesizer exception → RESEARCH_FAILED with "synthesizer:" prefix.
+  5. asyncio.TimeoutError at planner → detail contains "TimeoutError".
+  6. API key planted in exception message → detail has "[REDACTED]", not the key.
+  7. After planner failure, searcher is never called.
+
+DB setup mirrors the router regression tests: create experiment via API
+(LLM mocked → REFINED), force to RESEARCHING, then call the pipeline directly.
+All three pipeline service functions are patched at their module — the lazy
+import inside run_research_engine_pipeline picks up the patch correctly.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+from contextlib import ExitStack
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID
+
+import pytest
+from fastapi.testclient import TestClient
+
+from app.config import get_settings
+from app.db.enums import ExperimentStatus
+from app.services.research_engine_service import run_research_engine_pipeline
+from tests.routers.test_confirm_and_research_status import (
+    _AUTH_HEADER,
+    _create_refined_experiment,
+    _force_experiment_status,
+    _read_experiment_fields,
+    _sync_user,
+)
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _run_pipeline(experiment_id_str: str) -> None:
+    """Call run_research_engine_pipeline synchronously on a fresh event loop.
+
+    Creates a dedicated async engine rather than reusing get_sessionmaker() so
+    that every DB future belongs to the same event loop that run_until_complete
+    drives.  This is identical in pattern to _force_experiment_status.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: PLC0415
+
+    async def _go() -> None:
+        engine = create_async_engine(get_settings().database_url, pool_size=1, max_overflow=0)
+        sm = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        try:
+            await run_research_engine_pipeline(
+                experiment_id=UUID(experiment_id_str),
+                sessionmaker=sm,
+            )
+        finally:
+            await engine.dispose()
+
+    asyncio.get_event_loop().run_until_complete(_go())
+
+
+def _fake_research_plan() -> MagicMock:
+    """Minimal ResearchPlan stand-in — pipeline only reads .questions."""
+    return MagicMock(questions=[])
+
+
+def _fake_report() -> MagicMock:
+    """Minimal ValidationReport stand-in for the synthesizer success path."""
+    report = MagicMock()
+    report.model_dump.return_value = {"version": "test", "findings": []}
+    report.questions_and_findings = []
+    report.overall_recommendation = "proceed"
+    return report
+
+
+# ---------------------------------------------------------------------------
+# Each test calls _sync_user(client) + _create_refined_experiment(client)
+# directly (same pattern as the router regression tests).
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# 1. Happy path
+# ---------------------------------------------------------------------------
+
+
+def test_happy_path_transitions_through_all_phases_to_ready(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    """Planner + searcher + synthesizer all succeed → RESEARCH_READY in DB."""
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "app.services.planner_service.plan_research",
+                AsyncMock(return_value=_fake_research_plan()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.searcher_service.execute_search_plan",
+                AsyncMock(return_value={}),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_input.build_synthesizer_input",
+                return_value=MagicMock(),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_service.synthesize_report",
+                AsyncMock(return_value=_fake_report()),
+            )
+        )
+        _run_pipeline(exp_id)
+
+    fields = _read_experiment_fields(exp_id)
+    assert fields["status"] == ExperimentStatus.RESEARCH_READY
+    assert fields["research_error_detail"] is None
+
+
+# ---------------------------------------------------------------------------
+# 2. Planner exception → RESEARCH_FAILED with "planner:" prefix
+# ---------------------------------------------------------------------------
+
+
+def test_planner_exception_sets_research_failed_with_planner_prefix(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    """Exception inside plan_research → RESEARCH_FAILED, detail starts with 'planner:'."""
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    with patch(
+        "app.services.planner_service.plan_research",
+        AsyncMock(side_effect=RuntimeError("upstream LLM timeout")),
+    ):
+        _run_pipeline(exp_id)
+
+    fields = _read_experiment_fields(exp_id)
+    assert fields["status"] == ExperimentStatus.RESEARCH_FAILED
+    assert fields["research_error_detail"] is not None
+    assert fields["research_error_detail"].startswith("planner:")
+
+
+# ---------------------------------------------------------------------------
+# 3. Searcher exception → RESEARCH_FAILED with "searcher:" prefix
+# ---------------------------------------------------------------------------
+
+
+def test_searcher_exception_sets_research_failed_with_searcher_prefix(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    """Exception inside execute_search_plan → RESEARCH_FAILED with 'searcher:' prefix."""
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "app.services.planner_service.plan_research",
+                AsyncMock(return_value=_fake_research_plan()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.searcher_service.execute_search_plan",
+                AsyncMock(side_effect=RuntimeError("Tavily API 503")),
+            )
+        )
+        _run_pipeline(exp_id)
+
+    fields = _read_experiment_fields(exp_id)
+    assert fields["status"] == ExperimentStatus.RESEARCH_FAILED
+    assert fields["research_error_detail"] is not None
+    assert fields["research_error_detail"].startswith("searcher:")
+
+
+# ---------------------------------------------------------------------------
+# 4. Synthesizer exception → RESEARCH_FAILED with "synthesizer:" prefix
+# ---------------------------------------------------------------------------
+
+
+def test_synthesizer_exception_sets_research_failed_with_synthesizer_prefix(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    """Exception inside synthesize_report → RESEARCH_FAILED with 'synthesizer:' prefix."""
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "app.services.planner_service.plan_research",
+                AsyncMock(return_value=_fake_research_plan()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.searcher_service.execute_search_plan",
+                AsyncMock(return_value={}),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_input.build_synthesizer_input",
+                return_value=MagicMock(),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_service.synthesize_report",
+                AsyncMock(side_effect=RuntimeError("Anthropic overloaded")),
+            )
+        )
+        _run_pipeline(exp_id)
+
+    fields = _read_experiment_fields(exp_id)
+    assert fields["status"] == ExperimentStatus.RESEARCH_FAILED
+    assert fields["research_error_detail"] is not None
+    assert fields["research_error_detail"].startswith("synthesizer:")
+
+
+# ---------------------------------------------------------------------------
+# 5. asyncio.TimeoutError at planner → "TimeoutError" in detail
+# ---------------------------------------------------------------------------
+
+
+def test_timeout_error_sets_research_failed_with_timeout_in_detail(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    """asyncio.TimeoutError propagating from plan_research is caught and annotated."""
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    with patch(
+        "app.services.planner_service.plan_research",
+        AsyncMock(side_effect=asyncio.TimeoutError()),
+    ):
+        _run_pipeline(exp_id)
+
+    fields = _read_experiment_fields(exp_id)
+    assert fields["status"] == ExperimentStatus.RESEARCH_FAILED
+    detail = fields["research_error_detail"] or ""
+    assert "TimeoutError" in detail, f"Expected 'TimeoutError' in detail, got: {detail!r}"
+
+
+# ---------------------------------------------------------------------------
+# 6. Secret redaction — API key in exception message must not reach the DB
+# ---------------------------------------------------------------------------
+
+
+def test_error_detail_redacts_secrets_before_writing_to_db(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    """A fake API key planted in an exception message must be redacted in DB.
+
+    We temporarily inject a known fake secret into os.environ so
+    _build_redaction_set() picks it up, then assert it is absent from the
+    stored research_error_detail.
+    """
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    fake_secret = "fake-anthropic-key-for-redaction-test-xyz"
+
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": fake_secret}):
+        with patch(
+            "app.services.planner_service.plan_research",
+            AsyncMock(
+                side_effect=RuntimeError(f"Request failed: key={fake_secret}")
+            ),
+        ):
+            _run_pipeline(exp_id)
+
+    fields = _read_experiment_fields(exp_id)
+    assert fields["status"] == ExperimentStatus.RESEARCH_FAILED
+    detail = fields["research_error_detail"] or ""
+    assert fake_secret not in detail, (
+        f"Secret must not appear in error detail. Got: {detail!r}"
+    )
+    assert "[REDACTED]" in detail, f"Expected '[REDACTED]' placeholder. Got: {detail!r}"
+
+
+# ---------------------------------------------------------------------------
+# 7. Subsequent phases not called after planner failure
+# ---------------------------------------------------------------------------
+
+
+def test_subsequent_phases_not_called_after_planner_failure(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    """When the planner raises, execute_search_plan must never be invoked."""
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    mock_searcher = AsyncMock(return_value={})
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "app.services.planner_service.plan_research",
+                AsyncMock(side_effect=RuntimeError("planner broke")),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.searcher_service.execute_search_plan",
+                mock_searcher,
+            )
+        )
+        _run_pipeline(exp_id)
+
+    mock_searcher.assert_not_called()
+
+    fields = _read_experiment_fields(exp_id)
+    assert fields["status"] == ExperimentStatus.RESEARCH_FAILED
