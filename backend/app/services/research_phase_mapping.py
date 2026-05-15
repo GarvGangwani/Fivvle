@@ -7,12 +7,12 @@ The label strings must match USER_FLOW.md exactly — the frontend renders them
 verbatim.  Changes here require a corresponding frontend update.
 
 B3 extension note:
-    When Reader and Reflector phases land in B3, un-comment the RESEARCH_READING
-    and RESEARCH_REFLECTING entries and remove the "Unreachable in B2" comments.
-    The state machine will then flow:
+    RESEARCH_READING is wired in the B3 Reader commit (between SEARCHING and
+    SYNTHESIZING). RESEARCH_REFLECTING will be inserted in a separate B3-Reflector
+    commit. Until then the pipeline skips REFLECTING:
+        RESEARCH_SEARCHING → RESEARCH_READING → RESEARCH_SYNTHESIZING
+    After Reflector lands:
         RESEARCH_SEARCHING → RESEARCH_READING → RESEARCH_REFLECTING → RESEARCH_SYNTHESIZING
-    instead of the direct RESEARCH_SEARCHING → RESEARCH_SYNTHESIZING transition
-    used in B2.4.
 """
 
 from __future__ import annotations
@@ -34,8 +34,8 @@ PHASE_DISPLAY: dict[ExperimentStatus, str | None] = {
     ExperimentStatus.RESEARCHING: "Starting research...",
     ExperimentStatus.RESEARCH_PLANNING: "Planning your research questions...",
     ExperimentStatus.RESEARCH_SEARCHING: "Searching across sources...",
-    # Unreachable in B2; B3 inserts these phases between SEARCHING and SYNTHESIZING.
     ExperimentStatus.RESEARCH_READING: "Reading and extracting evidence...",
+    # Unreachable until B3-Reflector lands; REFLECTING will sit between READING and SYNTHESIZING.
     ExperimentStatus.RESEARCH_REFLECTING: "Reflecting on findings...",
     ExperimentStatus.RESEARCH_SYNTHESIZING: "Synthesizing the validation report...",
     # Terminal states — no phase label; frontend shows report or error screen.
@@ -50,18 +50,20 @@ PHASE_DISPLAY: dict[ExperimentStatus, str | None] = {
 # reaching the current status.  Used by /research-status so the frontend
 # can render a progress stepper without a separate audit log table.
 #
-# The ordering matches the B2.4 state machine:
+# The ordering matches the B3 Reader state machine:
 #   RESEARCHING → RESEARCH_PLANNING → RESEARCH_SEARCHING
-#               → RESEARCH_SYNTHESIZING → RESEARCH_READY
+#               → RESEARCH_READING → RESEARCH_SYNTHESIZING → RESEARCH_READY
 #
-# RESEARCH_READING and RESEARCH_REFLECTING are listed for completeness (B3).
+# RESEARCH_REFLECTING is defined in ExperimentStatus and PHASE_DISPLAY but is
+# not in this order until the B3-Reflector commit.
 # ---------------------------------------------------------------------------
 
 _RESEARCH_PHASE_ORDER: list[ExperimentStatus] = [
     ExperimentStatus.RESEARCHING,
     ExperimentStatus.RESEARCH_PLANNING,
     ExperimentStatus.RESEARCH_SEARCHING,
-    # B3 will insert RESEARCH_READING and RESEARCH_REFLECTING here.
+    ExperimentStatus.RESEARCH_READING,
+    # RESEARCH_REFLECTING added in B3-Reflector commit
     ExperimentStatus.RESEARCH_SYNTHESIZING,
     ExperimentStatus.RESEARCH_READY,
 ]

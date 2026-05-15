@@ -4,9 +4,9 @@ This module is the single owner of the RESEARCHING → RESEARCH_READY (or
 RESEARCH_FAILED) state transitions.  It is called by InProcessDispatcher and
 will be called by the Cloud Function wrapper in B3.
 
-State machine (B2.4 — skips READING/REFLECTING):
+State machine (B3 Reader — REFLECTING still unreachable until Reflector commit):
     RESEARCHING → RESEARCH_PLANNING → RESEARCH_SEARCHING
-                → RESEARCH_SYNTHESIZING → RESEARCH_READY
+                → RESEARCH_READING → RESEARCH_SYNTHESIZING → RESEARCH_READY
 
 On any unrecoverable error:
     → RESEARCH_FAILED  (with sanitized research_error_detail)
@@ -24,7 +24,7 @@ Per ARCHITECTURE.md:
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 import structlog
@@ -161,7 +161,7 @@ async def _write_validation_report(
         raw_report=raw_report,
         clarity_score=None,
         reflection_loops_used=0,
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
     )
     stmt = stmt.on_conflict_do_update(
         index_elements=["experiment_id"],
@@ -192,9 +192,9 @@ async def run_research_engine_pipeline(
     commits each status transition atomically so the frontend polling endpoint
     always sees a consistent state.
 
-    State machine (B2.4):
+    State machine (B3 Reader):
         RESEARCHING → RESEARCH_PLANNING → RESEARCH_SEARCHING
-                    → RESEARCH_SYNTHESIZING → RESEARCH_READY
+                    → RESEARCH_READING → RESEARCH_SYNTHESIZING → RESEARCH_READY
 
     On failure at any phase:
         → RESEARCH_FAILED (research_error_detail written, report NOT saved)
@@ -270,8 +270,8 @@ async def run_research_engine_pipeline(
 
             # ------------------------------------------------------------------
             # 2. RESEARCH_SEARCHING — searcher executes the research plan.
-            #    (RESEARCH_READING and RESEARCH_REFLECTING are B3 phases —
-            #    they exist in ExperimentStatus but are skipped here.)
+            #    (RESEARCH_REFLECTING is a future B3-Reflector phase — defined
+            #    in ExperimentStatus but not yet in the pipeline.)
             # ------------------------------------------------------------------
             await _set_status(session, experiment_id, ExperimentStatus.RESEARCH_SEARCHING)
             await session.commit()
@@ -304,14 +304,73 @@ async def run_research_engine_pipeline(
             )
 
             # ------------------------------------------------------------------
-            # 3. RESEARCH_SYNTHESIZING — synthesizer builds the report.
+            # 3. RESEARCH_READING — reader extracts structured evidence per question.
+            # ------------------------------------------------------------------
+            await _set_status(session, experiment_id, ExperimentStatus.RESEARCH_READING)
+            await session.commit()
+
+            log.info(
+                "reader phase started",
+                experiment_id=str(experiment_id),
+                question_count=len(research_plan.questions),
+            )
+
+            from app.config import get_settings  # noqa: PLC0415
+            from app.services.reader_service import (  # noqa: PLC0415
+                ReaderTotalFailure,
+                execute_reader,
+            )
+
+            try:
+                reader_outputs = await execute_reader(
+                    experiment_id=experiment_id,
+                    research_questions=research_plan.questions,
+                    search_results_by_question=search_results,
+                    db=session,
+                    settings=get_settings(),
+                )
+            except ReaderTotalFailure as exc:
+                detail = _sanitize_error_detail("reader", exc)
+                log.error(
+                    "reader phase failed",
+                    experiment_id=str(experiment_id),
+                    error_type=type(exc).__name__,
+                )
+                await _set_status(
+                    session, experiment_id, ExperimentStatus.RESEARCH_FAILED,
+                    error_detail=detail,
+                )
+                await session.commit()
+                return
+            except Exception as exc:
+                detail = _sanitize_error_detail("reader", exc)
+                log.error("pipeline failed at reader", error_type=type(exc).__name__)
+                await _set_status(
+                    session, experiment_id, ExperimentStatus.RESEARCH_FAILED,
+                    error_detail=detail,
+                )
+                await session.commit()
+                return
+
+            total_extracted_evidence = sum(
+                len(ro.extracted_evidence) for ro in reader_outputs.values()
+            )
+            log.info(
+                "reader phase completed",
+                experiment_id=str(experiment_id),
+                total_extracted_evidence=total_extracted_evidence,
+            )
+
+            # ------------------------------------------------------------------
+            # 4. RESEARCH_SYNTHESIZING — synthesizer builds the report.
+            #    Reader output is not passed to the Synthesizer until a later refactor.
             # ------------------------------------------------------------------
             await _set_status(session, experiment_id, ExperimentStatus.RESEARCH_SYNTHESIZING)
             await session.commit()
 
+            from app.services.research_engine import RUBRIC_VERSION_DEFAULT  # noqa: PLC0415
             from app.services.synthesizer_input import build_synthesizer_input  # noqa: PLC0415
             from app.services.synthesizer_service import synthesize_report  # noqa: PLC0415
-            from app.services.research_engine import RUBRIC_VERSION_DEFAULT  # noqa: PLC0415
 
             synth_input = build_synthesizer_input(
                 refined_idea=refined_idea,
@@ -337,7 +396,7 @@ async def run_research_engine_pipeline(
                 return
 
             # ------------------------------------------------------------------
-            # 4. Persist the report and transition to RESEARCH_READY.
+            # 5. Persist the report and transition to RESEARCH_READY.
             # ------------------------------------------------------------------
             raw_report_dict = report.model_dump(mode="json")
             await _write_validation_report(session, experiment_id, raw_report_dict)
