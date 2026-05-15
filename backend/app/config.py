@@ -55,6 +55,17 @@ class Settings(BaseSettings):
         ),
     )
 
+    reflector_max_refinement_waves: int = Field(
+        default=1,
+        description=(
+            "Max refinement waves Reflector executes per pipeline run. "
+            "v1 ships with 1: evaluate rules once, optionally re-search and re-read "
+            "flagged questions once, proceed to Synthesizer. No second evaluation pass. "
+            "Setting to 0 disables Reflector re-search entirely (pass-through). "
+            "Per ADR 0013 and planning doc §5."
+        ),
+    )
+
     # --- Research dispatcher (ADR 0009) ---
     # in_process: invokes the research engine directly via asyncio.create_task (dev/test).
     # http: POSTs to the Cloud Function HTTPS endpoint with an OIDC token (staging/prod).
