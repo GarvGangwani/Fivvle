@@ -362,29 +362,54 @@ async def run_research_engine_pipeline(
             )
 
             # ------------------------------------------------------------------
-            # 4. RESEARCH_SYNTHESIZING — synthesizer builds the report.
-            #    Reader output is not passed to the Synthesizer until a later refactor.
+            # 4. RESEARCH_SYNTHESIZING — synthesizer builds the report from Reader output.
             # ------------------------------------------------------------------
             await _set_status(session, experiment_id, ExperimentStatus.RESEARCH_SYNTHESIZING)
             await session.commit()
 
             from app.services.research_engine import RUBRIC_VERSION_DEFAULT  # noqa: PLC0415
-            from app.services.synthesizer_input import build_synthesizer_input  # noqa: PLC0415
-            from app.services.synthesizer_service import synthesize_report  # noqa: PLC0415
+            from app.services.synthesizer_input import (  # noqa: PLC0415
+                build_citation_hydration_index,
+                build_synthesizer_input,
+            )
+            from app.services.synthesizer_service import (  # noqa: PLC0415
+                SynthesizerHallucinatedCitation,
+                synthesize_report,
+            )
 
+            # Build the four-field SynthesizerInput from Reader output (no raw Tavily).
             synth_input = build_synthesizer_input(
                 refined_idea=refined_idea,
                 research_plan=research_plan,
-                tavily_results=search_results,
+                reader_outputs=reader_outputs,
                 rubric_version=RUBRIC_VERSION_DEFAULT,
             )
+
+            # Build the hydration index from Searcher results — used by _hydrate_draft
+            # server-side to populate Citation.title and Citation.source_domain. NEVER
+            # serialized into the LLM prompt. Per ADR 0012.
+            citation_hydration_index = build_citation_hydration_index(search_results)
 
             try:
                 report = await synthesize_report(
                     db=session,
                     synth_input=synth_input,
+                    citation_hydration_index=citation_hydration_index,
                     experiment_id=experiment_id,
                 )
+            except SynthesizerHallucinatedCitation as exc:
+                detail = _sanitize_error_detail("synthesizer", exc)
+                log.error(
+                    "synthesizer phase failed",
+                    experiment_id=str(experiment_id),
+                    error_type=type(exc).__name__,
+                )
+                await _set_status(
+                    session, experiment_id, ExperimentStatus.RESEARCH_FAILED,
+                    error_detail=detail,
+                )
+                await session.commit()
+                return
             except Exception as exc:
                 detail = _sanitize_error_detail("synthesizer", exc)
                 log.error("pipeline failed at synthesizer", error_type=type(exc).__name__)

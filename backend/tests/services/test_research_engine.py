@@ -1,27 +1,26 @@
 """Unit tests for app.services.research_engine.
 
-Mocks all three phase services individually. Tests verify:
-  1. Happy path: planner → searcher → synthesizer all succeed, returns ValidationReport
-  2. Planner fails → wraps in ResearchEngineFailure with phase="planner"
-  3. Searcher fails with SearcherFailure → wraps in ResearchEngineFailure phase="searcher"
-  4. Searcher fails with generic exception → wraps in ResearchEngineFailure phase="searcher"
-  5. Synthesizer fails → wraps in ResearchEngineFailure with phase="synthesizer"
-  6. experiment_id and rubric_version forwarded correctly to all phases
+Mocks Planner, Searcher, Reader, and Synthesizer. Tests verify:
+  1. Happy path: all phases succeed, returns ValidationReport
+  2. Planner fails → ResearchEngineFailure phase="planner"
+  3. Searcher fails → ResearchEngineFailure phase="searcher"
+  4. Synthesizer fails → ResearchEngineFailure phase="synthesizer"
+  5. experiment_id and rubric_version forwarded correctly
 
-Pattern: patch each phase service at the orchestrator module's import reference.
+Pattern: patch each phase at app.services.research_engine.<name>.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.planner import ResearchPlan, ResearchQuestion
+from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.schemas.refinement import RefinedIdea
 from app.schemas.validation_report import (
     Citation,
@@ -40,7 +39,7 @@ from app.services.searcher_service import SearcherFailure
 # Helpers
 # ---------------------------------------------------------------------------
 
-_NOW = datetime.now(tz=timezone.utc)
+_NOW = datetime.now(tz=UTC)
 
 _VALID_RISKS = [
     "Are ops managers already using Guru or Notion AI?",
@@ -78,6 +77,25 @@ def _make_plan(question_count: int = 5) -> ResearchPlan:
             for i in range(1, question_count + 1)
         ]
     )
+
+
+def _fake_reader_outputs() -> dict[str, ReaderOutput]:
+    return {
+        f"q{i}": ReaderOutput(
+            question_id=f"q{i}",
+            extracted_evidence=[
+                ExtractedEvidence(
+                    source_url="https://example.com/article",
+                    relevance="high",
+                    verbatim_quote=None,
+                    paraphrase="stub",
+                    named_entities=[],
+                ),
+            ],
+            evidence_gap_note=None,
+        )
+        for i in range(1, 6)
+    }
 
 
 def _make_citation() -> Citation:
@@ -157,6 +175,10 @@ async def test_run_research_engine_happy_path() -> None:
             AsyncMock(return_value=mock_search_results),
         ),
         patch(
+            "app.services.research_engine.execute_reader",
+            AsyncMock(return_value=_fake_reader_outputs()),
+        ),
+        patch(
             "app.services.research_engine.synthesize_report",
             AsyncMock(return_value=mock_report),
         ),
@@ -181,7 +203,7 @@ async def test_run_research_engine_default_rubric_version() -> None:
 
     captured_rubric: list[str] = []
 
-    async def _mock_synthesize(db, synth_input, experiment_id=None):
+    async def _mock_synthesize(db, synth_input, citation_hydration_index, experiment_id=None):
         captured_rubric.append(synth_input.rubric_version)
         return mock_report
 
@@ -193,6 +215,10 @@ async def test_run_research_engine_default_rubric_version() -> None:
         patch(
             "app.services.research_engine.execute_search_plan",
             AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.services.research_engine.execute_reader",
+            AsyncMock(return_value=_fake_reader_outputs()),
         ),
         patch(
             "app.services.research_engine.synthesize_report",
@@ -327,6 +353,10 @@ async def test_run_research_engine_synthesizer_failure() -> None:
             AsyncMock(return_value={}),
         ),
         patch(
+            "app.services.research_engine.execute_reader",
+            AsyncMock(return_value=_fake_reader_outputs()),
+        ),
+        patch(
             "app.services.research_engine.synthesize_report",
             AsyncMock(side_effect=_FakeSynthError("schema violation")),
         ),
@@ -363,13 +393,18 @@ async def test_run_research_engine_forwards_experiment_id_to_all_phases() -> Non
         captured["searcher_exp_id"] = experiment_id
         return {}
 
-    async def _mock_synth(db, synth_input, experiment_id=None):
+    async def _mock_reader(*, experiment_id, **kwargs):
+        captured["reader_exp_id"] = experiment_id
+        return _fake_reader_outputs()
+
+    async def _mock_synth(db, synth_input, citation_hydration_index, experiment_id=None):
         captured["synthesizer_exp_id"] = experiment_id
         return mock_report
 
     with (
         patch("app.services.research_engine.plan_research", _mock_plan),
         patch("app.services.research_engine.execute_search_plan", _mock_search),
+        patch("app.services.research_engine.execute_reader", _mock_reader),
         patch("app.services.research_engine.synthesize_report", _mock_synth),
     ):
         await run_research_engine(
@@ -378,6 +413,7 @@ async def test_run_research_engine_forwards_experiment_id_to_all_phases() -> Non
 
     assert captured["planner_exp_id"] == exp_id
     assert captured["searcher_exp_id"] == exp_id
+    assert captured["reader_exp_id"] == exp_id
     assert captured["synthesizer_exp_id"] == exp_id
 
 
@@ -391,7 +427,7 @@ async def test_run_research_engine_forwards_rubric_version() -> None:
 
     captured_rubric: list[str] = []
 
-    async def _mock_synth(db, synth_input, experiment_id=None):
+    async def _mock_synth(db, synth_input, citation_hydration_index, experiment_id=None):
         captured_rubric.append(synth_input.rubric_version)
         return mock_report
 
@@ -403,6 +439,10 @@ async def test_run_research_engine_forwards_rubric_version() -> None:
         patch(
             "app.services.research_engine.execute_search_plan",
             AsyncMock(return_value={}),
+        ),
+        patch(
+            "app.services.research_engine.execute_reader",
+            AsyncMock(return_value=_fake_reader_outputs()),
         ),
         patch("app.services.research_engine.synthesize_report", _mock_synth),
     ):

@@ -1,15 +1,16 @@
 """State-machine unit tests for run_research_engine_pipeline (B2.4 / B3 Reader).
 
-Seven tests, all sync (asyncio.get_event_loop().run_until_complete pattern,
+Eight tests, all sync (asyncio.get_event_loop().run_until_complete pattern,
 consistent with _force_experiment_status in the router tests):
 
   1. Happy path: planner + searcher + reader + synthesizer succeed → RESEARCH_READY.
   2. Planner exception → RESEARCH_FAILED with "planner:" prefix in detail.
   3. Searcher exception → RESEARCH_FAILED with "searcher:" prefix.
   4. Synthesizer exception → RESEARCH_FAILED with "synthesizer:" prefix.
-  5. asyncio.TimeoutError at planner → detail contains "TimeoutError".
-  6. API key planted in exception message → detail has "[REDACTED]", not the key.
-  7. After planner failure, searcher is never called.
+  5. Synthesizer hallucinated citation → RESEARCH_FAILED with "synthesizer:" prefix.
+  6. asyncio.TimeoutError at planner → detail contains "TimeoutError".
+  7. API key planted in exception message → detail has "[REDACTED]", not the key.
+  8. After planner failure, searcher is never called.
 
 DB setup mirrors the router regression tests: create experiment via API
 (LLM mocked → REFINED), force to RESEARCHING, then call the pipeline directly.
@@ -25,15 +26,14 @@ from contextlib import ExitStack
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID
 
-import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.db.enums import ExperimentStatus
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.services.research_engine_service import run_research_engine_pipeline
+from app.services.synthesizer_service import SynthesizerHallucinatedCitation
 from tests.routers.test_confirm_and_research_status import (
-    _AUTH_HEADER,
     _create_refined_experiment,
     _force_experiment_status,
     _read_experiment_fields,
@@ -146,14 +146,19 @@ def test_happy_path_transitions_through_all_phases_to_ready(
                 return_value=MagicMock(),
             )
         )
+        mock_synth = AsyncMock(return_value=_fake_report())
         stack.enter_context(
             patch(
                 "app.services.synthesizer_service.synthesize_report",
-                AsyncMock(return_value=_fake_report()),
+                mock_synth,
             )
         )
         _run_pipeline(exp_id)
 
+    mock_synth.assert_awaited_once()
+    call_kw = mock_synth.await_args.kwargs
+    assert "citation_hydration_index" in call_kw
+    assert call_kw["citation_hydration_index"] == {}
     fields = _read_experiment_fields(exp_id)
     assert fields["status"] == ExperimentStatus.RESEARCH_READY
     assert fields["research_error_detail"] is None
@@ -274,6 +279,64 @@ def test_synthesizer_exception_sets_research_failed_with_synthesizer_prefix(
 
 
 # ---------------------------------------------------------------------------
+# 4b. Synthesizer hallucinated citation → RESEARCH_FAILED with "synthesizer:"
+# ---------------------------------------------------------------------------
+
+
+def test_synthesizer_hallucinated_citation_sets_research_failed_with_synthesizer_prefix(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    """SynthesizerHallucinatedCitation → RESEARCH_FAILED, detail starts with 'synthesizer:'."""
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "app.services.planner_service.plan_research",
+                AsyncMock(return_value=_fake_research_plan()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.searcher_service.execute_search_plan",
+                AsyncMock(return_value={}),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reader_service.execute_reader",
+                AsyncMock(return_value=_fake_reader_outputs()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_input.build_synthesizer_input",
+                return_value=MagicMock(),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_service.synthesize_report",
+                AsyncMock(
+                    side_effect=SynthesizerHallucinatedCitation(
+                        "https://fabricated.example/x",
+                        detail="Hallucinated citation URL 'https://fabricated.example/x'",
+                    )
+                ),
+            )
+        )
+        _run_pipeline(exp_id)
+
+    fields = _read_experiment_fields(exp_id)
+    assert fields["status"] == ExperimentStatus.RESEARCH_FAILED
+    assert fields["research_error_detail"] is not None
+    assert fields["research_error_detail"].startswith("synthesizer:")
+
+
+# ---------------------------------------------------------------------------
 # 5. asyncio.TimeoutError at planner → "TimeoutError" in detail
 # ---------------------------------------------------------------------------
 
@@ -289,7 +352,7 @@ def test_timeout_error_sets_research_failed_with_timeout_in_detail(
 
     with patch(
         "app.services.planner_service.plan_research",
-        AsyncMock(side_effect=asyncio.TimeoutError()),
+        AsyncMock(side_effect=TimeoutError()),
     ):
         _run_pipeline(exp_id)
 
@@ -320,14 +383,13 @@ def test_error_detail_redacts_secrets_before_writing_to_db(
 
     fake_secret = "fake-anthropic-key-for-redaction-test-xyz"
 
-    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": fake_secret}):
-        with patch(
-            "app.services.planner_service.plan_research",
-            AsyncMock(
-                side_effect=RuntimeError(f"Request failed: key={fake_secret}")
-            ),
-        ):
-            _run_pipeline(exp_id)
+    with patch.dict(os.environ, {"ANTHROPIC_API_KEY": fake_secret}), patch(
+        "app.services.planner_service.plan_research",
+        AsyncMock(
+            side_effect=RuntimeError(f"Request failed: key={fake_secret}")
+        ),
+    ):
+        _run_pipeline(exp_id)
 
     fields = _read_experiment_fields(exp_id)
     assert fields["status"] == ExperimentStatus.RESEARCH_FAILED

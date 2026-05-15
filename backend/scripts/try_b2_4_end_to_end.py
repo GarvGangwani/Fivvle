@@ -1,8 +1,11 @@
 #!/usr/bin/env python
-"""B2.4 + B3 Reader end-to-end smoke — runs ONLY against localhost with in-process dispatcher.
+"""B2.4 + B3 Reader + Synthesizer end-to-end smoke.
 
-Renamed intentionally **not**: keeping ``try_b2_4_end_to_end.py`` avoids breaking existing docs and
-muscle memory; this script now waits long enough for the extra Reader phase (B3).
+Runs ONLY against localhost with in-process dispatcher.
+
+Renamed intentionally **not**: keeping ``try_b2_4_end_to_end.py`` avoids breaking
+existing docs and muscle memory; this script waits long enough for the Reader +
+Synthesizer phases (B3).
 
 Usage (token from env, fresh experiment):
     $env:FIVVLE_TEST_TOKEN = (uv run python scripts/_get_token.py)
@@ -114,6 +117,25 @@ def print_reader_phase_summary(exp_id: str, terminal_body: dict) -> None:
     )
 
 
+def print_synthesizer_smoke_summary(client: httpx.Client, exp_id: str) -> None:
+    """Summarize persisted ValidationReport aggregates (Synthesizer output)."""
+    resp = client.get(f"/experiments/{exp_id}", headers=HEADERS)
+    resp.raise_for_status()
+    body = resp.json()
+    vr = body.get("validation_report")
+
+    print("\n--- B3 Synthesizer smoke summary ---", flush=True)
+    if vr is None:
+        print(
+            "validation_report=null (no row yet — expected until RESEARCH_READY).",
+            flush=True,
+        )
+        return
+    print(f"overall_recommendation={vr.get('overall_recommendation')!r}", flush=True)
+    print(f"total_finding_count={vr.get('total_finding_count')}", flush=True)
+    print(f"total_citation_count={vr.get('total_citation_count')}", flush=True)
+
+
 # ---------------------------------------------------------------------------
 # Steps
 # ---------------------------------------------------------------------------
@@ -209,6 +231,7 @@ def main() -> None:
         status_url = step_confirm(client, exp_id)
         terminal_body = step_poll(client, status_url)
         print_reader_phase_summary(exp_id, terminal_body)
+        print_synthesizer_smoke_summary(client, exp_id)
 
 
 if __name__ == "__main__":

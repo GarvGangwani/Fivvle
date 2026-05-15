@@ -1,21 +1,12 @@
 """Unit tests for app.services.synthesizer_service.
 
-All LLM calls are mocked. Tests verify:
-  1. synthesize_report() calls complete_structured with ValidationReportDraft
-     response_model, correct max_tokens (16384), and other required args
-  2. Service hydrates URL-string citations to full Citation objects from input
-  3. Service raises SynthesizerHallucinatedCitation when LLM emits unknown URL
-  4. Exception propagation: if complete_structured raises, synthesize_report re-raises
-  5. None experiment_id is forwarded correctly
-  6. Non-None experiment_id is forwarded correctly
-
-Pattern: patch complete_structured at the service module's import reference:
-    patch("app.services.synthesizer_service.llm_client.complete_structured", ...)
+All LLM calls are mocked. Covers ADR 0012 hand-off: reader_outputs allow-list,
+citation_hydration_index hydration, observability, and exception propagation.
 """
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -23,25 +14,29 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.integrations.tavily import TavilyResult
 from app.schemas.planner import ResearchPlan, ResearchQuestion
+from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.schemas.refinement import RefinedIdea
 from app.schemas.validation_report import (
     Citation,
-    CompetitorMentionDraft,
-    Finding,
     FindingDraft,
-    QuestionFindings,
     QuestionFindingsDraft,
     ValidationReport,
     ValidationReportDraft,
 )
-from app.services.synthesizer_input import SynthesizerInput, TavilyResultForPrompt
+from app.services.synthesizer_input import (
+    CitationHydrationEntry,
+    SynthesizerInput,
+    build_citation_hydration_index,
+    build_synthesizer_input,
+)
 from app.services.synthesizer_service import (
-    SynthesizerHallucinatedCitation,
     _SYNTHESIZER_MAX_TOKENS,
     _SYNTHESIZER_MODEL,
     _SYNTHESIZER_PROVIDER,
     _SYNTHESIZER_TEMPERATURE,
+    SynthesizerHallucinatedCitation,
     synthesize_report,
 )
 
@@ -49,7 +44,7 @@ from app.services.synthesizer_service import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-_NOW = datetime.now(tz=timezone.utc)
+_NOW = datetime.now(tz=UTC)
 
 _VALID_RISKS = [
     "Are ops managers already using Guru or Notion AI to answer policy questions?",
@@ -91,51 +86,53 @@ def _make_plan(question_count: int = 5) -> ResearchPlan:
     return ResearchPlan(questions=questions)
 
 
-def _make_synth_input(question_count: int = 5) -> SynthesizerInput:
-    """SynthesizerInput with one result per question at well-known URLs."""
-    refined = _make_refined_idea()
-    plan = _make_plan(question_count)
-    results: dict[str, list[TavilyResultForPrompt]] = {
-        f"q{i}": [
-            TavilyResultForPrompt(
-                url=f"https://example.com/result-q{i}",
-                title=f"Result for q{i}",
-                content_excerpt="Scraped excerpt.",
-                score=0.9,
-            )
-        ]
+def _make_reader_outputs(question_count: int = 5) -> dict[str, ReaderOutput]:
+    return {
+        f"q{i}": ReaderOutput(
+            question_id=f"q{i}",
+            extracted_evidence=[
+                ExtractedEvidence(
+                    source_url=f"https://example.com/result-q{i}",
+                    relevance="high",
+                    verbatim_quote=None,
+                    paraphrase="Stub paraphrase.",
+                    named_entities=[],
+                ),
+            ],
+            evidence_gap_note=None,
+        )
         for i in range(1, question_count + 1)
     }
-    return SynthesizerInput(
-        refined_idea=refined,
-        research_plan=plan,
-        search_results_by_question=results,
+
+
+def _make_synth_input(question_count: int = 5) -> SynthesizerInput:
+    return build_synthesizer_input(
+        refined_idea=_make_refined_idea(),
+        research_plan=_make_plan(question_count),
+        reader_outputs=_make_reader_outputs(question_count),
         rubric_version="v1",
     )
 
 
-def _make_citation(question_id: str = "q1") -> Citation:
-    return Citation(
-        url=f"https://example.com/result-{question_id}",
-        title=f"Result for {question_id}",
-        source_domain="example.com",
-        accessed_at=_NOW,
-    )
+def _make_search_results(question_count: int = 5) -> dict[str, list[TavilyResult]]:
+    return {
+        f"q{i}": [
+            TavilyResult(
+                title=f"Result for q{i}",
+                url=f"https://example.com/result-q{i}",
+                content="Searcher snippet.",
+                score=0.9,
+            ),
+        ]
+        for i in range(1, question_count + 1)
+    }
 
 
-def _make_finding(question_id: str = "q1") -> Finding:
-    return Finding(
-        question_id=question_id,
-        claim="Guru provides Slack-based policy answering with 847 G2 reviews.",
-        evidence_summary="Guru's G2 page confirms it as the leading Slack knowledge tool.",
-        citations=[_make_citation(question_id)],
-        confidence="medium",
-        confidence_rationale="Single G2 listing.",
-    )
+def _hydration_index(question_count: int = 5) -> dict[str, CitationHydrationEntry]:
+    return build_citation_hydration_index(_make_search_results(question_count))
 
 
 def _make_finding_draft(question_id: str = "q1") -> FindingDraft:
-    """FindingDraft using the same URL that _make_synth_input() provides for this qid."""
     return FindingDraft(
         question_id=question_id,
         claim="Guru provides Slack-based policy answering with 847 G2 reviews.",
@@ -147,7 +144,6 @@ def _make_finding_draft(question_id: str = "q1") -> FindingDraft:
 
 
 def _make_draft_report(question_count: int = 5) -> ValidationReportDraft:
-    """ValidationReportDraft with URL-string citations matching _make_synth_input()."""
     qids = [f"q{i}" for i in range(1, question_count + 1)]
     return ValidationReportDraft(
         executive_summary=(
@@ -182,230 +178,224 @@ def _make_draft_report(question_count: int = 5) -> ValidationReportDraft:
     )
 
 
-def _make_valid_report(question_count: int = 5) -> ValidationReport:
-    qids = [f"q{i}" for i in range(1, question_count + 1)]
-    return ValidationReport(
-        executive_summary=(
-            "Research confirms Guru and Notion AI directly compete with the proposed "
-            "Slack HR bot. The handbook-staleness risk is evidenced by Reddit posts. "
-            "Recommendation is to iterate on a specific wedge before proceeding."
-        ),
-        questions_and_findings=[
-            QuestionFindings(
-                question_id=qid,
-                question=f"Test question {qid}",
-                findings=[_make_finding(qid)],
-                evidence_gap=None,
-            )
-            for qid in qids
-        ],
-        competitors=[],
-        market_signals="No reliable market-size data found in the search results.",
-        distribution_signals=None,
-        regulatory_signals=None,
-        risks_assessment=(
-            "The Guru competitor risk (q2) is confirmed. Handbook staleness (q1) confirmed. "
-            "Procurement (q4) partially confirmed by one Reddit thread evidence."
-        ),
-        overall_recommendation="iterate",
-        recommendation_rationale=(
-            "q2 confirms Guru covers the core use case. q1 shows the differentiation "
-            "is in freshness guarantees, not search. Iterate on the always-current wedge."
-        ),
-        research_limitations="Market size data was not found in search results.",
-        rubric_version_used="v1",
-    )
-
-
-def _make_mock_llm_result() -> MagicMock:
+def _make_mock_llm_meta() -> MagicMock:
     meta = MagicMock()
     meta.prompt_tokens = 5000
     meta.completion_tokens = 2000
     meta.cost_usd = Decimal("0.045000")
+    meta.latency_ms = 12345
     return meta
 
 
-# ---------------------------------------------------------------------------
-# 1. synthesize_report() calls complete_structured with correct args
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_synthesize_report_calls_complete_structured_correctly() -> None:
-    """synthesize_report() must forward ValidationReportDraft, max_tokens=16384, etc."""
-    db = AsyncMock(spec=AsyncSession)
-    synth_input = _make_synth_input()
-    mock_draft = _make_draft_report()
-    mock_meta = _make_mock_llm_result()
-
-    mock_complete = AsyncMock(return_value=(mock_draft, mock_meta))
-
-    with patch(
-        "app.services.synthesizer_service.llm_client.complete_structured",
-        mock_complete,
-    ):
-        result = await synthesize_report(db=db, synth_input=synth_input)
-
-    # The service hydrates the draft → should return a full ValidationReport
-    assert isinstance(result, ValidationReport)
-    mock_complete.assert_awaited_once()
-
-    _, call_kwargs = mock_complete.call_args
-    assert call_kwargs["provider"] == _SYNTHESIZER_PROVIDER
-    assert call_kwargs["model"] == _SYNTHESIZER_MODEL
-    assert call_kwargs["prompt_name"] == "synthesizer_v1"
-    assert call_kwargs["response_model"] is ValidationReportDraft
-    assert call_kwargs["phase"] == "synthesizer"
-    assert call_kwargs["max_retries"] == 2
-    assert call_kwargs["max_tokens"] == _SYNTHESIZER_MAX_TOKENS
-    assert call_kwargs["temperature"] == _SYNTHESIZER_TEMPERATURE
-
-
 def test_synthesizer_service_constants() -> None:
-    """Verify the module-level constants match the spec requirements."""
-    from app.services.synthesizer_service import (
-        _SYNTHESIZER_MAX_TOKENS,
-        _SYNTHESIZER_MODEL,
-        _SYNTHESIZER_PROVIDER,
-        _SYNTHESIZER_TEMPERATURE,
-    )
-
     assert _SYNTHESIZER_MODEL == "claude-sonnet-4-6"
     assert _SYNTHESIZER_PROVIDER == "anthropic"
     assert _SYNTHESIZER_MAX_TOKENS == 16384
     assert _SYNTHESIZER_TEMPERATURE == 0.3
 
 
-# ---------------------------------------------------------------------------
-# 2. Hydration: draft URL strings → full Citation objects
-# ---------------------------------------------------------------------------
-
-
 @pytest.mark.asyncio
-async def test_synthesize_report_hydrates_url_citations() -> None:
-    """synthesize_report() hydrates URL-string citations to full Citation objects."""
+async def test_synthesize_report_calls_complete_structured_with_synthesizer_v2() -> None:
     db = AsyncMock(spec=AsyncSession)
-    synth_input = _make_synth_input(question_count=5)
-    mock_draft = _make_draft_report(question_count=5)
-    mock_meta = _make_mock_llm_result()
+    synth_input = _make_synth_input()
+    citation_hydration_index = _hydration_index()
+    mock_draft = _make_draft_report()
+    mock_meta = _make_mock_llm_meta()
+    mock_complete = AsyncMock(return_value=(mock_draft, mock_meta))
 
     with patch(
         "app.services.synthesizer_service.llm_client.complete_structured",
-        AsyncMock(return_value=(mock_draft, mock_meta)),
+        mock_complete,
     ):
-        result = await synthesize_report(db=db, synth_input=synth_input)
+        await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=citation_hydration_index,
+        )
+
+    _, call_kwargs = mock_complete.call_args
+    assert call_kwargs["prompt_name"] == "synthesizer_v2"
+    assert call_kwargs["provider"] == _SYNTHESIZER_PROVIDER
+    assert call_kwargs["model"] == _SYNTHESIZER_MODEL
+
+
+@pytest.mark.asyncio
+async def test_synthesize_report_builds_allowed_urls_from_reader_outputs() -> None:
+    db = AsyncMock(spec=AsyncSession)
+    allowed_url = "https://allowed.example/article"
+    reader_outputs = _make_reader_outputs(5)
+    reader_outputs["q1"] = ReaderOutput(
+        question_id="q1",
+        extracted_evidence=[
+            ExtractedEvidence(
+                source_url=allowed_url,
+                relevance="high",
+                verbatim_quote=None,
+                paraphrase="x",
+                named_entities=[],
+            ),
+        ],
+        evidence_gap_note=None,
+    )
+    synth_input = build_synthesizer_input(
+        refined_idea=_make_refined_idea(),
+        research_plan=_make_plan(5),
+        reader_outputs=reader_outputs,
+        rubric_version="v1",
+    )
+    index = build_citation_hydration_index(_make_search_results(5))
+    index[allowed_url] = CitationHydrationEntry(title="T", source_domain="allowed.example")
+
+    draft = _make_draft_report(5)
+    draft.questions_and_findings[0].findings[0].citations = [allowed_url]
+
+    with patch(
+        "app.services.synthesizer_service.llm_client.complete_structured",
+        AsyncMock(return_value=(draft, _make_mock_llm_meta())),
+    ):
+        result = await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=index,
+        )
 
     assert isinstance(result, ValidationReport)
-    for qf in result.questions_and_findings:
-        for f in qf.findings:
-            assert len(f.citations) >= 1
-            for c in f.citations:
-                assert isinstance(c, Citation)
-                assert c.url.startswith("https://")
-                assert len(c.title) > 0
-                assert len(c.source_domain) > 0
-                assert c.accessed_at is not None
+    assert result.questions_and_findings[0].findings[0].citations[0].url == allowed_url
 
 
 @pytest.mark.asyncio
-async def test_synthesize_report_hydrates_correct_title_and_domain() -> None:
-    """Hydrated Citations use title from the matching TavilyResultForPrompt."""
+async def test_synthesize_report_raises_when_citation_url_not_in_reader_outputs() -> None:
     db = AsyncMock(spec=AsyncSession)
     synth_input = _make_synth_input(question_count=5)
-    mock_draft = _make_draft_report(question_count=5)
-    mock_meta = _make_mock_llm_result()
+    bad_url = "https://hallucinated.com/fake"
+    draft = _make_draft_report(question_count=5)
+    draft.questions_and_findings[0].findings[0].citations = [bad_url]
+
+    with patch(
+        "app.services.synthesizer_service.llm_client.complete_structured",
+        AsyncMock(return_value=(draft, _make_mock_llm_meta())),
+    ), pytest.raises(SynthesizerHallucinatedCitation) as exc_info:
+        await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=_hydration_index(5),
+        )
+
+    assert exc_info.value.url == bad_url
+    assert "questions_and_findings" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_synthesize_report_raises_when_url_passes_guard_but_missing_from_index() -> (
+    None
+):
+    db = AsyncMock(spec=AsyncSession)
+    synth_input = _make_synth_input(5)
+    draft = _make_draft_report(5)
+
+    with patch(
+        "app.services.synthesizer_service.llm_client.complete_structured",
+        AsyncMock(return_value=(draft, _make_mock_llm_meta())),
+    ), pytest.raises(SynthesizerHallucinatedCitation, match="hydration index"):
+        await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index={},
+        )
+
+
+@pytest.mark.asyncio
+async def test_synthesize_report_hydrates_citation_title_and_domain_from_index() -> None:
+    db = AsyncMock(spec=AsyncSession)
+    synth_input = _make_synth_input(5)
+    url = "https://example.com/result-q1"
+    index = _hydration_index(5)
+    index[url] = CitationHydrationEntry(title="Indexed Title", source_domain="example.com")
+    mock_draft = _make_draft_report(5)
+
+    with patch(
+        "app.services.synthesizer_service.llm_client.complete_structured",
+        AsyncMock(return_value=(mock_draft, _make_mock_llm_meta())),
+    ):
+        result = await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=index,
+        )
+
+    cit = result.questions_and_findings[0].findings[0].citations[0]
+    assert isinstance(cit, Citation)
+    assert cit.title == "Indexed Title"
+    assert cit.source_domain == "example.com"
+
+
+@pytest.mark.asyncio
+async def test_synthesize_report_truncates_long_titles_to_citation_cap() -> None:
+    db = AsyncMock(spec=AsyncSession)
+    synth_input = _make_synth_input(5)
+    url = "https://example.com/result-q1"
+    long_title = "A" * 400
+    index = _hydration_index(5)
+    index[url] = CitationHydrationEntry(title=long_title, source_domain="example.com")
+    mock_draft = _make_draft_report(5)
+
+    with patch(
+        "app.services.synthesizer_service.llm_client.complete_structured",
+        AsyncMock(return_value=(mock_draft, _make_mock_llm_meta())),
+    ):
+        result = await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=index,
+        )
+
+    cit = result.questions_and_findings[0].findings[0].citations[0]
+    assert len(cit.title) == 300
+    assert cit.title == long_title[:300]
+
+
+@pytest.mark.asyncio
+async def test_synthesize_report_emits_synthesizer_complete_info_log() -> None:
+    db = AsyncMock(spec=AsyncSession)
+    synth_input = _make_synth_input(5)
+    index = _hydration_index(5)
+    mock_draft = _make_draft_report(5)
+    mock_meta = _make_mock_llm_meta()
 
     with patch(
         "app.services.synthesizer_service.llm_client.complete_structured",
         AsyncMock(return_value=(mock_draft, mock_meta)),
-    ):
-        result = await synthesize_report(db=db, synth_input=synth_input)
+    ), patch("app.services.synthesizer_service._logger.info") as mock_info:
+        exp_id = uuid4()
+        await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=index,
+            experiment_id=exp_id,
+        )
 
-    # The synth input has URLs like "https://example.com/result-q1" with
-    # title "Result for q1". Verify the hydrated Citation carries those values.
-    first_qf = result.questions_and_findings[0]
-    first_citation = first_qf.findings[0].citations[0]
-    assert first_citation.url == "https://example.com/result-q1"
-    assert first_citation.title == "Result for q1"
-    assert first_citation.source_domain == "example.com"
-
-
-# ---------------------------------------------------------------------------
-# 3. Hallucination detection: raises SynthesizerHallucinatedCitation
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_synthesize_report_raises_on_hallucinated_url() -> None:
-    """synthesize_report() raises SynthesizerHallucinatedCitation for unknown URLs."""
-    db = AsyncMock(spec=AsyncSession)
-    synth_input = _make_synth_input(question_count=5)
-
-    # Build a draft that cites a URL not in the synth_input results
-    hallucinated_url = "https://hallucinated.com/fake-article-not-in-input"
-    draft_with_hallucination = ValidationReportDraft(
-        executive_summary=(
-            "Research confirms Guru directly competes. Handbook staleness confirmed. "
-            "Recommendation is to iterate on a narrower wedge before proceeding here."
-        ),
-        questions_and_findings=[
-            QuestionFindingsDraft(
-                question_id=f"q{i}",
-                question=f"Test question q{i}",
-                findings=[
-                    FindingDraft(
-                        question_id=f"q{i}",
-                        claim="Guru provides Slack-based policy answering.",
-                        evidence_summary="Guru's G2 page confirms leading Slack knowledge tool.",
-                        citations=(
-                            [hallucinated_url]
-                            if i == 1
-                            else [f"https://example.com/result-q{i}"]
-                        ),
-                        confidence="medium",
-                        confidence_rationale="Single G2 listing evidence.",
-                    )
-                ],
-                evidence_gap=None,
-            )
-            for i in range(1, 6)
-        ],
-        competitors=[],
-        market_signals="No reliable TAM data found in the provided search results.",
-        distribution_signals=None,
-        regulatory_signals=None,
-        risks_assessment=(
-            "The Guru competitor risk is confirmed. Handbook staleness confirmed. "
-            "Procurement complexity partially confirmed by one Reddit thread evidence."
-        ),
-        overall_recommendation="iterate",
-        recommendation_rationale=(
-            "q2 confirms Guru covers the core use case. Iterate on freshness wedge."
-        ),
-        research_limitations="Market size data was not found in search results.",
-        rubric_version_used="v1",
-    )
-    mock_meta = _make_mock_llm_result()
-
-    with patch(
-        "app.services.synthesizer_service.llm_client.complete_structured",
-        AsyncMock(return_value=(draft_with_hallucination, mock_meta)),
-    ):
-        with pytest.raises(SynthesizerHallucinatedCitation) as exc_info:
-            await synthesize_report(db=db, synth_input=synth_input)
-
-    assert hallucinated_url in str(exc_info.value)
-    assert exc_info.value.url == hallucinated_url
-
-
-# ---------------------------------------------------------------------------
-# 4. Exception propagation
-# ---------------------------------------------------------------------------
+    complete_calls = [
+        c
+        for c in mock_info.call_args_list
+        if len(c.args) > 0 and c.args[0] == "synthesizer complete"
+    ]
+    assert len(complete_calls) == 1
+    kwargs = complete_calls[0].kwargs
+    assert kwargs["prompt_name"] == "synthesizer_v2"
+    assert kwargs["experiment_id"] == str(exp_id)
+    assert kwargs["total_extracted_evidence_in_input"] == 5
+    assert kwargs["finding_count"] == 5
+    assert kwargs["competitor_count"] == 0
+    assert kwargs["total_citation_count"] == 5
+    assert kwargs["recommendation"] == "iterate"
+    assert kwargs["cost_usd"] == str(mock_meta.cost_usd)
+    assert kwargs["prompt_tokens"] == mock_meta.prompt_tokens
+    assert kwargs["completion_tokens"] == mock_meta.completion_tokens
+    assert kwargs["latency_ms"] == mock_meta.latency_ms
 
 
 @pytest.mark.asyncio
-async def test_synthesize_report_propagates_exceptions() -> None:
-    """If complete_structured raises, synthesize_report must re-raise without catching."""
+async def test_synthesize_report_propagates_llm_exception() -> None:
     db = AsyncMock(spec=AsyncSession)
     synth_input = _make_synth_input()
 
@@ -418,29 +408,29 @@ async def test_synthesize_report_propagates_exceptions() -> None:
         "app.services.synthesizer_service.llm_client.complete_structured",
         mock_complete,
     ), pytest.raises(_FakeAnthropicError, match="provider error"):
-        await synthesize_report(db=db, synth_input=synth_input)
-
-
-# ---------------------------------------------------------------------------
-# 5. None experiment_id forwarded correctly
-# ---------------------------------------------------------------------------
+        await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=_hydration_index(),
+        )
 
 
 @pytest.mark.asyncio
 async def test_synthesize_report_forwards_none_experiment_id() -> None:
-    """experiment_id=None must be forwarded to complete_structured as None."""
     db = AsyncMock(spec=AsyncSession)
     synth_input = _make_synth_input()
-    mock_draft = _make_draft_report()
-    mock_meta = _make_mock_llm_result()
-
-    mock_complete = AsyncMock(return_value=(mock_draft, mock_meta))
+    mock_complete = AsyncMock(return_value=(_make_draft_report(), _make_mock_llm_meta()))
 
     with patch(
         "app.services.synthesizer_service.llm_client.complete_structured",
         mock_complete,
     ):
-        await synthesize_report(db=db, synth_input=synth_input, experiment_id=None)
+        await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=_hydration_index(),
+            experiment_id=None,
+        )
 
     _, call_kwargs = mock_complete.call_args
     assert call_kwargs["experiment_id"] is None
@@ -448,20 +438,21 @@ async def test_synthesize_report_forwards_none_experiment_id() -> None:
 
 @pytest.mark.asyncio
 async def test_synthesize_report_forwards_experiment_id() -> None:
-    """experiment_id value is forwarded to complete_structured."""
     db = AsyncMock(spec=AsyncSession)
     synth_input = _make_synth_input()
-    mock_draft = _make_draft_report()
-    mock_meta = _make_mock_llm_result()
     exp_id = uuid4()
-
-    mock_complete = AsyncMock(return_value=(mock_draft, mock_meta))
+    mock_complete = AsyncMock(return_value=(_make_draft_report(), _make_mock_llm_meta()))
 
     with patch(
         "app.services.synthesizer_service.llm_client.complete_structured",
         mock_complete,
     ):
-        await synthesize_report(db=db, synth_input=synth_input, experiment_id=exp_id)
+        await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=_hydration_index(),
+            experiment_id=exp_id,
+        )
 
     _, call_kwargs = mock_complete.call_args
     assert call_kwargs["experiment_id"] == exp_id

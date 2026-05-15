@@ -1,5 +1,5 @@
 """Experiment router — POST /experiments, POST /experiments/{id}/refine,
-POST /experiments/{id}/confirm, GET /experiments/{id}/research-status.
+POST /experiments/{id}/confirm, GET /experiments/{id}, GET /experiments/{id}/research-status.
 
 Per .cursorrules «API Design»: router functions are thin (5-15 lines each).
 All domain logic lives in app.services.*.
@@ -22,8 +22,10 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.auth.dependencies import get_current_user
 from app.db.enums import ExperimentStatus
@@ -53,6 +55,45 @@ _logger = get_logger(__name__)
 
 # 30/min/user for the polling endpoint — per the spec.
 _RESEARCH_STATUS_RATE_LIMIT = "30/minute"
+
+
+class ExperimentValidationReportSummary(BaseModel):
+    """Aggregates for smoke / dashboards — not the full ValidationReport JSON."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    overall_recommendation: str | None = None
+    total_finding_count: int = Field(ge=0)
+    total_citation_count: int = Field(ge=0)
+
+
+class GetExperimentDetailResponse(BaseModel):
+    """GET /experiments/{id} — minimal experiment row + optional report aggregates."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    status: ExperimentStatus
+    validation_report: ExperimentValidationReportSummary | None = None
+
+
+def _aggregate_validation_report(raw: dict) -> ExperimentValidationReportSummary:
+    qfs = raw.get("questions_and_findings") or []
+    finding_count = sum(len(qf.get("findings") or []) for qf in qfs)
+    citation_count = 0
+    for qf in qfs:
+        for f in qf.get("findings") or []:
+            citation_count += len(f.get("citations") or [])
+    for comp in raw.get("competitors") or []:
+        citation_count += len(comp.get("citations") or [])
+    rec = raw.get("overall_recommendation")
+    if rec is not None and not isinstance(rec, str):
+        rec = str(rec)
+    return ExperimentValidationReportSummary(
+        overall_recommendation=rec,
+        total_finding_count=finding_count,
+        total_citation_count=citation_count,
+    )
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
 
@@ -154,7 +195,10 @@ async def confirm_research(
     if experiment.status not in _CONFIRM_ALLOWED_STATUSES:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Experiment must be in REFINED or RESEARCH_FAILED status to confirm research (current: {experiment.status})",
+            detail=(
+                "Experiment must be in REFINED or RESEARCH_FAILED status to confirm "
+                f"research (current: {experiment.status})"
+            ),
         )
 
     # Clear stale error detail BEFORE setting new status so the old status
@@ -168,7 +212,11 @@ async def confirm_research(
     try:
         await dispatcher.dispatch(experiment_id)
     except DispatchError as exc:
-        _logger.error("dispatch failed", error_type=type(exc).__name__, experiment_id=str(experiment_id))
+        _logger.error(
+            "dispatch failed",
+            error_type=type(exc).__name__,
+            experiment_id=str(experiment_id),
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to start research pipeline, please try again",
@@ -214,4 +262,42 @@ async def get_research_status(
         error_detail=experiment.research_error_detail
         if experiment.status == ExperimentStatus.RESEARCH_FAILED
         else None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /experiments/{id} — owner detail + ValidationReport aggregates (smoke / FE)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{experiment_id}",
+    response_model=GetExperimentDetailResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def get_experiment_detail(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> GetExperimentDetailResponse:
+    result = await db.execute(
+        select(Experiment)
+        .options(selectinload(Experiment.validation_report))
+        .where(Experiment.id == experiment_id),
+    )
+    experiment = result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    summary = None
+    if experiment.validation_report is not None:
+        summary = _aggregate_validation_report(experiment.validation_report.raw_report)
+
+    return GetExperimentDetailResponse(
+        id=experiment.id,
+        status=experiment.status,
+        validation_report=summary,
     )
