@@ -1,26 +1,13 @@
-"""Synthesizer input bridge — packages all phase outputs into a prompt-ready structure.
+"""SynthesizerInput models and builders.
 
-This module bundles the three inputs that the synthesizer needs into a single,
-deterministic, validated structure. Keeping this bridge separate from the
-synthesizer service and prompt module has three benefits:
+Per ADR 0012, SynthesizerInput is locked to four fields: refined_idea,
+research_plan, reader_outputs, rubric_version. Raw Tavily snippets are
+not consumed by the Synthesizer prompt in any mode.
 
-1. The prompt module (synthesizer.py) stays clean — it only reads from
-   SynthesizerInput, never from raw TavilyResult dicts.
-2. The content-length truncation (TavilyResultForPrompt.content_excerpt at
-   1500 chars) lives in one place, making prompt-size budget visible and
-   configurable without touching the prompt itself.
-3. Tests can construct SynthesizerInput directly without needing real Tavily
-   call results.
-
-Per AGENTS.md "Logging hygiene":
-- This module constructs a structure that includes scraped Tavily content.
-  NEVER log the content of TavilyResultForPrompt — only log counts.
-
-Per AGENTS.md "LLM and agent security":
-- The synthesizer prompt wraps Tavily content in <tavily_results> tags with
-  explicit instructions to treat that content as untrusted data. This module
-  prepares the trimmed content that goes inside those tags. The security
-  framing happens in the prompt; this module is just the data shaper.
+CitationHydrationEntry and build_citation_hydration_index() support
+server-side Citation hydration. The hydration index is passed to
+synthesize_report() as a separate parameter — NOT on SynthesizerInput.
+The index is never serialized into the LLM user prompt.
 """
 
 from __future__ import annotations
@@ -29,14 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.integrations.tavily import TavilyResult
 from app.schemas.planner import ResearchPlan
+from app.schemas.reader import ReaderOutput
 from app.schemas.refinement import RefinedIdea
-
-# Maximum character length for a Tavily result's content in the synthesizer
-# prompt. Tavily returns content snippets that can be several thousand chars.
-# Capping at 3000 doubles per-result evidence depth at modest input-token cost.
-# With 7 questions × ~10 results × ~3000 chars = ~210,000 chars from results
-# alone. That's well within Claude's 200K context window but bounded for cost.
-_CONTENT_EXCERPT_MAX_CHARS = 3000
 
 
 class TavilyResultForPrompt(BaseModel):
@@ -51,6 +32,9 @@ class TavilyResultForPrompt(BaseModel):
     the system. The synthesizer prompt instructs Claude to treat everything
     inside <tavily_results> tags as untrusted data — this model is the
     mechanism by which that content is bounded and formatted for those tags.
+
+    Retained for synthesizer_service hydration paths until that module is
+    refactored (commit 3).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -87,15 +71,39 @@ class TavilyResultForPrompt(BaseModel):
     )
 
 
-class SynthesizerInput(BaseModel):
-    """All inputs the synthesizer needs, packaged for prompt building.
+class CitationHydrationEntry(BaseModel):
+    """Server-side URL → metadata map for Citation hydration.
 
-    Combines the founder context (RefinedIdea), the research questions
-    (ResearchPlan), the search results (per question), and the rubric
-    version into a single validated structure.
+    Built by the orchestrator from Searcher's TavilyResults. Passed to
+    synthesize_report() as a separate parameter — NOT a field on SynthesizerInput.
+    NEVER serialized into the LLM user prompt. Consumed only by _hydrate_draft()
+    to populate Citation.title and Citation.source_domain. Per ADR 0012.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(
+        ...,
+        max_length=500,
+        description="Tavily result title (looser cap than Citation.title; truncated at hydration).",
+    )
+    source_domain: str = Field(
+        ...,
+        max_length=255,
+        description=(
+            "Parsed domain from the result URL (looser cap than Citation.source_domain; "
+            "truncated at hydration)."
+        ),
+    )
+
+
+class SynthesizerInput(BaseModel):
+    """All inputs the synthesizer LLM prompt is built from (four-field contract).
 
     Immutable once created — the prompt builder reads from this struct
     deterministically. No side effects.
+
+    Per ADR 0012: no raw Tavily / search snippets on this model.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -116,12 +124,12 @@ class SynthesizerInput(BaseModel):
         )
     )
 
-    search_results_by_question: dict[str, list[TavilyResultForPrompt]] = Field(
+    reader_outputs: dict[str, ReaderOutput] = Field(
         description=(
-            "Mapping of question_id to trimmed TavilyResults for that question. "
-            "Keys are question ids ('q1'..'q7') matching the ResearchPlan questions. "
-            "Values are lists of TavilyResultForPrompt with content capped at 3000 chars. "
-            "Questions with no results have an empty list."
+            "Per-question Reader output keyed by question_id (q1..q7). "
+            "Single evidence surface for the Synthesizer LLM prompt. "
+            "Built from execute_reader() in the orchestrator. "
+            "Per ADR 0012."
         )
     )
 
@@ -135,55 +143,50 @@ class SynthesizerInput(BaseModel):
 
 
 def build_synthesizer_input(
+    *,
     refined_idea: RefinedIdea,
     research_plan: ResearchPlan,
-    tavily_results: dict[str, list[TavilyResult]],
+    reader_outputs: dict[str, ReaderOutput],
     rubric_version: str,
 ) -> SynthesizerInput:
-    """Package all phase outputs into a SynthesizerInput for the prompt builder.
+    """Build the four-field SynthesizerInput for the Synthesizer prompt.
 
-    Trims TavilyResult.content to _CONTENT_EXCERPT_MAX_CHARS characters and
-    builds TavilyResultForPrompt objects. Questions in the plan that have no
-    results in tavily_results get an empty list (the searcher may have had
-    partial failures).
-
-    Args:
-        refined_idea: Validated RefinedIdea from the refinement phase.
-        research_plan: Validated ResearchPlan from the Planner phase.
-        tavily_results: Output of execute_search_plan() — maps question_id
-            to a list of TavilyResult objects (already deduplicated by the
-            searcher service).
-        rubric_version: Rubric version string (e.g. "v1") for the report's
-            audit trail.
-
-    Returns:
-        A fully populated SynthesizerInput ready for the prompt builder.
+    citation_hydration_index is built separately by the orchestrator from
+    Searcher results. See build_citation_hydration_index().
     """
-    trimmed: dict[str, list[TavilyResultForPrompt]] = {}
-
-    for question in research_plan.questions:
-        raw_results = tavily_results.get(question.id, [])
-        prompt_results: list[TavilyResultForPrompt] = []
-
-        for r in raw_results:
-            # Cap content at the max excerpt length. Tavily content snippets
-            # can be several KB; we trim to keep prompt size bounded.
-            excerpt = r.content[:_CONTENT_EXCERPT_MAX_CHARS]
-
-            prompt_results.append(
-                TavilyResultForPrompt(
-                    url=r.url,
-                    title=r.title,
-                    content_excerpt=excerpt,
-                    score=r.score,
-                )
-            )
-
-        trimmed[question.id] = prompt_results
-
     return SynthesizerInput(
         refined_idea=refined_idea,
         research_plan=research_plan,
-        search_results_by_question=trimmed,
+        reader_outputs=reader_outputs,
         rubric_version=rubric_version,
     )
+
+
+def build_citation_hydration_index(
+    search_results_by_question: dict[str, list[TavilyResult]],
+) -> dict[str, CitationHydrationEntry]:
+    """Build URL → CitationHydrationEntry map from Searcher results.
+
+    Iterates all questions' TavilyResults, extracts (url, title, source_domain)
+    from each, deduplicates by URL (first occurrence wins for determinism),
+    returns the dict.
+
+    Domain extraction uses the same logic as the existing _extract_domain()
+    helper in synthesizer_service.py (imported lazily here to avoid a circular
+    import with that module). NEVER serialized into the LLM user prompt.
+    Consumed only by _hydrate_draft() in synthesizer_service.py.
+
+    Per ADR 0012 and planning doc §7.
+    """
+    from app.services.synthesizer_service import _extract_domain
+
+    index: dict[str, CitationHydrationEntry] = {}
+    for _question_id, results in search_results_by_question.items():
+        for r in results:
+            if r.url in index:
+                continue
+            index[r.url] = CitationHydrationEntry(
+                title=r.title[:500],
+                source_domain=_extract_domain(r.url)[:255],
+            )
+    return index
