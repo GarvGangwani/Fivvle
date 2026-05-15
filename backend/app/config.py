@@ -9,6 +9,7 @@ Never log or print any setting value — see AGENTS.md "Logging hygiene".
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,6 +45,15 @@ class Settings(BaseSettings):
     # Comma-separated list of allowed CORS origins; use cors_origins_list for the parsed form.
     cors_allowed_origins: str = "http://localhost:3000"
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
+    reader_concurrency_limit: int = Field(
+        default=7,
+        description=(
+            "Maximum concurrent Reader per-question LLM calls. Default 7 matches "
+            "typical Planner output (~5-7 research questions per pipeline). Set to "
+            "1 for fully sequential execution during debugging. Per ADR 0011."
+        ),
+    )
 
     # --- Research dispatcher (ADR 0009) ---
     # in_process: invokes the research engine directly via asyncio.create_task (dev/test).
