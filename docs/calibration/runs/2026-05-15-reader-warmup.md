@@ -90,3 +90,29 @@ Ready for full 5-idea calibration session. Top up Anthropic to \~$30 before star
 
 None blocking. Note for next run: tee uvicorn output to file so Reader structured logs persist for calibration analysis.
 
+
+
+
+
+\## 2026-05-15 mini-calibration attempt (aborted)
+
+
+
+Attempted 3-idea mini-calibration with deliberately hard ideas (vet HIPAA scribe, software architect whiteboard, parent craft subscription) to stress-test the pipeline.
+
+
+
+\*\*Result:\*\* First idea (vet scribe) failed twice at Synthesizer phase with Anthropic Tier 1 rate limit (30,000 input tokens/min). Synthesizer's \~47k token input cannot fit through the cap.
+
+
+
+\*\*Implication:\*\* Synthesizer refactor is no longer a cost optimization — it is a hard blocker for any consistent pipeline operation on Tier 1. Reader output ingestion (drops Synthesizer input from \~47k → \~20-30k tokens) is the unblock.
+
+
+
+Calibration deferred until Synthesizer refactor lands. Will run full 5-idea calibration against the refactored pipeline.
+
+
+
+Note: rate limit also blocks Tier 1 from running multi-idea sessions in close succession even if individual calls fit, since per-minute caps reset slowly.
+
