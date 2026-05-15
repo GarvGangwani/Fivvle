@@ -217,13 +217,20 @@ class TestGetPhasesCompleted:
         assert ExperimentStatus.RESEARCH_PLANNING in completed
         assert len(completed) == 2
 
-    def test_synthesizing_returns_three_phases(self) -> None:
-        completed = get_phases_completed(ExperimentStatus.RESEARCH_SYNTHESIZING)
+    def test_reading_returns_three_prior_phases(self) -> None:
+        completed = get_phases_completed(ExperimentStatus.RESEARCH_READING)
+        assert ExperimentStatus.RESEARCHING in completed
+        assert ExperimentStatus.RESEARCH_PLANNING in completed
+        assert ExperimentStatus.RESEARCH_SEARCHING in completed
         assert len(completed) == 3
 
-    def test_ready_returns_all_four_phases(self) -> None:
-        completed = get_phases_completed(ExperimentStatus.RESEARCH_READY)
+    def test_synthesizing_returns_four_prior_phases(self) -> None:
+        completed = get_phases_completed(ExperimentStatus.RESEARCH_SYNTHESIZING)
         assert len(completed) == 4
+
+    def test_ready_returns_five_prior_phases(self) -> None:
+        completed = get_phases_completed(ExperimentStatus.RESEARCH_READY)
+        assert len(completed) == 5
 
     def test_failed_returns_empty(self) -> None:
         # Can't determine where failure occurred from status alone.
@@ -603,8 +610,9 @@ from app.services.research_phase_mapping import get_phase_label  # noqa: E402
         (ExperimentStatus.RESEARCHING, 0),
         (ExperimentStatus.RESEARCH_PLANNING, 1),
         (ExperimentStatus.RESEARCH_SEARCHING, 2),
-        (ExperimentStatus.RESEARCH_SYNTHESIZING, 3),
-        (ExperimentStatus.RESEARCH_READY, 4),
+        (ExperimentStatus.RESEARCH_READING, 3),
+        (ExperimentStatus.RESEARCH_SYNTHESIZING, 4),
+        (ExperimentStatus.RESEARCH_READY, 5),
     ],
     ids=lambda x: x.value if isinstance(x, ExperimentStatus) else str(x),
 )

@@ -1,5 +1,8 @@
 #!/usr/bin/env python
-"""B2.4 end-to-end smoke test — runs ONLY against localhost with in-process dispatcher.
+"""B2.4 + B3 Reader end-to-end smoke — runs ONLY against localhost with in-process dispatcher.
+
+Renamed intentionally **not**: keeping ``try_b2_4_end_to_end.py`` avoids breaking existing docs and
+muscle memory; this script now waits long enough for the extra Reader phase (B3).
 
 Usage (token from env, fresh experiment):
     $env:FIVVLE_TEST_TOKEN = (uv run python scripts/_get_token.py)
@@ -23,6 +26,7 @@ import json
 import os
 import sys
 import time
+from datetime import UTC, datetime
 
 import httpx
 
@@ -45,7 +49,9 @@ RAW_IDEA = (
     "$50k–$2M GMV per month who cannot afford dedicated retention teams."
 )
 POLL_INTERVAL_SECONDS = 8
-MAX_POLLS = 45  # 45 × 8s = 6 minutes timeout
+MAX_POLLS = 90  # safety cap (~12 min); loop exits early on terminal status
+
+_TERMINAL_STATUSES = frozenset({"RESEARCH_READY", "RESEARCH_FAILED"})
 
 # ---------------------------------------------------------------------------
 # Helper
@@ -71,6 +77,41 @@ def check_token() -> None:
             file=sys.stderr,
         )
         sys.exit(1)
+
+
+def print_reader_phase_summary(exp_id: str, terminal_body: dict) -> None:
+    """Summarize Reader-related polling fields.
+
+    Structured ReaderOutput is not persisted on Experiment rows — see printed note below.
+    """
+    status = terminal_body.get("status")
+    phases = terminal_body.get("phases_completed") or []
+    phase_strs = [str(p) for p in phases]
+    reading_seen = any(
+        p.endswith("RESEARCH_READING") or p == "RESEARCH_READING" for p in phase_strs
+    )
+
+    print("\n--- B3 Reader smoke summary ---", flush=True)
+    print(f"experiment_id={exp_id}", flush=True)
+    print(f"completed_at_utc={datetime.now(UTC).isoformat()}", flush=True)
+    print(f"terminal_status={status}", flush=True)
+    print(f"phases_completed_count={len(phases)}", flush=True)
+    print(f"phases_completed_json={json.dumps(phase_strs)}", flush=True)
+    print(f"research_reading_in_phases_completed={reading_seen}", flush=True)
+
+    print(
+        "Per-question Reader fields (question_id, extracted_evidence_count, "
+        "has_evidence_gap) are not returned by /research-status; structured "
+        "ReaderOutput exists only in-process for the Synthesizer. Inspect "
+        "application logs for 'reader question complete' events.",
+        flush=True,
+    )
+    print(
+        "URL / quote hallucination rollups are not persisted on the experiment; "
+        "for systemic signals search logs for 'reader url hallucination detected' "
+        "and 'reader quote hallucination rate exceeded'.",
+        flush=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -111,7 +152,8 @@ def step_confirm(client: httpx.Client, exp_id: str) -> str:
     return body["status_url"]
 
 
-def step_poll(client: httpx.Client, status_url: str) -> None:
+def step_poll(client: httpx.Client, status_url: str) -> dict:
+    """Poll until terminal status or ``MAX_POLLS`` exhausted."""
     log("polling /research-status...", interval_s=POLL_INTERVAL_SECONDS, max_polls=MAX_POLLS)
     for i in range(MAX_POLLS):
         resp = client.get(status_url, headers=HEADERS)
@@ -126,18 +168,18 @@ def step_poll(client: httpx.Client, status_url: str) -> None:
             phase_label=label,
             phases_completed=len(phases),
         )
-        if current_status == "RESEARCH_READY":
-            log("SUCCESS — pipeline completed", phases_completed=phases)
-            return
         if current_status == "RESEARCH_FAILED":
             log(
                 "FAILED — pipeline reported failure",
                 error_detail=body.get("error_detail"),
             )
             sys.exit(2)
+        if current_status in _TERMINAL_STATUSES:
+            log("SUCCESS — pipeline completed", phases_completed=phases)
+            return body
         time.sleep(POLL_INTERVAL_SECONDS)
 
-    log("TIMEOUT — pipeline did not complete within the poll window")
+    log("TIMEOUT — pipeline did not reach a terminal status within the poll window")
     sys.exit(3)
 
 
@@ -147,6 +189,9 @@ def step_poll(client: httpx.Client, status_url: str) -> None:
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+
     check_token()
 
     # Optional: pass existing REFINED experiment UUID to skip refinement LLM call
@@ -162,7 +207,8 @@ def main() -> None:
             exp_id = step_create_experiment(client)
 
         status_url = step_confirm(client, exp_id)
-        step_poll(client, status_url)
+        terminal_body = step_poll(client, status_url)
+        print_reader_phase_summary(exp_id, terminal_body)
 
 
 if __name__ == "__main__":

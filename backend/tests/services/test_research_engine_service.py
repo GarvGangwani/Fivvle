@@ -1,9 +1,9 @@
-"""State-machine unit tests for run_research_engine_pipeline (B2.4).
+"""State-machine unit tests for run_research_engine_pipeline (B2.4 / B3 Reader).
 
 Seven tests, all sync (asyncio.get_event_loop().run_until_complete pattern,
 consistent with _force_experiment_status in the router tests):
 
-  1. Happy path: planner + searcher + synthesizer succeed → RESEARCH_READY.
+  1. Happy path: planner + searcher + reader + synthesizer succeed → RESEARCH_READY.
   2. Planner exception → RESEARCH_FAILED with "planner:" prefix in detail.
   3. Searcher exception → RESEARCH_FAILED with "searcher:" prefix.
   4. Synthesizer exception → RESEARCH_FAILED with "synthesizer:" prefix.
@@ -13,8 +13,8 @@ consistent with _force_experiment_status in the router tests):
 
 DB setup mirrors the router regression tests: create experiment via API
 (LLM mocked → REFINED), force to RESEARCHING, then call the pipeline directly.
-All three pipeline service functions are patched at their module — the lazy
-import inside run_research_engine_pipeline picks up the patch correctly.
+Pipeline stages are patched at their defining modules — the lazy imports inside
+``run_research_engine_pipeline`` pick up the patches correctly.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.db.enums import ExperimentStatus
+from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.services.research_engine_service import run_research_engine_pipeline
 from tests.routers.test_confirm_and_research_status import (
     _AUTH_HEADER,
@@ -81,6 +82,25 @@ def _fake_report() -> MagicMock:
     return report
 
 
+def _fake_reader_outputs() -> dict[str, ReaderOutput]:
+    """Minimal Reader outputs so execute_reader aggregate extractions > 0 (B3)."""
+    return {
+        "stub_q": ReaderOutput(
+            question_id="stub_q",
+            extracted_evidence=[
+                ExtractedEvidence(
+                    source_url="https://example.com/smoke",
+                    relevance="high",
+                    verbatim_quote=None,
+                    paraphrase="stub evidence",
+                    named_entities=[],
+                ),
+            ],
+            evidence_gap_note=None,
+        ),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Each test calls _sync_user(client) + _create_refined_experiment(client)
 # directly (same pattern as the router regression tests).
@@ -96,7 +116,7 @@ def test_happy_path_transitions_through_all_phases_to_ready(
     client: TestClient,
     mock_firebase: None,
 ) -> None:
-    """Planner + searcher + synthesizer all succeed → RESEARCH_READY in DB."""
+    """Planner + searcher + reader + synthesizer all succeed → RESEARCH_READY in DB."""
     _sync_user(client)
     exp_id = _create_refined_experiment(client)
     _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
@@ -112,6 +132,12 @@ def test_happy_path_transitions_through_all_phases_to_ready(
             patch(
                 "app.services.searcher_service.execute_search_plan",
                 AsyncMock(return_value={}),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reader_service.execute_reader",
+                AsyncMock(return_value=_fake_reader_outputs()),
             )
         )
         stack.enter_context(
@@ -219,6 +245,12 @@ def test_synthesizer_exception_sets_research_failed_with_synthesizer_prefix(
             patch(
                 "app.services.searcher_service.execute_search_plan",
                 AsyncMock(return_value={}),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reader_service.execute_reader",
+                AsyncMock(return_value=_fake_reader_outputs()),
             )
         )
         stack.enter_context(
