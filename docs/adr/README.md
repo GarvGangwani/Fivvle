@@ -27,6 +27,7 @@ Each ADR follows the Michael Nygard format:
 | 0009 | [Pluggable Research Dispatcher — In-Process for Dev, HTTP for Prod](0009-pluggable-research-dispatcher.md) | Accepted | 2026-05 |
 | 0010 | [Reader output schema — per-question evidence extraction over reusing FindingDraft](0010-reader-output-schema.md) | Accepted | 2026-05 |
 | 0011 | [Reader execution model — per-question concurrent LLM calls over single batched call](0011-reader-execution-model.md) | Accepted | 2026-05 |
+| 0012 | [Synthesizer input contract — Reader output only, no raw Tavily fallback](0012-synthesizer-input-contract.md) | Accepted | 2026-05 |
 
 ## When to write a new ADR
 
