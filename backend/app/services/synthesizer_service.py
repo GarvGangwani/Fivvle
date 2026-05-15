@@ -2,18 +2,17 @@
 
 Single public function: synthesize_report().
 
-Called by the research engine orchestrator after the searcher phase has
-returned Tavily results. Takes a SynthesizerInput (already packaged by
-build_synthesizer_input()) and returns a fully validated ValidationReport.
+Called by the research engine orchestrator after Reader has produced structured
+evidence per question. Takes SynthesizerInput (four-field contract per ADR 0012)
+and a citation_hydration_index for server-side URL → title/domain joining.
 
-Two-step process (B2.3-fix):
+Two-step process (B2.3-fix + B3 Reader hand-off):
   1. Call Claude with response_model=ValidationReportDraft — the LLM emits
      citations as URL strings only (not full Citation objects), cutting ~30%
      of output tokens.
-  2. Hydrate the draft to a ValidationReport by joining each URL back to the
-     matching TavilyResultForPrompt in the SynthesizerInput. If the LLM
-     emits a URL that was NOT in the input results, raise
-     SynthesizerHallucinatedCitation — that is a hard quality failure.
+  2. Validate every draft URL is in the Reader evidence allow-list; then
+     hydrate to a ValidationReport using citation_hydration_index. If the LLM
+     emits a URL not in allowed_urls, raise SynthesizerHallucinatedCitation.
 
 Per .cursorrules:
 - This module imports complete_structured from app.llm.client. It does NOT
@@ -26,7 +25,8 @@ Per AGENTS.md "Logging hygiene":
 - NEVER log ValidationReport content (it contains LLM-generated text derived
   from scraped web content and founder-submitted data).
 - NEVER log SynthesizerInput content.
-- Log only safe metadata: counts, flags, recommendation enum value, cost.
+- Log only safe metadata: counts, flags, recommendation enum value, cost,
+  field lengths (calibration), never verbatim field values.
 
 NOTE on max_tokens:
   Raised from 8192 to 16384 in B2.3-fix. The synthesizer produces the largest
@@ -38,7 +38,7 @@ NOTE on max_tokens:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 from uuid import UUID
 
@@ -59,7 +59,7 @@ from app.schemas.validation_report import (
     ValidationReport,
     ValidationReportDraft,
 )
-from app.services.synthesizer_input import SynthesizerInput, TavilyResultForPrompt
+from app.services.synthesizer_input import CitationHydrationEntry, SynthesizerInput
 
 _logger = get_logger(__name__)
 
@@ -80,24 +80,32 @@ _SYNTHESIZER_MAX_TOKENS = 16384
 _SYNTHESIZER_TEMPERATURE = 0.3
 
 
-class SynthesizerHallucinatedCitation(Exception):
-    """Raised when the synthesizer LLM emits a URL not present in the input results.
+class SynthesizerHallucinatedCitation(Exception):  # noqa: N818
+    """Raised when the synthesizer emits a citation URL not in Reader evidence,
 
-    This is a hard quality failure. The synthesizer must only cite URLs that
-    appeared in the provided <tavily_results> sections. Any URL not found in
-    the SynthesizerInput results is a hallucination — the LLM fabricated a
-    source it was not given.
-
-    The research engine orchestrator wraps this in ResearchEngineFailure
-    with phase="synthesizer".
+    or when hydration cannot resolve a URL that passed the allow-list guard.
+    Hard quality / implementation failure — the orchestrator maps this to
+    RESEARCH_FAILED (phase synthesizer).
     """
 
-    def __init__(self, url: str) -> None:
+    def __init__(
+        self,
+        url: str,
+        *,
+        experiment_id: UUID | None = None,
+        detail: str | None = None,
+    ) -> None:
         self.url = url
-        super().__init__(
-            f"Synthesizer emitted a citation URL not found in input results: {url!r}. "
-            f"This is a hallucination failure — the LLM cited a source it was not given."
-        )
+        self.experiment_id = experiment_id
+        if detail is not None:
+            message = detail
+        else:
+            message = (
+                f"Synthesizer emitted a citation URL not present in Reader "
+                f"validated evidence URLs: {url!r}. This is a hallucination failure "
+                f"— the LLM cited a source URL not drawn from extracted evidence."
+            )
+        super().__init__(message)
 
 
 def _extract_domain(url: str) -> str:
@@ -118,49 +126,65 @@ def _extract_domain(url: str) -> str:
     return netloc[:100]
 
 
-def _build_url_index(
-    synth_input: SynthesizerInput,
-) -> dict[str, TavilyResultForPrompt]:
-    """Build a flat URL → TavilyResultForPrompt lookup from all question results.
+def _assert_draft_citations_allowlisted(
+    draft: ValidationReportDraft,
+    allowed_urls: set[str],
+    experiment_id: UUID | None,
+) -> None:
+    """Hard-fail if any draft citation URL is not from Reader extracted evidence."""
+    for qi, qf_draft in enumerate(draft.questions_and_findings):
+        for fi, f_draft in enumerate(qf_draft.findings):
+            for url in f_draft.citations:
+                if url not in allowed_urls:
+                    raise SynthesizerHallucinatedCitation(
+                        url,
+                        experiment_id=experiment_id,
+                        detail=(
+                            f"Hallucinated citation URL {url!r} in "
+                            f"questions_and_findings[{qi}].findings[{fi}].citations"
+                        ),
+                    )
 
-    Used by _hydrate_draft to match each LLM-emitted URL back to its source
-    metadata. All questions are merged into one flat dict because the LLM
-    may cite a result from any question's search, and we only need the URL
-    match for hydration (not the originating question).
-    """
-    index: dict[str, TavilyResultForPrompt] = {}
-    for results in synth_input.search_results_by_question.values():
-        for r in results:
-            index[r.url] = r
-    return index
+    for ci, c_draft in enumerate(draft.competitors):
+        for url in c_draft.citations:
+            if url not in allowed_urls:
+                raise SynthesizerHallucinatedCitation(
+                    url,
+                    experiment_id=experiment_id,
+                    detail=(
+                        f"Hallucinated citation URL {url!r} in "
+                        f"competitors[{ci}].citations"
+                    ),
+                )
 
 
 def _hydrate_draft(
     draft: ValidationReportDraft,
-    synth_input: SynthesizerInput,
+    citation_hydration_index: dict[str, CitationHydrationEntry],
 ) -> ValidationReport:
-    """Hydrate URL-string citations in a ValidationReportDraft to full Citation objects.
-
-    Walks every FindingDraft.citations and CompetitorMentionDraft.citations list,
-    looks each URL up in the SynthesizerInput search results, and builds a full
-    Citation (url, title, source_domain, accessed_at=now).
+    """Hydrate URL-string citations using the orchestrator-built index.
 
     Raises:
-        SynthesizerHallucinatedCitation: if any URL emitted by the LLM does
-            not appear in the SynthesizerInput results. This means the LLM
-            fabricated a URL that was not provided to it — a hard failure.
+        SynthesizerHallucinatedCitation: if a URL is missing from the index
+            after passing the allow-list guard (implementation bug).
     """
-    url_index = _build_url_index(synth_input)
-    accessed_at = datetime.now(tz=timezone.utc)
+    accessed_at = datetime.now(UTC)
 
     def _resolve_url(url: str) -> Citation:
-        if url not in url_index:
-            raise SynthesizerHallucinatedCitation(url=url)
-        r = url_index[url]
+        if url not in citation_hydration_index:
+            raise SynthesizerHallucinatedCitation(
+                url,
+                experiment_id=None,
+                detail=(
+                    "hydration index missing URL that passed URL guard; "
+                    "orchestrator/Searcher bug"
+                ),
+            )
+        entry = citation_hydration_index[url]
         return Citation(
             url=url,
-            title=r.title,
-            source_domain=_extract_domain(url),
+            title=entry.title[:300],
+            source_domain=entry.source_domain[:100],
             accessed_at=accessed_at,
         )
 
@@ -216,19 +240,22 @@ def _hydrate_draft(
 async def synthesize_report(
     db: AsyncSession,
     synth_input: SynthesizerInput,
+    citation_hydration_index: dict[str, CitationHydrationEntry],
     experiment_id: UUID | None = None,
 ) -> ValidationReport:
-    """Call Claude to synthesize a ValidationReport from Tavily evidence.
+    """Call Claude to synthesize a ValidationReport from Reader evidence.
 
-    Builds the synthesizer user prompt from the SynthesizerInput, calls
-    Claude via the structured LLM client (response_model=ValidationReportDraft),
-    and hydrates the draft to a ValidationReport with full Citation objects.
+    Builds the synthesizer user prompt from SynthesizerInput, calls Claude via
+    the structured LLM client (response_model=ValidationReportDraft), validates
+    citation URLs against Reader evidence, and hydrates the draft using
+    citation_hydration_index.
 
     Args:
         db: AsyncSession from the caller's context. The LLM client wrapper
             writes a LLMCall row inside this session for cost tracking.
-        synth_input: Packaged inputs from build_synthesizer_input() — includes
-            the RefinedIdea, ResearchPlan, trimmed Tavily results, and rubric version.
+        synth_input: Four-field input from build_synthesizer_input().
+        citation_hydration_index: URL → metadata from Searcher results; not
+            sent to the LLM. Used only in _hydrate_draft().
         experiment_id: FK for LLMCall cost rollup. Pass the Experiment.id if
             available; None is valid for script-level calls.
 
@@ -236,26 +263,43 @@ async def synthesize_report(
         Parsed and validated ValidationReport with full Citation objects.
 
     Raises:
-        SynthesizerHallucinatedCitation: LLM emitted a URL not in input results.
+        SynthesizerHallucinatedCitation: LLM emitted a URL not in Reader evidence,
+            or hydration index inconsistent with allow-list.
         anthropic.APIError: provider-side failure (network, rate limit, etc.).
         instructor.exceptions.InstructorRetryException: Instructor failed to parse
             a valid ValidationReportDraft after its retry budget.
         pydantic.ValidationError: Schema constraint violation in the parsed output.
 
-    All exceptions propagate to the caller. The orchestrator (research_engine.py)
-    wraps them in ResearchEngineFailure with phase="synthesizer" context.
+    All exceptions propagate to the caller. The orchestrator wraps them in
+    ResearchEngineFailure with phase="synthesizer" context.
     """
     question_count = len(synth_input.research_plan.questions)
-    total_search_results = sum(
-        len(results)
-        for results in synth_input.search_results_by_question.values()
+    total_extracted_evidence_in_input = sum(
+        len(ro.extracted_evidence) for ro in synth_input.reader_outputs.values()
     )
+    questions_with_gap_note = sum(
+        1 for ro in synth_input.reader_outputs.values() if ro.evidence_gap_note is not None
+    )
+    sentinel_question_count = sum(
+        1
+        for ro in synth_input.reader_outputs.values()
+        if len(ro.extracted_evidence) == 0 and ro.evidence_gap_note is not None
+    )
+
+    allowed_urls: set[str] = {
+        ev.source_url
+        for ro in synth_input.reader_outputs.values()
+        for ev in ro.extracted_evidence
+    }
+
     has_synthesizer_notes = synth_input.research_plan.notes_for_synthesizer is not None
 
     _logger.info(
         "synthesizer started",
         question_count=question_count,
-        total_search_results_count=total_search_results,
+        total_extracted_evidence_in_input=total_extracted_evidence_in_input,
+        questions_with_gap_note=questions_with_gap_note,
+        sentinel_question_count=sentinel_question_count,
         has_synthesizer_notes_from_planner=has_synthesizer_notes,
         rubric_version=synth_input.rubric_version,
         experiment_id=str(experiment_id) if experiment_id else None,
@@ -278,32 +322,77 @@ async def synthesize_report(
         phase="synthesizer",
     )
 
-    # Hydrate URL-string citations to full Citation objects.
-    # Raises SynthesizerHallucinatedCitation if any URL is not in the input.
-    parsed = _hydrate_draft(draft, synth_input)
+    _assert_draft_citations_allowlisted(draft, allowed_urls, experiment_id)
 
-    # Aggregate citation count across all findings for logging.
-    total_finding_count = sum(
-        len(qf.findings) for qf in parsed.questions_and_findings
-    )
-    total_citation_count = sum(
-        len(f.citations)
-        for qf in parsed.questions_and_findings
-        for f in qf.findings
+    report = _hydrate_draft(draft, citation_hydration_index)
+
+    _logger.debug(
+        "synthesizer field length distribution",
+        experiment_id=str(experiment_id) if experiment_id else None,
+        executive_summary_length=len(report.executive_summary),
+        market_signals_length=len(report.market_signals),
+        distribution_signals_length=(
+            len(report.distribution_signals) if report.distribution_signals else 0
+        ),
+        regulatory_signals_length=(
+            len(report.regulatory_signals) if report.regulatory_signals else 0
+        ),
+        risks_assessment_length=len(report.risks_assessment),
+        recommendation_rationale_length=len(report.recommendation_rationale),
+        research_limitations_length=len(report.research_limitations),
+        questions_and_findings_count=len(report.questions_and_findings),
+        competitors_count=len(report.competitors),
+        finding_count_total=sum(
+            len(qf.findings) for qf in report.questions_and_findings
+        ),
+        finding_claim_lengths=[
+            len(f.claim)
+            for qf in report.questions_and_findings
+            for f in qf.findings
+        ],
+        finding_evidence_summary_lengths=[
+            len(f.evidence_summary)
+            for qf in report.questions_and_findings
+            for f in qf.findings
+        ],
+        finding_confidence_rationale_lengths=[
+            len(f.confidence_rationale)
+            for qf in report.questions_and_findings
+            for f in qf.findings
+        ],
+        evidence_gap_lengths=[
+            len(qf.evidence_gap) if qf.evidence_gap else 0
+            for qf in report.questions_and_findings
+        ],
+        citation_count_total=sum(
+            len(f.citations)
+            for qf in report.questions_and_findings
+            for f in qf.findings
+        )
+        + sum(len(c.citations) for c in report.competitors),
     )
 
-    # Log aggregates only — NEVER log report content, field text, or idea content.
     _logger.info(
-        "synthesizer completed",
-        recommendation=parsed.overall_recommendation,
-        finding_count=total_finding_count,
-        competitor_count=len(parsed.competitors),
-        total_citation_count=total_citation_count,
-        question_count=len(parsed.questions_and_findings),
+        "synthesizer complete",
+        experiment_id=str(experiment_id) if experiment_id else None,
+        phase="synthesizer",
+        prompt_name=PROMPT_NAME,
+        total_extracted_evidence_in_input=total_extracted_evidence_in_input,
+        questions_with_gap_note=questions_with_gap_note,
+        sentinel_question_count=sentinel_question_count,
+        finding_count=sum(len(qf.findings) for qf in report.questions_and_findings),
+        competitor_count=len(report.competitors),
+        total_citation_count=sum(
+            len(f.citations)
+            for qf in report.questions_and_findings
+            for f in qf.findings
+        )
+        + sum(len(c.citations) for c in report.competitors),
         cost_usd=str(meta.cost_usd),
         prompt_tokens=meta.prompt_tokens,
         completion_tokens=meta.completion_tokens,
-        experiment_id=str(experiment_id) if experiment_id else None,
+        latency_ms=meta.latency_ms,
+        recommendation=report.overall_recommendation,
     )
 
-    return parsed
+    return report
