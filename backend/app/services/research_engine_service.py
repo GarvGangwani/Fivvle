@@ -4,9 +4,10 @@ This module is the single owner of the RESEARCHING → RESEARCH_READY (or
 RESEARCH_FAILED) state transitions.  It is called by InProcessDispatcher and
 will be called by the Cloud Function wrapper in B3.
 
-State machine (B3 Reader — REFLECTING still unreachable until Reflector commit):
+State machine (B3 Reader + Reflector):
     RESEARCHING → RESEARCH_PLANNING → RESEARCH_SEARCHING
-                → RESEARCH_READING → RESEARCH_SYNTHESIZING → RESEARCH_READY
+                → RESEARCH_READING → RESEARCH_REFLECTING → RESEARCH_SYNTHESIZING
+                → RESEARCH_READY
 
 On any unrecoverable error:
     → RESEARCH_FAILED  (with sanitized research_error_detail)
@@ -192,9 +193,10 @@ async def run_research_engine_pipeline(
     commits each status transition atomically so the frontend polling endpoint
     always sees a consistent state.
 
-    State machine (B3 Reader):
+    State machine (B3 Reader + Reflector):
         RESEARCHING → RESEARCH_PLANNING → RESEARCH_SEARCHING
-                    → RESEARCH_READING → RESEARCH_SYNTHESIZING → RESEARCH_READY
+                    → RESEARCH_READING → RESEARCH_REFLECTING → RESEARCH_SYNTHESIZING
+                    → RESEARCH_READY
 
     On failure at any phase:
         → RESEARCH_FAILED (research_error_detail written, report NOT saved)
@@ -270,8 +272,6 @@ async def run_research_engine_pipeline(
 
             # ------------------------------------------------------------------
             # 2. RESEARCH_SEARCHING — searcher executes the research plan.
-            #    (RESEARCH_REFLECTING is a future B3-Reflector phase — defined
-            #    in ExperimentStatus but not yet in the pipeline.)
             # ------------------------------------------------------------------
             await _set_status(session, experiment_id, ExperimentStatus.RESEARCH_SEARCHING)
             await session.commit()
@@ -321,13 +321,15 @@ async def run_research_engine_pipeline(
                 execute_reader,
             )
 
+            settings = get_settings()
+
             try:
                 reader_outputs = await execute_reader(
                     experiment_id=experiment_id,
                     research_questions=research_plan.questions,
                     search_results_by_question=search_results,
                     db=session,
-                    settings=get_settings(),
+                    settings=settings,
                 )
             except ReaderTotalFailure as exc:
                 detail = _sanitize_error_detail("reader", exc)
@@ -362,7 +364,26 @@ async def run_research_engine_pipeline(
             )
 
             # ------------------------------------------------------------------
-            # 4. RESEARCH_SYNTHESIZING — synthesizer builds the report from Reader output.
+            # 4. RESEARCH_REFLECTING — evidence sufficiency + optional re-search/re-read.
+            # ------------------------------------------------------------------
+            await _set_status(session, experiment_id, ExperimentStatus.RESEARCH_REFLECTING)
+            await session.commit()
+
+            from app.services.reflector_service import execute_reflector  # noqa: PLC0415
+
+            # Reflector NEVER raises into the orchestrator per planning §6.
+            # On any internal failure, returns original inputs unchanged.
+            reader_outputs, search_results = await execute_reflector(
+                experiment_id=experiment_id,
+                research_plan=research_plan,
+                reader_outputs=reader_outputs,
+                search_results=search_results,
+                db=session,
+                settings=settings,
+            )
+
+            # ------------------------------------------------------------------
+            # 5. RESEARCH_SYNTHESIZING — synthesizer builds the report from Reader output.
             # ------------------------------------------------------------------
             await _set_status(session, experiment_id, ExperimentStatus.RESEARCH_SYNTHESIZING)
             await session.commit()
@@ -388,6 +409,8 @@ async def run_research_engine_pipeline(
             # Build the hydration index from Searcher results — used by _hydrate_draft
             # server-side to populate Citation.title and Citation.source_domain. NEVER
             # serialized into the LLM prompt. Per ADR 0012.
+            # CRITICAL: Re-build after Reflector so new Tavily rows from any re-search
+            # are covered (planning §7).
             citation_hydration_index = build_citation_hydration_index(search_results)
 
             try:
@@ -421,7 +444,7 @@ async def run_research_engine_pipeline(
                 return
 
             # ------------------------------------------------------------------
-            # 5. Persist the report and transition to RESEARCH_READY.
+            # 6. Persist the report and transition to RESEARCH_READY.
             # ------------------------------------------------------------------
             raw_report_dict = report.model_dump(mode="json")
             await _write_validation_report(session, experiment_id, raw_report_dict)

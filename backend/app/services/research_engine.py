@@ -1,6 +1,6 @@
-"""Research engine orchestrator — in-process Planner → Searcher → Reader → Synthesizer.
+"""Research engine orchestrator — in-process Planner → Searcher → Reader → Reflector → Synthesizer.
 
-Chains the four phases end-to-end and returns a validated ValidationReport. Runs
+Chains the five phases end-to-end and returns a validated ValidationReport. Runs
 entirely within the caller's process with no Cloud Function wrapping and no
 experiment state machine (see research_engine_service for B2.4/B3 state machine).
 
@@ -32,6 +32,7 @@ from app.schemas.refinement import RefinedIdea
 from app.schemas.validation_report import ValidationReport
 from app.services.planner_service import plan_research
 from app.services.reader_service import ReaderTotalFailure, execute_reader
+from app.services.reflector_service import execute_reflector
 from app.services.searcher_service import SearcherFailure, execute_search_plan
 from app.services.synthesizer_input import (
     build_citation_hydration_index,
@@ -75,7 +76,7 @@ async def run_research_engine(
     rubric_version: str = RUBRIC_VERSION_DEFAULT,
     experiment_id: UUID | None = None,
 ) -> ValidationReport:
-    """Run Planner → Searcher → Reader → Synthesizer; return ValidationReport.
+    """Run Planner → Searcher → Reader → Reflector → Synthesizer; return ValidationReport.
 
     In-process orchestrator (no experiment status writes). Matches the B3 pipeline
     shape used by research_engine_service (ADR 0012).
@@ -150,13 +151,14 @@ async def run_research_engine(
     # -------------------------------------------------------------------------
     # Phase 3: Reader
     # -------------------------------------------------------------------------
+    settings = get_settings()
     try:
         reader_outputs = await execute_reader(
             experiment_id=experiment_id,
             research_questions=research_plan.questions,
             search_results_by_question=search_results,
             db=db,
-            settings=get_settings(),
+            settings=settings,
         )
     except ReaderTotalFailure as exc:
         raise ResearchEngineFailure(phase="reader", cause=exc) from exc
@@ -174,7 +176,19 @@ async def run_research_engine(
     )
 
     # -------------------------------------------------------------------------
-    # Phase 4: Synthesizer
+    # Phase 4: Reflector (no status writes — mirrors research_engine_service)
+    # -------------------------------------------------------------------------
+    reader_outputs, search_results = await execute_reflector(
+        experiment_id=experiment_id,
+        research_plan=research_plan,
+        reader_outputs=reader_outputs,
+        search_results=search_results,
+        db=db,
+        settings=settings,
+    )
+
+    # -------------------------------------------------------------------------
+    # Phase 5: Synthesizer
     # -------------------------------------------------------------------------
     synth_input = build_synthesizer_input(
         refined_idea=refined_idea,
@@ -205,7 +219,7 @@ async def run_research_engine(
 
     _logger.info(
         "research engine completed",
-        phases_run=4,
+        phases_run=5,
         question_count=len(research_plan.questions),
         total_tavily_results=total_tavily_results,
         total_unique_citations_in_report=total_unique_citations,
