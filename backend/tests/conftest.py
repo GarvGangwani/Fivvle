@@ -133,5 +133,8 @@ async def _cleanup_test_users() -> AsyncGenerator[None, None]:
                 delete(User).where(User.firebase_uid == FAKE_FIREBASE_UID)
             )
             await session.commit()
+    except OSError:
+        # Postgres not reachable (Docker offline / CI flake) — skip cleanup for pure unit runs.
+        pass
     finally:
         await engine.dispose()

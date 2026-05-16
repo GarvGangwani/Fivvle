@@ -1,6 +1,6 @@
-"""State-machine unit tests for run_research_engine_pipeline (B2.4 / B3 Reader).
+"""State-machine unit tests for run_research_engine_pipeline (B2.4 / B3 Reader / Reflector).
 
-Eight tests, all sync (asyncio.get_event_loop().run_until_complete pattern,
+Orchestration tests, all sync (asyncio.get_event_loop().run_until_complete pattern,
 consistent with _force_experiment_status in the router tests):
 
   1. Happy path: planner + searcher + reader + synthesizer succeed → RESEARCH_READY.
@@ -30,10 +30,12 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.db.enums import ExperimentStatus
+from app.integrations.tavily import TavilyResult
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.services.research_engine_service import run_research_engine_pipeline
 from app.services.synthesizer_service import SynthesizerHallucinatedCitation
 from tests.routers.test_confirm_and_research_status import (
+    _AUTH_HEADER,
     _create_refined_experiment,
     _force_experiment_status,
     _read_experiment_fields,
@@ -80,6 +82,11 @@ def _fake_report() -> MagicMock:
     report.questions_and_findings = []
     report.overall_recommendation = "proceed"
     return report
+
+
+async def _reflector_identity(**kwargs: object) -> tuple[object, object]:
+    """Async passthrough matching execute_reflector's keyword-only API."""
+    return kwargs["reader_outputs"], kwargs["search_results"]
 
 
 def _fake_reader_outputs() -> dict[str, ReaderOutput]:
@@ -142,6 +149,12 @@ def test_happy_path_transitions_through_all_phases_to_ready(
         )
         stack.enter_context(
             patch(
+                "app.services.reflector_service.execute_reflector",
+                AsyncMock(side_effect=_reflector_identity),
+            )
+        )
+        stack.enter_context(
+            patch(
                 "app.services.synthesizer_input.build_synthesizer_input",
                 return_value=MagicMock(),
             )
@@ -159,6 +172,11 @@ def test_happy_path_transitions_through_all_phases_to_ready(
     call_kw = mock_synth.await_args.kwargs
     assert "citation_hydration_index" in call_kw
     assert call_kw["citation_hydration_index"] == {}
+    rs = client.get(f"/experiments/{exp_id}/research-status", headers=_AUTH_HEADER)
+    assert rs.status_code == 200
+    phases_json = rs.json().get("phases_completed") or []
+    phase_labels = [str(p) for p in phases_json]
+    assert any("RESEARCH_REFLECTING" in p for p in phase_labels), phase_labels
     fields = _read_experiment_fields(exp_id)
     assert fields["status"] == ExperimentStatus.RESEARCH_READY
     assert fields["research_error_detail"] is None
@@ -260,6 +278,12 @@ def test_synthesizer_exception_sets_research_failed_with_synthesizer_prefix(
         )
         stack.enter_context(
             patch(
+                "app.services.reflector_service.execute_reflector",
+                AsyncMock(side_effect=_reflector_identity),
+            )
+        )
+        stack.enter_context(
+            patch(
                 "app.services.synthesizer_input.build_synthesizer_input",
                 return_value=MagicMock(),
             )
@@ -309,6 +333,12 @@ def test_synthesizer_hallucinated_citation_sets_research_failed_with_synthesizer
             patch(
                 "app.services.reader_service.execute_reader",
                 AsyncMock(return_value=_fake_reader_outputs()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reflector_service.execute_reflector",
+                AsyncMock(side_effect=_reflector_identity),
             )
         )
         stack.enter_context(
@@ -435,3 +465,275 @@ def test_subsequent_phases_not_called_after_planner_failure(
 
     fields = _read_experiment_fields(exp_id)
     assert fields["status"] == ExperimentStatus.RESEARCH_FAILED
+
+
+# ---------------------------------------------------------------------------
+# B3 Reflector orchestration wiring
+# ---------------------------------------------------------------------------
+
+
+async def _reflect_merge_reader_outputs(**kwargs: object) -> tuple[object, object]:
+    merged = dict(kwargs["reader_outputs"])  # type: ignore[arg-type]
+    merged["stub_q"] = ReaderOutput(
+        question_id="stub_q",
+        extracted_evidence=[
+            ExtractedEvidence(
+                source_url="https://post-reflector.example/x",
+                relevance="high",
+                verbatim_quote=None,
+                paraphrase="merged-paraphrase-marker",
+                named_entities=[],
+            ),
+        ],
+        evidence_gap_note=None,
+    )
+    return merged, kwargs["search_results"]
+
+
+async def _reflect_merge_search_results(**kwargs: object) -> tuple[object, object]:
+    sr = dict(kwargs["search_results"])  # type: ignore[arg-type]
+    sr["stub_q"] = [
+        TavilyResult(
+            title="post-reflector-row",
+            url="https://post-reflector.example/hydrate-target",
+            content="snippet-after-reflector",
+        ),
+    ]
+    return kwargs["reader_outputs"], sr
+
+
+def test_orchestrator_calls_execute_reflector_between_reader_and_synthesizer(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    """execute_reflector invoked once with orchestrator kwargs before synthesizer."""
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    mock_refl = AsyncMock(side_effect=_reflector_identity)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "app.services.planner_service.plan_research",
+                AsyncMock(return_value=_fake_research_plan()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.searcher_service.execute_search_plan",
+                AsyncMock(return_value={}),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reader_service.execute_reader",
+                AsyncMock(return_value=_fake_reader_outputs()),
+            )
+        )
+        stack.enter_context(
+            patch("app.services.reflector_service.execute_reflector", mock_refl),
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_input.build_synthesizer_input",
+                return_value=MagicMock(),
+            )
+        )
+        mock_synth = AsyncMock(return_value=_fake_report())
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_service.synthesize_report",
+                mock_synth,
+            )
+        )
+        _run_pipeline(exp_id)
+
+    mock_refl.assert_awaited_once()
+    kw = mock_refl.await_args.kwargs
+    assert set(kw.keys()) >= {
+        "experiment_id",
+        "research_plan",
+        "reader_outputs",
+        "search_results",
+        "db",
+        "settings",
+    }
+    mock_synth.assert_awaited_once()
+
+
+def test_orchestrator_proceeds_to_synthesizer_when_reflector_pass_through(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    mock_build = MagicMock(return_value=MagicMock())
+
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "app.services.planner_service.plan_research",
+                AsyncMock(return_value=_fake_research_plan()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.searcher_service.execute_search_plan",
+                AsyncMock(return_value={}),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reader_service.execute_reader",
+                AsyncMock(return_value=_fake_reader_outputs()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reflector_service.execute_reflector",
+                AsyncMock(side_effect=_reflector_identity),
+            ),
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_input.build_synthesizer_input",
+                mock_build,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_service.synthesize_report",
+                AsyncMock(return_value=_fake_report()),
+            )
+        )
+        _run_pipeline(exp_id)
+
+    built_ro = mock_build.call_args.kwargs["reader_outputs"]
+    assert built_ro["stub_q"].extracted_evidence[0].paraphrase == "stub evidence"
+
+
+def test_orchestrator_uses_merged_reader_outputs_when_reflector_modifies(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    mock_build = MagicMock(return_value=MagicMock())
+
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "app.services.planner_service.plan_research",
+                AsyncMock(return_value=_fake_research_plan()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.searcher_service.execute_search_plan",
+                AsyncMock(return_value={}),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reader_service.execute_reader",
+                AsyncMock(return_value=_fake_reader_outputs()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reflector_service.execute_reflector",
+                AsyncMock(side_effect=_reflect_merge_reader_outputs),
+            ),
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_input.build_synthesizer_input",
+                mock_build,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_service.synthesize_report",
+                AsyncMock(return_value=_fake_report()),
+            )
+        )
+        _run_pipeline(exp_id)
+
+    merged_ro = mock_build.call_args.kwargs["reader_outputs"]
+    assert merged_ro["stub_q"].extracted_evidence[0].paraphrase == (
+        "merged-paraphrase-marker"
+    )
+
+
+def test_orchestrator_rebuilds_citation_hydration_index_after_reflector(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    hydration_calls: list[object] = []
+
+    def capture_hydration(sr: object) -> dict[str, str]:
+        hydration_calls.append(sr)
+        return {"tracked": "yes"}
+
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "app.services.planner_service.plan_research",
+                AsyncMock(return_value=_fake_research_plan()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.searcher_service.execute_search_plan",
+                AsyncMock(return_value={}),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reader_service.execute_reader",
+                AsyncMock(return_value=_fake_reader_outputs()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reflector_service.execute_reflector",
+                AsyncMock(side_effect=_reflect_merge_search_results),
+            ),
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_input.build_synthesizer_input",
+                return_value=MagicMock(),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_input.build_citation_hydration_index",
+                side_effect=capture_hydration,
+            ),
+        )
+        mock_synth = AsyncMock(return_value=_fake_report())
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_service.synthesize_report",
+                mock_synth,
+            )
+        )
+        _run_pipeline(exp_id)
+
+    assert hydration_calls, "hydration index builder should run after reflector merge"
+    last_sr = hydration_calls[-1]
+    rows = last_sr["stub_q"]  # type: ignore[index]
+    assert rows[0].url == "https://post-reflector.example/hydrate-target"
+    idx_passed_to_synth = mock_synth.await_args.kwargs["citation_hydration_index"]
+    assert idx_passed_to_synth == {"tracked": "yes"}

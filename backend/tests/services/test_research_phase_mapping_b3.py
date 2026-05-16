@@ -14,8 +14,14 @@ def test_phase_order_contains_research_reading_between_searching_and_synthesizin
     assert i_search < i_read < i_synth
 
 
-def test_phase_order_does_not_contain_research_reflecting() -> None:
-    assert ExperimentStatus.RESEARCH_REFLECTING not in rpm._RESEARCH_PHASE_ORDER
+def test_phase_order_contains_research_reflecting_between_reading_and_synthesizing() -> None:
+    """ADR 0013 / B3 §7: REFLECTING is a live pipeline phase between Reader and Synthesizer."""
+    order = rpm._RESEARCH_PHASE_ORDER
+    assert ExperimentStatus.RESEARCH_REFLECTING in order
+    i_read = order.index(ExperimentStatus.RESEARCH_READING)
+    i_refl = order.index(ExperimentStatus.RESEARCH_REFLECTING)
+    i_synth = order.index(ExperimentStatus.RESEARCH_SYNTHESIZING)
+    assert i_read < i_refl < i_synth
 
 
 def test_phase_display_contains_research_reading() -> None:

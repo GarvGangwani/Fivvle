@@ -107,6 +107,11 @@ def _reader_ok() -> dict[str, ReaderOutput]:
     }
 
 
+async def _reflector_passthrough(**kwargs: object) -> tuple[object, object]:
+    """Passthrough matching ``execute_reflector`` keyword-only API (ADR 0013 wiring)."""
+    return kwargs["reader_outputs"], kwargs["search_results"]
+
+
 def test_orchestrator_transitions_to_research_reading_before_reader(
     client: TestClient,
     mock_firebase: None,
@@ -157,7 +162,7 @@ def test_orchestrator_transitions_to_research_reading_before_reader(
     assert fields["status"] == ExperimentStatus.RESEARCH_READY
 
 
-def test_orchestrator_transitions_to_research_synthesizing_after_reader(
+def test_orchestrator_transitions_to_research_reflecting_after_reader(
     client: TestClient,
     mock_firebase: None,
 ) -> None:
@@ -184,6 +189,7 @@ def test_orchestrator_transitions_to_research_synthesizing_after_reader(
         ExperimentStatus.RESEARCH_PLANNING,
         ExperimentStatus.RESEARCH_SEARCHING,
         ExperimentStatus.RESEARCH_READING,
+        ExperimentStatus.RESEARCH_REFLECTING,
         ExperimentStatus.RESEARCH_SYNTHESIZING,
         ExperimentStatus.RESEARCH_READY,
     ]
@@ -206,6 +212,12 @@ def test_orchestrator_transitions_to_research_synthesizing_after_reader(
             patch(
                 "app.services.reader_service.execute_reader",
                 AsyncMock(return_value=_reader_ok()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reflector_service.execute_reflector",
+                AsyncMock(side_effect=_reflector_passthrough),
             )
         )
         stack.enter_context(

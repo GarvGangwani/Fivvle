@@ -24,7 +24,7 @@ user after each test (CASCADE removes experiments).
 from __future__ import annotations
 
 import asyncio
-from typing import Generator
+from collections.abc import Generator
 from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid4
 
@@ -35,7 +35,6 @@ from app.config import get_settings
 from app.db.enums import ExperimentStatus
 from app.dispatchers.dependencies import get_dispatcher_dep
 from app.main import app
-from tests.conftest import FAKE_FIREBASE_UID
 
 # ---------------------------------------------------------------------------
 # Shared test helpers
@@ -62,7 +61,9 @@ def _make_valid_refined_idea_dict() -> dict:
             "Can unit economics work at target price point given CAC?",
         ],
         "headline": "Stop answering the same policy questions every week.",
-        "subheadline": "An AI trained on your handbook handles every 'what's the policy on X?' question.",
+        "subheadline": (
+            "An AI trained on your handbook handles every 'what's the policy on X?' question."
+        ),
         "cta_text": "Join the waitlist",
     }
 
@@ -224,13 +225,14 @@ class TestGetPhasesCompleted:
         assert ExperimentStatus.RESEARCH_SEARCHING in completed
         assert len(completed) == 3
 
-    def test_synthesizing_returns_four_prior_phases(self) -> None:
+    def test_synthesizing_returns_five_prior_phases(self) -> None:
         completed = get_phases_completed(ExperimentStatus.RESEARCH_SYNTHESIZING)
-        assert len(completed) == 4
-
-    def test_ready_returns_five_prior_phases(self) -> None:
-        completed = get_phases_completed(ExperimentStatus.RESEARCH_READY)
+        assert ExperimentStatus.RESEARCH_REFLECTING in completed
         assert len(completed) == 5
+
+    def test_ready_returns_six_prior_phases(self) -> None:
+        completed = get_phases_completed(ExperimentStatus.RESEARCH_READY)
+        assert len(completed) == 6
 
     def test_failed_returns_empty(self) -> None:
         # Can't determine where failure occurred from status alone.
@@ -396,7 +398,8 @@ def test_confirm_on_research_failed_clears_error_detail(
     # DB: research_error_detail must be NULL.
     post = _read_experiment_fields(experiment_id)
     assert post["research_error_detail"] is None, (
-        f"Expected research_error_detail=None after re-dispatch, got: {post['research_error_detail']!r}"
+        "Expected research_error_detail=None after re-dispatch, got: "
+        f"{post['research_error_detail']!r}"
     )
 
     # /research-status must NOT surface the old error (status is RESEARCHING, not FAILED).
@@ -598,10 +601,8 @@ def test_research_status_wrong_owner_returns_404_matching_nonexistent_response(
 
 
 # ---------------------------------------------------------------------------
-# /research-status — lifecycle status matrix (5 statuses, parametrized)
+# /research-status — lifecycle status matrix (7 statuses, parametrized)
 # ---------------------------------------------------------------------------
-
-from app.services.research_phase_mapping import get_phase_label  # noqa: E402
 
 
 @pytest.mark.parametrize(
@@ -611,8 +612,9 @@ from app.services.research_phase_mapping import get_phase_label  # noqa: E402
         (ExperimentStatus.RESEARCH_PLANNING, 1),
         (ExperimentStatus.RESEARCH_SEARCHING, 2),
         (ExperimentStatus.RESEARCH_READING, 3),
-        (ExperimentStatus.RESEARCH_SYNTHESIZING, 4),
-        (ExperimentStatus.RESEARCH_READY, 5),
+        (ExperimentStatus.RESEARCH_REFLECTING, 4),
+        (ExperimentStatus.RESEARCH_SYNTHESIZING, 5),
+        (ExperimentStatus.RESEARCH_READY, 6),
     ],
     ids=lambda x: x.value if isinstance(x, ExperimentStatus) else str(x),
 )
@@ -640,7 +642,8 @@ def test_research_status_phase_info_matches_status(
     assert body["status"] == status.value
     assert body["phase_label"] == get_phase_label(status)
     assert len(body["phases_completed"]) == expected_phases_count, (
-        f"phases_completed for {status!r}: expected {expected_phases_count}, got {body['phases_completed']}"
+        f"phases_completed for {status!r}: expected {expected_phases_count}, "
+        f"got {body['phases_completed']}"
     )
     # error_detail must be absent for non-FAILED statuses.
     assert body["error_detail"] is None
@@ -699,7 +702,9 @@ def test_research_status_rate_limit_returns_429_after_30_requests(
     # First 30 requests must all succeed.
     for i in range(30):
         resp = client.get(url, headers=_AUTH_HEADER)
-        assert resp.status_code == 200, f"Request {i + 1}/30 unexpectedly returned {resp.status_code}"
+        assert resp.status_code == 200, (
+            f"Request {i + 1}/30 unexpectedly returned {resp.status_code}"
+        )
 
     # 31st request must be rate-limited.
     resp_31 = client.get(url, headers=_AUTH_HEADER)

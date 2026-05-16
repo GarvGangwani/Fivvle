@@ -1,11 +1,11 @@
 #!/usr/bin/env python
-"""B2.4 + B3 Reader + Synthesizer end-to-end smoke.
+"""B2.4 + B3 Reader + Reflector + Synthesizer end-to-end smoke.
 
 Runs ONLY against localhost with in-process dispatcher.
 
 Renamed intentionally **not**: keeping ``try_b2_4_end_to_end.py`` avoids breaking
 existing docs and muscle memory; this script waits long enough for the Reader +
-Synthesizer phases (B3).
+Reflector + Synthesizer phases (B3).
 
 Usage (token from env, fresh experiment):
     $env:FIVVLE_TEST_TOKEN = (uv run python scripts/_get_token.py)
@@ -102,6 +102,12 @@ def print_reader_phase_summary(exp_id: str, terminal_body: dict) -> None:
     print(f"phases_completed_json={json.dumps(phase_strs)}", flush=True)
     print(f"research_reading_in_phases_completed={reading_seen}", flush=True)
 
+    reflecting_seen = any(
+        p.endswith("RESEARCH_REFLECTING") or p == "RESEARCH_REFLECTING"
+        for p in phase_strs
+    )
+    print(f"research_reflecting_in_phases_completed={reflecting_seen}", flush=True)
+
     print(
         "Per-question Reader fields (question_id, extracted_evidence_count, "
         "has_evidence_gap) are not returned by /research-status; structured "
@@ -113,6 +119,29 @@ def print_reader_phase_summary(exp_id: str, terminal_body: dict) -> None:
         "URL / quote hallucination rollups are not persisted on the experiment; "
         "for systemic signals search logs for 'reader url hallucination detected' "
         "and 'reader quote hallucination rate exceeded'.",
+        flush=True,
+    )
+
+
+def print_reflector_phase_summary(exp_id: str, terminal_body: dict) -> None:
+    """Lightweight Reflector visibility — structured decision payloads are log-only."""
+    status = terminal_body.get("status")
+    phases = terminal_body.get("phases_completed") or []
+    phase_strs = [str(p) for p in phases]
+    reflecting_seen = any(
+        p.endswith("RESEARCH_REFLECTING") or p == "RESEARCH_REFLECTING"
+        for p in phase_strs
+    )
+
+    print("\n--- B3 Reflector smoke summary ---", flush=True)
+    print(f"experiment_id={exp_id}", flush=True)
+    print(f"terminal_status={status}", flush=True)
+    print(f"research_reflecting_in_phases_completed={reflecting_seen}", flush=True)
+    print(
+        "Reflector emits structured decisions via backend logs only "
+        "(events 'reflector decision complete', 'reflector phase complete'); "
+        "there is no experiment-scoped Reflector audit API — tail backend stdout "
+        "for counts (questions flagged/scheduled, decision_method=rule_v1).",
         flush=True,
     )
 
@@ -231,6 +260,7 @@ def main() -> None:
         status_url = step_confirm(client, exp_id)
         terminal_body = step_poll(client, status_url)
         print_reader_phase_summary(exp_id, terminal_body)
+        print_reflector_phase_summary(exp_id, terminal_body)
         print_synthesizer_smoke_summary(client, exp_id)
 
 
