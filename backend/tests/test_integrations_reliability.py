@@ -13,6 +13,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -55,6 +56,11 @@ async def _raise_connect_error():
     raise httpx.ConnectError("test error")
 
 
+async def _tavily_external_api_ids_before(session: AsyncSession) -> set[UUID]:
+    stmt = select(ExternalAPICall.id).where(ExternalAPICall.provider == "tavily")
+    return set((await session.execute(stmt)).scalars().all())
+
+
 def _open_breaker(name: str) -> CircuitBreaker:
     """Create a breaker with threshold=1, cooldown=9999, then fail it once → OPEN."""
     import asyncio
@@ -78,6 +84,10 @@ def _open_breaker(name: str) -> CircuitBreaker:
 async def test_tavily_open_breaker_logs_failure_row(db_session):
     """When Tavily breaker is OPEN, search() raises CircuitOpenError AND writes
     a zero-cost ExternalAPICall failure row."""
+    pre_ids = await _tavily_external_api_ids_before(db_session)
+    tag = uuid4().hex[:8]
+    isolation_query = f"isolation-tag-test_tavily_open_breaker_logs_failure_row-{tag}"
+
     breaker = CircuitBreaker(name="tavily", failure_threshold=1, cooldown_seconds=9999)
     _breakers["tavily"] = breaker
     with pytest.raises(httpx.ConnectError):
@@ -90,13 +100,15 @@ async def test_tavily_open_breaker_logs_failure_row(db_session):
 
     with patch("app.integrations.tavily._client", fake_client):
         with pytest.raises(CircuitOpenError):
-            await search(db_session, query="test")
+            await search(db_session, query=isolation_query)
         await db_session.commit()
 
     stmt = select(ExternalAPICall).where(
         ExternalAPICall.provider == "tavily",
         ExternalAPICall.success.is_(False),
     )
+    if pre_ids:
+        stmt = stmt.where(~ExternalAPICall.id.in_(pre_ids))
     rows = (await db_session.execute(stmt)).scalars().all()
     assert len(rows) == 1
     assert rows[0].cost_usd == Decimal("0")
@@ -114,6 +126,10 @@ async def test_tavily_open_breaker_logs_failure_row(db_session):
 @pytest.mark.asyncio
 async def test_tavily_retry_then_success_writes_one_row(db_session):
     """2 transient failures then success → ONE ExternalAPICall row."""
+    pre_ids = await _tavily_external_api_ids_before(db_session)
+    tag = uuid4().hex[:8]
+    isolation_query = f"isolation-tag-test_tavily_retry_then_success_writes_one_row-{tag}"
+
     call_count = 0
     fake_response = {"results": [{"title": "T", "url": "https://ex.com", "content": "c"}]}
 
@@ -132,7 +148,7 @@ async def test_tavily_retry_then_success_writes_one_row(db_session):
         patch("app.reliability.retry.asyncio.sleep", new_callable=AsyncMock),
         patch("app.integrations.tavily._client", fake_client),
     ):
-        results = await search(db_session, query="test")
+        results = await search(db_session, query=isolation_query)
         await db_session.commit()
 
     assert len(results) == 1
@@ -142,6 +158,8 @@ async def test_tavily_retry_then_success_writes_one_row(db_session):
         ExternalAPICall.provider == "tavily",
         ExternalAPICall.success.is_(True),
     )
+    if pre_ids:
+        stmt = stmt.where(~ExternalAPICall.id.in_(pre_ids))
     rows = (await db_session.execute(stmt)).scalars().all()
     assert len(rows) == 1  # only one row — the successful call
     for row in rows:

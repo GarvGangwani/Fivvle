@@ -13,6 +13,7 @@ disposed-engine issue caused by TestClient lifespan teardown.
 from collections.abc import AsyncGenerator
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import UUID, uuid4
 
 import pandas as pd
 import pytest
@@ -84,6 +85,11 @@ def _make_praw_comment(
     return comment
 
 
+async def _tavily_external_api_ids_before(session: AsyncSession) -> set[UUID]:
+    stmt = select(ExternalAPICall.id).where(ExternalAPICall.provider == "tavily")
+    return set((await session.execute(stmt)).scalars().all())
+
+
 def _make_trends_df(keywords: list[str]) -> pd.DataFrame:
     """Create a minimal pytrends-style DataFrame for two dates."""
     import datetime
@@ -102,6 +108,10 @@ def _make_trends_df(keywords: list[str]) -> pd.DataFrame:
 @pytest.mark.asyncio
 async def test_tavily_search_success_logs_row(db_session):
     """Successful Tavily search writes one ExternalAPICall row with correct cost."""
+    pre_ids = await _tavily_external_api_ids_before(db_session)
+    tag = uuid4().hex[:8]
+    isolation_query = f"isolation-tag-test_tavily_search_success_logs_row-{tag}"
+
     fake_response = {
         "results": [
             {"title": "Result 1", "url": "https://example.com/1", "content": "snippet 1", "score": 0.9},
@@ -115,7 +125,7 @@ async def test_tavily_search_success_logs_row(db_session):
     with patch("app.integrations.tavily._client", fake_client):
         results = await search(
             db_session,
-            query="startup ideas",
+            query=isolation_query,
             max_results=2,
             search_depth="basic",
         )
@@ -128,6 +138,8 @@ async def test_tavily_search_success_logs_row(db_session):
     assert results[0].score == 0.9
 
     stmt = select(ExternalAPICall).where(ExternalAPICall.provider == "tavily")
+    if pre_ids:
+        stmt = stmt.where(~ExternalAPICall.id.in_(pre_ids))
     rows = (await db_session.execute(stmt)).scalars().all()
     assert len(rows) == 1
     assert rows[0].operation == "search"
@@ -141,15 +153,21 @@ async def test_tavily_search_success_logs_row(db_session):
 @pytest.mark.asyncio
 async def test_tavily_search_advanced_cost(db_session):
     """Advanced search is billed at 2 credits ($0.016)."""
+    pre_ids = await _tavily_external_api_ids_before(db_session)
+    tag = uuid4().hex[:8]
+    isolation_query = f"isolation-tag-test_tavily_search_advanced_cost-{tag}"
+
     fake_response = {"results": [{"title": "R", "url": "https://x.com", "content": "c"}]}
     fake_client = MagicMock()
     fake_client.search = MagicMock(return_value=fake_response)
 
     with patch("app.integrations.tavily._client", fake_client):
-        await search(db_session, query="test", search_depth="advanced")
+        await search(db_session, query=isolation_query, search_depth="advanced")
         await db_session.commit()
 
     stmt = select(ExternalAPICall).where(ExternalAPICall.provider == "tavily")
+    if pre_ids:
+        stmt = stmt.where(~ExternalAPICall.id.in_(pre_ids))
     rows = (await db_session.execute(stmt)).scalars().all()
     assert len(rows) == 1
     assert rows[0].cost_usd == Decimal("0.016")
@@ -161,15 +179,21 @@ async def test_tavily_search_advanced_cost(db_session):
 @pytest.mark.asyncio
 async def test_tavily_search_failure_logs_zero_cost_row(db_session):
     """When Tavily SDK raises, logs a zero-cost failure row and re-raises."""
+    pre_ids = await _tavily_external_api_ids_before(db_session)
+    tag = uuid4().hex[:8]
+    isolation_query = f"isolation-tag-test_tavily_search_failure_logs_zero_cost_row-{tag}"
+
     fake_client = MagicMock()
     fake_client.search = MagicMock(side_effect=Exception("network error"))
 
     with patch("app.integrations.tavily._client", fake_client):
         with pytest.raises(Exception, match="network error"):
-            await search(db_session, query="fail")
+            await search(db_session, query=isolation_query)
         await db_session.commit()
 
     stmt = select(ExternalAPICall).where(ExternalAPICall.provider == "tavily")
+    if pre_ids:
+        stmt = stmt.where(~ExternalAPICall.id.in_(pre_ids))
     rows = (await db_session.execute(stmt)).scalars().all()
     assert len(rows) == 1
     assert rows[0].success is False
