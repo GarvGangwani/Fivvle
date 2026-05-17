@@ -1,6 +1,6 @@
 # Multi-Source Searcher — Planning Document
 
-**Status:** DRAFT — pending human review  
+**Status:** APPROVED — co-founder reviewed, decisions resolved, implementation prompt pending.
 **Phase:** Searcher (parallel multi-source evidence collection; extends ADR 0004 Searcher step)  
 **Related ADRs to write:** ADR 0014 (Multi-Source Search Inputs); ADR 0015 (Synthesizer Input Contract v2 — 5-field contract with `trends_signals`)  
 **Authors:** Cursor Composer (planning artifact); human co-founder (approval)
@@ -192,7 +192,7 @@ trends_signals: dict[str, TrendsSeries] | None
 
 **Relationship to ADR 0012:** ADR 0012 locks **`SynthesizerInput`** at **four fields** (`refined_idea`, `research_plan`, `reader_outputs`, `rubric_version`). Adding **`trends_signals`** is a **deliberate, scoped extension** — **not** a casual contract drift. **ADR 0015** will record the **5-field contract** and **supersede** the **"four fields"** statement in ADR 0012 using the normal **"Superseded by ADR 0015"** pattern **without deleting** ADR 0012 history.
 
-**Hydration / citations:** **`citation_hydration_index`** (Tavily URL metadata) **remains** for Tavily-originated URLs; **Reddit URLs** need **consistent hydration rules** (title / domain from merged search results) — **implementation detail** for the orchestrator, **out of scope** for this planning text beyond **acknowledging the join**.
+**Hydration / citations:** Reddit citations appear in the Synthesizer's final report alongside Tavily-backed citations. To avoid **bare URLs** and regression versus Tavily (where **`TavilyResult`** supplies title-class metadata today), Reddit citations need **at minimum** the **permalink URL**, **post title**, and **subreddit display name** when rendered. Extend the orchestrator's **`citation_hydration_index`** from **`dict[str, TavilyHydrationEntry]`** (Tavily-only today) to a **source-aware** structure: **either** **(a)** a **single dict keyed by URL** whose **`CitationHydrationEntry`** carries a **`source: Literal["tavily", "reddit"]`** discriminator plus **nullable Reddit-specific fields**, **or** **(b)** **per-source hydration indices** merged when building Synthesizer input. **Recommendation for v1: (a)** — **one lookup site** in **`synthesizer_service.py`**, **no per-source merge logic**, and ADR **0012**'s **`CitationHydrationEntry`** pattern stays **single-typed** across URLs. Per ADR **0012**, **hydration data never enters the Synthesizer LLM prompt**; it is **metadata only**, used to **enrich citation rendering after** the model produces text.
 
 **Keying note:** **`trends_signals`** keyed by **`question_id`** (or agreed global key — §7) keeps alignment with **`reader_outputs`**; final key choice is a **v2 review** item if partial.
 
@@ -274,18 +274,16 @@ Per **`docs/llm-schema-calibration.md`:**
 | **Reader prompts** | **Single** updated prompt vs **per-source** prompts | **Preserves ADR 0011** one-call-per-question model; **one place** to enforce **XML untrusted blocks**. |
 | **Source count v1** | **Three** (**Tavily + Reddit + Trends**) | Matches **.cursorrules** stack and **ADR 0004** Searcher intent **without** MVP-out-of-scope **news/Exa/Firecrawl** sprawl. |
 
-### Open questions for human v1 → v2 revision
+### Resolved questions
 
-1. **Reddit hallucination:** Is **URL-only** validation enough, or should **substring checks** on **quoted Reddit excerpts** mirror Tavily **quote guards** — given Reddit's **shorter, informal** text?
-
-2. **Mono-domain rule after Reddit:** Should **Reflector** treat **Reddit vs Tavily domains** as **distinct corroboration**, or **down-weight** same-thread **URL variants** so **`mono_domain`** is not **silent**?
-
-3. **Schema brittleness:** If **PRAW** or **pytrends** return shape drift in the wild, do we **version `RedditResult` / `TrendsSeries`**, or **isolate mappers** in integrations behind **strict internal DTOs**?
-
-4. **Partial-source observability:** What **run-level structured log** (besides per-question counts) best surfaces **"Tavily OK / Reddit down / Trends skipped"** for **support triage** without logging **content**?
-
-5. **Budget enforcement:** Should **hard caps** (e.g. **max Reddit calls per run**) be **config-driven** first-class settings, or **code constants** until calibration completes?
+| Topic | Decision | Rationale |
+|-------|----------|-----------|
+| **Reddit hallucination** (URL-only vs substring on Reddit quotes) | **Mirror Tavily's existing quote-substring guard.** **`RedditResult.selftext_excerpt`** is the **source-of-truth substring set**; **`verbatim_quote`** is **nulled** if substring verification fails, **same as Tavily**. | Reddit is **higher** prompt-injection risk than Tavily, not lower — **weaker** guards would be the wrong direction. |
+| **Mono-domain rule after Reddit** | **Reddit and Tavily domains count as distinct sources** for ADR **0013**'s **`mono_domain`** disjunct. | Assumption verified in a **calibration session post-ship**. |
+| **Schema brittleness** (PRAW / pytrends drift) | **Strict internal DTOs** in **`backend/app/integrations/{reddit,trends}.py`**. Provider-shape mapping stays **inside the wrapper**. **`RedditResult`** / **`TrendsSeries`** are **Fivvle-owned**; **PRAW types never leak** past the integration boundary. | Same pattern as **`tavily.py`**. |
+| **Partial-source observability** | Emit **`searcher_source_outcomes`** **once per pipeline run** via **`structlog`**: **per-source** success / failure / skip **counts** and **total latencies**. Per-question detail remains in **existing per-question debug logs**. **No content.** | Aligns with the **`planner_field_lengths`** instrumentation pattern **recently shipped**. |
+| **Budget enforcement** | **Config-driven** via **`Settings`** (e.g. **`searcher_max_reddit_calls_per_run`**, **`searcher_max_trends_calls_per_run`**). **Code constants are anti-calibration.** | Matches **`reader_concurrency_limit`** and **`reflector_max_refinement_waves`**. |
 
 ---
 
-*Document status: **DRAFT — pending human review.** v1 prepared for co-founder revision to v2; **not** APPROVED.*
+*Document status: **APPROVED — co-founder reviewed, decisions resolved, implementation prompt pending.** v2.*
