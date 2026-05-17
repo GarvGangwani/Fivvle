@@ -139,4 +139,21 @@ async def plan_research(
         experiment_id=str(experiment_id) if experiment_id else None,
     )
 
+    _logger.debug(
+        "planner_field_lengths",
+        experiment_id=str(experiment_id) if experiment_id else None,
+        prompt_name="planner_v1",
+        notes_for_synthesizer_len=(
+            len(parsed.notes_for_synthesizer)
+            if parsed.notes_for_synthesizer is not None
+            else None
+        ),
+        notes_for_synthesizer_present=parsed.notes_for_synthesizer is not None,
+        num_research_questions=len(parsed.questions),
+        max_question_len=max(
+            (len(q.question) for q in parsed.questions),
+            default=0,
+        ),
+    )
+
     return parsed

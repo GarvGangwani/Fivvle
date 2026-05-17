@@ -59,6 +59,13 @@ Sample: 4 calls against the abandoned-checkout-recovery raw idea
 
 ## Schemas pending calibration
 
+### ResearchPlan.notes_for_synthesizer (planner_v1)
+
+- **Status:** pending — instrumentation added 2026-05, awaiting ≥10 production runs with non-null values
+- **Current cap:** 600
+- **Observed failures:** One `InstructorRetryException` at unknown length against the 600 cap — no recoverable measurement (LLMCall stores audit metadata only; past runs cannot be measured retroactively)
+- **Recalibration trigger:** Re-run `backend/scripts/calibrate_planner_notes_cap.py` once a JSON output column or length-log harvester is added, **or** scrape Cloud Logging for `planner_field_lengths` events (DEBUG) and aggregate offline
+
 - `ResearchQuestion` (planner_v1) — was already recalibrated in B2.2
   (`question` max_length 300 → 500). No further data yet.
 - `Finding` (synthesizer_v1) — B2.3, no failure data yet

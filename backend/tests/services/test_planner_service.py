@@ -17,7 +17,9 @@ Pattern: patch complete_structured at the service module's import reference
 
 from __future__ import annotations
 
+import json
 from decimal import Decimal
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -345,6 +347,69 @@ async def test_plan_research_forwards_none_experiment_id(
 
     _, call_kwargs = mock_complete.call_args
     assert call_kwargs["experiment_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_planner_emits_field_length_debug_log(
+    valid_refined_idea: RefinedIdea,
+) -> None:
+    """Calibration DEBUG emit: planner_field_lengths must record lengths only.
+
+    FilteringBoundLogger suppresses DEBUG when the app configures INFO;
+    recorder patch matches reader_service rationale (capture_logs() after startup).
+    """
+
+    captured_debug: list[dict[str, Any]] = []
+
+    def _capture_debug(evt: object, **_kw: object) -> None:
+        captured_debug.append({"event": evt, **_kw})
+
+    experiment_id = uuid4()
+    notes_blob = "x" * 250
+    lengths = [12, 24, 7, 100, 33]
+    questions = [
+        ResearchQuestion(
+            id=f"q{i}",
+            question="?" * lengths[i - 1],
+            rationale=(
+                "Rationale for investigability via public sources; tuned length fits schema."
+            ),
+            search_queries=[f"tavily query for q{i}"],
+        )
+        for i in range(1, 6)
+    ]
+    plan_with_notes = ResearchPlan(questions=questions, notes_for_synthesizer=notes_blob)
+    db = AsyncMock(spec=AsyncSession)
+    mock_meta = _make_mock_llm_result()
+    mock_complete = AsyncMock(return_value=(plan_with_notes, mock_meta))
+
+    with patch(
+        "app.services.planner_service.llm_client.complete_structured",
+        mock_complete,
+    ), patch(
+        "app.services.planner_service._logger.debug",
+        side_effect=_capture_debug,
+    ) as dbg_mock:
+        await plan_research(
+            db=db,
+            refined_idea=valid_refined_idea,
+            experiment_id=experiment_id,
+        )
+
+    field_len_events = [e for e in captured_debug if e.get("event") == "planner_field_lengths"]
+    assert dbg_mock.called, "instrumentation uses _logger.debug"
+    assert len(field_len_events) == 1, captured_debug
+
+    ev = field_len_events[0]
+    assert ev["notes_for_synthesizer_len"] == 250
+    assert ev["notes_for_synthesizer_present"] is True
+    assert ev["num_research_questions"] == 5
+    assert ev["experiment_id"] == str(experiment_id)
+    assert ev["prompt_name"] == "planner_v1"
+    assert ev["max_question_len"] == max(lengths)
+
+    leaked = notes_blob in json.dumps(captured_debug, default=str, sort_keys=True)
+    assert not leaked
 
 
 # ---------------------------------------------------------------------------

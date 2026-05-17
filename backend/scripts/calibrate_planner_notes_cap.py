@@ -1,5 +1,10 @@
 """Empirical calibration helper for planner_v1 `notes_for_synthesizer` length.
 
+Until length-log harvesting is wired up (e.g. aggregating structured
+`planner_field_lengths` DEBUG events from Cloud Logging), this script will
+return zero non-null observations against `llm_calls` alone. The script logic
+remains correct; the durable store for planner output payloads is the blocker.
+
 Queries Postgres for planner LLM audit rows (`llm_calls.prompt_name`), attempts
 to read structured payloads if present, and prints length statistics plus the
 five longest notes.
