@@ -1,6 +1,6 @@
 # Anthropic Prompt Caching — Planning Document
 
-**Status:** DRAFT — pending human review  
+**Status:** APPROVED — co-founder reviewed, decisions resolved, implementation prompt pending.
 **Phase:** Research engine (cross-cutting LLM cost optimization; applies to all Anthropic Sonnet phases via `backend/app/llm/client.py`)  
 **Related ADRs to write:** See §12 (ADR number sequencing depends on multi-source Searcher ADRs **0014** / **0015**)  
 **Authors:** Cursor Composer (planning artifact); human co-founder (review for v2)  
@@ -172,12 +172,10 @@ Anthropic exposes **TTL choices** for cached content (per [Prompt caching](https
 | `backend/app/llm/client.py` | **Modify** | Extend `complete_structured()` with **cache breakpoint** plumbing; update **`cost_usd`** math for **cached** token buckets |
 | `backend/app/db/models/llm_call.py` | **Modify** | Add **cached / uncached / write** token columns **or** split **`prompt_tokens`** — final column layout TBD |
 | `backend/migrations/` | **New migration** | `LLMCall` schema update |
-| `backend/app/services/refinement_service.py` | **Modify** | Split prompts into zones |
 | `backend/app/services/planner_service.py` | **Modify** | Split prompts into zones |
 | `backend/app/services/reader_service.py` | **Modify** | Split prompts — **highest** ROI |
 | `backend/app/services/reflector_service.py` | **Modify** | Split prompts into zones |
 | `backend/app/services/synthesizer_service.py` | **Modify** | Split prompts — **large** input |
-| `backend/app/llm/prompts/refinement.py` | **Modify** | **Prefix layout** friendly to caching — **no** semantic drift vs v1 (verify in calibration) |
 | `backend/app/llm/prompts/planner.py` | **Modify** | Same |
 | `backend/app/llm/prompts/reader.py` | **Modify** | Same |
 | `backend/app/llm/prompts/reflector_query_refinement.py` | **Modify** | Same |
@@ -185,6 +183,8 @@ Anthropic exposes **TTL choices** for cached content (per [Prompt caching](https
 | `docs/adr/00NN-prompt-caching.md` | **New** | **ADR number = §12** |
 | `backend/scripts/cost_ledger_audit.py` | **Modify (optional / follow-up)** | Surface **caching** aggregates |
 | `backend/tests/llm/test_client.py` | **Modify** | **Caching** behaviour and **cost** decomposition tests |
+
+Refinement is excluded from v1 implementation per §4 and §15.1 — write amortization is poor for a single per-experiment call. Add to v2 file list only if cross-experiment Zone A traffic measurements justify it.
 
 ---
 
@@ -237,17 +237,17 @@ After implementation, run a **1-idea calibration** ( **Task H-1** / **F-1**-styl
 | **Persistence** | **Split token columns / explicit cache buckets** in **`LLMCall`** vs **derived-only** reporting | **Auditability**, **admin** dashboards, and **circuit-breaker** **cost** truth |
 | **Integration point** | **Single `client.py` extension** vs **per-phase** Anthropic SDK usage | **Enforces** `.cursorrules` **single-wrapper** rule and **ADR 0009** parity |
 | **Shipping order** | **Caching before multi-source** (sequence **not** parallelised for economics) | Multi-source **amplifies** Reader tokens — **remove** **uncached** tax **first** |
+| **v1 phase scope** | Skip Refinement; cache Planner / Reader / Reflector / Synthesizer | Single-call phase with no in-experiment fan-out — write cost exceeds read benefit at v1 traffic levels. |
+| **LLMCall NULL-handling for legacy rows** | COALESCE in queries (no backfill) | Backfill is destructive on historical data; legacy rows are pre-caching so cached_input_tokens = 0 is semantically correct, not missing. cost_ledger_audit.py and admin views must use COALESCE(cached_input_tokens, 0) in any SUM / aggregation. Implementation must verify the audit script handles this in the same commit that adds the columns. |
 | **Quality bar** | **No model downgrade** | Aligns with **`.cursorrules`** — caching is **not** a **Haiku** pivot |
 | **Failure semantics** | **Cost-only** degradation on miss | **No** user-facing **status** change |
 
 ### 15.2 Open questions (for **v2** human revision)
 
-1. **Refinement** is **one** LLM call per experiment — should it **opt out** of caching in **v1** because **write** cost may **exceed** **read** benefit unless **cross-experiment** Zone A traffic is **very** high?
-2. If **5-min TTL** for Zone B **expires** in the **gap** between **Reader completion** and **late Reflector-driven Reader re-entry** (unlikely but **possible** on **slow** runs), do we need **any** **1-hour** **Zone B**, or **accept** full-price refresh — what is the **measurement** plan?
-3. Should **Cloud Run / API startup** **pre-warm** Zone A (**one** **write** per deploy / hour) to **remove** **first-call** miss latency and cost for **first** experiment after **cold** start?
-4. If **Synthesizer** **rubric** moves for **prefix** stability, does **output** **quality** change? **Gate** on **`ValidationReport` equivalence** calibration (`synthesizer_v2` vs **cached-layout** **v2**).
-5. **`LLMCall`** migration — will **`NULL`** **legacy** rows for new **cache** columns **break** **admin** / **`cost_ledger_audit.py`** **aggregations**? **Define** **COALESCE** policy vs **backfill** job.
+1. If **5-min TTL** for Zone B **expires** in the **gap** between **Reader completion** and **late Reflector-driven Reader re-entry** (unlikely but **possible** on **slow** runs), do we need **any** **1-hour** **Zone B**, or **accept** full-price refresh — what is the **measurement** plan?
+2. Should **Cloud Run / API startup** **pre-warm** Zone A (**one** **write** per deploy / hour) to **remove** **first-call** miss latency and cost for **first** experiment after **cold** start?
+3. If **Synthesizer** **rubric** moves for **prefix** stability, does **output** **quality** change? **Gate** on **`ValidationReport` equivalence** calibration (`synthesizer_v2` vs **cached-layout** **v2**).
 
 ---
 
-*Document status: **DRAFT — pending human review.** Intended revision path: **v1 → v2** after co-founder edit (mirrors `docs/planning/eval-set-discipline.md` discipline).*
+*Document status: **APPROVED — co-founder reviewed, decisions resolved, implementation prompt pending.** v2.*
