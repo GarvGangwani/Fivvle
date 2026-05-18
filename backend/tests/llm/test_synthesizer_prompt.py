@@ -1,4 +1,4 @@
-"""Regression tests for the synthesizer prompt module (synthesizer_v2).
+"""Regression tests for the synthesizer prompt module (synthesizer_v2_cached).
 
 Guards prompt structure after ADR 0012: Reader-only evidence in user prompt,
 PROMPT_NAME bump, and security framing.
@@ -11,6 +11,7 @@ import pytest
 from app.llm.prompts.synthesizer import (
     PROMPT_NAME,
     SYNTHESIZER_SYSTEM_PROMPT,
+    SYNTHESIZER_ZONE_A_INSTRUCTIONS,
     build_synthesizer_user_prompt,
 )
 from app.schemas.planner import ResearchPlan, ResearchQuestion
@@ -93,22 +94,22 @@ def _make_synth_input(question_count: int = 5) -> SynthesizerInput:
 # ---------------------------------------------------------------------------
 
 
-def test_prompt_name_is_synthesizer_v2() -> None:
-    assert PROMPT_NAME == "synthesizer_v2"
+def test_prompt_name_is_synthesizer_v2_cached() -> None:
+    assert PROMPT_NAME == "synthesizer_v2_cached"
 
 
 # ---------------------------------------------------------------------------
-# 2. SYNTHESIZER_SYSTEM_PROMPT is non-empty
+# 2. SYNTHESIZER_SYSTEM_PROMPT empty; instructions in Zone A
 # ---------------------------------------------------------------------------
 
 
-def test_synthesizer_system_prompt_is_non_empty() -> None:
-    assert SYNTHESIZER_SYSTEM_PROMPT
-    assert len(SYNTHESIZER_SYSTEM_PROMPT.strip()) > 0
+def test_synthesizer_system_prompt_empty_zone_a_holds_instructions() -> None:
+    assert SYNTHESIZER_SYSTEM_PROMPT == ""
+    assert SYNTHESIZER_ZONE_A_INSTRUCTIONS.strip()
 
 
 # ---------------------------------------------------------------------------
-# 3. SYNTHESIZER_SYSTEM_PROMPT contains required markers
+# 3. SYNTHESIZER_ZONE_A_INSTRUCTIONS contains required markers
 # ---------------------------------------------------------------------------
 
 _REQUIRED_SYSTEM_PROMPT_MARKERS = [
@@ -132,8 +133,8 @@ _REQUIRED_SYSTEM_PROMPT_MARKERS = [
 
 @pytest.mark.parametrize("marker", _REQUIRED_SYSTEM_PROMPT_MARKERS)
 def test_synthesizer_system_prompt_contains_required_marker(marker: str) -> None:
-    assert marker in SYNTHESIZER_SYSTEM_PROMPT, (
-        f"SYNTHESIZER_SYSTEM_PROMPT is missing required marker {marker!r}. "
+    assert marker in SYNTHESIZER_ZONE_A_INSTRUCTIONS, (
+        f"SYNTHESIZER_ZONE_A_INSTRUCTIONS is missing required marker {marker!r}. "
         f"If you removed this section intentionally, update this test too."
     )
 
@@ -219,14 +220,14 @@ def test_user_prompt_contains_untrusted_framing_for_reader_evidence() -> None:
 
 
 def test_synthesizer_system_prompt_contains_injection_warning() -> None:
-    prompt_lower = SYNTHESIZER_SYSTEM_PROMPT.lower()
+    prompt_lower = SYNTHESIZER_ZONE_A_INSTRUCTIONS.lower()
     assert "not instructions" in prompt_lower or "not as instructions" in prompt_lower, (
-        "SYNTHESIZER_SYSTEM_PROMPT must contain injection protection framing."
+        "SYNTHESIZER_ZONE_A_INSTRUCTIONS must contain injection protection framing."
     )
 
 
 def test_synthesizer_system_prompt_mentions_reader_blocks_as_data() -> None:
-    assert "reader_evidence" in SYNTHESIZER_SYSTEM_PROMPT.lower()
+    assert "reader_evidence" in SYNTHESIZER_ZONE_A_INSTRUCTIONS.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -284,15 +285,15 @@ def test_user_prompt_notes_missing_reader_blocks() -> None:
 
 
 def test_system_prompt_contains_quotes_section() -> None:
-    assert "QUOTES —" in SYNTHESIZER_SYSTEM_PROMPT
+    assert "QUOTES —" in SYNTHESIZER_ZONE_A_INSTRUCTIONS
 
 
 def test_system_prompt_contains_verbatim_quote_instruction() -> None:
-    assert "verbatim_quote" in SYNTHESIZER_SYSTEM_PROMPT
+    assert "verbatim_quote" in SYNTHESIZER_ZONE_A_INSTRUCTIONS
 
 
 def test_system_prompt_source_quote_section_mentions_exact_phrase() -> None:
-    assert "exact" in SYNTHESIZER_SYSTEM_PROMPT
+    assert "exact" in SYNTHESIZER_ZONE_A_INSTRUCTIONS
 
 
 # ---------------------------------------------------------------------------
@@ -301,8 +302,8 @@ def test_system_prompt_source_quote_section_mentions_exact_phrase() -> None:
 
 
 def test_system_prompt_schema_section_describes_url_string_citations() -> None:
-    assert "URL strings only" in SYNTHESIZER_SYSTEM_PROMPT
+    assert "URL strings only" in SYNTHESIZER_ZONE_A_INSTRUCTIONS
 
 
 def test_system_prompt_schema_section_no_citation_object_fields() -> None:
-    assert "accessed_at" not in SYNTHESIZER_SYSTEM_PROMPT
+    assert "accessed_at" not in SYNTHESIZER_ZONE_A_INSTRUCTIONS

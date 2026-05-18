@@ -16,12 +16,20 @@ import pytest
 import structlog.testing
 
 from app.integrations.tavily import TavilyResult
-from app.llm.client import LLMResult
+from app.llm.client import LLMResult, USER_CACHE_ZONE_BOUNDARY
+from app.llm.prompts.reflector_query_refinement import (
+    PROMPT_NAME as REFLECTOR_PROMPT_NAME,
+    build_reflector_query_refinement_user_prompt,
+    reflector_query_refinement_v1_legacy_flat_user_and_system,
+)
 from app.schemas.planner import ResearchPlan, ResearchQuestion
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
+from app.schemas.refinement import RefinedIdea
 from app.services.reflector_service import (
     MAX_QUESTIONS_PER_RUN,
     MAX_REFINED_QUERIES_PER_QUESTION,
+    REFLECTOR_QUERY_CACHE_BREAKPOINTS,
+    _RefinedQueryListDraft,
     _evaluate_all_rules,
     _evaluate_question_rules,
     _extract_domain_from_url,
@@ -47,6 +55,32 @@ def _refinement_settings() -> MagicMock:
     s = MagicMock()
     s.reflector_max_refinement_waves = 1
     return s
+
+
+def _minimal_refined_idea_reflect() -> RefinedIdea:
+    return RefinedIdea(
+        refined_one_liner="Reflect cache wiring fixture.",
+        target_audience="Understaffed hospitals evaluating nurse tooling.",
+        value_proposition="Faster shift handoffs with structured notes.",
+        risks=[
+            "Do incumbent EMR tools already cover this workflow?",
+            "Will procurement block Slack-connected bots?",
+            "Can night-shift adoption succeed without admin buy-in?",
+        ],
+        headline="Handoffs without hallway chasing",
+        subheadline="Structured nurse notes synced safely.",
+        cta_text="Join waitlist",
+    )
+
+
+@pytest.fixture(autouse=True)
+def patch_reflector_load_refined_idea():
+    """``execute_reflector`` loads Experiment.refined_idea — stub DB access in tests."""
+    with patch(
+        "app.services.reflector_service._load_refined_idea_for_reader",
+        AsyncMock(return_value=_minimal_refined_idea_reflect()),
+    ):
+        yield
 
 
 def _research_question(qid: str) -> ResearchQuestion:
@@ -257,6 +291,8 @@ async def test_refine_queries_returns_validated_list_on_success() -> None:
             question=q,
             reader_output=ro,
             triggers=["sparse_atoms"],
+            refined_idea=_minimal_refined_idea_reflect(),
+            research_plan=_minimal_plan(("q1", "q2", "q3", "q4", "q5")),
         )
     assert out == ["refined query 1", "refined query 2", "refined query 3"]
     assert cost == Decimal("0.02")
@@ -278,6 +314,8 @@ async def test_refine_queries_returns_empty_list_on_llm_failure() -> None:
             question=q,
             reader_output=ro,
             triggers=["sparse_atoms"],
+            refined_idea=_minimal_refined_idea_reflect(),
+            research_plan=_minimal_plan(("q1", "q2", "q3", "q4", "q5")),
         )
     assert out == []
     assert cost == Decimal("0")
@@ -303,6 +341,8 @@ async def test_refine_queries_truncates_long_queries() -> None:
             question=q,
             reader_output=ro,
             triggers=["sparse_atoms"],
+            refined_idea=_minimal_refined_idea_reflect(),
+            research_plan=_minimal_plan(("q1", "q2", "q3", "q4", "q5")),
         )
     assert len(out) == 1
     assert len(out[0]) == 200
@@ -327,6 +367,8 @@ async def test_refine_queries_caps_at_max_refined_queries_per_question() -> None
             question=q,
             reader_output=ro,
             triggers=["sparse_atoms"],
+            refined_idea=_minimal_refined_idea_reflect(),
+            research_plan=_minimal_plan(("q1", "q2", "q3", "q4", "q5")),
         )
     assert out == ["a", "b", "c"]
     assert len(out) == MAX_REFINED_QUERIES_PER_QUESTION
@@ -669,3 +711,155 @@ async def test_execute_reflector_logs_do_not_contain_quote_or_paraphrase_text() 
     assert leak_para not in blob
     assert leak_quote not in blob
     assert leak_tavily not in blob
+
+
+# ---------------------------------------------------------------------------
+# Prompt caching (reflector_query_refinement_v1_cached)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_reflector_passes_cache_breakpoints_to_client() -> None:
+    q = _research_question("q1")
+    ro = _make_reader_output("q1", [_atom("https://ex.com/z")])
+    db = MagicMock(spec=[])
+    draft = _RefinedQueryListDraft(queries=["a", "b"])
+    captured: dict = {}
+
+    async def capture_complete(*_a, **kw):
+        captured.update(kw)
+        return draft, _llm_meta()
+
+    with patch(
+        "app.services.reflector_service.llm_client.complete_structured",
+        AsyncMock(side_effect=capture_complete),
+    ):
+        await _refine_queries_for_question(
+            db=db,
+            experiment_id=uuid4(),
+            question=q,
+            reader_output=ro,
+            triggers=["sparse_atoms"],
+            refined_idea=_minimal_refined_idea_reflect(),
+            research_plan=_minimal_plan(("q1", "q2", "q3", "q4", "q5")),
+        )
+
+    bps = captured["cache_breakpoints"]
+    assert bps is not None
+    assert len(bps) == 2
+    assert bps[0].position == "user_zone_a_end" and bps[0].ttl == "1h"
+    assert bps[1].position == "user_zone_b_end" and bps[1].ttl == "5m"
+    assert bps == REFLECTOR_QUERY_CACHE_BREAKPOINTS
+
+
+def test_reflector_user_prompt_contains_zone_boundaries() -> None:
+    plan = _minimal_plan(("q1", "q2", "q3", "q4", "q5"))
+    q = plan.questions[0]
+    user = build_reflector_query_refinement_user_prompt(
+        refined_idea=_minimal_refined_idea_reflect(),
+        research_plan=plan,
+        question_id=q.id,
+        question_text=q.question,
+        trigger_signals=["sparse_atoms"],
+        evidence_count=1,
+        relevance_high_count=0,
+        relevance_medium_count=1,
+        relevance_low_count=0,
+        unique_domain_count=1,
+        existing_domains=["ex.com"],
+        original_search_queries=["initial-query"],
+        evidence_gap_note=None,
+        for_cache=True,
+    )
+    assert user.count(USER_CACHE_ZONE_BOUNDARY) == 2
+    zone_a, zone_b, zone_c = user.split(USER_CACHE_ZONE_BOUNDARY)
+    assert "You are a search strategist for Fivvle" in zone_a
+    assert "<refined_idea>" in zone_b and "<research_plan>" in zone_b
+    assert '<research_question id="q1">' in zone_c
+    assert "<existing_evidence_summary>" in zone_c
+
+
+def test_reflector_reflector_query_refinement_v1_cached_semantically_equivalent_to_v1() -> (
+    None
+):
+    import re
+
+    def norm(s: str) -> str:
+        return re.sub(r"\s+", " ", s).strip()
+
+    plan = _minimal_plan(("q1", "q2", "q3", "q4", "q5"))
+    q = plan.questions[0]
+    leg_sys, leg_user = reflector_query_refinement_v1_legacy_flat_user_and_system(
+        question_id=q.id,
+        question_text=q.question,
+        trigger_signals=["sparse_atoms"],
+        evidence_count=1,
+        relevance_high_count=0,
+        relevance_medium_count=1,
+        relevance_low_count=0,
+        unique_domain_count=1,
+        existing_domains=["ex.com"],
+        original_search_queries=["initial-query"],
+        evidence_gap_note=None,
+    )
+    cached_user = build_reflector_query_refinement_user_prompt(
+        refined_idea=_minimal_refined_idea_reflect(),
+        research_plan=plan,
+        question_id=q.id,
+        question_text=q.question,
+        trigger_signals=["sparse_atoms"],
+        evidence_count=1,
+        relevance_high_count=0,
+        relevance_medium_count=1,
+        relevance_low_count=0,
+        unique_domain_count=1,
+        existing_domains=["ex.com"],
+        original_search_queries=["initial-query"],
+        evidence_gap_note=None,
+        for_cache=True,
+    )
+    flat = norm(cached_user.replace(USER_CACHE_ZONE_BOUNDARY, ""))
+    assert norm(leg_sys) in flat
+    assert norm(leg_user) in flat
+    for anchor in (
+        "EVIDENCE-ONLY RULE",
+        "TRIGGER-AWARE REFINEMENT",
+        "SECURITY NOTICE",
+        "<task>",
+        "<existing_evidence_summary>",
+        "<closing_instruction>",
+        "trigger_signals",
+    ):
+        assert anchor in flat
+    assert REFLECTOR_PROMPT_NAME == "reflector_query_refinement_v1_cached"
+
+
+@pytest.mark.asyncio
+async def test_reflector_falls_back_when_cache_breakpoints_none() -> None:
+    q = _research_question("q1")
+    ro = _make_reader_output("q1", [])
+    db = MagicMock(spec=[])
+    draft = _RefinedQueryListDraft(queries=["x", "y"])
+    captured: dict = {}
+
+    async def capture_complete(*_a, **kw):
+        captured.update(kw)
+        return draft, _llm_meta()
+
+    with patch(
+        "app.services.reflector_service.llm_client.complete_structured",
+        AsyncMock(side_effect=capture_complete),
+    ):
+        await _refine_queries_for_question(
+            db=db,
+            experiment_id=uuid4(),
+            question=q,
+            reader_output=ro,
+            triggers=["sparse_atoms"],
+            refined_idea=_minimal_refined_idea_reflect(),
+            research_plan=_minimal_plan(("q1", "q2", "q3", "q4", "q5")),
+            cache_breakpoints=None,
+        )
+
+    assert captured["cache_breakpoints"] is None
+    assert USER_CACHE_ZONE_BOUNDARY not in captured["user"]

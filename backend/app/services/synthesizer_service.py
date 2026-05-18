@@ -63,6 +63,13 @@ from app.services.synthesizer_input import CitationHydrationEntry, SynthesizerIn
 
 _logger = get_logger(__name__)
 
+SYNTHESIZER_CACHE_BREAKPOINTS: list[llm_client.CacheBreakpoint] = [
+    llm_client.CacheBreakpoint(position="user_zone_a_end", ttl="1h"),
+    llm_client.CacheBreakpoint(position="user_zone_b_end", ttl="5m"),
+]
+
+_SYNTH_CACHE_BPS_DEFAULT = object()
+
 # Claude Sonnet 4.6 — per .cursorrules: "Do not downgrade models to save pennies.
 # Use Claude for all research phases." The synthesizer is the highest-stakes call
 # in the pipeline — quality is the priority.
@@ -242,6 +249,7 @@ async def synthesize_report(
     synth_input: SynthesizerInput,
     citation_hydration_index: dict[str, CitationHydrationEntry],
     experiment_id: UUID | None = None,
+    cache_breakpoints: list[llm_client.CacheBreakpoint] | None | object = _SYNTH_CACHE_BPS_DEFAULT,
 ) -> ValidationReport:
     """Call Claude to synthesize a ValidationReport from Reader evidence.
 
@@ -258,6 +266,8 @@ async def synthesize_report(
             sent to the LLM. Used only in _hydrate_draft().
         experiment_id: FK for LLMCall cost rollup. Pass the Experiment.id if
             available; None is valid for script-level calls.
+        cache_breakpoints: Anthropic user-zone cache breakpoints; defaults to
+            :data:`SYNTHESIZER_CACHE_BREAKPOINTS`. Pass ``None`` to disable caching.
 
     Returns:
         Parsed and validated ValidationReport with full Citation objects.
@@ -305,7 +315,13 @@ async def synthesize_report(
         experiment_id=str(experiment_id) if experiment_id else None,
     )
 
-    user_prompt = build_synthesizer_user_prompt(synth_input)
+    if cache_breakpoints is _SYNTH_CACHE_BPS_DEFAULT:
+        breakpoints: list[llm_client.CacheBreakpoint] | None = SYNTHESIZER_CACHE_BREAKPOINTS
+    else:
+        breakpoints = cache_breakpoints  # type: ignore[assignment]
+    use_cache = breakpoints is not None
+    user_prompt = build_synthesizer_user_prompt(synth_input, for_cache=use_cache)
+    cache_breakpoints_used = len(breakpoints) if breakpoints else 0
 
     draft, meta = await llm_client.complete_structured(
         db,
@@ -320,6 +336,7 @@ async def synthesize_report(
         max_retries=2,
         experiment_id=experiment_id,
         phase="synthesizer",
+        cache_breakpoints=breakpoints,
     )
 
     _assert_draft_citations_allowlisted(draft, allowed_urls, experiment_id)
@@ -329,6 +346,7 @@ async def synthesize_report(
     _logger.debug(
         "synthesizer field length distribution",
         experiment_id=str(experiment_id) if experiment_id else None,
+        cache_breakpoints_used=cache_breakpoints_used,
         executive_summary_length=len(report.executive_summary),
         market_signals_length=len(report.market_signals),
         distribution_signals_length=(

@@ -1,7 +1,21 @@
 """Reflector query-refinement prompt: LLM emits 2-3 Tavily queries for flagged questions.
 
-PROMPT_NAME is logged to LLMCall.prompt_name. Bump the suffix (v2, ...) on any
-meaningful prompt edit so cost-analytics stays versioned.
+Prompt caching layout (``reflector_query_refinement_v1_cached``) splits the user
+message into zones separated by ``USER_CACHE_ZONE_BOUNDARY`` (from
+``app.llm.client``):
+
+- **Zone A** — Global stable instructions plus structured-output rules for this
+  prompt version. Cached with **1-hour** TTL (``user_zone_a_end``).
+- **Zone B** — Per-experiment stable: ``RefinedIdea`` and ``ResearchPlan`` JSON in
+  tagged blocks (shared across up to four refinement calls per experiment).
+  Cached with **5-minute** TTL (``user_zone_b_end``).
+- **Zone C** — Per-call dynamic: the research question text and the serialized
+  evidence summary aggregates for that question.
+
+**Within-run savings:** the second through fourth refinement calls on the same
+experiment reuse Zone B cache entries after the first call warms them.
+
+PROMPT_NAME is logged to LLMCall.prompt_name.
 
 Reflector selects questions via deterministic rules (ADR 0013); this prompt only
 runs for scheduled questions — one small structured call each to propose fresh
@@ -16,18 +30,29 @@ Per AGENTS.md "Logging hygiene":
   - Do not log prompts or replies at INFO in callers; aggregation only.
 
 Exports:
-    PROMPT_NAME                         -- stable version string
-    REFLECTOR_QUERY_REFINEMENT_SYSTEM_PROMPT -- system prompt
-    build_reflector_query_refinement_user_prompt(...)
+    PROMPT_NAME — ``reflector_query_refinement_v1_cached``
+    PROMPT_NAME_V1_LEGACY — ``reflector_query_refinement_v1``
+    REFLECTOR_QUERY_REFINEMENT_SYSTEM_PROMPT — empty; instructions are in Zone A
+    REFLECTOR_QUERY_REFINEMENT_ZONE_A_INSTRUCTIONS — Zone A body (former system)
+    build_reflector_query_refinement_user_prompt(...) — full user turn
+    reflector_query_refinement_v1_legacy_flat_user_and_system(...) — test helper
 """
 
 from __future__ import annotations
 
 import json
 
-PROMPT_NAME = "reflector_query_refinement_v1"
+from app.llm.client import USER_CACHE_ZONE_BOUNDARY
+from app.schemas.planner import ResearchPlan
+from app.schemas.refinement import RefinedIdea
 
-REFLECTOR_QUERY_REFINEMENT_SYSTEM_PROMPT = """\
+PROMPT_NAME = "reflector_query_refinement_v1_cached"
+
+PROMPT_NAME_V1_LEGACY = "reflector_query_refinement_v1"
+
+REFLECTOR_QUERY_REFINEMENT_SYSTEM_PROMPT = ""
+
+REFLECTOR_QUERY_REFINEMENT_ZONE_A_INSTRUCTIONS = """\
 You are a search strategist for Fivvle. Given one research question and a \
 compact summary of evidence found in an initial Tavily search pass, produce \
 between two and three refined Tavily-ready search queries that target clear \
@@ -109,7 +134,19 @@ research question only.\
 """
 
 
-def build_reflector_query_refinement_user_prompt(
+def _build_zone_b(refined_idea: RefinedIdea, research_plan: ResearchPlan) -> str:
+    idea_json = json.dumps(refined_idea.model_dump(mode="json"), indent=2, default=str)
+    plan_json = json.dumps(research_plan.model_dump(mode="json"), indent=2, default=str)
+    return (
+        "The following JSON blocks contain the refined idea and the full research "
+        "plan for this experiment; they are internal Fivvle data, not scraped web "
+        "pages.\n\n"
+        f"<refined_idea>\n{idea_json}\n</refined_idea>\n\n"
+        f"<research_plan>\n{plan_json}\n</research_plan>\n\n"
+    )
+
+
+def _build_zone_c(
     question_id: str,
     question_text: str,
     trigger_signals: list[str],
@@ -166,3 +203,113 @@ def build_reflector_query_refinement_user_prompt(
         "</closing_instruction>\n"
     )
     return "".join(parts)
+
+
+def build_reflector_query_refinement_user_messages(
+    *,
+    refined_idea: RefinedIdea,
+    research_plan: ResearchPlan,
+    question_id: str,
+    question_text: str,
+    trigger_signals: list[str],
+    evidence_count: int,
+    relevance_high_count: int,
+    relevance_medium_count: int,
+    relevance_low_count: int,
+    unique_domain_count: int,
+    existing_domains: list[str],
+    original_search_queries: list[str],
+    evidence_gap_note: str | None,
+) -> tuple[str, str, str]:
+    """Return (zone_a, zone_b, zone_c) without cache boundary sentinels."""
+    zone_a = REFLECTOR_QUERY_REFINEMENT_ZONE_A_INSTRUCTIONS
+    zone_b = _build_zone_b(refined_idea, research_plan)
+    zone_c = _build_zone_c(
+        question_id,
+        question_text,
+        trigger_signals,
+        evidence_count,
+        relevance_high_count,
+        relevance_medium_count,
+        relevance_low_count,
+        unique_domain_count,
+        existing_domains,
+        original_search_queries,
+        evidence_gap_note,
+    )
+    return zone_a, zone_b, zone_c
+
+
+def build_reflector_query_refinement_user_prompt(
+    *,
+    refined_idea: RefinedIdea,
+    research_plan: ResearchPlan,
+    question_id: str,
+    question_text: str,
+    trigger_signals: list[str],
+    evidence_count: int,
+    relevance_high_count: int,
+    relevance_medium_count: int,
+    relevance_low_count: int,
+    unique_domain_count: int,
+    existing_domains: list[str],
+    original_search_queries: list[str],
+    evidence_gap_note: str | None,
+    for_cache: bool = True,
+) -> str:
+    """Build the user-turn prompt for ``reflector_query_refinement_v1_cached``."""
+    zone_a, zone_b, zone_c = build_reflector_query_refinement_user_messages(
+        refined_idea=refined_idea,
+        research_plan=research_plan,
+        question_id=question_id,
+        question_text=question_text,
+        trigger_signals=trigger_signals,
+        evidence_count=evidence_count,
+        relevance_high_count=relevance_high_count,
+        relevance_medium_count=relevance_medium_count,
+        relevance_low_count=relevance_low_count,
+        unique_domain_count=unique_domain_count,
+        existing_domains=existing_domains,
+        original_search_queries=original_search_queries,
+        evidence_gap_note=evidence_gap_note,
+    )
+    if not for_cache:
+        return "\n\n".join(part for part in (zone_a, zone_b, zone_c) if part)
+    return (
+        f"{zone_a}{USER_CACHE_ZONE_BOUNDARY}"
+        f"{zone_b}{USER_CACHE_ZONE_BOUNDARY}"
+        f"{zone_c}"
+    )
+
+
+def reflector_query_refinement_v1_legacy_flat_user_and_system(
+    *,
+    question_id: str,
+    question_text: str,
+    trigger_signals: list[str],
+    evidence_count: int,
+    relevance_high_count: int,
+    relevance_medium_count: int,
+    relevance_low_count: int,
+    unique_domain_count: int,
+    existing_domains: list[str],
+    original_search_queries: list[str],
+    evidence_gap_note: str | None,
+) -> tuple[str, str]:
+    """Rebuild pre-H-3 ``(system_text, user_text)`` for semantic equivalence tests."""
+    return (
+        REFLECTOR_QUERY_REFINEMENT_ZONE_A_INSTRUCTIONS,
+        _build_zone_c(
+            question_id,
+            question_text,
+            trigger_signals,
+            evidence_count,
+            relevance_high_count,
+            relevance_medium_count,
+            relevance_low_count,
+            unique_domain_count,
+            existing_domains,
+            original_search_queries,
+            evidence_gap_note,
+        ),
+    )

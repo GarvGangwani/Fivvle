@@ -1,6 +1,6 @@
 """Unit tests for app.services.research_engine.
 
-Mocks Planner, Searcher, Reader, and Synthesizer. Tests verify:
+Mocks Planner, Searcher, Reader, Reflector passthrough, and Synthesizer. Tests verify:
   1. Happy path: all phases succeed, returns ValidationReport
   2. Planner fails → ResearchEngineFailure phase="planner"
   3. Searcher fails → ResearchEngineFailure phase="searcher"
@@ -151,6 +151,11 @@ def _make_valid_report(question_count: int = 5) -> ValidationReport:
     )
 
 
+async def _mock_execute_reflector_passthrough(**kwargs):
+    """Keeps unit tests DB-free: real Reflector loads Experiment.refined_idea from DB."""
+    return kwargs["reader_outputs"], kwargs["search_results"]
+
+
 # ---------------------------------------------------------------------------
 # 1. Happy path
 # ---------------------------------------------------------------------------
@@ -177,6 +182,10 @@ async def test_run_research_engine_happy_path() -> None:
         patch(
             "app.services.research_engine.execute_reader",
             AsyncMock(return_value=_fake_reader_outputs()),
+        ),
+        patch(
+            "app.services.research_engine.execute_reflector",
+            AsyncMock(side_effect=_mock_execute_reflector_passthrough),
         ),
         patch(
             "app.services.research_engine.synthesize_report",
@@ -219,6 +228,10 @@ async def test_run_research_engine_default_rubric_version() -> None:
         patch(
             "app.services.research_engine.execute_reader",
             AsyncMock(return_value=_fake_reader_outputs()),
+        ),
+        patch(
+            "app.services.research_engine.execute_reflector",
+            AsyncMock(side_effect=_mock_execute_reflector_passthrough),
         ),
         patch(
             "app.services.research_engine.synthesize_report",
@@ -357,6 +370,10 @@ async def test_run_research_engine_synthesizer_failure() -> None:
             AsyncMock(return_value=_fake_reader_outputs()),
         ),
         patch(
+            "app.services.research_engine.execute_reflector",
+            AsyncMock(side_effect=_mock_execute_reflector_passthrough),
+        ),
+        patch(
             "app.services.research_engine.synthesize_report",
             AsyncMock(side_effect=_FakeSynthError("schema violation")),
         ),
@@ -405,6 +422,10 @@ async def test_run_research_engine_forwards_experiment_id_to_all_phases() -> Non
         patch("app.services.research_engine.plan_research", _mock_plan),
         patch("app.services.research_engine.execute_search_plan", _mock_search),
         patch("app.services.research_engine.execute_reader", _mock_reader),
+        patch(
+            "app.services.research_engine.execute_reflector",
+            AsyncMock(side_effect=_mock_execute_reflector_passthrough),
+        ),
         patch("app.services.research_engine.synthesize_report", _mock_synth),
     ):
         await run_research_engine(
@@ -443,6 +464,10 @@ async def test_run_research_engine_forwards_rubric_version() -> None:
         patch(
             "app.services.research_engine.execute_reader",
             AsyncMock(return_value=_fake_reader_outputs()),
+        ),
+        patch(
+            "app.services.research_engine.execute_reflector",
+            AsyncMock(side_effect=_mock_execute_reflector_passthrough),
         ),
         patch("app.services.research_engine.synthesize_report", _mock_synth),
     ):

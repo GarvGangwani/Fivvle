@@ -37,12 +37,22 @@ from app.llm.prompts.reflector_query_refinement import (
 from app.logging_config import get_logger
 from app.schemas.planner import ResearchPlan, ResearchQuestion
 from app.schemas.reader import ReaderOutput
+from app.schemas.refinement import RefinedIdea
 from app.schemas.reflector import (
     QuestionReSearchSpec,
     ReflectorDecision,
 )
 
+from app.services.reader_service import _load_refined_idea_for_reader
+
 _logger = get_logger(__name__)
+
+REFLECTOR_QUERY_CACHE_BREAKPOINTS: list[llm_client.CacheBreakpoint] = [
+    llm_client.CacheBreakpoint(position="user_zone_a_end", ttl="1h"),
+    llm_client.CacheBreakpoint(position="user_zone_b_end", ttl="5m"),
+]
+
+_REFLECTOR_CACHE_BPS_DEFAULT = object()
 
 K_SPARSE_THRESHOLD = 2  # planning §2; calibration-pending
 MAX_QUESTIONS_PER_RUN = 4  # planning §5; calibration-pending
@@ -168,6 +178,9 @@ async def _refine_queries_for_question(
     question: ResearchQuestion,
     reader_output: ReaderOutput,
     triggers: list[str],
+    refined_idea: RefinedIdea,
+    research_plan: ResearchPlan,
+    cache_breakpoints: list[llm_client.CacheBreakpoint] | None | object = _REFLECTOR_CACHE_BPS_DEFAULT,
 ) -> tuple[list[str], Decimal]:
     """LLM call for one flagged question; ([], …) means skip that re-search."""
 
@@ -180,7 +193,16 @@ async def _refine_queries_for_question(
         if d:
             domains_set.add(d)
 
+    if cache_breakpoints is _REFLECTOR_CACHE_BPS_DEFAULT:
+        breakpoints: list[llm_client.CacheBreakpoint] | None = REFLECTOR_QUERY_CACHE_BREAKPOINTS
+    else:
+        breakpoints = cache_breakpoints  # type: ignore[assignment]
+    use_cache = breakpoints is not None
+    cache_breakpoints_used = len(breakpoints) if breakpoints else 0
+
     user_prompt = build_reflector_query_refinement_user_prompt(
+        refined_idea=refined_idea,
+        research_plan=research_plan,
         question_id=question.id,
         question_text=question.question,
         trigger_signals=triggers,
@@ -192,6 +214,7 @@ async def _refine_queries_for_question(
         existing_domains=sorted(domains_set),
         original_search_queries=question.search_queries,
         evidence_gap_note=reader_output.evidence_gap_note,
+        for_cache=use_cache,
     )
 
     try:
@@ -208,6 +231,7 @@ async def _refine_queries_for_question(
             max_retries=2,
             experiment_id=experiment_id,
             phase="reflector",
+            cache_breakpoints=breakpoints,
         )
 
         trimmed: list[str] = []
@@ -226,6 +250,13 @@ async def _refine_queries_for_question(
                 experiment_id=str(experiment_id),
             )
             return [], Decimal("0")
+
+        _logger.debug(
+            "reflector query refinement cache breakpoints",
+            question_id=question.id,
+            experiment_id=str(experiment_id),
+            cache_breakpoints_used=cache_breakpoints_used,
+        )
 
         _logger.info(
             "reflector query refinement complete",
@@ -434,6 +465,8 @@ async def execute_reflector(
         current_reader_outputs = reader_outputs
         current_search_results = search_results
 
+        refined_idea: RefinedIdea | None = None
+
         for wave in range(max_waves):
             flagged, skipped_due_to_budget = _evaluate_all_rules(
                 current_reader_outputs, research_plan
@@ -468,6 +501,11 @@ async def execute_reflector(
             if not flagged:
                 break
 
+            if refined_idea is None:
+                refined_idea = await _load_refined_idea_for_reader(db, experiment_id)
+
+            assert refined_idea is not None
+
             q_by_id: dict[str, ResearchQuestion] = {
                 q.id: q for q in research_plan.questions
             }
@@ -485,6 +523,8 @@ async def execute_reflector(
                         question=qobj,
                         reader_output=current_reader_outputs[qid],
                         triggers=triggers,
+                        refined_idea=refined_idea,
+                        research_plan=research_plan,
                     )
                 )
             refinement_batches = await asyncio.gather(*refinement_tasks)

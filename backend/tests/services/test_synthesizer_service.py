@@ -15,6 +15,12 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.tavily import TavilyResult
+from app.llm.client import USER_CACHE_ZONE_BOUNDARY
+from app.llm.prompts.synthesizer import (
+    PROMPT_NAME,
+    build_synthesizer_user_prompt,
+    synthesizer_v2_legacy_flat_user_and_system,
+)
 from app.schemas.planner import ResearchPlan, ResearchQuestion
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.schemas.refinement import RefinedIdea
@@ -36,6 +42,7 @@ from app.services.synthesizer_service import (
     _SYNTHESIZER_MODEL,
     _SYNTHESIZER_PROVIDER,
     _SYNTHESIZER_TEMPERATURE,
+    SYNTHESIZER_CACHE_BREAKPOINTS,
     SynthesizerHallucinatedCitation,
     synthesize_report,
 )
@@ -214,7 +221,7 @@ async def test_synthesize_report_calls_complete_structured_with_synthesizer_v2()
         )
 
     _, call_kwargs = mock_complete.call_args
-    assert call_kwargs["prompt_name"] == "synthesizer_v2"
+    assert call_kwargs["prompt_name"] == "synthesizer_v2_cached"
     assert call_kwargs["provider"] == _SYNTHESIZER_PROVIDER
     assert call_kwargs["model"] == _SYNTHESIZER_MODEL
 
@@ -381,7 +388,7 @@ async def test_synthesize_report_emits_synthesizer_complete_info_log() -> None:
     ]
     assert len(complete_calls) == 1
     kwargs = complete_calls[0].kwargs
-    assert kwargs["prompt_name"] == "synthesizer_v2"
+    assert kwargs["prompt_name"] == "synthesizer_v2_cached"
     assert kwargs["experiment_id"] == str(exp_id)
     assert kwargs["total_extracted_evidence_in_input"] == 5
     assert kwargs["finding_count"] == 5
@@ -456,3 +463,104 @@ async def test_synthesize_report_forwards_experiment_id() -> None:
 
     _, call_kwargs = mock_complete.call_args
     assert call_kwargs["experiment_id"] == exp_id
+
+
+# ---------------------------------------------------------------------------
+# Prompt caching (synthesizer_v2_cached)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_synthesizer_passes_cache_breakpoints_to_client() -> None:
+    db = AsyncMock(spec=AsyncSession)
+    synth_input = _make_synth_input()
+    citation_hydration_index = _hydration_index()
+    mock_draft = _make_draft_report()
+    mock_meta = _make_mock_llm_meta()
+    captured: dict = {}
+
+    async def capture_complete(*_a, **kw):
+        captured.update(kw)
+        return mock_draft, mock_meta
+
+    mock_complete = AsyncMock(side_effect=capture_complete)
+
+    with patch(
+        "app.services.synthesizer_service.llm_client.complete_structured",
+        mock_complete,
+    ):
+        await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=citation_hydration_index,
+        )
+
+    bps = captured["cache_breakpoints"]
+    assert bps is not None
+    assert len(bps) == 2
+    assert bps[0].position == "user_zone_a_end" and bps[0].ttl == "1h"
+    assert bps[1].position == "user_zone_b_end" and bps[1].ttl == "5m"
+    assert bps == SYNTHESIZER_CACHE_BREAKPOINTS
+
+
+def test_synthesizer_user_prompt_contains_zone_boundaries() -> None:
+    synth_input = _make_synth_input(question_count=5)
+    user = build_synthesizer_user_prompt(synth_input, for_cache=True)
+    assert user.count(USER_CACHE_ZONE_BOUNDARY) == 2
+    zone_a, zone_b, zone_c = user.split(USER_CACHE_ZONE_BOUNDARY)
+    assert "You are a market researcher at Fivvle" in zone_a
+    assert "<refined_idea>" in zone_b and "<reader_evidence_q1" in zone_b
+    assert zone_c == ""
+
+
+def test_synthesizer_synthesizer_v2_cached_semantically_equivalent_to_v2() -> None:
+    import re
+
+    def norm(s: str) -> str:
+        return re.sub(r"\s+", " ", s).strip()
+
+    synth_input = _make_synth_input(question_count=5)
+    leg_sys, leg_user = synthesizer_v2_legacy_flat_user_and_system(synth_input)
+    cached_user = build_synthesizer_user_prompt(synth_input, for_cache=True)
+    flat = norm(cached_user.replace(USER_CACHE_ZONE_BOUNDARY, ""))
+    assert norm(leg_sys) in flat
+    assert norm(leg_user) in flat
+    for anchor in (
+        "ANTI-HALLUCINATION RULES",
+        "SECURITY NOTICE — PROMPT INJECTION PROTECTION",
+        "RECOMMENDATION DECISION RULES",
+        "<task>",
+        "verbatim_quote",
+        "<closing_instruction>",
+        "rubric_version_used",
+    ):
+        assert anchor in flat
+    assert PROMPT_NAME == "synthesizer_v2_cached"
+
+
+@pytest.mark.asyncio
+async def test_synthesizer_falls_back_when_cache_breakpoints_none() -> None:
+    db = AsyncMock(spec=AsyncSession)
+    synth_input = _make_synth_input()
+    citation_hydration_index = _hydration_index()
+    mock_draft = _make_draft_report()
+    mock_meta = _make_mock_llm_meta()
+    captured: dict = {}
+
+    async def capture_complete(*_a, **kw):
+        captured.update(kw)
+        return mock_draft, mock_meta
+
+    with patch(
+        "app.services.synthesizer_service.llm_client.complete_structured",
+        AsyncMock(side_effect=capture_complete),
+    ):
+        await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=citation_hydration_index,
+            cache_breakpoints=None,
+        )
+
+    assert captured["cache_breakpoints"] is None
+    assert USER_CACHE_ZONE_BOUNDARY not in captured["user"]

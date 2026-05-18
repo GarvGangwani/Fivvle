@@ -1,12 +1,12 @@
 """Regression tests for the planner prompt module.
 
-These tests act as guards: if PLANNER_SYSTEM_PROMPT is edited in a way that
+These tests act as guards: if PLANNER_ZONE_A_INSTRUCTIONS is edited in a way that
 drops a critical section (security framing, honesty rules, coverage discipline,
 etc.), these tests catch the regression before the change ships.
 
 Tests:
-  1. PLANNER_SYSTEM_PROMPT is non-empty and contains specific required markers
-  2. PROMPT_NAME == "planner_v1"
+  1. PLANNER_ZONE_A_INSTRUCTIONS is non-empty and contains specific required markers
+  2. PROMPT_NAME == "planner_v1_cached"
   3. build_planner_user_prompt() output contains <refined_idea> XML tags
   4. build_planner_user_prompt() output contains the untrusted-data framing line
 
@@ -19,6 +19,7 @@ import pytest
 
 from app.llm.prompts.planner import (
     PLANNER_SYSTEM_PROMPT,
+    PLANNER_ZONE_A_INSTRUCTIONS,
     PROMPT_NAME,
     build_planner_user_prompt,
 )
@@ -56,7 +57,7 @@ def _make_refined_idea(**overrides) -> RefinedIdea:  # type: ignore[no-untyped-d
 
 
 # ---------------------------------------------------------------------------
-# 1. PLANNER_SYSTEM_PROMPT is non-empty and contains required markers
+# 1. PLANNER_ZONE_A_INSTRUCTIONS is non-empty and contains required markers
 # ---------------------------------------------------------------------------
 
 # These markers correspond to critical sections of the system prompt.
@@ -71,15 +72,15 @@ _REQUIRED_MARKERS = [
 ]
 
 
-def test_planner_system_prompt_is_non_empty() -> None:
-    """PLANNER_SYSTEM_PROMPT must not be empty or whitespace-only."""
-    assert PLANNER_SYSTEM_PROMPT
-    assert len(PLANNER_SYSTEM_PROMPT.strip()) > 0
+def test_planner_zone_a_instructions_is_non_empty() -> None:
+    """Instructions moved to user Zone A; legacy system constant is empty."""
+    assert PLANNER_SYSTEM_PROMPT == ""
+    assert PLANNER_ZONE_A_INSTRUCTIONS.strip()
 
 
 @pytest.mark.parametrize("marker", _REQUIRED_MARKERS)
-def test_planner_system_prompt_contains_required_marker(marker: str) -> None:
-    """PLANNER_SYSTEM_PROMPT must contain each required section marker.
+def test_planner_zone_a_instructions_contains_required_marker(marker: str) -> None:
+    """PLANNER_ZONE_A_INSTRUCTIONS must contain each required section marker.
 
     These markers guard against accidental truncation or section removal
     during prompt editing. They correspond to the spec requirements:
@@ -90,20 +91,20 @@ def test_planner_system_prompt_contains_required_marker(marker: str) -> None:
       - 'honesty': vague-idea honesty mechanism
       - 'search_queries': Tavily query craft guidance
     """
-    assert marker in PLANNER_SYSTEM_PROMPT, (
-        f"PLANNER_SYSTEM_PROMPT is missing required marker {marker!r}. "
+    assert marker in PLANNER_ZONE_A_INSTRUCTIONS, (
+        f"PLANNER_ZONE_A_INSTRUCTIONS is missing required marker {marker!r}. "
         f"If you removed this section intentionally, update this test too."
     )
 
 
 # ---------------------------------------------------------------------------
-# 2. PROMPT_NAME == "planner_v1"
+# 2. PROMPT_NAME == "planner_v1_cached"
 # ---------------------------------------------------------------------------
 
 
-def test_prompt_name_is_planner_v1() -> None:
-    """PROMPT_NAME must be 'planner_v1' — the stable version string for LLMCall logs."""
-    assert PROMPT_NAME == "planner_v1"
+def test_prompt_name_is_planner_v1_cached() -> None:
+    """PROMPT_NAME must be 'planner_v1_cached' — LLMCall logs + cache layout suffix."""
+    assert PROMPT_NAME == "planner_v1_cached"
 
 
 # ---------------------------------------------------------------------------

@@ -42,6 +42,13 @@ from app.schemas.refinement import RefinedIdea
 
 _logger = get_logger(__name__)
 
+PLANNER_CACHE_BREAKPOINTS: list[llm_client.CacheBreakpoint] = [
+    llm_client.CacheBreakpoint(position="user_zone_a_end", ttl="1h"),
+    llm_client.CacheBreakpoint(position="user_zone_b_end", ttl="5m"),
+]
+
+_PLANNER_CACHE_BPS_DEFAULT = object()
+
 # Claude Sonnet 4.6 — matches refinement_service.py. Per .cursorrules:
 # "Do not downgrade models to save pennies. Use Claude for all research phases."
 _PLANNER_MODEL = "claude-sonnet-4-6"
@@ -66,6 +73,7 @@ async def plan_research(
     db: AsyncSession,
     refined_idea: RefinedIdea,
     experiment_id: UUID | None = None,
+    cache_breakpoints: list[llm_client.CacheBreakpoint] | None | object = _PLANNER_CACHE_BPS_DEFAULT,
 ) -> ResearchPlan:
     """Call Claude to produce a ResearchPlan from a validated RefinedIdea.
 
@@ -82,6 +90,8 @@ async def plan_research(
             tags per AGENTS.md).
         experiment_id: FK for LLMCall cost rollup. Pass the Experiment.id if
             available; None is valid for script-level calls.
+        cache_breakpoints: Anthropic user-zone cache breakpoints; defaults to
+            :data:`PLANNER_CACHE_BREAKPOINTS`. Pass ``None`` to disable caching.
 
     Returns:
         Parsed and validated ResearchPlan.
@@ -109,7 +119,14 @@ async def plan_research(
         experiment_id=str(experiment_id) if experiment_id else None,
     )
 
-    user_prompt = build_planner_user_prompt(refined_idea)
+    if cache_breakpoints is _PLANNER_CACHE_BPS_DEFAULT:
+        breakpoints: list[llm_client.CacheBreakpoint] | None = PLANNER_CACHE_BREAKPOINTS
+    else:
+        breakpoints = cache_breakpoints  # type: ignore[assignment]
+    use_cache = breakpoints is not None
+    cache_breakpoints_used = len(breakpoints) if breakpoints else 0
+
+    user_prompt = build_planner_user_prompt(refined_idea, for_cache=use_cache)
 
     parsed, meta = await llm_client.complete_structured(
         db,
@@ -124,6 +141,7 @@ async def plan_research(
         max_retries=1,  # 1 retry = 2 total attempts; caps worst-case cost
         experiment_id=experiment_id,
         phase="planner",
+        cache_breakpoints=breakpoints,
     )
 
     total_search_query_count = sum(len(q.search_queries) for q in parsed.questions)
@@ -142,7 +160,8 @@ async def plan_research(
     _logger.debug(
         "planner_field_lengths",
         experiment_id=str(experiment_id) if experiment_id else None,
-        prompt_name="planner_v1",
+        prompt_name=PROMPT_NAME,
+        cache_breakpoints_used=cache_breakpoints_used,
         notes_for_synthesizer_len=(
             len(parsed.notes_for_synthesizer)
             if parsed.notes_for_synthesizer is not None

@@ -61,6 +61,8 @@ Sample: 4 calls against the abandoned-checkout-recovery raw idea
 
 Reader prompt restructured from `reader_v1` to `reader_v1_cached` (commit H-2) for Anthropic prompt caching. This is layout-only: instructions and schema guidance are unchanged relative to `reader_v1`, with experiment context (refined idea + research plan JSON) moved into a dedicated cache zone. Calibration after deployment should confirm output shape remains statistically equivalent to the pre-cache baseline (e.g. `extracted_evidence_count`, URL hallucination rate, quote substring guard trip rate).
 
+Synthesizer, Planner, and Reflector prompts restructured to `*_cached` variants (commit H-3) for prompt caching layout. Layout-only — no semantic content change. Calibration measurement post-implementation will verify each phase's output shape is statistically equivalent to its pre-cache baseline.
+
 ### ResearchPlan.notes_for_synthesizer (planner_v1)
 
 - **Status:** pending — instrumentation added 2026-05, awaiting ≥10 production runs with non-null values

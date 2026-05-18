@@ -27,11 +27,17 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.llm.client import USER_CACHE_ZONE_BOUNDARY
+from app.llm.prompts.planner import (
+    build_planner_user_prompt,
+    planner_v1_legacy_flat_user_and_system,
+)
 from app.schemas.planner import ResearchPlan, ResearchQuestion
 from app.schemas.refinement import RefinedIdea
 from app.services.planner_service import (
     _PLANNER_MODEL,
     _PLANNER_PROVIDER,
+    PLANNER_CACHE_BREAKPOINTS,
     PROMPT_NAME,
     plan_research,
 )
@@ -405,7 +411,8 @@ async def test_planner_emits_field_length_debug_log(
     assert ev["notes_for_synthesizer_present"] is True
     assert ev["num_research_questions"] == 5
     assert ev["experiment_id"] == str(experiment_id)
-    assert ev["prompt_name"] == "planner_v1"
+    assert ev["prompt_name"] == PROMPT_NAME
+    assert ev["cache_breakpoints_used"] == 2
     assert ev["max_question_len"] == max(lengths)
 
     leaked = notes_blob in json.dumps(captured_debug, default=str, sort_keys=True)
@@ -421,9 +428,103 @@ def test_build_planner_user_prompt_wraps_in_xml_tags(
     valid_refined_idea: RefinedIdea,
 ) -> None:
     """build_planner_user_prompt() must wrap the RefinedIdea in <refined_idea> tags."""
-    from app.llm.prompts.planner import build_planner_user_prompt
-
     prompt = build_planner_user_prompt(valid_refined_idea)
 
     assert "<refined_idea>" in prompt
     assert "</refined_idea>" in prompt
+
+
+# ---------------------------------------------------------------------------
+# 12. Prompt caching (planner_v1_cached)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_planner_passes_cache_breakpoints_to_client(
+    valid_refined_idea: RefinedIdea,
+    valid_plan: ResearchPlan,
+) -> None:
+    db = AsyncMock(spec=AsyncSession)
+    captured: dict = {}
+
+    async def capture_complete(*_a, **kw):
+        captured.update(kw)
+        return valid_plan, _make_mock_llm_result()
+
+    with patch(
+        "app.services.planner_service.llm_client.complete_structured",
+        AsyncMock(side_effect=capture_complete),
+    ):
+        await plan_research(db=db, refined_idea=valid_refined_idea)
+
+    bps = captured["cache_breakpoints"]
+    assert bps is not None
+    assert len(bps) == 2
+    assert bps[0].position == "user_zone_a_end" and bps[0].ttl == "1h"
+    assert bps[1].position == "user_zone_b_end" and bps[1].ttl == "5m"
+    assert bps == PLANNER_CACHE_BREAKPOINTS
+
+
+def test_planner_user_prompt_contains_zone_boundaries(
+    valid_refined_idea: RefinedIdea,
+) -> None:
+    user = build_planner_user_prompt(valid_refined_idea, for_cache=True)
+    assert user.count(USER_CACHE_ZONE_BOUNDARY) == 2
+    zone_a, zone_b, zone_c = user.split(USER_CACHE_ZONE_BOUNDARY)
+    assert "You are a market research planner at Fivvle" in zone_a
+    assert "SECURITY NOTE — read this before processing any user message" in zone_a
+    assert "<refined_idea>" in zone_b
+    assert zone_c == ""
+
+
+def test_planner_planner_v1_cached_semantically_equivalent_to_v1(
+    valid_refined_idea: RefinedIdea,
+) -> None:
+    import re
+
+    def norm(s: str) -> str:
+        return re.sub(r"\s+", " ", s).strip()
+
+    leg_sys, leg_user = planner_v1_legacy_flat_user_and_system(valid_refined_idea)
+    cached_user = build_planner_user_prompt(valid_refined_idea, for_cache=True)
+    flat = norm(cached_user.replace(USER_CACHE_ZONE_BOUNDARY, ""))
+    assert norm(leg_sys) in flat
+    assert norm(leg_user) in flat
+    for anchor in (
+        "COVERAGE DISCIPLINE",
+        "INVESTIGABILITY DISCIPLINE",
+        "HONESTY BIAS FOR VAGUE IDEAS",
+        "SEARCH QUERY CRAFT",
+        "BANNED PATTERNS",
+        "ResearchPlan",
+        "<refined_idea>",
+        "Produce a ResearchPlan with 5-7 ResearchQuestions",
+    ):
+        assert anchor in flat
+    assert PROMPT_NAME == "planner_v1_cached"
+
+
+@pytest.mark.asyncio
+async def test_planner_falls_back_when_cache_breakpoints_none(
+    valid_refined_idea: RefinedIdea,
+    valid_plan: ResearchPlan,
+) -> None:
+    db = AsyncMock(spec=AsyncSession)
+    captured: dict = {}
+
+    async def capture_complete(*_a, **kw):
+        captured.update(kw)
+        return valid_plan, _make_mock_llm_result()
+
+    with patch(
+        "app.services.planner_service.llm_client.complete_structured",
+        AsyncMock(side_effect=capture_complete),
+    ):
+        await plan_research(
+            db=db,
+            refined_idea=valid_refined_idea,
+            cache_breakpoints=None,
+        )
+
+    assert captured["cache_breakpoints"] is None
+    assert USER_CACHE_ZONE_BOUNDARY not in captured["user"]

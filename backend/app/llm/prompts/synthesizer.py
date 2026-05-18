@@ -5,31 +5,50 @@ four fields only: refined_idea, research_plan, reader_outputs, rubric_version.
 Raw Tavily snippets are NOT included. Citations must come from
 ExtractedEvidence.source_url values present in reader_outputs.
 
-PROMPT_NAME = "synthesizer_v2" — bumped from v1; different cognitive task
-(synthesis from pre-extracted evidence vs extraction from raw snippets).
-Increment to synthesizer_v3 on any future meaningful prompt change.
+Prompt caching layout (``synthesizer_v2_cached``) splits the user message into
+three zones separated by ``USER_CACHE_ZONE_BOUNDARY`` (from ``app.llm.client``):
 
-Per AGENTS.md "LLM and agent security":
-  - Reader output is post-validated server-side, but the prompt still wraps
-    it in tags and labels it as untrusted data (defense in depth).
-  - NEVER log full prompt content or reader_outputs values. Log token
-    counts and prompt_name only.
+- **Zone A** — Global stable instructions plus JSON/schema guidance (same across
+  all experiments sharing this prompt version). Cached with **1-hour** TTL
+  (``user_zone_a_end``).
+- **Zone B** — Per-experiment stable: ``RefinedIdea``, ``ResearchPlan``, and all
+  ``reader_evidence_*`` blocks plus closing rubric instruction. Cached with
+  **5-minute** TTL (``user_zone_b_end``).
+- **Zone C** — Reserved for per-call dynamic content; none in the current
+  single-call architecture. Empty string preserves the three-zone split required
+  when both user breakpoints are enabled.
+
+The system message passed to ``complete_structured()`` is empty; instruction
+text lives in Zone A of the user turn.
+
+**Savings caveat:** one LLM call per experiment ⇒ no within-run cache reads.
+Cross-experiment Zone A hits apply when many runs share the same prompt version.
+
+PROMPT_NAME is the stable identifier logged to LLMCall.prompt_name.
 
 Exports:
-    PROMPT_NAME                  -- stable version string for LLMCall.prompt_name
-    SYNTHESIZER_SYSTEM_PROMPT    -- system prompt, passed to complete_structured()
-    build_synthesizer_user_prompt() -- builds user-turn from SynthesizerInput
+    PROMPT_NAME — ``synthesizer_v2_cached``
+    PROMPT_NAME_V2_LEGACY — ``synthesizer_v2`` for analytics migration
+    SYNTHESIZER_SYSTEM_PROMPT — empty; instructions are in Zone A
+    SYNTHESIZER_ZONE_A_INSTRUCTIONS — Zone A body (former system prompt)
+    build_synthesizer_user_prompt() — full user turn with optional cache boundaries
+    synthesizer_v2_legacy_flat_user_and_system() — regression helper for tests
 """
 
 from __future__ import annotations
 
 import json
 
+from app.llm.client import USER_CACHE_ZONE_BOUNDARY
 from app.services.synthesizer_input import SynthesizerInput
 
-PROMPT_NAME = "synthesizer_v2"
+PROMPT_NAME = "synthesizer_v2_cached"
 
-SYNTHESIZER_SYSTEM_PROMPT = """\
+PROMPT_NAME_V2_LEGACY = "synthesizer_v2"
+
+SYNTHESIZER_SYSTEM_PROMPT = ""
+
+SYNTHESIZER_ZONE_A_INSTRUCTIONS = """\
 You are a market researcher at Fivvle producing the founder-facing ValidationReport — \
 evidence-led output supporting proceed / iterate / pivot / kill / too_vague_to_recommend.
 
@@ -168,18 +187,7 @@ per planning §10 before tightening prose thresholds.
 """
 
 
-def build_synthesizer_user_prompt(synth_input: SynthesizerInput) -> str:
-    """Build the user-turn prompt for a synthesizer_v2 call.
-
-    Serializes SynthesizerInput into tagged XML sections. Reader payloads are
-    labeled untrusted per AGENTS.md even though they were validated server-side.
-
-    Args:
-        synth_input: Four-field input per ADR 0012.
-
-    Returns:
-        Full user-turn string for ``complete_structured(..., user=...)``.
-    """
+def _build_zone_b(synth_input: SynthesizerInput) -> str:
     parts: list[str] = []
 
     parts.append(
@@ -245,3 +253,41 @@ def build_synthesizer_user_prompt(synth_input: SynthesizerInput) -> str:
     )
 
     return "".join(parts)
+
+
+def build_synthesizer_user_messages(
+    synth_input: SynthesizerInput,
+) -> tuple[str, str, str]:
+    """Return (zone_a, zone_b, zone_c) without cache boundary sentinels."""
+    zone_a = SYNTHESIZER_ZONE_A_INSTRUCTIONS
+    zone_b = _build_zone_b(synth_input)
+    zone_c = ""
+    return zone_a, zone_b, zone_c
+
+
+def build_synthesizer_user_prompt(
+    synth_input: SynthesizerInput,
+    *,
+    for_cache: bool = True,
+) -> str:
+    """Build the user-turn prompt for a synthesizer_v2_cached call.
+
+    When ``for_cache`` is True (default), inserts ``USER_CACHE_ZONE_BOUNDARY``
+    between zones A|B|C. Zone C is empty but preserves the three-part split for
+    Anthropic breakpoints. When False, concatenates zones with blank lines.
+    """
+    zone_a, zone_b, zone_c = build_synthesizer_user_messages(synth_input)
+    if not for_cache:
+        return "\n\n".join(part for part in (zone_a, zone_b, zone_c) if part)
+    return (
+        f"{zone_a}{USER_CACHE_ZONE_BOUNDARY}"
+        f"{zone_b}{USER_CACHE_ZONE_BOUNDARY}"
+        f"{zone_c}"
+    )
+
+
+def synthesizer_v2_legacy_flat_user_and_system(
+    synth_input: SynthesizerInput,
+) -> tuple[str, str]:
+    """Rebuild pre-H-3 ``(system_text, user_text)`` for semantic equivalence tests."""
+    return SYNTHESIZER_ZONE_A_INSTRUCTIONS, _build_zone_b(synth_input)
