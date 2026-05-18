@@ -18,10 +18,12 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.llm.client as llm_client
 from app.config import Settings
+from app.db.models.experiment import Experiment
 from app.integrations.tavily import TavilyResult
 from app.llm.prompts.reader import (
     PROMPT_NAME,
@@ -30,6 +32,7 @@ from app.llm.prompts.reader import (
 )
 from app.logging_config import get_logger
 from app.schemas.planner import ResearchQuestion
+from app.schemas.refinement import RefinedIdea
 from app.schemas.reader import (
     ExtractedEvidence,
     ExtractedEvidenceDraft,
@@ -56,6 +59,15 @@ _READER_PROVIDER = "anthropic"
 _READER_MAX_TOKENS = 4096
 _READER_TEMPERATURE = 0.3
 
+READER_CACHE_BREAKPOINTS: list[llm_client.CacheBreakpoint] = [
+    llm_client.CacheBreakpoint(position="user_zone_a_end", ttl="1h"),
+    llm_client.CacheBreakpoint(position="user_zone_b_end", ttl="5m"),
+]
+
+# Sentinel: default ``_extract_for_question(..., cache_breakpoints=...)`` uses
+# :data:`READER_CACHE_BREAKPOINTS`; pass ``None`` explicitly to disable caching.
+_READER_CACHE_BPS_DEFAULT = object()
+
 
 class ReaderTotalFailure(Exception):  # noqa: N818 — name fixed by planning doc §8.2
     """Raised when Reader produced no evidence for ANY question.
@@ -63,6 +75,20 @@ class ReaderTotalFailure(Exception):  # noqa: N818 — name fixed by planning do
     The orchestrator catches this and transitions the experiment to
     RESEARCH_FAILED. Per planning doc §8.2.
     """
+
+
+async def _load_refined_idea_for_reader(
+    db: AsyncSession,
+    experiment_id: UUID,
+) -> RefinedIdea:
+    """Load ``Experiment.refined_idea`` for Reader Zone B (per planning doc)."""
+    result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+    experiment = result.scalar_one_or_none()
+    if experiment is None:
+        raise ValueError(f"experiment not found: {experiment_id}")
+    if experiment.refined_idea is None:
+        raise ValueError(f"experiment {experiment_id} has no refined_idea — cannot run reader")
+    return RefinedIdea.model_validate(experiment.refined_idea)
 
 
 def _empty_llm_stats() -> dict[str, Any]:
@@ -118,6 +144,7 @@ def _emit_calibration_field_lengths(
     question_id: str,
     experiment_id: UUID,
     reader_output: ReaderOutput,
+    cache_breakpoints_used: int,
 ) -> None:
     """DEBUG calibration emit per docs/planning §13 and calibration procedure."""
     ev = reader_output.extracted_evidence
@@ -125,6 +152,7 @@ def _emit_calibration_field_lengths(
         "reader field length distribution",
         question_id=question_id,
         experiment_id=str(experiment_id),
+        cache_breakpoints_used=cache_breakpoints_used,
         source_url_lengths=[len(e.source_url) for e in ev],
         verbatim_quote_lengths=[
             len(e.verbatim_quote) if e.verbatim_quote else 0 for e in ev
@@ -271,15 +299,27 @@ async def _extract_for_question(
     experiment_id: UUID,
     question: ResearchQuestion,
     tavily_results: list[TavilyResult],
+    refined_idea: RefinedIdea,
+    research_questions: list[ResearchQuestion],
+    cache_breakpoints: list[llm_client.CacheBreakpoint] | None | object = _READER_CACHE_BPS_DEFAULT,
 ) -> tuple[ReaderOutput, dict[str, Any]]:
+    if cache_breakpoints is _READER_CACHE_BPS_DEFAULT:
+        breakpoints: list[llm_client.CacheBreakpoint] | None = READER_CACHE_BREAKPOINTS
+    else:
+        breakpoints = cache_breakpoints  # type: ignore[assignment]
     question_id = question.id
     tavily_result_count = len(tavily_results)
     result_dicts = [r.model_dump() for r in tavily_results]
+    use_cache = breakpoints is not None
     user_prompt = build_reader_user_prompt(
+        refined_idea=refined_idea,
+        research_questions=research_questions,
         question_id=question_id,
         question_text=question.question,
         tavily_results=result_dicts,
+        for_cache=use_cache,
     )
+    cache_breakpoints_used = len(breakpoints) if breakpoints else 0
 
     try:
         draft, meta = await llm_client.complete_structured(
@@ -295,6 +335,7 @@ async def _extract_for_question(
             max_retries=3,
             experiment_id=experiment_id,
             phase="reader",
+            cache_breakpoints=breakpoints,
         )
         reader_output, stats = _validate_question_output(
             draft,
@@ -317,6 +358,7 @@ async def _extract_for_question(
                 question_id=question_id,
                 experiment_id=experiment_id,
                 reader_output=reader_output,
+                cache_breakpoints_used=cache_breakpoints_used,
             )
 
         return reader_output, stats
@@ -363,6 +405,8 @@ async def execute_reader(
         ReaderTotalFailure: if every question ends with zero extracted evidence
         (planning doc §8.2).
     """
+    refined_idea = await _load_refined_idea_for_reader(db, experiment_id)
+
     semaphore = asyncio.Semaphore(settings.reader_concurrency_limit)
 
     async def _bounded(
@@ -375,6 +419,8 @@ async def execute_reader(
                 experiment_id=experiment_id,
                 question=question,
                 tavily_results=results,
+                refined_idea=refined_idea,
+                research_questions=research_questions,
             )
 
     task_outcomes: list[

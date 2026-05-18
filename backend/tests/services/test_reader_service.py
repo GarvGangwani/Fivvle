@@ -19,8 +19,14 @@ from pydantic import ValidationError
 
 import app.services.reader_service as reader_svc
 from app.integrations.tavily import TavilyResult
-from app.llm.client import LLMResult
+from app.llm.client import LLMResult, USER_CACHE_ZONE_BOUNDARY
+from app.llm.prompts.reader import (
+    PROMPT_NAME,
+    build_reader_user_prompt,
+    reader_v1_legacy_flat_user_and_system,
+)
 from app.schemas.planner import ResearchQuestion
+from app.schemas.refinement import RefinedIdea
 from app.schemas.reader import (
     ExtractedEvidenceDraft,
     ReaderOutput,
@@ -28,6 +34,7 @@ from app.schemas.reader import (
 )
 from app.services.reader_service import (
     QUOTE_HALLUCINATION_THRESHOLD,
+    READER_CACHE_BREAKPOINTS,
     SENTINEL_LLM_FAILURE_MESSAGE,
     SENTINEL_URL_THRESHOLD_MESSAGE,
     ReaderTotalFailure,
@@ -51,6 +58,27 @@ def _llm_meta() -> LLMResult:
 
 def _tavily(url: str = "https://example.com/a", content: str = "hello world slice") -> TavilyResult:
     return TavilyResult(title="t", url=url, content=content, score=0.9)
+
+
+def _minimal_refined_idea() -> RefinedIdea:
+    return RefinedIdea(
+        refined_one_liner="A test product for nurses.",
+        target_audience=(
+            "Nurses at understaffed hospitals who need faster handoff notes."
+        ),
+        value_proposition="Cuts handoff time from 40 minutes to 5 minutes.",
+        risks=[
+            "Are incumbent EMR note tools already sufficient for small clinics?",
+            "Will hospitals block third-party handoff integrations?",
+            "Can night-shift adoption reach critical mass without admin buy-in?",
+        ],
+        headline="Faster handoffs for night-shift nurses",
+        subheadline=(
+            "Structured notes that sync with existing EMR workflows "
+            "without extra clicks."
+        ),
+        cta_text="Join the waitlist",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -437,6 +465,8 @@ async def test_extract_for_question_success_returns_validated_output() -> None:
             experiment_id=exp_id,
             question=question,
             tavily_results=tavily_results,
+            refined_idea=_minimal_refined_idea(),
+            research_questions=[question],
         )
 
     assert isinstance(out, ReaderOutput)
@@ -451,6 +481,7 @@ async def test_extract_for_question_success_returns_validated_output() -> None:
     emit_cal.assert_called_once()
     assert emit_cal.call_args.kwargs["question_id"] == "q1"
     assert emit_cal.call_args.kwargs["experiment_id"] == exp_id
+    assert emit_cal.call_args.kwargs["cache_breakpoints_used"] == 2
 
 
 async def test_extract_for_question_llm_exception_returns_sentinel() -> None:
@@ -480,6 +511,8 @@ async def test_extract_for_question_llm_exception_returns_sentinel() -> None:
             experiment_id=exp_id,
             question=question,
             tavily_results=[_tavily()],
+            refined_idea=_minimal_refined_idea(),
+            research_questions=[question],
         )
 
     assert out.extracted_evidence == []
@@ -532,6 +565,15 @@ def _draft_for_question(qid: str, url: str) -> ReaderOutputDraft:
     )
 
 
+def _load_refined_idea_patch():
+    return patch.object(
+        reader_svc,
+        "_load_refined_idea_for_reader",
+        new_callable=AsyncMock,
+        return_value=_minimal_refined_idea(),
+    )
+
+
 @pytest.fixture
 def mock_settings_reader_parallelism() -> MagicMock:
     s = MagicMock()
@@ -571,9 +613,12 @@ async def test_execute_reader_runs_all_questions_concurrently(
 
     db = MagicMock(spec=[])
 
-    with patch(
-        "app.services.reader_service.llm_client.complete_structured",
-        AsyncMock(side_effect=fake_complete_fixed),
+    with (
+        _load_refined_idea_patch(),
+        patch(
+            "app.services.reader_service.llm_client.complete_structured",
+            AsyncMock(side_effect=fake_complete_fixed),
+        ),
     ):
         outputs = await execute_reader(
             experiment_id=exp_id,
@@ -611,9 +656,12 @@ async def test_execute_reader_collects_partial_success() -> None:
 
     db = MagicMock(spec=[])
 
-    with patch(
-        "app.services.reader_service.llm_client.complete_structured",
-        AsyncMock(side_effect=selective_complete_v2),
+    with (
+        _load_refined_idea_patch(),
+        patch(
+            "app.services.reader_service.llm_client.complete_structured",
+            AsyncMock(side_effect=selective_complete_v2),
+        ),
     ):
         outs = await execute_reader(
             experiment_id=exp_id,
@@ -638,10 +686,14 @@ async def test_execute_reader_raises_total_failure_when_all_empty() -> None:
 
     db = MagicMock(spec=[])
 
-    with patch(
-        "app.services.reader_service.llm_client.complete_structured",
-        AsyncMock(return_value=(empty_draft, _llm_meta())),
-    ), pytest.raises(ReaderTotalFailure):
+    with (
+        _load_refined_idea_patch(),
+        patch(
+            "app.services.reader_service.llm_client.complete_structured",
+            AsyncMock(return_value=(empty_draft, _llm_meta())),
+        ),
+        pytest.raises(ReaderTotalFailure),
+    ):
         await execute_reader(
             experiment_id=exp_id,
             research_questions=questions,
@@ -682,6 +734,7 @@ async def test_execute_reader_emits_run_level_url_error_when_hallucinations_pres
     db = MagicMock(spec=[])
 
     with (
+        _load_refined_idea_patch(),
         patch(
             "app.services.reader_service.llm_client.complete_structured",
             AsyncMock(return_value=(draft, _llm_meta())),
@@ -725,6 +778,7 @@ async def test_execute_reader_emits_run_level_quote_error_when_threshold_exceede
     db = MagicMock(spec=[])
 
     with (
+        _load_refined_idea_patch(),
         patch(
             "app.services.reader_service.llm_client.complete_structured",
             AsyncMock(return_value=(draft, _llm_meta())),
@@ -757,6 +811,7 @@ async def test_execute_reader_does_not_emit_url_error_when_clean() -> None:
     db = MagicMock(spec=[])
 
     with (
+        _load_refined_idea_patch(),
         patch(
             "app.services.reader_service.llm_client.complete_structured",
             AsyncMock(return_value=(draft, _llm_meta())),
@@ -773,6 +828,145 @@ async def test_execute_reader_does_not_emit_url_error_when_clean() -> None:
 
     errs = [e for e in cap if e.get("event") == "reader url hallucination detected"]
     assert errs == []
+
+
+# ---------------------------------------------------------------------------
+# Prompt caching (reader_v1_cached)
+# ---------------------------------------------------------------------------
+
+
+async def test_reader_service_passes_cache_breakpoints_to_client() -> None:
+    db = MagicMock(spec=[])
+    exp_id = uuid4()
+    question = ResearchQuestion(
+        id="q1",
+        question="What?",
+        rationale="r",
+        search_queries=["sq"],
+    )
+    draft = ReaderOutputDraft(question_id="q1", extracted_evidence=[])
+    captured: dict = {}
+
+    async def capture_complete(*_a, **kw):
+        captured.update(kw)
+        return draft, _llm_meta()
+
+    with patch(
+        "app.services.reader_service.llm_client.complete_structured",
+        AsyncMock(side_effect=capture_complete),
+    ):
+        await _extract_for_question(
+            db=db,
+            experiment_id=exp_id,
+            question=question,
+            tavily_results=[_tavily()],
+            refined_idea=_minimal_refined_idea(),
+            research_questions=[question],
+        )
+
+    bps = captured["cache_breakpoints"]
+    assert bps is not None
+    assert len(bps) == 2
+    assert bps[0].position == "user_zone_a_end" and bps[0].ttl == "1h"
+    assert bps[1].position == "user_zone_b_end" and bps[1].ttl == "5m"
+    assert captured["cache_breakpoints"] == READER_CACHE_BREAKPOINTS
+
+
+def test_reader_service_user_prompt_contains_zone_boundaries() -> None:
+    q = ResearchQuestion(
+        id="q1",
+        question="What is X?",
+        rationale="r",
+        search_queries=["sq"],
+    )
+    tav = [{"url": "https://ex.com/a", "title": "t", "content": "snippet", "score": 0.5}]
+    user = build_reader_user_prompt(
+        refined_idea=_minimal_refined_idea(),
+        research_questions=[q],
+        question_id=q.id,
+        question_text=q.question,
+        tavily_results=tav,
+        for_cache=True,
+    )
+    assert user.count(USER_CACHE_ZONE_BOUNDARY) == 2
+    zone_a, zone_b, zone_c = user.split(USER_CACHE_ZONE_BOUNDARY)
+    assert "You are a research analyst at Fivvle" in zone_a
+    assert "<refined_idea>" in zone_b and "<research_plan>" in zone_b
+    assert '<research_question id="q1">' in zone_c
+    assert "<tavily_results" in zone_c
+
+
+def test_reader_v1_cached_prompt_semantically_equivalent_to_v1() -> None:
+    import re
+
+    def norm(s: str) -> str:
+        return re.sub(r"\s+", " ", s).strip()
+
+    q = ResearchQuestion(
+        id="q1",
+        question="What is X?",
+        rationale="r",
+        search_queries=["sq"],
+    )
+    tav = [{"url": "https://ex.com/a", "title": "t", "content": "body text", "score": 1.0}]
+    leg_sys, leg_user = reader_v1_legacy_flat_user_and_system(q.id, q.question, tav)
+    cached_user = build_reader_user_prompt(
+        refined_idea=_minimal_refined_idea(),
+        research_questions=[q],
+        question_id=q.id,
+        question_text=q.question,
+        tavily_results=tav,
+        for_cache=True,
+    )
+    flat = norm(cached_user.replace(USER_CACHE_ZONE_BOUNDARY, ""))
+    assert norm(leg_sys) in flat
+    assert norm(leg_user) in flat
+    for anchor in (
+        "EVIDENCE-ONLY RULE",
+        "QUOTE RULES",
+        "SECURITY NOTICE — PROMPT INJECTION PROTECTION",
+        "OUTPUT GUIDANCE",
+        "named_entities",
+        "verbatim_quote",
+        "evidence_gap_note",
+        "Extract evidence from the following search results",
+    ):
+        assert anchor in flat
+    assert PROMPT_NAME == "reader_v1_cached"
+
+
+async def test_reader_service_falls_back_when_cache_breakpoints_none() -> None:
+    db = MagicMock(spec=[])
+    exp_id = uuid4()
+    question = ResearchQuestion(
+        id="q1",
+        question="What?",
+        rationale="r",
+        search_queries=["sq"],
+    )
+    draft = ReaderOutputDraft(question_id="q1", extracted_evidence=[])
+    captured: dict = {}
+
+    async def capture_complete(*_a, **kw):
+        captured.update(kw)
+        return draft, _llm_meta()
+
+    with patch(
+        "app.services.reader_service.llm_client.complete_structured",
+        AsyncMock(side_effect=capture_complete),
+    ):
+        await _extract_for_question(
+            db=db,
+            experiment_id=exp_id,
+            question=question,
+            tavily_results=[_tavily()],
+            refined_idea=_minimal_refined_idea(),
+            research_questions=[question],
+            cache_breakpoints=None,
+        )
+
+    assert captured["cache_breakpoints"] is None
+    assert USER_CACHE_ZONE_BOUNDARY not in captured["user"]
 
 
 def test_sentinel_messages_match_planning_doc() -> None:
