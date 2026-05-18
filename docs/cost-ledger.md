@@ -85,12 +85,25 @@ This audit was run with `backend/scripts/cost_ledger_audit.py` against Postgres 
 - Lifetime Groq LLM spend: **$0.120**
 - Lifetime External API spend (recorded): **$0.000**
 - Total combined: **$7.983**
-- Distinct experiments: **8**
-- Anthropic credit remaining: **$4.64**
+- Distinct experiments: **8** (listed in table above — audit date 2026-05-17)
+- Anthropic credit remaining (checkpoint at audit narrative): **$4.64**
 - Mean Anthropic $/experiment: **$0.526**
 - P90 Anthropic $/experiment: **$0.979**
 - Runs remaining at mean: **~8**
 - Runs remaining at p90: **~4**
+
+### Tracked cohort — projection refresh (2026-05-18, includes F‑1 + H‑4)
+
+Eight audit experiments above **plus** Task F‑1 (`53724f06…`, **$0.984777** Anthropic) **plus** Task H‑4 (`f810fec6…`, **$0.919187** Anthropic). Sorted costs → linear **p90**.
+
+| Metric | Value |
+|---|---|
+| n | **10** |
+| Mean Anthropic $/experiment | **$0.611** |
+| P90 Anthropic $/experiment | **$0.988** |
+| Checkpoint remaining (after H‑4) | **~$2.73** (≈ `$3.65` post F‑1 minus **$0.919187**) |
+| Floor runs @ mean | **4** (`$2.73 / $0.611`) |
+| Floor runs @ p90 | **2** (`$2.73 / $0.988`) |
 
 ## Anthropic Rate Limits — Tier 1 (verified 2026-05-17)
 
@@ -123,7 +136,33 @@ Compared to `.cursorrules` target of $0.25–$0.70 **per research engine run** (
 
 ### Anthropic credit projection (checkpoint math)
 
-If Anthropic credits **before** this run were ~**$4.64** remaining (ledger checkpoint from 2026-05-17 audit narrative), then **after** deducting ~**$0.985** ≈ **$3.65** remains. At this run’s marginal Anthropic cost, **~3** additional similar warm-up ideas fit before hitting that remainder (floor division); using the post-audit cohort **P90 ~$0.991**/experiment across nine tracked experiments suggests **~3–4** ideas as a realistic planning band.
+If Anthropic credits **before** Task F‑1 were ~**$4.64** remaining (ledger checkpoint from 2026-05-17 audit narrative), then **after F‑1 (~$0.985)** ≈ **$3.65** remains as the working checkpoint. After **Task H‑4 caching smoke (~$0.919** Anthropic) on the same vague‑idea rerun, ≈ **$2.73** remains. Multi-run planning uses the **ten‑experiment cohort mean/p90** (**$0.611** / **$0.988**) in the **Tracked cohort — projection refresh** table under the audit section above.
+
+---
+
+## 2026-05-18 — Caching calibration (Task H-4)
+
+Single-idea end-to-end smoke on experiment **`f810fec6-6af3-4bb9-8b95-62e9a31b6fc1`**: same intentionally vague freelancer‑loneliness idea as Task F‑1 (`53724f06-cb83-4c8a-92bd-e493e994ac34`), with **`*_cached` planner/reader/reflector/synthesizer** prompts and **`refinement_v1`** unchanged. Pipeline reached **`RESEARCH_READY`**. Timestamps: **08:20:33 → 08:27:17 UTC** (~**404 s** wall‑clock). Calibration detail: `docs/calibration/runs/2026-05-18-caching-calibration.md`.
+
+| Date | Activity | Anthropic | Tavily | Notes |
+|---|---|---|---|---|
+| 2026-05-18 (UTC) | Caching calibration (H‑4), same idea as F‑1 | $0.919187 | $0.528 | `RESEARCH_READY`; **14** LLM rows, **33** billable Tavily rows |
+
+**Subtotal (this line item):** Anthropic **$0.919187** + Tavily **$0.528** ≈ **$1.447** combined.
+
+### Comparison vs Task F‑1 baseline
+
+| Metric | F‑1 (`53724f06…`, pre-cache `_v1` prompts) | H‑4 (`f810fec6…`, cached layout) | Delta |
+|---|---|---|---|
+| Anthropic | $0.984777 (19 LLM rows) | $0.919187 (14 LLM rows) | **−$0.065590 (−6.7%)** |
+| Tavily | $0.528 (33 ext rows) | $0.528 (33 ext rows) | **$0** |
+| Wall‑clock | ~561 s | ~404 s (−157 s, **−28%**) | |
+
+Interpretation notes: **§6** illustrative **$0.20–0.35/run** Anthropic savings on a **first-run cold cache** are **not observed** — **write tax** dominates (**~59.2K** cache creation tokens vs **~27.7K** cache reads in DB). Fewer Anthropic rows vs F‑1 is predominantly **Reflector variance**, not attribution to caching mechanics; see calibration sheet.
+
+### Projection refresh vs nine-experiment cohort (F‑1 only)
+
+Nine-way cohort (audit **eight + F‑1**) **mean ~$0.577**, **p90 ~$0.991** — consistent with the F‑1 section’s “nine tracked experiments” narrative. Adding H‑4: **mean $0.611**, **p90 $0.988** (see audit **Tracked cohort — projection refresh** table).
 
 ---
 

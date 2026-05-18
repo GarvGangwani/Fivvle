@@ -77,3 +77,11 @@ Synthesizer, Planner, and Reflector prompts restructured to `*_cached` variants 
 - Landing page generation schemas — not yet built (Phase 3 FE5)
 
 Add observations to this file as they accumulate.
+
+## Prompt caching validation (cross-pipeline, Task H-4) — 2026-05-18
+
+Caching **N=1** cold-cache measurement complete for the **same vague freelancer-loneliness idea** used in Task **F‑1** (`53724f06…` pre-cache **`_v1`** prompts vs `f810fec6…` **`*_cached`** planner/reader/reflector/synthesizer + `refinement_v1`). **Anthropic −6.7%** vs F‑1 (**$0.919187** vs **$0.984777**); **§6 illustrative first-run dollar savings overstated vs observed**, because **`cache_creation_input_tokens` (~59K) ≫ `cached_input_tokens` (~27K)** on this traversal — write tax dominates per ADR **0014** §15.1.
+
+**Quality:** Preserved vs baseline spot-check — real named competitors/citations (`pewresearch.org`, `ipse.co.uk`, `leapers.co`, `investors.upwork.com`, `focusmate.com`, etc.), honest **`research_limitations`**, **`overall_recommendation`: iterate**. Row-count gap (−5 LLM calls) is **Reflector variance**, not a caching layout effect.
+
+**Follow-up:** **N=2** within **1 h Zone A TTL** needed to measure **cross-experiment / warm-cache** savings where read discounts amortize write tax; per-phase read share on this run skews **Synthesizer ~61%** of cache reads (see `docs/calibration/runs/2026-05-18-caching-calibration.md`).

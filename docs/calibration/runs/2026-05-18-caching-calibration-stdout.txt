@@ -1,0 +1,70 @@
+﻿[13:50:29][smoke] syncing user...
+[13:50:33][smoke] user synced user_id='0a31ca0a-9df4-43e3-a331-d8afa40c372c'
+[13:50:33][smoke] creating + refining experiment (1 LLM call)...
+[13:50:45][smoke] experiment created experiment_id='f810fec6-6af3-4bb9-8b95-62e9a31b6fc1' status='REFINED'
+[13:50:45][smoke] calling /confirm ├óΓé¼ΓÇ¥ dispatching research pipeline...
+[13:50:45][smoke] 202 accepted ├óΓé¼ΓÇ¥ pipeline dispatched status='RESEARCHING' status_url='http://localhost:8000/experiments/f810fec6-6af3-4bb9-8b95-62e9a31b6fc1/research-status'
+[13:50:45][smoke] polling /research-status... interval_s=8 max_polls=90
+[13:50:45][smoke] poll 1/90 status='RESEARCH_PLANNING' phase_label='Planning your research questions...' phases_completed=1
+[13:50:55][smoke] poll 2/90 status='RESEARCH_PLANNING' phase_label='Planning your research questions...' phases_completed=1
+[13:51:05][smoke] poll 3/90 status='RESEARCH_PLANNING' phase_label='Planning your research questions...' phases_completed=1
+[13:51:15][smoke] poll 4/90 status='RESEARCH_SEARCHING' phase_label='Searching across sources...' phases_completed=2
+[13:51:25][smoke] poll 5/90 status='RESEARCH_READING' phase_label='Reading and extracting evidence...' phases_completed=3
+[13:51:35][smoke] poll 6/90 status='RESEARCH_READING' phase_label='Reading and extracting evidence...' phases_completed=3
+[13:51:45][smoke] poll 7/90 status='RESEARCH_READING' phase_label='Reading and extracting evidence...' phases_completed=3
+[13:51:55][smoke] poll 8/90 status='RESEARCH_REFLECTING' phase_label='Evaluating evidence and refining searches...' phases_completed=4
+[13:52:05][smoke] poll 9/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:52:15][smoke] poll 10/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:52:25][smoke] poll 11/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:52:36][smoke] poll 12/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:52:46][smoke] poll 13/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:52:56][smoke] poll 14/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:53:06][smoke] poll 15/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:53:16][smoke] poll 16/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:53:26][smoke] poll 17/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:53:36][smoke] poll 18/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:53:46][smoke] poll 19/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:53:56][smoke] poll 20/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:54:06][smoke] poll 21/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:54:16][smoke] poll 22/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:54:26][smoke] poll 23/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:54:36][smoke] poll 24/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:54:46][smoke] poll 25/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:54:57][smoke] poll 26/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:55:07][smoke] poll 27/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:55:17][smoke] poll 28/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:55:27][smoke] poll 29/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:55:37][smoke] poll 30/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:55:47][smoke] poll 31/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:55:57][smoke] poll 32/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:56:07][smoke] poll 33/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:56:17][smoke] poll 34/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:56:27][smoke] poll 35/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:56:37][smoke] poll 36/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:56:47][smoke] poll 37/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:56:57][smoke] poll 38/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:57:07][smoke] poll 39/90 status='RESEARCH_SYNTHESIZING' phase_label='Synthesizing the validation report...' phases_completed=5
+[13:57:18][smoke] poll 40/90 status='RESEARCH_READY' phase_label='' phases_completed=6
+[13:57:18][smoke] SUCCESS ├óΓé¼ΓÇ¥ pipeline completed phases_completed=['RESEARCHING', 'RESEARCH_PLANNING', 'RESEARCH_SEARCHING', 'RESEARCH_READING', 'RESEARCH_REFLECTING', 'RESEARCH_SYNTHESIZING']
+
+--- B3 Reader smoke summary ---
+experiment_id=f810fec6-6af3-4bb9-8b95-62e9a31b6fc1
+completed_at_utc=2026-05-18T08:27:18.019511+00:00
+terminal_status=RESEARCH_READY
+phases_completed_count=6
+phases_completed_json=["RESEARCHING", "RESEARCH_PLANNING", "RESEARCH_SEARCHING", "RESEARCH_READING", "RESEARCH_REFLECTING", "RESEARCH_SYNTHESIZING"]
+research_reading_in_phases_completed=True
+research_reflecting_in_phases_completed=True
+Per-question Reader fields (question_id, extracted_evidence_count, has_evidence_gap) are not returned by /research-status; structured ReaderOutput exists only in-process for the Synthesizer. Inspect application logs for 'reader question complete' events.
+URL / quote hallucination rollups are not persisted on the experiment; for systemic signals search logs for 'reader url hallucination detected' and 'reader quote hallucination rate exceeded'.
+
+--- B3 Reflector smoke summary ---
+experiment_id=f810fec6-6af3-4bb9-8b95-62e9a31b6fc1
+terminal_status=RESEARCH_READY
+research_reflecting_in_phases_completed=True
+Reflector emits structured decisions via backend logs only (events 'reflector decision complete', 'reflector phase complete'); there is no experiment-scoped Reflector audit API ├óΓé¼ΓÇ¥ tail backend stdout for counts (questions flagged/scheduled, decision_method=rule_v1).
+
+--- B3 Synthesizer smoke summary ---
+overall_recommendation='iterate'
+total_finding_count=18
+total_citation_count=49
