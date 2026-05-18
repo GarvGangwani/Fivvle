@@ -89,6 +89,23 @@ def _init_db_engine() -> Generator[None, None, None]:
     # rely on process exit to dispose; not ideal but acceptable for tests.
 
 
+@pytest.fixture(autouse=True)
+def _reset_slowapi_limiter_storage_between_tests() -> Generator[None, None, None]:
+    """Clear in-memory rate-limit counters after each test.
+
+    The default slowapi backend is process-wide; POST /users/sync keys by IP
+    when no User exists yet, so hundreds of tests sharing ``testclient`` would
+    exhaust the 60/min bucket and cause unrelated tests to see 429.
+    """
+    yield
+    from app.reliability.rate_limit import limiter  # noqa: PLC0415
+
+    storage = getattr(limiter, "_storage", None)
+    reset = getattr(storage, "reset", None)
+    if callable(reset):
+        reset()
+
+
 @pytest.fixture
 def client() -> Generator[TestClient, None, None]:
     """A TestClient that exercises the full FastAPI app, including dependencies.
