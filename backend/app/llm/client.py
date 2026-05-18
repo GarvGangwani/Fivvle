@@ -20,19 +20,19 @@ from __future__ import annotations
 
 import time
 from decimal import Decimal
-from typing import TYPE_CHECKING, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 from uuid import UUID
 
 import anthropic
 import groq
 import instructor
 from instructor.core.hooks import Hooks
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.models.llm_call import LLMCall
-from app.llm.cost import compute_cost_usd, is_known_model
+from app.llm.cost import compute_anthropic_cached_cost_usd, compute_cost_usd, is_known_model
 from app.logging_config import get_logger
 from app.reliability.circuit_breakers import get_breaker
 from app.reliability.retry import retry_async
@@ -52,6 +52,156 @@ _instructor_groq_client: instructor.AsyncInstructor | None = None
 T = TypeVar("T", bound=BaseModel)
 
 ProviderName = Literal["anthropic", "groq"]
+
+# Callers that use ``cache_breakpoints`` with ``user_zone_a_end`` / ``user_zone_b_end``
+# must join user zones with this exact separator (Zone A | Zone B | Zone C).
+USER_CACHE_ZONE_BOUNDARY = "<<<FIVVLE_USER_CACHE_BOUNDARY>>>"
+
+
+class CacheBreakpoint(BaseModel):
+    """Declares where to attach Anthropic ``cache_control`` for prompt caching."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    position: Literal["system_end", "user_zone_a_end", "user_zone_b_end"] = Field(
+        ...,
+        description="Semantic anchor for the cache marker (not a numeric block index).",
+    )
+    ttl: Literal["5m", "1h"] = Field(
+        ...,
+        description="Anthropic ephemeral cache TTL for this breakpoint.",
+    )
+
+
+def _cache_control_payload(ttl: Literal["5m", "1h"]) -> dict[str, str]:
+    return {"type": "ephemeral", "ttl": ttl}
+
+
+def _validate_cache_breakpoints(breakpoints: list[CacheBreakpoint]) -> None:
+    seen: set[str] = set()
+    for bp in breakpoints:
+        if bp.position in seen:
+            raise ValueError(f"duplicate cache breakpoint position: {bp.position}")
+        seen.add(bp.position)
+    pos = seen
+    if "user_zone_b_end" in pos and "user_zone_a_end" not in pos:
+        raise ValueError("user_zone_b_end requires user_zone_a_end")
+
+
+def _split_user_zones_for_cache(
+    user: str, *, need_zone_a: bool, need_zone_b: bool
+) -> list[str]:
+    parts = user.split(USER_CACHE_ZONE_BOUNDARY)
+    if need_zone_b:
+        if len(parts) != 3:
+            raise ValueError(
+                "user must split into 3 zones via USER_CACHE_ZONE_BOUNDARY "
+                "when user_zone_a_end and user_zone_b_end are both requested"
+            )
+        return parts
+    if need_zone_a:
+        if len(parts) != 2:
+            raise ValueError(
+                "user must split into 2 zones via USER_CACHE_ZONE_BOUNDARY "
+                "when only user_zone_a_end is requested"
+            )
+        return parts
+    return [user]
+
+
+def _anthropic_structured_system_and_messages(
+    *,
+    system: str,
+    user: str,
+    cache_breakpoints: list[CacheBreakpoint] | None,
+) -> tuple[Any, list[dict[str, Any]]]:
+    """Build ``system`` and ``messages`` for Instructor / Anthropic structured calls."""
+    if not cache_breakpoints:
+        return system, [{"role": "user", "content": user}]
+
+    _validate_cache_breakpoints(cache_breakpoints)
+    by_pos = {bp.position: bp for bp in cache_breakpoints}
+
+    need_a = "user_zone_a_end" in by_pos
+    need_b = "user_zone_b_end" in by_pos
+    user_parts = _split_user_zones_for_cache(user, need_zone_a=need_a, need_zone_b=need_b)
+
+    sys_out: Any
+    if "system_end" in by_pos:
+        ttl = cast(Literal["5m", "1h"], by_pos["system_end"].ttl)
+        sys_out = [
+            {
+                "type": "text",
+                "text": system,
+                "cache_control": _cache_control_payload(ttl),
+            }
+        ]
+    else:
+        sys_out = system
+
+    if not need_a:
+        return sys_out, [{"role": "user", "content": user}]
+
+    user_blocks: list[dict[str, Any]] = []
+    if need_b:
+        ua, ub, uc = user_parts[0], user_parts[1], user_parts[2]
+        user_blocks.append(
+            {
+                "type": "text",
+                "text": ua,
+                "cache_control": _cache_control_payload(
+                    cast(Literal["5m", "1h"], by_pos["user_zone_a_end"].ttl)
+                ),
+            }
+        )
+        user_blocks.append(
+            {
+                "type": "text",
+                "text": ub,
+                "cache_control": _cache_control_payload(
+                    cast(Literal["5m", "1h"], by_pos["user_zone_b_end"].ttl)
+                ),
+            }
+        )
+        user_blocks.append({"type": "text", "text": uc})
+    else:
+        ua, rest = user_parts[0], user_parts[1]
+        user_blocks.append(
+            {
+                "type": "text",
+                "text": ua,
+                "cache_control": _cache_control_payload(
+                    cast(Literal["5m", "1h"], by_pos["user_zone_a_end"].ttl)
+                ),
+            }
+        )
+        user_blocks.append({"type": "text", "text": rest})
+
+    return sys_out, [{"role": "user", "content": user_blocks}]
+
+
+def _usage_int_attr(usage: object, name: str) -> int:
+    """Anthropic Usage fields appear on real responses but must not treat MagicMocks as counts."""
+    v = getattr(usage, name, 0)
+    return int(v) if isinstance(v, int) else 0
+
+
+def _anthropic_usage_accumulator_fields(usage: object) -> tuple[int, int, int, int, int]:
+    """(uncached_tail, cache_read, create_total, create_5m, create_1h)."""
+    uncached = _usage_int_attr(usage, "input_tokens")
+    cache_read = _usage_int_attr(usage, "cache_read_input_tokens")
+    create_total = _usage_int_attr(usage, "cache_creation_input_tokens")
+    cc_obj = getattr(usage, "cache_creation", None)
+    if cc_obj is not None and not isinstance(cc_obj, int):
+        c5 = _usage_int_attr(cc_obj, "ephemeral_5m_input_tokens")
+        c1 = _usage_int_attr(cc_obj, "ephemeral_1h_input_tokens")
+    elif create_total > 0:
+        c5, c1 = create_total, 0
+    else:
+        c5, c1 = 0, 0
+    if create_total == 0:
+        create_total = c5 + c1
+    return uncached, cache_read, create_total, c5, c1
 
 
 class LLMResult(BaseModel):
@@ -114,6 +264,8 @@ async def _log_llm_call(
     cost_usd: Decimal,
     latency_ms: int,
     request_id: str | None,
+    cached_input_tokens: int | None = None,
+    cache_creation_input_tokens: int | None = None,
 ) -> None:
     """Persist one row to llm_calls. Does NOT commit — caller controls tx."""
     call = LLMCall(
@@ -124,6 +276,8 @@ async def _log_llm_call(
         prompt_name=prompt_name,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
+        cached_input_tokens=cached_input_tokens,
+        cache_creation_input_tokens=cache_creation_input_tokens,
         cost_usd=cost_usd,
         latency_ms=latency_ms,
         request_id=request_id,
@@ -317,6 +471,7 @@ async def complete_structured(
     max_retries: int = 3,
     experiment_id: UUID | None = None,
     phase: str | None = None,
+    cache_breakpoints: list[CacheBreakpoint] | None = None,
 ) -> tuple[T, LLMResult]:
     """Structured completion via Instructor.
 
@@ -333,6 +488,10 @@ async def complete_structured(
       object (not on .chat.completions). It returns (parsed_model, raw_response).
     - Anthropic: system message passed as `system=` kwarg alongside messages.
     - Groq: system message placed in messages list as {"role": "system", ...}.
+
+    Anthropic prompt caching: optional ``cache_breakpoints`` attaches ephemeral
+    cache markers per ADR 0014. User zones requiring two or three splits use
+    ``USER_CACHE_ZONE_BOUNDARY`` embedded in ``user``.
     """
     if not is_known_model(provider, model):
         _logger.warning(
@@ -343,14 +502,27 @@ async def complete_structured(
 
     started_at = time.perf_counter()
 
+    logged_cached_in: int | None = None
+    logged_cached_create: int | None = None
+
     try:
         if provider == "anthropic":
             iclient = _get_instructor_anthropic()
 
+            sys_payload, msgs_payload = _anthropic_structured_system_and_messages(
+                system=system,
+                user=user,
+                cache_breakpoints=cache_breakpoints,
+            )
+
             # Accumulate usage across all Instructor attempts (schema retries are
             # billed by Anthropic on every attempt, not just the final success).
             _usage_acc: dict[str, int] = {
-                "prompt_tokens": 0,
+                "uncached_tail": 0,
+                "cache_read": 0,
+                "create_total": 0,
+                "create_5m": 0,
+                "create_1h": 0,
                 "completion_tokens": 0,
                 "attempts": 0,
             }
@@ -358,9 +530,15 @@ async def complete_structured(
             def _accumulate_anthropic_usage(response: object) -> None:
                 _usage_acc["attempts"] += 1
                 usage = getattr(response, "usage", None)
-                if usage is not None:
-                    _usage_acc["prompt_tokens"] += getattr(usage, "input_tokens", 0)
-                    _usage_acc["completion_tokens"] += getattr(usage, "output_tokens", 0)
+                if usage is None:
+                    return
+                unc, cr, ct, c5, c1 = _anthropic_usage_accumulator_fields(usage)
+                _usage_acc["uncached_tail"] += unc
+                _usage_acc["cache_read"] += cr
+                _usage_acc["create_total"] += ct
+                _usage_acc["create_5m"] += c5
+                _usage_acc["create_1h"] += c1
+                _usage_acc["completion_tokens"] += _usage_int_attr(usage, "output_tokens")
 
             call_hooks = Hooks()
             call_hooks.on("completion:response", _accumulate_anthropic_usage)
@@ -371,8 +549,8 @@ async def complete_structured(
                     max_tokens=max_tokens,
                     temperature=temperature,
                     max_retries=max_retries,
-                    system=system,
-                    messages=[{"role": "user", "content": user}],
+                    system=sys_payload,
+                    messages=msgs_payload,
                     response_model=response_model,
                     hooks=call_hooks,
                 )
@@ -386,11 +564,31 @@ async def complete_structured(
             # Fall back to the final response when hooks never fired (e.g. mocks
             # in tests that don't simulate the Instructor callback loop).
             if _usage_acc["attempts"] > 0:
-                prompt_tokens = _usage_acc["prompt_tokens"]
+                unc_t = _usage_acc["uncached_tail"]
+                cread = _usage_acc["cache_read"]
+                c5 = _usage_acc["create_5m"]
+                c1 = _usage_acc["create_1h"]
+                ctot = _usage_acc["create_total"]
                 completion_tokens = _usage_acc["completion_tokens"]
             else:
-                prompt_tokens = raw.usage.input_tokens
-                completion_tokens = raw.usage.output_tokens
+                usage = raw.usage
+                unc_t, cread, ctot, c5, c1 = _anthropic_usage_accumulator_fields(usage)
+                completion_tokens = _usage_int_attr(usage, "output_tokens")
+
+            prompt_tokens = unc_t + cread + ctot
+            cost_usd = compute_anthropic_cached_cost_usd(
+                model,
+                uncached_tail_input_tokens=unc_t,
+                cache_read_input_tokens=cread,
+                cache_creation_ephemeral_5m=c5,
+                cache_creation_ephemeral_1h=c1,
+                completion_tokens=completion_tokens,
+            )
+
+            if cache_breakpoints is not None or cread > 0 or ctot > 0:
+                logged_cached_in = cread
+                logged_cached_create = ctot
+
             request_id: str | None = raw.id
             instructor_attempts = _usage_acc["attempts"]
 
@@ -440,6 +638,7 @@ async def complete_structured(
             else:
                 prompt_tokens = raw.usage.prompt_tokens if raw.usage else 0
                 completion_tokens = raw.usage.completion_tokens if raw.usage else 0
+            cost_usd = compute_cost_usd(provider, model, prompt_tokens, completion_tokens)
             request_id = raw.id
             instructor_attempts = _usage_acc["attempts"]
 
@@ -447,7 +646,6 @@ async def complete_structured(
             raise ValueError(f"unknown provider: {provider}")
 
         latency_ms = int((time.perf_counter() - started_at) * 1000)
-        cost_usd = compute_cost_usd(provider, model, prompt_tokens, completion_tokens)
 
         await _log_llm_call(
             db,
@@ -461,6 +659,8 @@ async def complete_structured(
             cost_usd=cost_usd,
             latency_ms=latency_ms,
             request_id=request_id,
+            cached_input_tokens=logged_cached_in,
+            cache_creation_input_tokens=logged_cached_create,
         )
 
         _logger.info(

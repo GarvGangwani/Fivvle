@@ -10,6 +10,7 @@ All provider SDK calls are mocked. We're testing the WRAPPER behavior:
 from collections.abc import AsyncGenerator
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import anthropic
 import pytest
@@ -209,8 +210,9 @@ async def test_complete_structured_logs_cost(mock_firebase, db_session):
 
     parsed_instance = _Reply(message="structured reply")
 
+    req_id = f"msg_structured_001_{uuid4()}"
     fake_raw = MagicMock()
-    fake_raw.id = "msg_structured_001"
+    fake_raw.id = req_id
     fake_raw.usage.input_tokens = 80
     fake_raw.usage.output_tokens = 40
 
@@ -236,7 +238,7 @@ async def test_complete_structured_logs_cost(mock_firebase, db_session):
     assert meta.completion_tokens == 40
     assert meta.cost_usd > Decimal("0")
 
-    stmt = select(LLMCall).where(LLMCall.request_id == "msg_structured_001")
+    stmt = select(LLMCall).where(LLMCall.request_id == req_id)
     rows = (await db_session.execute(stmt)).scalars().all()
     assert len(rows) == 1
     assert rows[0].provider == "anthropic"

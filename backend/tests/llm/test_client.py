@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from pydantic import BaseModel
@@ -23,7 +24,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.config import get_settings
 from app.db.models.llm_call import LLMCall
-from app.llm.client import complete_structured
+from app.llm.client import (
+    USER_CACHE_ZONE_BOUNDARY,
+    CacheBreakpoint,
+    complete_structured,
+)
+from app.llm.cost import compute_anthropic_cached_cost_usd, compute_cost_usd
 from tests.conftest import FAKE_EMAIL, FAKE_FIREBASE_UID  # noqa: F401
 
 
@@ -61,8 +67,9 @@ async def test_structured_single_attempt_accumulates_usage(mock_firebase, db_ses
     """
     parsed_instance = _Reply(message="ok")
 
+    req_id = f"msg_acc_single_001_{uuid4()}"
     fake_raw = MagicMock()
-    fake_raw.id = "msg_acc_single_001"
+    fake_raw.id = req_id
     fake_raw.usage = MagicMock(input_tokens=200, output_tokens=80)
 
     async def _fake_create_with_completion(**kwargs):
@@ -91,7 +98,7 @@ async def test_structured_single_attempt_accumulates_usage(mock_firebase, db_ses
     assert meta.completion_tokens == 80
     assert meta.cost_usd > Decimal("0")
 
-    stmt = select(LLMCall).where(LLMCall.request_id == "msg_acc_single_001")
+    stmt = select(LLMCall).where(LLMCall.request_id == req_id)
     rows = (await db_session.execute(stmt)).scalars().all()
     assert len(rows) == 1
     assert rows[0].prompt_tokens == 200
@@ -121,8 +128,10 @@ async def test_structured_multi_attempt_accumulates_usage(mock_firebase, db_sess
     attempt_responses = [
         MagicMock(id=None, usage=MagicMock(input_tokens=100, output_tokens=40)),
         MagicMock(id=None, usage=MagicMock(input_tokens=110, output_tokens=45)),
-        MagicMock(id="msg_acc_multi_001", usage=MagicMock(input_tokens=120, output_tokens=50)),
+        MagicMock(id=None, usage=MagicMock(input_tokens=120, output_tokens=50)),
     ]
+    req_id = f"msg_acc_multi_001_{uuid4()}"
+    attempt_responses[-1].id = req_id
 
     async def _fake_create_with_completion(**kwargs):
         hooks = kwargs.get("hooks")
@@ -160,7 +169,7 @@ async def test_structured_multi_attempt_accumulates_usage(mock_firebase, db_sess
     )
     assert meta.cost_usd > Decimal("0")
 
-    stmt = select(LLMCall).where(LLMCall.request_id == "msg_acc_multi_001")
+    stmt = select(LLMCall).where(LLMCall.request_id == req_id)
     rows = (await db_session.execute(stmt)).scalars().all()
     assert len(rows) == 1
     assert rows[0].prompt_tokens == expected_prompt
@@ -183,8 +192,9 @@ async def test_structured_max_retries_forwarded(mock_firebase, db_session):
     """
     parsed_instance = _Reply(message="ok")
 
+    req_id = f"msg_max_retries_001_{uuid4()}"
     fake_raw = MagicMock()
-    fake_raw.id = "msg_max_retries_001"
+    fake_raw.id = req_id
     fake_raw.usage = MagicMock(input_tokens=150, output_tokens=60)
 
     captured_kwargs: dict = {}
@@ -214,8 +224,230 @@ async def test_structured_max_retries_forwarded(mock_firebase, db_session):
 
     assert captured_kwargs.get("max_retries") == 1
 
-    stmt = select(LLMCall).where(LLMCall.request_id == "msg_max_retries_001")
+    stmt = select(LLMCall).where(LLMCall.request_id == req_id)
     rows = (await db_session.execute(stmt)).scalars().all()
     assert len(rows) == 1
     await db_session.delete(rows[0])
     await db_session.commit()
+
+
+# ---------------------------------------------------------------------------
+# Prompt caching (ADR 0014 foundation)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_complete_structured_no_cache_breakpoints_identical_behavior(mock_firebase, db_session):
+    parsed_instance = _Reply(message="ok")
+
+    req_id = f"msg_no_cache_behavior_{uuid4()}"
+    fake_raw = MagicMock()
+    fake_raw.id = req_id
+    fake_raw.usage = MagicMock(input_tokens=200, output_tokens=80)
+
+    captured: dict = {}
+
+    async def _fake_create_with_completion(**kwargs):
+        captured.update(kwargs)
+        hooks = kwargs.get("hooks")
+        if hooks is not None:
+            hooks.emit_completion_response(fake_raw)
+        return (parsed_instance, fake_raw)
+
+    fake_instructor = MagicMock()
+    fake_instructor.create_with_completion = _fake_create_with_completion
+
+    with patch("app.llm.client._instructor_anthropic_client", fake_instructor):
+        parsed, meta = await complete_structured(
+            db_session,
+            provider="anthropic",
+            model="claude-sonnet-4-6",
+            prompt_name="no_cache_behavior",
+            system="sys body",
+            user="user body",
+            response_model=_Reply,
+            cache_breakpoints=None,
+        )
+        await db_session.commit()
+
+    assert captured.get("system") == "sys body"
+    assert captured.get("messages") == [{"role": "user", "content": "user body"}]
+    assert parsed.message == "ok"
+    assert meta.prompt_tokens == 200
+    assert meta.completion_tokens == 80
+
+    rows = (
+        (await db_session.execute(select(LLMCall).where(LLMCall.request_id == req_id))).scalars().all()
+    )
+    assert len(rows) == 1
+    assert rows[0].cached_input_tokens is None
+    assert rows[0].cache_creation_input_tokens is None
+    await db_session.delete(rows[0])
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_complete_structured_with_cache_breakpoints_injects_markers(mock_firebase, db_session):
+    parsed_instance = _Reply(message="cached")
+
+    req_id = f"msg_cache_markers_{uuid4()}"
+    fake_raw = MagicMock()
+    fake_raw.id = req_id
+    fake_raw.usage = MagicMock(input_tokens=12, output_tokens=3)
+
+    captured: dict = {}
+
+    async def _fake_create_with_completion(**kwargs):
+        captured.update(kwargs)
+        hooks = kwargs.get("hooks")
+        if hooks is not None:
+            hooks.emit_completion_response(fake_raw)
+        return (parsed_instance, fake_raw)
+
+    fake_instructor = MagicMock()
+    fake_instructor.create_with_completion = _fake_create_with_completion
+
+    ua, ub, uc = "ZONE_A", "ZONE_B", "ZONE_C_TAIL"
+    user = f"{ua}{USER_CACHE_ZONE_BOUNDARY}{ub}{USER_CACHE_ZONE_BOUNDARY}{uc}"
+    breakpoints = [
+        CacheBreakpoint(position="system_end", ttl="1h"),
+        CacheBreakpoint(position="user_zone_a_end", ttl="5m"),
+        CacheBreakpoint(position="user_zone_b_end", ttl="5m"),
+    ]
+
+    with patch("app.llm.client._instructor_anthropic_client", fake_instructor):
+        await complete_structured(
+            db_session,
+            provider="anthropic",
+            model="claude-sonnet-4-6",
+            prompt_name="cache_markers_test",
+            system="instructions",
+            user=user,
+            response_model=_Reply,
+            cache_breakpoints=breakpoints,
+        )
+        await db_session.commit()
+
+    sys_arg = captured.get("system")
+    assert isinstance(sys_arg, list) and len(sys_arg) == 1
+    assert sys_arg[0]["type"] == "text"
+    assert sys_arg[0]["text"] == "instructions"
+    assert sys_arg[0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+
+    msgs = captured.get("messages")
+    blocks = msgs[0]["content"]
+    assert isinstance(blocks, list) and len(blocks) == 3
+    assert blocks[0]["text"] == ua
+    assert blocks[0]["cache_control"]["ttl"] == "5m"
+    assert blocks[1]["text"] == ub
+    assert blocks[2]["text"] == uc
+    assert "cache_control" not in blocks[2]
+
+    row = (
+        (await db_session.execute(select(LLMCall).where(LLMCall.request_id == req_id))).scalars().first()
+    )
+    assert row is not None
+    await db_session.delete(row)
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_complete_structured_persists_cached_token_fields(mock_firebase, db_session):
+    parsed_instance = _Reply(message="persist")
+
+    req_id = f"msg_cache_usage_persist_{uuid4()}"
+    fake_raw = MagicMock()
+    fake_raw.id = req_id
+
+    uc = MagicMock(
+        ephemeral_5m_input_tokens=15,
+        ephemeral_1h_input_tokens=5,
+    )
+    fake_raw.usage = MagicMock(
+        input_tokens=120,
+        output_tokens=33,
+        cache_read_input_tokens=40,
+        cache_creation_input_tokens=20,
+        cache_creation=uc,
+    )
+
+    async def _fake_create_with_completion(**kwargs):
+        hooks = kwargs.get("hooks")
+        if hooks is not None:
+            hooks.emit_completion_response(fake_raw)
+        return (parsed_instance, fake_raw)
+
+    fake_instructor = MagicMock()
+    fake_instructor.create_with_completion = _fake_create_with_completion
+
+    with patch("app.llm.client._instructor_anthropic_client", fake_instructor):
+        await complete_structured(
+            db_session,
+            provider="anthropic",
+            model="claude-sonnet-4-6",
+            prompt_name="cache_persist_test",
+            system="s",
+            user="u",
+            response_model=_Reply,
+        )
+        await db_session.commit()
+
+    row = (
+        (await db_session.execute(select(LLMCall).where(LLMCall.request_id == req_id))).scalars().first()
+    )
+    assert row is not None
+    assert row.cached_input_tokens == 40
+    assert row.cache_creation_input_tokens == 20
+    assert row.prompt_tokens == 120 + 40 + 20
+    await db_session.delete(row)
+    await db_session.commit()
+
+
+def test_cost_calculation_uncached_only():
+    model = "claude-sonnet-4-6"
+    baseline = compute_cost_usd("anthropic", model, 400_000, 55_555)
+    split = compute_anthropic_cached_cost_usd(
+        model,
+        uncached_tail_input_tokens=400_000,
+        cache_read_input_tokens=0,
+        cache_creation_ephemeral_5m=0,
+        cache_creation_ephemeral_1h=0,
+        completion_tokens=55_555,
+    )
+    assert baseline == split
+
+
+def test_cost_calculation_with_cached_read():
+    cost = compute_anthropic_cached_cost_usd(
+        "claude-sonnet-4-6",
+        uncached_tail_input_tokens=0,
+        cache_read_input_tokens=1_000_000,
+        cache_creation_ephemeral_5m=0,
+        cache_creation_ephemeral_1h=0,
+        completion_tokens=0,
+    )
+    assert cost == Decimal("0.300000")
+
+
+def test_cost_calculation_with_cache_write_5m():
+    cost = compute_anthropic_cached_cost_usd(
+        "claude-sonnet-4-6",
+        uncached_tail_input_tokens=0,
+        cache_read_input_tokens=0,
+        cache_creation_ephemeral_5m=1_000_000,
+        cache_creation_ephemeral_1h=0,
+        completion_tokens=0,
+    )
+    assert cost == Decimal("3.750000")
+
+
+def test_cost_calculation_with_cache_write_1h():
+    cost = compute_anthropic_cached_cost_usd(
+        "claude-sonnet-4-6",
+        uncached_tail_input_tokens=0,
+        cache_read_input_tokens=0,
+        cache_creation_ephemeral_5m=0,
+        cache_creation_ephemeral_1h=1_000_000,
+        completion_tokens=0,
+    )
+    assert cost == Decimal("6.000000")

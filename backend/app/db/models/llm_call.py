@@ -3,6 +3,27 @@
 Audit table — every call through app.llm.client writes one row here.
 experiment_id is nullable with SET NULL on delete: cost/audit data
 survives even when the parent experiment is deleted.
+
+Column relationship (prompt_tokens vs cache columns)
+-------------------------------------------------
+``prompt_tokens`` is **total** input tokens for the API call (backward-compatible
+semantics for dashboards and rollups). When Anthropic prompt caching is used,
+that total decomposes per the Messages API::
+
+    prompt_tokens = uncached_tail_input_tokens
+                    + cache_read_input_tokens
+                    + cache_creation_input_tokens
+
+where **uncached_tail_input_tokens** is the provider's ``usage.input_tokens``
+field (tokens after the last cache breakpoint — *not* “plain input minus cache”).
+
+Persisted names:
+- ``cached_input_tokens`` ← ``usage.cache_read_input_tokens`` on the wire.
+- ``cache_creation_input_tokens`` ← ``usage.cache_creation_input_tokens`` (writes).
+
+When caching is **not** used (or for pre-migration rows), ``cached_input_tokens``
+and ``cache_creation_input_tokens`` are **NULL**. Aggregations MUST use
+``COALESCE(..., 0)`` (ADR 0014 / planning doc §15.1).
 """
 
 from __future__ import annotations
@@ -56,6 +77,17 @@ class LLMCall(Base):
         Integer,
         nullable=False,
         default=0,
+    )
+    # Anthropic prompt caching (NULL = legacy / caching not in use for this row)
+    cached_input_tokens: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=None,
+    )
+    cache_creation_input_tokens: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=None,
     )
     # 6 decimal places — LLM costs are fractions of a cent
     cost_usd: Mapped[Decimal] = mapped_column(

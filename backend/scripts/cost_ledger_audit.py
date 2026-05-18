@@ -60,6 +60,8 @@ class ExpAgg:
     n_llm: int
     llm_min_at: datetime | None
     llm_max_at: datetime | None
+    cached_input_tokens: int
+    cache_write_tokens: int
     ext_usd: float
     n_ext: int
     ext_min_at: datetime | None
@@ -127,6 +129,12 @@ async def main() -> None:
                     func.count().label("n_llm"),
                     func.min(LLMCall.called_at).label("llm_min_at"),
                     func.max(LLMCall.called_at).label("llm_max_at"),
+                    func.sum(func.coalesce(LLMCall.cached_input_tokens, 0)).label(
+                        "cached_in"
+                    ),
+                    func.sum(func.coalesce(LLMCall.cache_creation_input_tokens, 0)).label(
+                        "cache_create"
+                    ),
                 )
                 .group_by(LLMCall.experiment_id)
             )
@@ -165,15 +173,18 @@ async def main() -> None:
                 ext_providers = frozenset(ext_meta.get(eid, set()))
 
                 if lm:
-                    ant, all_llm, n_llm, t0, t1 = (
+                    ant, all_llm, n_llm, t0, t1, cin, cwrite = (
                         _f(lm[0]),
                         _f(lm[1]),
                         int(lm[2]),
                         lm[3],
                         lm[4],
+                        int(lm[5] or 0),
+                        int(lm[6] or 0),
                     )
                 else:
                     ant, all_llm, n_llm, t0, t1 = 0.0, 0.0, 0, None, None
+                    cin, cwrite = 0, 0
 
                 if ex:
                     ext_u, n_ext, e0, e1 = _f(ex[0]), int(ex[1]), ex[2], ex[3]
@@ -188,6 +199,8 @@ async def main() -> None:
                         n_llm=n_llm,
                         llm_min_at=t0,
                         llm_max_at=t1,
+                        cached_input_tokens=cin,
+                        cache_write_tokens=cwrite,
                         ext_usd=ext_u,
                         n_ext=n_ext,
                         ext_min_at=e0,
@@ -210,6 +223,8 @@ async def main() -> None:
             lifetime_anthropic = sum(a.anthropic_usd for a in aggs)
             lifetime_ext = sum(a.ext_usd for a in aggs)
             lifetime_llm_all = sum(a.llm_all_usd for a in aggs)
+            lifetime_cached_in = sum(a.cached_input_tokens for a in aggs)
+            lifetime_cache_write = sum(a.cache_write_tokens for a in aggs)
             n_distinct_experiments = sum(1 for a in aggs if a.experiment_id is not None)
             has_null_bucket = any(a.experiment_id is None for a in aggs)
 
@@ -222,6 +237,8 @@ async def main() -> None:
             print(
                 f"Lifetime combined (Anthropic LLM + ext):   ${lifetime_anthropic + lifetime_ext:.6f}"
             )
+            print(f"Cached input tokens lifetime:              {lifetime_cached_in}")
+            print(f"Cache write tokens lifetime:              {lifetime_cache_write}")
             print(f"Distinct experiments (non-null id):       {n_distinct_experiments}")
             print(f"Rows with NULL experiment_id bucket:        {'yes' if has_null_bucket else 'no'}")
             print()
@@ -243,6 +260,8 @@ async def main() -> None:
                 print(
                     f"  Combined (Anthropic+ext): {a.combined_anthropic_plus_ext:.6f}"
                 )
+                print(f"  Cached input tokens (sum): {a.cached_input_tokens}")
+                print(f"  Cache write tokens (sum): {a.cache_write_tokens}")
                 print(f"  prompt_names: {prompts_s}")
                 print(f"  phases:       {phases_s}")
                 print(f"  LLM providers: {lp}")

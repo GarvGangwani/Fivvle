@@ -4,16 +4,18 @@ Public API:
     complete            — plain-text completion
     complete_structured — Pydantic-typed completion via Instructor
     LLMResult           — result envelope
-    compute_cost_usd    — pricing helper (rarely called directly)
+    compute_cost_usd              — pricing helper (rarely called directly)
+    compute_anthropic_cached_cost_usd — Anthropic prompt-caching–aware pricing
 """
 
 from app.llm.client import LLMResult, complete, complete_structured
-from app.llm.cost import compute_cost_usd, is_known_model
+from app.llm.cost import compute_anthropic_cached_cost_usd, compute_cost_usd, is_known_model
 
 __all__ = [
     "LLMResult",
     "complete",
     "complete_structured",
+    "compute_anthropic_cached_cost_usd",
     "compute_cost_usd",
     "is_known_model",
 ]

@@ -29,6 +29,7 @@ Each ADR follows the Michael Nygard format:
 | 0011 | [Reader execution model — per-question concurrent LLM calls over single batched call](0011-reader-execution-model.md) | Accepted | 2026-05 |
 | 0012 | [Synthesizer input contract — Reader output only, no raw Tavily fallback](0012-synthesizer-input-contract.md) | Accepted | 2026-05 |
 | 0013 | [Reflector decision logic — rule-driven for v1](0013-reflector-decision-logic.md) | Accepted | 2026-05 |
+| 0014 | [Anthropic prompt caching for research engine phases](0014-anthropic-prompt-caching.md) | Accepted | 2026-05 |
 
 ## When to write a new ADR
 

@@ -84,6 +84,44 @@ _PRICING: dict[tuple[str, str], ModelPricing] = {
 }
 
 
+def compute_anthropic_cached_cost_usd(
+    model: str,
+    *,
+    uncached_tail_input_tokens: int,
+    cache_read_input_tokens: int,
+    cache_creation_ephemeral_5m: int,
+    cache_creation_ephemeral_1h: int,
+    completion_tokens: int,
+) -> Decimal:
+    """Anthropic Messages API cost with prompt caching usage fields.
+
+    Per provider docs (prompt caching):
+
+    - ``uncached_tail_input_tokens`` corresponds to ``usage.input_tokens``
+      (portion after the last cache breakpoint — billed at standard input rate).
+    - ``cache_read_input_tokens`` is billed at 10% of the list input rate.
+    - Write tokens split by TTL: 5-minute writes at 1.25× input, 1-hour at 2×.
+
+    Preconditions (caller responsibility): non-negative integers;
+    ``cache_creation_ephemeral_5m + cache_creation_ephemeral_1h`` should match
+    ``usage.cache_creation_input_tokens`` when the SDK exposes both.
+    """
+    pricing = _PRICING.get(("anthropic", model))
+    if pricing is None:
+        return Decimal("0")
+
+    per_m = Decimal("1000000")
+    base_in = pricing.input_per_1m
+    uncached_cost = (Decimal(uncached_tail_input_tokens) / per_m) * base_in
+    read_cost = (Decimal(cache_read_input_tokens) / per_m) * base_in * Decimal("0.10")
+    write_5m = (Decimal(cache_creation_ephemeral_5m) / per_m) * base_in * Decimal("1.25")
+    write_1h = (Decimal(cache_creation_ephemeral_1h) / per_m) * base_in * Decimal("2.00")
+    output_cost = (Decimal(completion_tokens) / per_m) * pricing.output_per_1m
+    return (uncached_cost + read_cost + write_5m + write_1h + output_cost).quantize(
+        Decimal("0.000001")
+    )
+
+
 def compute_cost_usd(
     provider: str,
     model: str,
