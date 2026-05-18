@@ -77,6 +77,60 @@ def _cache_control_payload(ttl: Literal["5m", "1h"]) -> dict[str, str]:
     return {"type": "ephemeral", "ttl": ttl}
 
 
+def _is_nonempty_user_text(text: str) -> bool:
+    return bool(text.strip())
+
+
+def _merge_cache_control_cascade(
+    existing: dict[str, str], incoming: dict[str, str]
+) -> dict[str, str]:
+    """Combine cache markers when multiple breakpoints land on one text block.
+
+    Anthropic allows one ``cache_control`` per text block. When an empty zone is
+    dropped and its marker shifts backward, merge with any marker already on
+    the target block: prefer ``1h`` if either TTL is ``1h``, else keep the
+    cascaded (incoming) marker.
+    """
+    et = existing.get("ttl")
+    it = incoming.get("ttl")
+    if et == "1h" or it == "1h":
+        return {"type": "ephemeral", "ttl": "1h"}
+    return dict(incoming)
+
+
+def _drop_empty_user_text_blocks(
+    blocks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Remove whitespace-only user text blocks before sending to Anthropic.
+
+    Empty zone blocks are dropped before send; their ``cache_control`` markers
+    cascade to the previous non-empty block (merged via
+    ``_merge_cache_control_cascade``). Markers whose block has no prior
+    non-empty block are omitted.
+    """
+    result: list[dict[str, Any]] = []
+    for block in blocks:
+        text = block.get("text", "")
+        if not isinstance(text, str):
+            text = ""
+        if _is_nonempty_user_text(text):
+            result.append(dict(block))
+            continue
+        incoming_cc = block.get("cache_control")
+        if isinstance(incoming_cc, dict) and result:
+            prev = result[-1]
+            prev_cc = prev.get("cache_control")
+            if isinstance(prev_cc, dict):
+                prev = dict(prev)
+                prev["cache_control"] = _merge_cache_control_cascade(prev_cc, incoming_cc)
+                result[-1] = prev
+            else:
+                prev = dict(prev)
+                prev["cache_control"] = dict(incoming_cc)
+                result[-1] = prev
+    return result
+
+
 def _validate_cache_breakpoints(breakpoints: list[CacheBreakpoint]) -> None:
     seen: set[str] = set()
     for bp in breakpoints:
@@ -115,7 +169,13 @@ def _anthropic_structured_system_and_messages(
     user: str,
     cache_breakpoints: list[CacheBreakpoint] | None,
 ) -> tuple[Any, list[dict[str, Any]]]:
-    """Build ``system`` and ``messages`` for Instructor / Anthropic structured calls."""
+    """Build ``system`` and ``messages`` for Instructor / Anthropic structured calls.
+
+    Empty user zone segments (whitespace-only text blocks) are removed before
+    send so Anthropic never receives empty text content blocks. Any
+    ``cache_control`` on a dropped block is merged onto the previous non-empty
+    block (see ``_drop_empty_user_text_blocks``).
+    """
     if not cache_breakpoints:
         return system, [{"role": "user", "content": user}]
 
@@ -177,6 +237,7 @@ def _anthropic_structured_system_and_messages(
         )
         user_blocks.append({"type": "text", "text": rest})
 
+    user_blocks = _drop_empty_user_text_blocks(user_blocks)
     return sys_out, [{"role": "user", "content": user_blocks}]
 
 
@@ -491,7 +552,9 @@ async def complete_structured(
 
     Anthropic prompt caching: optional ``cache_breakpoints`` attaches ephemeral
     cache markers per ADR 0014. User zones requiring two or three splits use
-    ``USER_CACHE_ZONE_BOUNDARY`` embedded in ``user``.
+    ``USER_CACHE_ZONE_BOUNDARY`` embedded in ``user``. Empty zone blocks are
+    dropped before send; their cache markers cascade to the previous non-empty
+    block (see ``_anthropic_structured_system_and_messages``).
     """
     if not is_known_model(provider, model):
         _logger.warning(

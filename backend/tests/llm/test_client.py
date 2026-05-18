@@ -352,6 +352,69 @@ async def test_complete_structured_with_cache_breakpoints_injects_markers(mock_f
 
 
 @pytest.mark.asyncio
+async def test_complete_structured_drops_empty_zone_blocks_before_send(mock_firebase, db_session):
+    """Empty Zone C must not produce a third empty Anthropic text block (400 invalid_request)."""
+    parsed_instance = _Reply(message="zones")
+
+    req_id = f"msg_empty_zone_c_{uuid4()}"
+    fake_raw = MagicMock()
+    fake_raw.id = req_id
+    fake_raw.usage = MagicMock(input_tokens=50, output_tokens=10)
+
+    captured: dict = {}
+
+    async def _fake_create_with_completion(**kwargs):
+        captured.update(kwargs)
+        hooks = kwargs.get("hooks")
+        if hooks is not None:
+            hooks.emit_completion_response(fake_raw)
+        return (parsed_instance, fake_raw)
+
+    fake_instructor = MagicMock()
+    fake_instructor.create_with_completion = _fake_create_with_completion
+
+    ua, ub = "ZONE_A_BODY", "ZONE_B_BODY"
+    user = f"{ua}{USER_CACHE_ZONE_BOUNDARY}{ub}{USER_CACHE_ZONE_BOUNDARY}"
+    breakpoints = [
+        CacheBreakpoint(position="user_zone_a_end", ttl="5m"),
+        CacheBreakpoint(position="user_zone_b_end", ttl="5m"),
+    ]
+
+    with patch("app.llm.client._instructor_anthropic_client", fake_instructor):
+        await complete_structured(
+            db_session,
+            provider="anthropic",
+            model="claude-sonnet-4-6",
+            prompt_name="empty_zone_c_regression",
+            system="sys",
+            user=user,
+            response_model=_Reply,
+            cache_breakpoints=breakpoints,
+        )
+        await db_session.commit()
+
+    msgs = captured.get("messages")
+    blocks = msgs[0]["content"]
+    assert isinstance(blocks, list) and len(blocks) == 2
+    for b in blocks:
+        assert b.get("type") == "text"
+        assert isinstance(b.get("text"), str) and b["text"].strip() != ""
+        assert "cache_control" in b
+        assert b["cache_control"]["type"] == "ephemeral"
+    assert blocks[0]["text"] == ua
+    assert blocks[1]["text"] == ub
+    assert blocks[0]["cache_control"]["ttl"] == "5m"
+    assert blocks[1]["cache_control"]["ttl"] == "5m"
+
+    row = (
+        (await db_session.execute(select(LLMCall).where(LLMCall.request_id == req_id))).scalars().first()
+    )
+    assert row is not None
+    await db_session.delete(row)
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
 async def test_complete_structured_persists_cached_token_fields(mock_firebase, db_session):
     parsed_instance = _Reply(message="persist")
 
