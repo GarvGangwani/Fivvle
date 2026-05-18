@@ -105,7 +105,29 @@ Limits as shown in `console.anthropic.com` (Tier 1).
 
 **Note:** Sonnet input is likely the binding constraint at **30K tokens/min**. A post-Synthesizer-refactor warm-up run reported on the order of **58K input** tokens and still completed, which is consistent with the Instructor/SDK path using **prompt caching** (cache reads excluded from that input limit). Worth confirming with a quick measurement on the next full pipeline run.
 
+## 2026-05-17 — Reflector warm-up (Task F-1)
+
+Single-idea end-to-end smoke (`try_b2_4_end_to_end.py`, in-process dispatcher) targeting a **vague freelancer-loneliness** prompt. Pipeline reached **`RESEARCH_READY`**. Postgres aggregates from `scripts/cost_ledger_audit.py` after the run (experiment `53724f06-cb83-4c8a-92bd-e493e994ac34`).
+
+| Date | Activity | Anthropic | Tavily | Notes |
+|---|---|---|---|---|
+| 2026-05-18 (UTC) | Reflector warm-up, idea 1 (freelancer loneliness, vague) | $0.985 | $0.528 | `RESEARCH_READY`; Reflector partial re-search 12/12 Tavily tasks OK |
+
+**Subtotal (this line item):** Anthropic **$0.985** + Tavily **$0.528** ≈ **$1.513** combined.
+
+### Average cost per pipeline run (this session only)
+
+Single observation: **$0.985** Anthropic / run, **$0.528** Tavily / run, **~9.3 min** wall-clock (smoke client).
+
+Compared to `.cursorrules` target of $0.25–$0.70 **per research engine run** (LLM + external, pre–full B3 complexity): **well above** — expected for **Claude Sonnet across refinement + planner + 11 reader calls + 4 reflector refinements + large synthesizer_v2 context** plus **33 billable Tavily rows**.
+
+### Anthropic credit projection (checkpoint math)
+
+If Anthropic credits **before** this run were ~**$4.64** remaining (ledger checkpoint from 2026-05-17 audit narrative), then **after** deducting ~**$0.985** ≈ **$3.65** remains. At this run’s marginal Anthropic cost, **~3** additional similar warm-up ideas fit before hitting that remainder (floor division); using the post-audit cohort **P90 ~$0.991**/experiment across nine tracked experiments suggests **~3–4** ideas as a realistic planning band.
+
+---
+
 ### Known instrumentation gaps
 
-1. **Tavily cost always zero in DB:** `ExternalAPICall` rows for Tavily have **`cost_usd = 0`** because the integration wrapper does not compute or persist search spend. Fix before Tavily PAYG or production cost dashboards that depend on external API totals; otherwise external spend is materially understated.
+1. **Tavily cost in DB:** Older runs often show **`cost_usd = 0`** for Tavily when the integration wrapper did not persist spend. **Task F-1 (2026-05-18)** recorded **non-zero** Tavily dollars on `ExternalAPICall` rows — treats earlier “always zero” statement as **historical**, not current.
 2. **NULL `experiment_id` on LLM rows:** **98** `llm_calls` rows have **`experiment_id` NULL** (warm-up scripts, smoke runs, ad hoc dev calls). That is not a billing bug, but it is a **process gap**: that spend does not show up on per-experiment cost views. Defer a hard policy until production-launch hardening; track as a follow-up so dev workflows attach an experiment (or a dedicated “dev bucket”) consistently.
