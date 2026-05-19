@@ -17,6 +17,8 @@ Pattern: patch the Tavily search function at the service module's import referen
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from typing import Iterator
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
@@ -25,7 +27,50 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.tavily import TavilyResult
 from app.schemas.planner import ResearchPlan, ResearchQuestion
+from app.schemas.refinement import RefinedIdea
+from app.schemas.search import MergedSearchResults, TrendsPoint, TrendsSeries
 from app.services.searcher_service import SearcherFailure, execute_search_plan
+
+_VALID_RISKS = [
+    "Is the market already saturated with incumbents?",
+    "Will users pay for this versus free alternatives?",
+    "Can the team ship before regulations change?",
+]
+
+
+@contextmanager
+def _patch_searcher_integrations(
+    tavily_side_effect,
+    *,
+    trends_return: dict[str, TrendsSeries] | None = None,
+) -> Iterator[tuple[AsyncMock, AsyncMock]]:
+    """Patch Tavily search and fetch_trends for Searcher unit tests."""
+    trends_mock = AsyncMock(return_value=trends_return)
+    with (
+        patch(
+            "app.services.searcher_service.tavily_client.search",
+            side_effect=tavily_side_effect,
+        ),
+        patch(
+            "app.services.searcher_service.fetch_trends",
+            trends_mock,
+        ),
+    ):
+        yield trends_mock
+
+
+def _make_refined_idea_for_trends(**overrides: object) -> RefinedIdea:
+    defaults = {
+        "refined_one_liner": "AI shift handoff notes for nurses",
+        "target_audience": "Night-shift nurses at regional hospitals",
+        "value_proposition": "Cuts handoff documentation time dramatically",
+        "risks": _VALID_RISKS,
+        "headline": "Nurse handoff AI",
+        "subheadline": "Faster shift notes",
+        "cta_text": "Join waitlist",
+    }
+    defaults.update(overrides)
+    return RefinedIdea(**defaults)  # type: ignore[arg-type]
 
 
 # ---------------------------------------------------------------------------
@@ -78,18 +123,15 @@ async def test_execute_search_plan_happy_path() -> None:
         # Return unique URL per call so dedup has nothing to do
         return [_make_tavily_result(f"https://example.com/result-{call_count}")]
 
-    with patch(
-        "app.services.searcher_service.tavily_client.search",
-        side_effect=_mock_search,
-    ):
-        results = await execute_search_plan(db=db, research_plan=plan)
+    with _patch_searcher_integrations(_mock_search):
+        merged = await execute_search_plan(db=db, research_plan=plan)
 
     assert call_count == 14  # 7 questions × 2 queries
-    assert len(results) == 7
+    assert len(merged.tavily) == 7
     for qid in [f"q{i}" for i in range(1, 8)]:
-        assert qid in results
+        assert qid in merged.tavily
         # 2 queries × 1 result each = 2 results per question (unique URLs)
-        assert len(results[qid]) == 2
+        assert len(merged.tavily[qid]) == 2
 
 
 @pytest.mark.asyncio
@@ -104,10 +146,7 @@ async def test_execute_search_plan_passes_correct_args() -> None:
         call_args_list.append({"max_results": max_results, "search_depth": search_depth})
         return [_make_tavily_result("https://example.com/result")]
 
-    with patch(
-        "app.services.searcher_service.tavily_client.search",
-        side_effect=_mock_search,
-    ):
+    with _patch_searcher_integrations(_mock_search):
         await execute_search_plan(db=db, research_plan=plan)
 
     assert len(call_args_list) == 5
@@ -149,15 +188,12 @@ async def test_execute_search_plan_deduplicates_by_url() -> None:
         # Other questions return unique URLs
         return [_make_tavily_result(f"{unique_url_base}-{call_idx}")]
 
-    with patch(
-        "app.services.searcher_service.tavily_client.search",
-        side_effect=_mock_search,
-    ):
-        results = await execute_search_plan(db=db, research_plan=plan)
+    with _patch_searcher_integrations(_mock_search):
+        merged = await execute_search_plan(db=db, research_plan=plan)
 
     # Two q1 calls, same URL → deduplicated to 1 result for q1
-    assert len(results["q1"]) == 1
-    assert results["q1"][0].url == duplicate_url
+    assert len(merged.tavily["q1"]) == 1
+    assert merged.tavily["q1"][0].url == duplicate_url
 
 
 @pytest.mark.asyncio
@@ -179,16 +215,13 @@ async def test_execute_search_plan_no_dedup_across_questions() -> None:
     async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
         return [_make_tavily_result(shared_url)]
 
-    with patch(
-        "app.services.searcher_service.tavily_client.search",
-        side_effect=_mock_search,
-    ):
-        results = await execute_search_plan(db=db, research_plan=plan)
+    with _patch_searcher_integrations(_mock_search):
+        merged = await execute_search_plan(db=db, research_plan=plan)
 
     # Each question gets its own result — not deduplicated across questions
     for qid in ["q1", "q2", "q3", "q4", "q5"]:
-        assert len(results[qid]) == 1
-        assert results[qid][0].url == shared_url
+        assert len(merged.tavily[qid]) == 1
+        assert merged.tavily[qid][0].url == shared_url
 
 
 # ---------------------------------------------------------------------------
@@ -212,17 +245,14 @@ async def test_execute_search_plan_partial_failure() -> None:
             raise RuntimeError("Tavily network error")
         return [_make_tavily_result(f"https://example.com/result-{call_count}")]
 
-    with patch(
-        "app.services.searcher_service.tavily_client.search",
-        side_effect=_mock_search,
-    ):
+    with _patch_searcher_integrations(_mock_search):
         # Should NOT raise — partial failure is tolerated
-        results = await execute_search_plan(db=db, research_plan=plan)
+        merged = await execute_search_plan(db=db, research_plan=plan)
 
     assert call_count == 14
-    assert len(results) == 7  # all questions present in the mapping
+    assert len(merged.tavily) == 7  # all questions present in the mapping
     # Total results should be 12 (14 calls minus 2 failures)
-    total = sum(len(v) for v in results.values())
+    total = sum(len(v) for v in merged.tavily.values())
     assert total == 12
 
 
@@ -240,10 +270,7 @@ async def test_execute_search_plan_total_failure_raises() -> None:
     async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
         raise RuntimeError("Tavily completely down")
 
-    with patch(
-        "app.services.searcher_service.tavily_client.search",
-        side_effect=_mock_search,
-    ):
+    with _patch_searcher_integrations(_mock_search):
         with pytest.raises(SearcherFailure) as exc_info:
             await execute_search_plan(db=db, research_plan=plan)
 
@@ -271,10 +298,7 @@ async def test_execute_search_plan_forwards_experiment_id() -> None:
         seen_experiment_ids.append(experiment_id)
         return [_make_tavily_result("https://example.com/r")]
 
-    with patch(
-        "app.services.searcher_service.tavily_client.search",
-        side_effect=_mock_search,
-    ):
+    with _patch_searcher_integrations(_mock_search):
         await execute_search_plan(db=db, research_plan=plan, experiment_id=exp_id)
 
     assert all(eid == exp_id for eid in seen_experiment_ids)
@@ -293,10 +317,7 @@ async def test_execute_search_plan_forwards_none_experiment_id() -> None:
         seen_experiment_ids.append(experiment_id)
         return [_make_tavily_result("https://example.com/r")]
 
-    with patch(
-        "app.services.searcher_service.tavily_client.search",
-        side_effect=_mock_search,
-    ):
+    with _patch_searcher_integrations(_mock_search):
         await execute_search_plan(db=db, research_plan=plan, experiment_id=None)
 
     assert all(eid is None for eid in seen_experiment_ids)
@@ -331,15 +352,12 @@ async def test_execute_search_plan_keeps_top_10_by_score() -> None:
             for j in range(5)
         ]
 
-    with patch(
-        "app.services.searcher_service.tavily_client.search",
-        side_effect=_mock_search,
-    ):
-        results = await execute_search_plan(db=db, research_plan=plan)
+    with _patch_searcher_integrations(_mock_search):
+        merged = await execute_search_plan(db=db, research_plan=plan)
 
     # Each question had 15 results (3 calls × 5 results, all unique URLs).
     # After top-10 filter, each question should have exactly 10.
-    for qid, q_results in results.items():
+    for qid, q_results in merged.tavily.items():
         assert len(q_results) == 10, (
             f"Expected 10 results for {qid} after top-10 filter, got {len(q_results)}"
         )
@@ -393,13 +411,10 @@ async def test_execute_search_plan_top10_sorted_by_score_descending() -> None:
             return batch
         return [_make_tavily_result(f"https://example.com/other-{call_idx}")]
 
-    with patch(
-        "app.services.searcher_service.tavily_client.search",
-        side_effect=_mock_search,
-    ):
-        results = await execute_search_plan(db=db, research_plan=plan2)
+    with _patch_searcher_integrations(_mock_search):
+        merged = await execute_search_plan(db=db, research_plan=plan2)
 
-    q1 = results["q1"]
+    q1 = merged.tavily["q1"]
     assert len(q1) == 10  # trimmed from 15
 
     # All returned results should have score ≥ the minimum score of the top-10.
@@ -450,13 +465,10 @@ async def test_execute_search_plan_none_score_sorted_to_bottom() -> None:
             return results
         return [_make_tavily_result(f"https://example.com/other-{call_idx}")]
 
-    with patch(
-        "app.services.searcher_service.tavily_client.search",
-        side_effect=_mock_search,
-    ):
-        results = await execute_search_plan(db=db, research_plan=plan)
+    with _patch_searcher_integrations(_mock_search):
+        merged = await execute_search_plan(db=db, research_plan=plan)
 
-    q1 = results["q1"]
+    q1 = merged.tavily["q1"]
     assert len(q1) == 10  # trimmed from 15
 
     # The 5 results with score=None should NOT be in the top-10 since there
@@ -466,3 +478,182 @@ async def test_execute_search_plan_none_score_sorted_to_bottom() -> None:
         assert none_url not in returned_urls, (
             f"score=None result {none_url!r} should have been sorted out by top-10 filter"
         )
+
+
+# ---------------------------------------------------------------------------
+# 8. Google Trends orchestration (Commit 2 — ADR 0015)
+# ---------------------------------------------------------------------------
+
+
+def _make_trends_series(keyword: str) -> TrendsSeries:
+    return TrendsSeries(
+        keyword=keyword,
+        points=[TrendsPoint(date="2024-06-01", value=42)],
+    )
+
+
+def _minimal_tavily_mock():
+    async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
+        return [_make_tavily_result("https://example.com/r")]
+
+    return _mock_search
+
+
+@pytest.mark.asyncio
+async def test_execute_search_plan_trends_happy_path() -> None:
+    """Tavily + Trends succeed → MergedSearchResults with both fields populated."""
+    db = AsyncMock(spec=AsyncSession)
+    plan = _make_plan(question_count=5, queries_per_question=1)
+    trends_data = {
+        "kw-a": _make_trends_series("kw-a"),
+        "kw-b": _make_trends_series("kw-b"),
+    }
+
+    with _patch_searcher_integrations(_minimal_tavily_mock(), trends_return=trends_data) as trends_mock:
+        merged = await execute_search_plan(db=db, research_plan=plan)
+
+    assert isinstance(merged, MergedSearchResults)
+    assert len(merged.tavily) == 5
+    assert merged.trends is not None
+    assert len(merged.trends) > 0
+    trends_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_execute_search_plan_trends_graceful_skip_returns_none() -> None:
+    """fetch_trends returns None → tavily populated, trends is None, no raise."""
+    db = AsyncMock(spec=AsyncSession)
+    plan = _make_plan(question_count=5, queries_per_question=1)
+
+    with _patch_searcher_integrations(_minimal_tavily_mock(), trends_return=None):
+        merged = await execute_search_plan(db=db, research_plan=plan)
+
+    assert len(merged.tavily) == 5
+    assert all(len(v) == 1 for v in merged.tavily.values())
+    assert merged.trends is None
+
+
+@pytest.mark.asyncio
+async def test_execute_search_plan_trends_exception_caught_returns_none() -> None:
+    """RuntimeError from fetch_trends → belt-and-suspenders skip, trends=None."""
+    db = AsyncMock(spec=AsyncSession)
+    plan = _make_plan(question_count=5, queries_per_question=1)
+
+    trends_mock = AsyncMock(side_effect=RuntimeError("pytrends blew up"))
+    with (
+        patch(
+            "app.services.searcher_service.tavily_client.search",
+            side_effect=_minimal_tavily_mock(),
+        ),
+        patch(
+            "app.services.searcher_service.fetch_trends",
+            trends_mock,
+        ),
+    ):
+        merged = await execute_search_plan(db=db, research_plan=plan)
+
+    assert len(merged.tavily) == 5
+    assert merged.trends is None
+    trends_mock.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_execute_search_plan_trends_called_once_per_pipeline() -> None:
+    """fetch_trends is invoked exactly once regardless of Tavily query count."""
+    db = AsyncMock(spec=AsyncSession)
+    plan = _make_plan(question_count=7, queries_per_question=2)
+
+    with _patch_searcher_integrations(_minimal_tavily_mock(), trends_return=None) as trends_mock:
+        await execute_search_plan(db=db, research_plan=plan)
+
+    assert trends_mock.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_execute_search_plan_trends_keyword_extraction() -> None:
+    """Keywords: RefinedIdea headline + one_liner, then plan search_queries (deduped, ≤5)."""
+    db = AsyncMock(spec=AsyncSession)
+    refined = _make_refined_idea_for_trends(
+        headline="Nurse handoff AI",
+        refined_one_liner="AI shift handoff notes for nurses",
+    )
+    plan = ResearchPlan(
+        questions=[
+            ResearchQuestion(
+                id="q1",
+                question="Market size?",
+                rationale="Size matters.",
+                search_queries=["hospital handoff software", "nurse shift notes app"],
+            ),
+            ResearchQuestion(
+                id="q2",
+                question="Competitors?",
+                rationale="Landscape.",
+                search_queries=["hospital handoff software", "clinical handoff tools"],
+            ),
+            _make_question("q3", query_count=1),
+            _make_question("q4", query_count=1),
+            _make_question("q5", query_count=1),
+        ]
+    )
+    expected_keywords = [
+        "Nurse handoff AI",
+        "AI shift handoff notes for nurses",
+        "hospital handoff software",
+        "nurse shift notes app",
+        "clinical handoff tools",
+    ]
+
+    with _patch_searcher_integrations(_minimal_tavily_mock(), trends_return=None) as trends_mock:
+        await execute_search_plan(
+            db=db,
+            research_plan=plan,
+            refined_idea=refined,
+        )
+
+    trends_mock.assert_awaited_once_with(db, expected_keywords, experiment_id=None)
+
+
+@pytest.mark.asyncio
+async def test_execute_search_plan_trends_forwards_experiment_id() -> None:
+    """experiment_id is forwarded to fetch_trends."""
+    db = AsyncMock(spec=AsyncSession)
+    plan = _make_plan(question_count=5, queries_per_question=1)
+    exp_id = uuid4()
+
+    with _patch_searcher_integrations(_minimal_tavily_mock(), trends_return=None) as trends_mock:
+        await execute_search_plan(db=db, research_plan=plan, experiment_id=exp_id)
+
+    assert trends_mock.await_args.kwargs["experiment_id"] == exp_id
+
+
+@pytest.mark.asyncio
+async def test_execute_search_plan_never_logs_raw_keywords(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Searcher logs keywords_count only — never raw keyword strings."""
+    db = AsyncMock(spec=AsyncSession)
+    secret_kw = "SECRET_TRENDS_KEYWORD_XYZ"
+    refined = _make_refined_idea_for_trends(headline=secret_kw)
+    plan = ResearchPlan(
+        questions=[
+            ResearchQuestion(
+                id="q1",
+                question="Q?",
+                rationale="R.",
+                search_queries=[secret_kw, "other query phrase"],
+            ),
+            _make_question("q2", query_count=1),
+            _make_question("q3", query_count=1),
+            _make_question("q4", query_count=1),
+            _make_question("q5", query_count=1),
+        ]
+    )
+
+    with _patch_searcher_integrations(_minimal_tavily_mock(), trends_return=None):
+        await execute_search_plan(db=db, research_plan=plan, refined_idea=refined)
+
+    log_blob = capsys.readouterr().out
+    assert secret_kw not in log_blob
+    assert "other query phrase" not in log_blob
+    assert "keywords_count" in log_blob

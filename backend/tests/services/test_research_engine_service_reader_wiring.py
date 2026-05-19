@@ -18,6 +18,7 @@ from app.config import get_settings
 from app.db.enums import ExperimentStatus
 from app.schemas.planner import ResearchPlan, ResearchQuestion
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
+from app.schemas.search import MergedSearchResults
 from app.services.reader_service import ReaderTotalFailure
 from app.services.research_engine_service import run_research_engine_pipeline
 from tests.routers.test_confirm_and_research_status import (
@@ -26,6 +27,10 @@ from tests.routers.test_confirm_and_research_status import (
     _read_experiment_fields,
     _sync_user,
 )
+
+
+def _merged_searcher_result(tavily: dict[str, list] | None = None) -> MergedSearchResults:
+    return MergedSearchResults(tavily=tavily or {f"q{i}": [] for i in range(1, 6)}, trends=None)
 
 
 async def _read_experiment_status_async(experiment_id_str: str) -> ExperimentStatus:
@@ -135,7 +140,7 @@ def test_orchestrator_transitions_to_research_reading_before_reader(
         stack.enter_context(
             patch(
                 "app.services.searcher_service.execute_search_plan",
-                AsyncMock(return_value={f"q{i}": [] for i in range(1, 6)}),
+                AsyncMock(return_value=_merged_searcher_result()),
             )
         )
         stack.enter_context(
@@ -205,7 +210,7 @@ def test_orchestrator_transitions_to_research_reflecting_after_reader(
         stack.enter_context(
             patch(
                 "app.services.searcher_service.execute_search_plan",
-                AsyncMock(return_value={f"q{i}": [] for i in range(1, 6)}),
+                AsyncMock(return_value=_merged_searcher_result()),
             )
         )
         stack.enter_context(
@@ -257,7 +262,7 @@ def test_orchestrator_handles_reader_total_failure_gracefully(
         stack.enter_context(
             patch(
                 "app.services.searcher_service.execute_search_plan",
-                AsyncMock(return_value={f"q{i}": [] for i in range(1, 6)}),
+                AsyncMock(return_value=_merged_searcher_result()),
             )
         )
         stack.enter_context(
@@ -304,7 +309,7 @@ def test_orchestrator_handles_reader_unexpected_exception_gracefully(
         stack.enter_context(
             patch(
                 "app.services.searcher_service.execute_search_plan",
-                AsyncMock(return_value={f"q{i}": [] for i in range(1, 6)}),
+                AsyncMock(return_value=_merged_searcher_result()),
             )
         )
         stack.enter_context(

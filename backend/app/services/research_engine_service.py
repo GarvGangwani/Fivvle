@@ -276,15 +276,17 @@ async def run_research_engine_pipeline(
             await _set_status(session, experiment_id, ExperimentStatus.RESEARCH_SEARCHING)
             await session.commit()
 
+            from app.schemas.search import MergedSearchResults  # noqa: PLC0415
             from app.services.searcher_service import (  # noqa: PLC0415
                 SearcherFailure,
                 execute_search_plan,
             )
             try:
-                search_results = await execute_search_plan(
+                merged: MergedSearchResults = await execute_search_plan(
                     db=session,
                     research_plan=research_plan,
                     experiment_id=experiment_id,
+                    refined_idea=refined_idea,
                 )
             except (SearcherFailure, Exception) as exc:
                 detail = _sanitize_error_detail("searcher", exc)
@@ -295,6 +297,10 @@ async def run_research_engine_pipeline(
                 )
                 await session.commit()
                 return
+
+            search_results = merged.tavily
+            # Held for Synthesizer wiring in Commit 3 (ADR 0016 fifth field).
+            trends_signals = merged.trends
 
             total_results = sum(len(v) for v in search_results.values())
             log.info(

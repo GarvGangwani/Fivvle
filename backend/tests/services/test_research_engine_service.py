@@ -32,6 +32,7 @@ from app.config import get_settings
 from app.db.enums import ExperimentStatus
 from app.integrations.tavily import TavilyResult
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
+from app.schemas.search import MergedSearchResults
 from app.services.research_engine_service import run_research_engine_pipeline
 from app.services.synthesizer_service import SynthesizerHallucinatedCitation
 from tests.routers.test_confirm_and_research_status import (
@@ -73,6 +74,13 @@ def _run_pipeline(experiment_id_str: str) -> None:
 def _fake_research_plan() -> MagicMock:
     """Minimal ResearchPlan stand-in — pipeline only reads .questions."""
     return MagicMock(questions=[])
+
+
+def _merged_searcher_result(
+    tavily: dict[str, list[TavilyResult]] | None = None,
+) -> MergedSearchResults:
+    """Searcher mock return shape after Commit 2 (MergedSearchResults)."""
+    return MergedSearchResults(tavily=tavily or {}, trends=None)
 
 
 def _fake_report() -> MagicMock:
@@ -138,7 +146,7 @@ def test_happy_path_transitions_through_all_phases_to_ready(
         stack.enter_context(
             patch(
                 "app.services.searcher_service.execute_search_plan",
-                AsyncMock(return_value={}),
+                AsyncMock(return_value=_merged_searcher_result()),
             )
         )
         stack.enter_context(
@@ -267,7 +275,7 @@ def test_synthesizer_exception_sets_research_failed_with_synthesizer_prefix(
         stack.enter_context(
             patch(
                 "app.services.searcher_service.execute_search_plan",
-                AsyncMock(return_value={}),
+                AsyncMock(return_value=_merged_searcher_result()),
             )
         )
         stack.enter_context(
@@ -326,7 +334,7 @@ def test_synthesizer_hallucinated_citation_sets_research_failed_with_synthesizer
         stack.enter_context(
             patch(
                 "app.services.searcher_service.execute_search_plan",
-                AsyncMock(return_value={}),
+                AsyncMock(return_value=_merged_searcher_result()),
             )
         )
         stack.enter_context(
@@ -444,7 +452,7 @@ def test_subsequent_phases_not_called_after_planner_failure(
     exp_id = _create_refined_experiment(client)
     _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
 
-    mock_searcher = AsyncMock(return_value={})
+    mock_searcher = AsyncMock(return_value=_merged_searcher_result())
 
     with ExitStack() as stack:
         stack.enter_context(
@@ -523,7 +531,7 @@ def test_orchestrator_calls_execute_reflector_between_reader_and_synthesizer(
         stack.enter_context(
             patch(
                 "app.services.searcher_service.execute_search_plan",
-                AsyncMock(return_value={}),
+                AsyncMock(return_value=_merged_searcher_result()),
             )
         )
         stack.enter_context(
@@ -583,7 +591,7 @@ def test_orchestrator_proceeds_to_synthesizer_when_reflector_pass_through(
         stack.enter_context(
             patch(
                 "app.services.searcher_service.execute_search_plan",
-                AsyncMock(return_value={}),
+                AsyncMock(return_value=_merged_searcher_result()),
             )
         )
         stack.enter_context(
@@ -636,7 +644,7 @@ def test_orchestrator_uses_merged_reader_outputs_when_reflector_modifies(
         stack.enter_context(
             patch(
                 "app.services.searcher_service.execute_search_plan",
-                AsyncMock(return_value={}),
+                AsyncMock(return_value=_merged_searcher_result()),
             )
         )
         stack.enter_context(
@@ -695,7 +703,7 @@ def test_orchestrator_rebuilds_citation_hydration_index_after_reflector(
         stack.enter_context(
             patch(
                 "app.services.searcher_service.execute_search_plan",
-                AsyncMock(return_value={}),
+                AsyncMock(return_value=_merged_searcher_result()),
             )
         )
         stack.enter_context(
