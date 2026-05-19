@@ -1,9 +1,11 @@
 # Multi-Source Searcher — Planning Document
 
-**Status:** APPROVED — co-founder reviewed, decisions resolved, implementation prompt pending.
+**Status:** APPROVED — co-founder reviewed, decisions resolved, Reddit deferred to v2 pending commercial Data API approval, implementation prompt pending.
 **Phase:** Searcher (parallel multi-source evidence collection; extends ADR 0004 Searcher step)  
 **Related ADRs to write:** ADR 0014 (Multi-Source Search Inputs); ADR 0015 (Synthesizer Input Contract v2 — 5-field contract with `trends_signals`)  
 **Authors:** Cursor Composer (planning artifact); human co-founder (approval)
+
+**v3 update (Reddit deferred):** Reddit integration is removed from v1 scope. Reason: Reddit's Responsible Builder Policy (https://support.reddithelp.com/hc/en-us/articles/42728983564564) requires written commercial approval for AI / commercial use of Reddit data, which Fivvle would require. v1 multi-source ships as Tavily + Google Trends only. Reddit becomes a v2 question contingent on obtaining commercial Data API approval. All §6 (Reddit Integration Detail) content is retained for v2 reference but is NOT part of v1 implementation. §11 file list, §12 ADR stubs, and §15 decisions table are updated accordingly.
 
 ---
 
@@ -46,13 +48,13 @@ The following rules apply to this design and any future implementation derived f
 
 ## 3. Source Taxonomy
 
-| Source | What it contributes | Idea types that benefit most |
-|--------|---------------------|------------------------------|
-| **Tavily** | **General web / professional corpus** — articles, docs, landing pages, press, blogs with crawl-friendly text. | **B2B SaaS**, devtools with public docs, categories with active trade press, **marketplace** ideas with existing coverage. |
-| **Reddit (PRAW)** | **Community pain-point signal** — authentic complaints, comparisons, "what do you use?" threads, niche vocabulary. | **Consumer apps**, **hobby / passion** products, **localized** or **subculture** ideas, **early-stage** products where **users** lead the narrative. |
-| **Google Trends (pytrends)** | **Time-series demand validation** — relative interest over time, seasonality, breakout vs decline. **Not** extractable prose evidence. | **Consumer trends**, **seasonal** or **fad-driven** ideas, **geographic** interest checks, **"rising topic?"** validation alongside text evidence. |
+| Source | What it contributes | Idea types that benefit most | Status |
+|--------|---------------------|------------------------------|--------|
+| **Tavily** | **General web / professional corpus** — articles, docs, landing pages, press, blogs with crawl-friendly text. | **B2B SaaS**, devtools with public docs, categories with active trade press, **marketplace** ideas with existing coverage. | v1 |
+| **Reddit (PRAW)** | **Community pain-point signal** — authentic complaints, comparisons, "what do you use?" threads, niche vocabulary. | **Consumer apps**, **hobby / passion** products, **localized** or **subculture** ideas, **early-stage** products where **users** lead the narrative. | v2 deferred |
+| **Google Trends (pytrends)** | **Time-series demand validation** — relative interest over time, seasonality, breakout vs decline. **Not** extractable prose evidence. | **Consumer trends**, **seasonal** or **fad-driven** ideas, **geographic** interest checks, **"rising topic?"** validation alongside text evidence. | v1 |
 
-**Why three sources for v1 (not two, not four).** Tavily stays the **breadth** layer; Reddit adds **community truth** where the web is thin; Trends adds **temporal demand** no text snippet replaces. **Explicitly out of scope for MVP** per `.cursorrules`: **Exa**, **Firecrawl**, **Anthropic web search tool**, and **news API** as additional first-class integrations — this plan **does not** add them to v1; scope stays **Tavily + Reddit + Trends** aligned with the documented stack and Build Order, without **source sprawl**.
+**Why two sources for v1 (not one, not four).** Tavily stays the **breadth** layer; Trends adds **temporal demand** no text snippet replaces. **Community-signal** coverage (Reddit) is **v2**, contingent on commercial Reddit Data API approval — see v3 update. **Explicitly out of scope for MVP** per `.cursorrules`: **Exa**, **Firecrawl**, **Anthropic web search tool**, and **news API** as additional first-class integrations — this plan **does not** add them to v1; v1 scope stays **Tavily + Trends** without **source sprawl**.
 
 ---
 
@@ -68,7 +70,6 @@ The following rules apply to this design and any future implementation derived f
 | Source | Adaptation |
 |--------|------------|
 | **Tavily** | Use `search_queries` **as-is** (current behaviour). |
-| **Reddit** | Map the same strings to Reddit search: **broad discovery** via `search` across **`all`** (or configured default), optionally **lightweight query shaping** (strip site-specific cruft; **no** custom subreddit injection in v1 unless calibration shows systematic benefit). **Open design point:** subreddit hints could be a v2 Planner field — **not** required for v1. |
 | **Google Trends** | Build a **1–5 keyword bag** from the **question text + search_queries** (dedupe, flatten to short keyword phrases). Trends **does not** accept seven independent full-sentence questions as seven full Trends API sessions within budget — see §7. |
 
 **Open question (flagged for v1 recommendation):** Should `ResearchPlan` grow **per-source query fields** (e.g. `reddit_queries`, `trends_keywords`)? **Recommendation for v1:** **No** — keep a **single Planner output shape**; **Searcher owns adaptation** from `question` + `search_queries`. **Revisit** if calibration shows **Planner-authored per-source queries** materially outperform heuristic adaptation.
@@ -84,22 +85,22 @@ The following rules apply to this design and any future implementation derived f
 ```
 MergedSearchResults:
   tavily:  list[TavilyResult]
-  reddit:  list[RedditResult]
-  trends:  null  — Trends is NOT per-question in this object; see §7 for pipeline-level Trends
+  trends:  TrendsSeries | None  — or null per §7 keying choice; Trends is NOT per-question in this object when keyed pipeline-level; see §7
 ```
 
 **Clarification:** **Trends** is attached **once per pipeline run** (or keyed separately — see §7), **not** duplicated inside every question's `MergedSearchResults` if the series is **global**. The per-question dict may expose **`trends: None`** always, with Trends carried on orchestrator state / Synthesizer input — **exact wiring is an implementation detail** bounded by §7 and §10.
 
 **Why not a single flat `list` of polymorphic `SearchResult` for Reader?**
 
-- **Reader** must apply **different extraction rules** to **static web text** vs **Reddit discourse** (tone, trust, citation style).
 - **Trends** is **not evidence text** — it must **not** pass through Reader as "snippets."
 
-**Alternative considered:** A **Pydantic discriminated union** of result types (`kind: "tavily" | "reddit" | …`). **Recommendation for v1:** **Per-source keyed structure** (`tavily`, `reddit`, …) so Reader and orchestration code keep **explicit branches** — **no hidden polymorphism** that obscures per-source prompt sections and validation.
+**Alternative considered:** A **Pydantic discriminated union** of result types (`kind: "tavily" | …`). **Recommendation for v1:** **Per-source keyed structure** (`tavily`, `trends`, …) so orchestration code keeps **explicit branches** — **no hidden polymorphism** that obscures per-source handling and validation. (When Reddit lands in v2, Reader will need **different extraction rules** for **static web text** vs **Reddit discourse** — see §6.)
 
 ---
 
 ## 6. Reddit Integration Detail
+
+**Deferred from v1 implementation per v3 update.** This section is retained for v2 reference if commercial Reddit Data API approval is later obtained. The v1 multi-source implementation skips Reddit entirely.
 
 **Library:** **PRAW** (Python Reddit API Wrapper). **Reasons:** mature, **free-tier compatible**, synchronous client with a well-understood **async bridge** pattern (same family as Tavily's `asyncio.to_thread` in `tavily.py`).
 
@@ -153,30 +154,32 @@ MergedSearchResults:
 
 ## 8. Execution Model — How the Searcher Runs Multiple Sources
 
-**Per question:** Run **Tavily** and **Reddit** **concurrently** via **`asyncio.gather()`** (same spirit as today's top-level Tavily fan-out: **maximize independence**, **isolate failures**).
+**Per question:** Run **Tavily only** — same fan-out as today's implementation (`asyncio.gather()` over `(question_id, search_query)` pairs). **No Reddit** in v1.
 
 **Trends:** **Not** inner-looped per question in the same way — **batch / cap** at **~3 calls per run** (§7), executed **once or a few times per pipeline**, **not** N× per every `(question, query)` pair.
 
-**Per-source failure isolation:** If Reddit fails for **`q3`**, **Tavily results for `q3` still return**. The merged structure for `q3` has **`reddit: []`** (or omitted empty equivalent) and **Tavily populated** as available. **No source is mandatory** for a question: if **all** sources fail for that question, the **question proceeds** with **empty evidence**; **Reader's existing gap / sentinel paths** apply.
+**Per-source failure isolation:** If Trends fails for the run, **Tavily results per question still return**. **No source is mandatory** for a question: if **all** sources fail for that question, the **question proceeds** with **empty evidence**; **Reader's existing gap / sentinel paths** apply.
 
 **Concurrency / limits:**
 
 - **Current Tavily implementation** (`searcher_service.py`): **no `asyncio.Semaphore`** — **all** `(question_id, search_query)` Tavily tasks launch in **one** `asyncio.gather()`. Parallel Tavily calls ≈ **total query count** (often ~14 for 7×2).
-- **Multi-source impact:** Adding Reddit introduces **another parallel fan-out** per question-query (conceptually **doubles or more** outbound network calls vs Tavily-only for the same plan). **v1 implementation must reassess:** whether to add a **semaphore** or **lower per-source parallelism** so **Reddit 60/min**, **Tavily rate limits**, and **process stability** remain safe. **This planning doc does not pick a number** — it records the **need** to reconcile fan-out with `.cursorrules` limits and **$1.50** run budget.
+- **v1 multi-source impact:** With Reddit deferred, the **Tavily-only fan-out (~14 parallel calls for 7×2) stays unchanged** — the v2 doubling concern from adding Reddit **does not apply** in v1. **Semaphore decision:** **no change from current Searcher implementation for v1**; revisit when Reddit lands in v2.
 
-**Mandatory vs optional:** **None** of Tavily / Reddit / Trends is **hard-required** for the run to continue — only **orchestrator-level total failure policies** (e.g. all Tavily failed today → `SearcherFailure`) may remain; **multi-source** should **relax** toward **partial success** where consistent with `.cursorrules` **partial results** behaviour.
+**Mandatory vs optional:** **None** of Tavily / Trends is **hard-required** for the run to continue — only **orchestrator-level total failure policies** (e.g. all Tavily failed today → `SearcherFailure`) may remain; **multi-source** should **relax** toward **partial success** where consistent with `.cursorrules` **partial results** behaviour.
 
 ---
 
 ## 9. Reader Phase Impact
 
-**Prompt evolution:** **Single Reader prompt revision** (e.g. **reader_v2**) that accepts **structured sections** — **`tavily_results`** and **`reddit_results`**, **each XML-wrapped** per **`AGENTS.md`**. **Do not** split into **separate Reader prompts per source** for v1 — **one model call per question** stays aligned with **ADR 0011**; the input merely gains **explicit sections**.
+**v1 multi-source:** **Reader is unaffected.** Tavily-only evidence still flows through the existing Reader path; **no prompt revision** (`reader_v1_cached` stays as-is). Trends does **not** go to Reader (§7 — Synthesizer-only signal), so there is **no Trends-aware framing** required in Reader for v1.
 
 **Trends:** **Does not** appear in Reader user prompts — **not text evidence**.
 
-**Schema impact (planning-level):** **`ExtractedEvidence`** gains a **`source`** field: **`Literal["tavily", "reddit"]`** (exact enum naming TBD at implementation). **URL hallucination guard** must validate **`source_url`** against the **union of Tavily URLs and Reddit URLs** supplied for **that question**.
+**Schema impact (v1):** **No new `ExtractedEvidence.source` field** — all text evidence remains Tavily-sourced. **URL hallucination guard** continues to validate **`source_url`** against **Tavily URLs** supplied for **that question** (unchanged).
 
-**Execution:** **Per-question concurrent Reader model** (**ADR 0011**) **unchanged** — **one LLM call per question**, richer input.
+**v2 note (when Reddit ships):** Reader will need a **prompt revision** with **structured sections** — **`tavily_results`** and **`reddit_results`**, **each XML-wrapped** per **`AGENTS.md`** (e.g. **`<untrusted_reddit_content>`**); **`ExtractedEvidence.source`** becomes **`Literal["tavily", "reddit"]`**; URL guard expands to **Tavily ∪ Reddit** — see §6.
+
+**Execution:** **Per-question concurrent Reader model** (**ADR 0011**) **unchanged** — **one LLM call per question**.
 
 ---
 
@@ -202,21 +205,17 @@ trends_signals: dict[str, TrendsSeries] | None
 
 | File | Action | Notes |
 |------|--------|--------|
-| `backend/app/integrations/reddit.py` | **New** | PRAW wrapper: `asyncio.to_thread`, circuit breaker, retry, `ExternalAPICall` logging, **no post/comment body in logs** |
 | `backend/app/integrations/trends.py` | **New** | pytrends wrapper: same reliability + cost / latency logging pattern as `tavily.py` |
-| `backend/app/services/searcher_service.py` | **Modify** | Multi-source orchestration, **`MergedSearchResults`**, partial failure semantics, concurrency review vs current gather-all |
-| `backend/app/schemas/searcher.py` (or adjacent module name TBD) | **New** | Conceptual **`MergedSearchResults`**, **`RedditResult`**, **`TrendsSeries`** — **exact module split** decided at implementation |
+| `backend/app/services/searcher_service.py` | **Modify** | Multi-source orchestration, **`MergedSearchResults`** (`tavily` + `trends` keys), partial failure semantics |
+| `backend/app/schemas/searcher.py` (or adjacent module name TBD) | **New** | Conceptual **`MergedSearchResults`**, **`TrendsSeries`** — **exact module split** decided at implementation |
 | `backend/app/services/research_engine_service.py` | **Modify** | Pass merged Searcher output to Reader; attach **Trends** to Synthesizer path / state |
-| `backend/app/services/reader_service.py` | **Modify** | Accept per-source sections; URL guard over **Tavily ∪ Reddit**; prompt name **reader_v2** when rewritten |
-| `backend/app/llm/prompts/reader.py` | **Modify** | **XML sections** for Tavily vs Reddit; **PROMPT_NAME** bump |
-| `backend/app/schemas/reader.py` | **Modify** | **`ExtractedEvidence.source`** — requires coordinated calibration entry |
 | `backend/app/schemas/synthesizer_input.py` (or equivalent) | **Modify** | **`trends_signals`** fifth field |
 | `backend/app/services/synthesizer_service.py` / `synthesizer_input.py` | **Modify** | Thread Trends into prompt building **without** treating it as **`ExtractedEvidence`** |
 | `backend/app/llm/prompts/synthesizer.py` | **Modify** | **`synthesizer_v3`** (or next) when Trends-aware prompt ships — **prompt text not in this doc** |
 | `docs/adr/0014-multi-source-search-inputs.md` | **New** | Stub → full ADR |
 | `docs/adr/0015-synthesizer-input-contract-v2.md` | **New** | Stub → full ADR; supersedes ADR 0012 **field-count** language only |
-| `docs/llm-schema-calibration.md` | **Modify** | Caps for Reddit excerpt, Trends payloads, new Reader fields |
-| `docs/cost-ledger.md` (if present) | **Modify** | Reddit + Trends line items |
+| `docs/llm-schema-calibration.md` | **Modify** | Caps for Trends payloads |
+| `docs/cost-ledger.md` (if present) | **Modify** | Trends line items |
 
 ---
 
@@ -227,7 +226,7 @@ trends_signals: dict[str, TrendsSeries] | None
 | Section | Sketch |
 |---------|--------|
 | **Context** | Tavily-only Searcher under-serves consumer/community/time-series ideas; ADR 0004 and Build Order already name Reddit + Trends. |
-| **Decision** | **v1 = three sources** (Tavily, Reddit, Trends); **per-source-keyed merged output** per question; **Searcher-owned query adaptation** from Planner strings. |
+| **Decision** | **v1 = two sources** (Tavily, Trends); **per-source-keyed merged output**; **Searcher-owned query adaptation** from Planner strings; **Reddit deferred to v2** pending commercial Data API approval. |
 | **Reasoning summary** | Quality lever for full idea distribution; avoids polymorphic soup; keeps Planner schema stable for v1. |
 
 ### ADR 0015 — Synthesizer Input Contract v2 (5-field; `trends_signals`)
@@ -246,9 +245,9 @@ trends_signals: dict[str, TrendsSeries] | None
 
 Per **`docs/llm-schema-calibration.md`:**
 
-- **Length caps** on new fields (**`RedditResult.selftext_excerpt`**, **`TrendsSeries`** serialised size, related query lists): treat as **initial estimates**; log lengths at runtime; after data, set caps to **observed max + 10–15%**.
-- **First 5-idea calibration session** after multi-source ships: measure **Reflector `mono_domain` trigger rate** (or equivalent rule from ADR 0013 / implementation) — **expect meaningful drop** when **Reddit domains** diversify the URL set vs Tavily-only mono-site runs.
-- **Cost ledger:** First multi-source run **records** **Reddit** and **Trends** as **distinct external cost/latency lines** (Tavily already tracked).
+- **Length caps** on new fields (**`TrendsSeries`** serialised size, related query lists): treat as **initial estimates**; log lengths at runtime; after data, set caps to **observed max + 10–15%**.
+- **First 5-idea calibration session** after multi-source ships: measure **Reflector `mono_domain` trigger rate** (or equivalent rule from ADR 0013 / implementation) — **expected to drop modestly** with Trends adding cross-domain queries; **full mono_domain reduction requires v2 Reddit**.
+- **Cost ledger:** First multi-source run **records** **Trends** as a **distinct external cost/latency line** (Tavily already tracked).
 - **Pipeline budget check:** Confirm **end-to-end run** stays **under ~$1.50** with typical query counts.
 
 ---
@@ -256,7 +255,8 @@ Per **`docs/llm-schema-calibration.md`:**
 ## 14. What This Document Does NOT Cover
 
 - **Implementation commits and sequencing** — a separate implementation plan will order PRs and migrations.
-- **Full Reader prompt text** for **reader_v2** — authored when the prompt change is implemented.
+- **Reddit integration** — deferred to v2 pending commercial Data API approval; see v3 update header and §6 deferral note.
+- **Full Reader prompt text** for **reader_v2** (Reddit-era) — authored when Reddit ships in v2.
 - **Full Synthesizer prompt text** for **Trends-aware** synthesis — authored when **synthesizer_v3** (or next) is drafted.
 - **News API integration** — **out of scope for MVP** per `.cursorrules`.
 - **Exa / Firecrawl** — **out of scope for MVP** per `.cursorrules`.
@@ -268,22 +268,21 @@ Per **`docs/llm-schema-calibration.md`:**
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| **Merged output shape** | **Per-source keys** (`tavily`, `reddit`, …) vs **flat discriminated union** | **Explicit Reader branches** and prompts; **Trends** stays out of Reader entirely — polymorphic lists **hide** source-specific handling. |
-| **Reddit library** | **PRAW** vs **async-praw** | **Smaller surface**, matches **thread-off** style used elsewhere; **async-praw** deferred until concurrency proof needs it. |
+| **Merged output shape** | **Per-source keys** (`tavily`, `trends`, …) vs **flat discriminated union** | **Explicit orchestration branches**; **Trends** stays out of Reader entirely — polymorphic lists **hide** source-specific handling. |
 | **Trends consumer** | **Synthesizer signal** vs **Reader input** | Trends is **numeric**, not quotable evidence; **Reader stays text-extraction**; avoids false **`ExtractedEvidence`** rows. |
-| **Reader prompts** | **Single** updated prompt vs **per-source** prompts | **Preserves ADR 0011** one-call-per-question model; **one place** to enforce **XML untrusted blocks**. |
-| **Source count v1** | **Three** (**Tavily + Reddit + Trends**) | Matches **.cursorrules** stack and **ADR 0004** Searcher intent **without** MVP-out-of-scope **news/Exa/Firecrawl** sprawl. |
+| **Reader prompts (v1)** | **No change** | Tavily-only Reader path unchanged; Trends bypasses Reader (§7, §9). |
+| **Source count v1** | **Two** (**Tavily + Trends**); **Reddit deferred to v2** pending commercial Reddit Data API approval per Responsible Builder Policy | v1 ships without Reddit; community-signal gap addressed in v2 if approval obtained. |
+| **Reddit deferral** | **Indefinitely defer**; **v2 contingent** on commercial Data API approval | Reddit's Responsible Builder Policy prohibits AI/commercial use of Reddit data without written approval; pursuing approval is a **separate effort** not blocking v1 multi-source. |
 
 ### Resolved questions
 
 | Topic | Decision | Rationale |
 |-------|----------|-----------|
-| **Reddit hallucination** (URL-only vs substring on Reddit quotes) | **Mirror Tavily's existing quote-substring guard.** **`RedditResult.selftext_excerpt`** is the **source-of-truth substring set**; **`verbatim_quote`** is **nulled** if substring verification fails, **same as Tavily**. | Reddit is **higher** prompt-injection risk than Tavily, not lower — **weaker** guards would be the wrong direction. |
-| **Mono-domain rule after Reddit** | **Reddit and Tavily domains count as distinct sources** for ADR **0013**'s **`mono_domain`** disjunct. | Assumption verified in a **calibration session post-ship**. |
-| **Schema brittleness** (PRAW / pytrends drift) | **Strict internal DTOs** in **`backend/app/integrations/{reddit,trends}.py`**. Provider-shape mapping stays **inside the wrapper**. **`RedditResult`** / **`TrendsSeries`** are **Fivvle-owned**; **PRAW types never leak** past the integration boundary. | Same pattern as **`tavily.py`**. |
+| **Mono-domain rule (v1)** | **Mono-domain rule in v1 applies only to Tavily URLs**; revisit when Reddit lands in v2. | No Reddit domains in v1 evidence set. |
+| **Schema brittleness** (pytrends drift) | **Strict internal DTOs** in **`backend/app/integrations/trends.py`**. Provider-shape mapping stays **inside the wrapper**. **`TrendsSeries`** is **Fivvle-owned**; **pytrends types never leak** past the integration boundary. | Same pattern as **`tavily.py`**. |
 | **Partial-source observability** | Emit **`searcher_source_outcomes`** **once per pipeline run** via **`structlog`**: **per-source** success / failure / skip **counts** and **total latencies**. Per-question detail remains in **existing per-question debug logs**. **No content.** | Aligns with the **`planner_field_lengths`** instrumentation pattern **recently shipped**. |
-| **Budget enforcement** | **Config-driven** via **`Settings`** (e.g. **`searcher_max_reddit_calls_per_run`**, **`searcher_max_trends_calls_per_run`**). **Code constants are anti-calibration.** | Matches **`reader_concurrency_limit`** and **`reflector_max_refinement_waves`**. |
+| **Budget enforcement** | **Config-driven** via **`Settings`** (e.g. **`searcher_max_trends_calls_per_run`**). **Code constants are anti-calibration.** | Matches **`reader_concurrency_limit`** and **`reflector_max_refinement_waves`**. |
 
 ---
 
-*Document status: **APPROVED — co-founder reviewed, decisions resolved, implementation prompt pending.** v2.*
+*Document status: **APPROVED — co-founder reviewed, Reddit deferred to v2, implementation prompt pending.** v3.*
