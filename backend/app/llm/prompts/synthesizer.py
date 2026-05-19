@@ -27,11 +27,15 @@ Cross-experiment Zone A hits apply when many runs share the same prompt version.
 PROMPT_NAME is the stable identifier logged to LLMCall.prompt_name.
 
 Exports:
-    PROMPT_NAME — ``synthesizer_v2_cached``
+    PROMPT_NAME_V2_CACHED — ``synthesizer_v2_cached`` (regression / equivalence)
+    PROMPT_NAME_V3_CACHED — ``synthesizer_v3_cached`` (active in synthesizer_service)
+    PROMPT_NAME — alias of PROMPT_NAME_V2_CACHED
     PROMPT_NAME_V2_LEGACY — ``synthesizer_v2`` for analytics migration
     SYNTHESIZER_SYSTEM_PROMPT — empty; instructions are in Zone A
     SYNTHESIZER_ZONE_A_INSTRUCTIONS — Zone A body (former system prompt)
-    build_synthesizer_user_prompt() — full user turn with optional cache boundaries
+    build_synthesizer_user_prompt() — v2_cached user turn
+    build_synthesizer_v3_user_prompt() — v3_cached user turn (Trends-aware)
+    render_trends_signals_block() — Zone C Trends summary (server-side)
     synthesizer_v2_legacy_flat_user_and_system() — regression helper for tests
 """
 
@@ -39,10 +43,15 @@ from __future__ import annotations
 
 import json
 
+from app.integrations.trends import TRENDS_GEO, TRENDS_TIMEFRAME
 from app.llm.client import USER_CACHE_ZONE_BOUNDARY
+from app.schemas.search import TrendsSeries
 from app.services.synthesizer_input import SynthesizerInput
 
-PROMPT_NAME = "synthesizer_v2_cached"
+PROMPT_NAME_V2_CACHED = "synthesizer_v2_cached"
+PROMPT_NAME = PROMPT_NAME_V2_CACHED
+
+PROMPT_NAME_V3_CACHED = "synthesizer_v3_cached"
 
 PROMPT_NAME_V2_LEGACY = "synthesizer_v2"
 
@@ -187,7 +196,74 @@ per planning §10 before tightening prose thresholds.
 """
 
 
-def _build_zone_b(synth_input: SynthesizerInput) -> str:
+_TRENDS_ZONE_B_FRAMING = """\
+<trends_framing>
+Trends signals indicate search interest trajectory over the last 12 months. Treat as \
+supporting context, not authoritative evidence. Cite Reader outputs for all claims; \
+reference Trends only to characterize demand trajectory.
+If Trends data contradicts Reader evidence, prefer Reader (verbatim-source-attributed). \
+Note the contradiction in research_limitations.
+If trends_signals is empty or absent, do not mention Trends. Synthesize from Reader \
+outputs alone, exactly as v2.
+</trends_framing>
+
+"""
+
+_MAX_TRENDS_KEYWORDS_IN_PROMPT = 5
+
+
+def _trends_signals_present(synth_input: SynthesizerInput) -> bool:
+    ts = synth_input.trends_signals
+    return ts is not None and len(ts) > 0
+
+
+def _characterize_trajectory(values: list[int]) -> str:
+    if len(values) < 2:
+        return "flat"
+    first, last = values[0], values[-1]
+    if last > first:
+        return "rising"
+    if last < first:
+        return "declining"
+    return "flat"
+
+
+def _render_trends_geo_label() -> str:
+    return "worldwide" if not TRENDS_GEO.strip() else TRENDS_GEO
+
+
+def render_trends_signals_block(
+    trends_signals: dict[str, TrendsSeries] | None,
+) -> str:
+    """Render Zone C Trends payload (server-side summary, no raw points)."""
+    if trends_signals is None or len(trends_signals) == 0:
+        return ""
+
+    parts: list[str] = ["<trends_signals>\n"]
+    geo_label = _render_trends_geo_label()
+    for _key, series in list(trends_signals.items())[:_MAX_TRENDS_KEYWORDS_IN_PROMPT]:
+        values = [p.value for p in series.points]
+        if not values:
+            summary = "first=n/a, last=n/a, min=n/a, max=n/a, trajectory=flat"
+        else:
+            trajectory = _characterize_trajectory(values)
+            summary = (
+                f"first={values[0]}, last={values[-1]}, "
+                f"min={min(values)}, max={max(values)}, trajectory={trajectory}"
+            )
+        parts.append(
+            "<keyword_entry>\n"
+            f"<keyword>{series.keyword}</keyword>\n"
+            f"<timeframe>{TRENDS_TIMEFRAME}</timeframe>\n"
+            f"<geo>{geo_label}</geo>\n"
+            f"<series_summary>{summary}</series_summary>\n"
+            "</keyword_entry>\n"
+        )
+    parts.append("</trends_signals>\n")
+    return "".join(parts)
+
+
+def _build_zone_b(synth_input: SynthesizerInput, *, extra_before_closing: str = "") -> str:
     parts: list[str] = []
 
     parts.append(
@@ -243,6 +319,9 @@ def _build_zone_b(synth_input: SynthesizerInput) -> str:
             f"</reader_evidence_{qid}>\n\n"
         )
 
+    if extra_before_closing:
+        parts.append(extra_before_closing)
+
     parts.append(
         "<closing_instruction>\n"
         "Produce one QuestionFindings per question in research_plan, in the order\n"
@@ -255,6 +334,12 @@ def _build_zone_b(synth_input: SynthesizerInput) -> str:
     return "".join(parts)
 
 
+def _build_zone_b_v3(synth_input: SynthesizerInput) -> str:
+    if not _trends_signals_present(synth_input):
+        return _build_zone_b(synth_input)
+    return _build_zone_b(synth_input, extra_before_closing=_TRENDS_ZONE_B_FRAMING)
+
+
 def build_synthesizer_user_messages(
     synth_input: SynthesizerInput,
 ) -> tuple[str, str, str]:
@@ -262,6 +347,16 @@ def build_synthesizer_user_messages(
     zone_a = SYNTHESIZER_ZONE_A_INSTRUCTIONS
     zone_b = _build_zone_b(synth_input)
     zone_c = ""
+    return zone_a, zone_b, zone_c
+
+
+def build_synthesizer_v3_user_messages(
+    synth_input: SynthesizerInput,
+) -> tuple[str, str, str]:
+    """Return (zone_a, zone_b, zone_c) for synthesizer_v3_cached."""
+    zone_a = SYNTHESIZER_ZONE_A_INSTRUCTIONS
+    zone_b = _build_zone_b_v3(synth_input)
+    zone_c = render_trends_signals_block(synth_input.trends_signals)
     return zone_a, zone_b, zone_c
 
 
@@ -277,6 +372,22 @@ def build_synthesizer_user_prompt(
     Anthropic breakpoints. When False, concatenates zones with blank lines.
     """
     zone_a, zone_b, zone_c = build_synthesizer_user_messages(synth_input)
+    if not for_cache:
+        return "\n\n".join(part for part in (zone_a, zone_b, zone_c) if part)
+    return (
+        f"{zone_a}{USER_CACHE_ZONE_BOUNDARY}"
+        f"{zone_b}{USER_CACHE_ZONE_BOUNDARY}"
+        f"{zone_c}"
+    )
+
+
+def build_synthesizer_v3_user_prompt(
+    synth_input: SynthesizerInput,
+    *,
+    for_cache: bool = True,
+) -> str:
+    """Build the user-turn prompt for a synthesizer_v3_cached call."""
+    zone_a, zone_b, zone_c = build_synthesizer_v3_user_messages(synth_input)
     if not for_cache:
         return "\n\n".join(part for part in (zone_a, zone_b, zone_c) if part)
     return (

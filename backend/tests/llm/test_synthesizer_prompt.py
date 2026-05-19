@@ -9,10 +9,12 @@ from __future__ import annotations
 import pytest
 
 from app.llm.prompts.synthesizer import (
-    PROMPT_NAME,
+    PROMPT_NAME_V2_CACHED,
+    PROMPT_NAME_V3_CACHED,
     SYNTHESIZER_SYSTEM_PROMPT,
     SYNTHESIZER_ZONE_A_INSTRUCTIONS,
     build_synthesizer_user_prompt,
+    build_synthesizer_v3_user_prompt,
 )
 from app.schemas.planner import ResearchPlan, ResearchQuestion
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
@@ -94,8 +96,12 @@ def _make_synth_input(question_count: int = 5) -> SynthesizerInput:
 # ---------------------------------------------------------------------------
 
 
-def test_prompt_name_is_synthesizer_v2_cached() -> None:
-    assert PROMPT_NAME == "synthesizer_v2_cached"
+def test_prompt_name_v2_cached_unchanged_for_regression() -> None:
+    assert PROMPT_NAME_V2_CACHED == "synthesizer_v2_cached"
+
+
+def test_prompt_name_v3_cached() -> None:
+    assert PROMPT_NAME_V3_CACHED == "synthesizer_v3_cached"
 
 
 # ---------------------------------------------------------------------------

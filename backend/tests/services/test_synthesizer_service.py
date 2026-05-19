@@ -17,10 +17,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.integrations.tavily import TavilyResult
 from app.llm.client import USER_CACHE_ZONE_BOUNDARY
 from app.llm.prompts.synthesizer import (
-    PROMPT_NAME,
+    PROMPT_NAME_V2_CACHED,
+    PROMPT_NAME_V3_CACHED,
     build_synthesizer_user_prompt,
+    build_synthesizer_v3_user_prompt,
     synthesizer_v2_legacy_flat_user_and_system,
 )
+from app.schemas.search import TrendsPoint, TrendsSeries
+from app.services.synthesizer_service import PROMPT_NAME
 from app.schemas.planner import ResearchPlan, ResearchQuestion
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.schemas.refinement import RefinedIdea
@@ -202,7 +206,7 @@ def test_synthesizer_service_constants() -> None:
 
 
 @pytest.mark.asyncio
-async def test_synthesize_report_calls_complete_structured_with_synthesizer_v2() -> None:
+async def test_synthesize_report_calls_complete_structured_with_synthesizer_v3() -> None:
     db = AsyncMock(spec=AsyncSession)
     synth_input = _make_synth_input()
     citation_hydration_index = _hydration_index()
@@ -221,7 +225,8 @@ async def test_synthesize_report_calls_complete_structured_with_synthesizer_v2()
         )
 
     _, call_kwargs = mock_complete.call_args
-    assert call_kwargs["prompt_name"] == "synthesizer_v2_cached"
+    assert call_kwargs["prompt_name"] == PROMPT_NAME_V3_CACHED
+    assert call_kwargs["prompt_name"] == PROMPT_NAME
     assert call_kwargs["provider"] == _SYNTHESIZER_PROVIDER
     assert call_kwargs["model"] == _SYNTHESIZER_MODEL
 
@@ -388,7 +393,7 @@ async def test_synthesize_report_emits_synthesizer_complete_info_log() -> None:
     ]
     assert len(complete_calls) == 1
     kwargs = complete_calls[0].kwargs
-    assert kwargs["prompt_name"] == "synthesizer_v2_cached"
+    assert kwargs["prompt_name"] == PROMPT_NAME_V3_CACHED
     assert kwargs["experiment_id"] == str(exp_id)
     assert kwargs["total_extracted_evidence_in_input"] == 5
     assert kwargs["finding_count"] == 5
@@ -503,9 +508,9 @@ async def test_synthesizer_passes_cache_breakpoints_to_client() -> None:
     assert bps == SYNTHESIZER_CACHE_BREAKPOINTS
 
 
-def test_synthesizer_user_prompt_contains_zone_boundaries() -> None:
+def test_synthesizer_v3_user_prompt_contains_zone_boundaries() -> None:
     synth_input = _make_synth_input(question_count=5)
-    user = build_synthesizer_user_prompt(synth_input, for_cache=True)
+    user = build_synthesizer_v3_user_prompt(synth_input, for_cache=True)
     assert user.count(USER_CACHE_ZONE_BOUNDARY) == 2
     zone_a, zone_b, zone_c = user.split(USER_CACHE_ZONE_BOUNDARY)
     assert "You are a market researcher at Fivvle" in zone_a
@@ -535,7 +540,60 @@ def test_synthesizer_synthesizer_v2_cached_semantically_equivalent_to_v2() -> No
         "rubric_version_used",
     ):
         assert anchor in flat
-    assert PROMPT_NAME == "synthesizer_v2_cached"
+    assert PROMPT_NAME_V2_CACHED == "synthesizer_v2_cached"
+
+
+def _make_trends_signals() -> dict[str, TrendsSeries]:
+    return {
+        "foo": TrendsSeries(
+            keyword="foo",
+            points=[
+                TrendsPoint(date="2024-01-01", value=20),
+                TrendsPoint(date="2024-06-01", value=60),
+            ],
+        ),
+    }
+
+
+def test_synthesizer_v3_prompt_includes_trends_block_when_signals_populated() -> None:
+    synth_input = build_synthesizer_input(
+        refined_idea=_make_refined_idea(),
+        research_plan=_make_plan(5),
+        reader_outputs=_make_reader_outputs(5),
+        rubric_version="v1",
+        trends_signals=_make_trends_signals(),
+    )
+    prompt = build_synthesizer_v3_user_prompt(synth_input, for_cache=True)
+    assert "<trends_signals>" in prompt
+    assert "<trends_framing>" in prompt
+    assert "<keyword>foo</keyword>" in prompt
+
+
+def test_synthesizer_v3_prompt_omits_trends_when_signals_none() -> None:
+    synth_input = build_synthesizer_input(
+        refined_idea=_make_refined_idea(),
+        research_plan=_make_plan(5),
+        reader_outputs=_make_reader_outputs(5),
+        rubric_version="v1",
+        trends_signals=None,
+    )
+    prompt = build_synthesizer_v3_user_prompt(synth_input, for_cache=True)
+    assert "<trends_signals>" not in prompt
+    assert "<trends_framing>" not in prompt
+    assert "Trends signals indicate" not in prompt
+
+
+def test_synthesizer_v3_prompt_omits_trends_when_signals_empty_dict() -> None:
+    synth_input = build_synthesizer_input(
+        refined_idea=_make_refined_idea(),
+        research_plan=_make_plan(5),
+        reader_outputs=_make_reader_outputs(5),
+        rubric_version="v1",
+        trends_signals={},
+    )
+    prompt = build_synthesizer_v3_user_prompt(synth_input, for_cache=True)
+    assert "<trends_signals>" not in prompt
+    assert "<trends_framing>" not in prompt
 
 
 @pytest.mark.asyncio

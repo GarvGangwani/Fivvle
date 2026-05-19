@@ -6,11 +6,12 @@ TavilyResult remains on the Tavily integration module (same pattern as today).
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.integrations.tavily import TavilyResult
+if TYPE_CHECKING:
+    from app.integrations.tavily import TavilyResult
 
 
 class TrendsPoint(BaseModel):
@@ -66,3 +67,10 @@ class MergedSearchResults(BaseModel):
 
     tavily: dict[str, list[TavilyResult]]
     trends: dict[str, TrendsSeries] | None = None
+
+
+# Import after Trends* / MergedSearchResults are defined so integrations.trends
+# can load this module without a circular import (see integrations/__init__.py).
+from app.integrations.tavily import TavilyResult  # noqa: E402
+
+MergedSearchResults.model_rebuild()

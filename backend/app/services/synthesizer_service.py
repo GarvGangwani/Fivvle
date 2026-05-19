@@ -46,10 +46,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.llm.client as llm_client
 from app.llm.prompts.synthesizer import (
-    PROMPT_NAME,
+    PROMPT_NAME_V3_CACHED,
     SYNTHESIZER_SYSTEM_PROMPT,
-    build_synthesizer_user_prompt,
+    build_synthesizer_v3_user_prompt,
 )
+
+PROMPT_NAME = PROMPT_NAME_V3_CACHED
 from app.logging_config import get_logger
 from app.schemas.validation_report import (
     Citation,
@@ -320,7 +322,7 @@ async def synthesize_report(
     else:
         breakpoints = cache_breakpoints  # type: ignore[assignment]
     use_cache = breakpoints is not None
-    user_prompt = build_synthesizer_user_prompt(synth_input, for_cache=use_cache)
+    user_prompt = build_synthesizer_v3_user_prompt(synth_input, for_cache=use_cache)
     cache_breakpoints_used = len(breakpoints) if breakpoints else 0
 
     draft, meta = await llm_client.complete_structured(

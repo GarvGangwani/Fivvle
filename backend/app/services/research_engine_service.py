@@ -299,7 +299,6 @@ async def run_research_engine_pipeline(
                 return
 
             search_results = merged.tavily
-            # Held for Synthesizer wiring in Commit 3 (ADR 0016 fifth field).
             trends_signals = merged.trends
 
             total_results = sum(len(v) for v in search_results.values())
@@ -404,12 +403,13 @@ async def run_research_engine_pipeline(
                 synthesize_report,
             )
 
-            # Build the four-field SynthesizerInput from Reader output (no raw Tavily).
+            # Build SynthesizerInput from Reader output (no raw Tavily). ADR 0016 fifth field.
             synth_input = build_synthesizer_input(
                 refined_idea=refined_idea,
                 research_plan=research_plan,
                 reader_outputs=reader_outputs,
                 rubric_version=RUBRIC_VERSION_DEFAULT,
+                trends_signals=trends_signals,
             )
 
             # Build the hydration index from Searcher results — used by _hydrate_draft

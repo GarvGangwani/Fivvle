@@ -1,8 +1,8 @@
 """SynthesizerInput models and builders.
 
-Per ADR 0012, SynthesizerInput is locked to four fields: refined_idea,
-research_plan, reader_outputs, rubric_version. Raw Tavily snippets are
-not consumed by the Synthesizer prompt in any mode.
+Per ADR 0012 / ADR 0016, SynthesizerInput fields: refined_idea,
+research_plan, reader_outputs, rubric_version, trends_signals (optional).
+Raw Tavily snippets are not consumed by the Synthesizer prompt in any mode.
 
 CitationHydrationEntry and build_citation_hydration_index() support
 server-side Citation hydration. The hydration index is passed to
@@ -18,6 +18,7 @@ from app.integrations.tavily import TavilyResult
 from app.schemas.planner import ResearchPlan
 from app.schemas.reader import ReaderOutput
 from app.schemas.refinement import RefinedIdea
+from app.schemas.search import TrendsSeries
 
 
 class TavilyResultForPrompt(BaseModel):
@@ -98,13 +99,15 @@ class CitationHydrationEntry(BaseModel):
 
 
 class SynthesizerInput(BaseModel):
-    """All inputs the synthesizer LLM prompt is built from (four-field contract).
+    """All inputs the synthesizer LLM prompt is built from (five-field contract).
 
     Immutable once created — the prompt builder reads from this struct
     deterministically. No side effects.
 
-    Per ADR 0012: no raw Tavily / search snippets on this model.
+    Per ADR 0012 / ADR 0016: no raw Tavily / search snippets on this model.
+    trends_signals is optional structured demand context from Searcher (Trends).
     """
+
 
     model_config = ConfigDict(extra="forbid")
 
@@ -141,6 +144,15 @@ class SynthesizerInput(BaseModel):
         )
     )
 
+    trends_signals: dict[str, TrendsSeries] | None = Field(
+        default=None,
+        description=(
+            "Per-keyword Google Trends interest series from Searcher (ADR 0016). "
+            "None when Trends failed or was skipped; empty dict is treated as absent "
+            "in the synthesizer prompt."
+        ),
+    )
+
 
 def build_synthesizer_input(
     *,
@@ -148,8 +160,9 @@ def build_synthesizer_input(
     research_plan: ResearchPlan,
     reader_outputs: dict[str, ReaderOutput],
     rubric_version: str,
+    trends_signals: dict[str, TrendsSeries] | None = None,
 ) -> SynthesizerInput:
-    """Build the four-field SynthesizerInput for the Synthesizer prompt.
+    """Build SynthesizerInput for the Synthesizer prompt.
 
     citation_hydration_index is built separately by the orchestrator from
     Searcher results. See build_citation_hydration_index().
@@ -159,6 +172,7 @@ def build_synthesizer_input(
         research_plan=research_plan,
         reader_outputs=reader_outputs,
         rubric_version=rubric_version,
+        trends_signals=trends_signals,
     )
 
 
