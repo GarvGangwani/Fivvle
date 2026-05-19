@@ -30,6 +30,8 @@ Each ADR follows the Michael Nygard format:
 | 0012 | [Synthesizer input contract — Reader output only, no raw Tavily fallback](0012-synthesizer-input-contract.md) | Accepted | 2026-05 |
 | 0013 | [Reflector decision logic — rule-driven for v1](0013-reflector-decision-logic.md) | Accepted | 2026-05 |
 | 0014 | [Anthropic prompt caching for research engine phases](0014-anthropic-prompt-caching.md) | Accepted | 2026-05 |
+| 0015 | [Multi-source search inputs](0015-multi-source-search-inputs.md) | Proposed | 2026-05 |
+| 0016 | [Synthesizer five-field contract](0016-synthesizer-five-field-contract.md) | Proposed | 2026-05 |
 
 ## When to write a new ADR
 

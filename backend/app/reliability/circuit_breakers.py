@@ -39,8 +39,12 @@ except ImportError:  # pragma: no cover
     anthropic = None  # type: ignore[assignment]
 
 try:
-    from pytrends.exceptions import TooManyRequestsError as PytrendsTooManyRequestsError
+    from pytrends.exceptions import (
+        ResponseError as PytrendsResponseError,
+        TooManyRequestsError as PytrendsTooManyRequestsError,
+    )
 except ImportError:  # pragma: no cover
+    PytrendsResponseError = None  # type: ignore[assignment,misc]
     PytrendsTooManyRequestsError = None  # type: ignore[assignment,misc]
 
 from app.logging_config import get_logger
@@ -70,7 +74,8 @@ _TRANSIENT_EXCEPTION_TYPES: tuple[type[BaseException], ...] = tuple(
         getattr(anthropic, "APITimeoutError", None),
         getattr(anthropic, "RateLimitError", None),
         getattr(anthropic, "InternalServerError", None),
-        # pytrends transient errors
+        # pytrends transient errors (ResponseError is flaky; retry per .cursorrules)
+        PytrendsResponseError,
         PytrendsTooManyRequestsError,
     ) if cls is not None
 )
@@ -287,7 +292,7 @@ def get_breaker(name: str) -> CircuitBreaker:
 
     Predefined names:
         "anthropic", "groq"        — LLM client (client.py)
-        "tavily", "reddit", "google_trends" — integration wrappers
+        "tavily", "reddit", "pytrends" — integration wrappers
     """
     if name not in _breakers:
         _breakers[name] = CircuitBreaker(name=name)

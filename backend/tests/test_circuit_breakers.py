@@ -374,11 +374,11 @@ class TestIsTransientFailureAllowList:
 
     # --- pytrends ---
 
-    def test_pytrends_response_error_is_not_transient(self):
+    def test_pytrends_response_error_is_transient(self):
         from pytrends.exceptions import ResponseError
-        # Updated for Bug B: allow-list classifier; no string-pattern matching.
+        # Flaky Trends API — retried per .cursorrules / ADR 0015 trends wrapper.
         exc = ResponseError("response error", MagicMock())
-        assert _is_transient_failure(exc) is False
+        assert _is_transient_failure(exc) is True
 
     # --- Anthropic transient ---
 
