@@ -37,7 +37,7 @@ class ExternalAPICall(Base):
         nullable=True,
         index=True,
     )
-    # Provider slug, e.g. "tavily", "reddit", "google_trends"
+    # Provider slug, e.g. "tavily", "reddit", "pytrends"
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     # Operation name, e.g. "search", "fetch_post"
     operation: Mapped[str] = mapped_column(String(100), nullable=False)

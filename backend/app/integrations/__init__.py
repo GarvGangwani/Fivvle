@@ -7,11 +7,6 @@ Direct httpx/requests calls outside this package are a violation of
 Each wrapper logs one ExternalAPICall row per operation, including failures.
 """
 
-from app.integrations.google_trends import (
-    TrendsDataPoint,
-    TrendsResult,
-    get_interest_over_time,
-)
 from app.integrations.reddit import (
     RedditComment,
     RedditPost,
@@ -19,15 +14,14 @@ from app.integrations.reddit import (
     search_subreddits,
 )
 from app.integrations.tavily import TavilyResult, search
+from app.integrations.trends import fetch_trends
 
 __all__ = [
     "RedditComment",
     "RedditPost",
     "TavilyResult",
-    "TrendsDataPoint",
-    "TrendsResult",
     "fetch_post_comments",
-    "get_interest_over_time",
+    "fetch_trends",
     "search",
     "search_subreddits",
 ]

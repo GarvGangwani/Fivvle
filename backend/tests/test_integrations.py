@@ -15,14 +15,12 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
-import pandas as pd
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 from app.db.models.external_api_call import ExternalAPICall
-from app.integrations.google_trends import TrendsResult, get_interest_over_time
 from app.integrations.reddit import RedditComment, RedditPost, fetch_post_comments, search_subreddits
 from app.integrations.tavily import TavilyResult, search
 
@@ -88,16 +86,6 @@ def _make_praw_comment(
 async def _tavily_external_api_ids_before(session: AsyncSession) -> set[UUID]:
     stmt = select(ExternalAPICall.id).where(ExternalAPICall.provider == "tavily")
     return set((await session.execute(stmt)).scalars().all())
-
-
-def _make_trends_df(keywords: list[str]) -> pd.DataFrame:
-    """Create a minimal pytrends-style DataFrame for two dates."""
-    import datetime
-
-    dates = pd.to_datetime(["2025-01-01", "2025-01-08"])
-    data = {kw: [50, 75] for kw in keywords}
-    data["isPartial"] = [False, False]
-    return pd.DataFrame(data, index=dates)
 
 
 # ===========================================================================
@@ -327,84 +315,3 @@ async def test_reddit_fetch_post_comments_failure_logs_row(db_session):
     for row in rows:
         await db_session.delete(row)
     await db_session.commit()
-
-
-# ===========================================================================
-# Google Trends tests
-# ===========================================================================
-
-
-@pytest.mark.asyncio
-async def test_trends_success_logs_row(db_session):
-    """Successful Trends call writes one ExternalAPICall row with $0 cost."""
-    keywords = ["startup", "MVP"]
-    fake_df = _make_trends_df(keywords)
-
-    fake_pytrends = MagicMock()
-    fake_pytrends.build_payload = MagicMock()
-    fake_pytrends.interest_over_time = MagicMock(return_value=fake_df)
-
-    with patch("app.integrations.google_trends._pytrends", fake_pytrends):
-        result = await get_interest_over_time(
-            db_session,
-            keywords=keywords,
-            timeframe="today 12-m",
-        )
-        await db_session.commit()
-
-    assert isinstance(result, TrendsResult)
-    assert result.keywords == keywords
-    assert len(result.data_points) == 2
-    assert result.data_points[0].values["startup"] == 50
-    assert result.data_points[1].values["MVP"] == 75
-
-    stmt = select(ExternalAPICall).where(ExternalAPICall.provider == "google_trends")
-    rows = (await db_session.execute(stmt)).scalars().all()
-    assert len(rows) == 1
-    assert rows[0].operation == "get_interest_over_time"
-    assert rows[0].success is True
-    assert rows[0].cost_usd == Decimal("0")
-    for row in rows:
-        await db_session.delete(row)
-    await db_session.commit()
-
-
-@pytest.mark.asyncio
-async def test_trends_failure_logs_row(db_session):
-    """When pytrends raises TooManyRequestsError, logs failure and re-raises."""
-    from pytrends.exceptions import TooManyRequestsError
-
-    fake_pytrends = MagicMock()
-    fake_pytrends.build_payload = MagicMock()
-    # TooManyRequestsError(message, response) — response can be any mock
-    fake_pytrends.interest_over_time = MagicMock(
-        side_effect=TooManyRequestsError("rate limited", MagicMock())
-    )
-
-    with patch("app.integrations.google_trends._pytrends", fake_pytrends):
-        with pytest.raises(TooManyRequestsError):
-            await get_interest_over_time(db_session, keywords=["startup"])
-        await db_session.commit()
-
-    stmt = select(ExternalAPICall).where(ExternalAPICall.provider == "google_trends")
-    rows = (await db_session.execute(stmt)).scalars().all()
-    assert len(rows) == 1
-    assert rows[0].success is False
-    assert rows[0].cost_usd == Decimal("0")
-    for row in rows:
-        await db_session.delete(row)
-    await db_session.commit()
-
-
-@pytest.mark.asyncio
-async def test_trends_too_many_keywords_raises_before_logging(db_session):
-    """Providing >5 keywords raises ValueError immediately, no ExternalAPICall row."""
-    with pytest.raises(ValueError, match="at most 5"):
-        await get_interest_over_time(
-            db_session,
-            keywords=["a", "b", "c", "d", "e", "f"],
-        )
-
-    stmt = select(ExternalAPICall).where(ExternalAPICall.provider == "google_trends")
-    rows = (await db_session.execute(stmt)).scalars().all()
-    assert len(rows) == 0
