@@ -41,6 +41,7 @@ from app.schemas.refinement import RefinedIdea
 from app.schemas.reflector import (
     QuestionReSearchSpec,
     ReflectorDecision,
+    ReflectorPhaseSummary,
 )
 
 from app.services.reader_service import _load_refined_idea_for_reader
@@ -437,6 +438,16 @@ def _merge_reader_outputs(
     return merged
 
 
+def _zero_phase_summary() -> ReflectorPhaseSummary:
+    return ReflectorPhaseSummary(
+        loop_iteration=0,
+        questions_flagged_count=0,
+        questions_scheduled_count=0,
+        decision_method="rule_v1",
+        waves_used=0,
+    )
+
+
 async def execute_reflector(
     *,
     experiment_id: UUID,
@@ -445,7 +456,11 @@ async def execute_reflector(
     search_results: dict[str, list[TavilyResult]],
     db: AsyncSession,
     settings: Settings,
-) -> tuple[dict[str, ReaderOutput], dict[str, list[TavilyResult]]]:
+) -> tuple[
+    dict[str, ReaderOutput],
+    dict[str, list[TavilyResult]],
+    ReflectorPhaseSummary,
+]:
     """Reflector entry point — §6 friendly: never raises; errors return inputs."""
     max_waves = settings.reflector_max_refinement_waves
 
@@ -454,12 +469,16 @@ async def execute_reflector(
             "reflector disabled (max_refinement_waves <= 0)",
             experiment_id=str(experiment_id),
         )
-        return reader_outputs, search_results
+        return reader_outputs, search_results, _zero_phase_summary()
 
     _t_phase0 = time.perf_counter()
     total_cost_delta = Decimal("0")
     total_tavily_tasks_succeeded = 0
     total_partial_re_read_successes = 0
+    waves_used = 0
+    last_loop_iteration = 0
+    last_questions_flagged = 0
+    last_questions_scheduled = 0
 
     try:
         current_reader_outputs = reader_outputs
@@ -485,6 +504,9 @@ async def execute_reflector(
             questions_rule_flagged_before_cap = (
                 len(flagged) + len(skipped_due_to_budget)
             )
+            last_loop_iteration = wave
+            last_questions_flagged = questions_rule_flagged_before_cap
+            last_questions_scheduled = len(flagged)
 
             _logger.info(
                 "reflector decision complete",
@@ -563,9 +585,11 @@ async def execute_reflector(
 
             if not decision.questions_to_re_search:
                 _logger.info(
-                    "reflector wave complete with no executable re-searches",
+                    "reflector wave fizzled",
                     experiment_id=str(experiment_id),
                     loop_iteration=wave,
+                    questions_flagged_count=questions_rule_flagged_before_cap,
+                    reason="no_executable_re_searches",
                 )
                 break
 
@@ -574,6 +598,18 @@ async def execute_reflector(
                 experiment_id=experiment_id,
                 db=db,
             )
+
+            if not new_search_results:
+                _logger.info(
+                    "reflector wave fizzled",
+                    experiment_id=str(experiment_id),
+                    loop_iteration=wave,
+                    questions_flagged_count=questions_rule_flagged_before_cap,
+                    reason="re_search_failed_or_empty",
+                )
+                break
+
+            waves_used += 1
 
             merged_search = _merge_search_results(
                 current_search_results, new_search_results
@@ -604,18 +640,27 @@ async def execute_reflector(
             )
             total_tavily_tasks_succeeded += tav_succ
 
+        summary = ReflectorPhaseSummary(
+            loop_iteration=last_loop_iteration,
+            questions_flagged_count=last_questions_flagged,
+            questions_scheduled_count=last_questions_scheduled,
+            decision_method="rule_v1",
+            waves_used=waves_used,
+        )
+
         _logger.info(
             "reflector phase complete",
             experiment_id=str(experiment_id),
             total_cost_delta_usd=str(total_cost_delta),
             total_partial_tavily_tasks_succeeded=total_tavily_tasks_succeeded,
             partial_re_read_success_question_count=total_partial_re_read_successes,
+            waves_used=waves_used,
             total_phase_latency_ms=int(
                 round((time.perf_counter() - _t_phase0) * 1000)
             ),
         )
 
-        return current_reader_outputs, current_search_results
+        return current_reader_outputs, current_search_results, summary
 
     except Exception as exc:  # noqa: BLE001
         _logger.error(
@@ -626,4 +671,4 @@ async def execute_reflector(
             experiment_id=str(experiment_id),
             error_type=type(exc).__name__,
         )
-        return reader_outputs, search_results
+        return reader_outputs, search_results, _zero_phase_summary()

@@ -36,6 +36,11 @@ Run this procedure:
 4. The 5 founder ideas for the calibration set are picked and written
    down. Variety matters more than volume — see "Idea variety" below.
 
+`reflection_loops_used` on the persisted ValidationReport is the number of
+refinement waves in which the Reflector executed at least one successful
+re-search (not reflector LLM-call count; a wave that flagged questions but ran
+no re-search counts as 0).
+
 ## Idea variety
 
 Pick 5 founder ideas that vary along these axes:

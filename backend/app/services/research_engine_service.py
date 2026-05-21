@@ -143,6 +143,8 @@ async def _write_validation_report(
     session: AsyncSession,
     experiment_id: UUID,
     raw_report: dict,
+    *,
+    reflection_loops_used: int = 0,
 ) -> None:
     """Upsert a ValidationReport row with the raw_report payload.
 
@@ -152,7 +154,7 @@ async def _write_validation_report(
     B2.4 writes:
         raw_report = verbatim Pydantic model dict
         clarity_score = None  (B3 synthesizer prompt will populate)
-        reflection_loops_used = 0  (B3 reflector will populate)
+        reflection_loops_used — refinement waves with ≥1 successful Tavily re-search
         generated_at = now()
     """
     from sqlalchemy.dialects.postgresql import insert as pg_insert  # noqa: PLC0415
@@ -161,7 +163,7 @@ async def _write_validation_report(
         experiment_id=experiment_id,
         raw_report=raw_report,
         clarity_score=None,
-        reflection_loops_used=0,
+        reflection_loops_used=reflection_loops_used,
         generated_at=datetime.now(UTC),
     )
     stmt = stmt.on_conflict_do_update(
@@ -378,7 +380,7 @@ async def run_research_engine_pipeline(
 
             # Reflector NEVER raises into the orchestrator per planning §6.
             # On any internal failure, returns original inputs unchanged.
-            reader_outputs, search_results = await execute_reflector(
+            reader_outputs, search_results, reflector_summary = await execute_reflector(
                 experiment_id=experiment_id,
                 research_plan=research_plan,
                 reader_outputs=reader_outputs,
@@ -453,7 +455,12 @@ async def run_research_engine_pipeline(
             # 6. Persist the report and transition to RESEARCH_READY.
             # ------------------------------------------------------------------
             raw_report_dict = report.model_dump(mode="json")
-            await _write_validation_report(session, experiment_id, raw_report_dict)
+            await _write_validation_report(
+                session,
+                experiment_id,
+                raw_report_dict,
+                reflection_loops_used=reflector_summary.waves_used,
+            )
             await _set_status(session, experiment_id, ExperimentStatus.RESEARCH_READY)
             await session.commit()
 

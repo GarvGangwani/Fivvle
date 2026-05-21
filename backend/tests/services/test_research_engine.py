@@ -153,7 +153,16 @@ def _make_valid_report(question_count: int = 5) -> ValidationReport:
 
 async def _mock_execute_reflector_passthrough(**kwargs):
     """Keeps unit tests DB-free: real Reflector loads Experiment.refined_idea from DB."""
-    return kwargs["reader_outputs"], kwargs["search_results"]
+    from app.schemas.reflector import ReflectorPhaseSummary  # noqa: PLC0415
+
+    summary = ReflectorPhaseSummary(
+        loop_iteration=0,
+        questions_flagged_count=0,
+        questions_scheduled_count=0,
+        decision_method="rule_v1",
+        waves_used=0,
+    )
+    return kwargs["reader_outputs"], kwargs["search_results"], summary
 
 
 # ---------------------------------------------------------------------------

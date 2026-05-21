@@ -112,9 +112,18 @@ def _reader_ok() -> dict[str, ReaderOutput]:
     }
 
 
-async def _reflector_passthrough(**kwargs: object) -> tuple[object, object]:
+async def _reflector_passthrough(**kwargs: object) -> tuple[object, object, object]:
     """Passthrough matching ``execute_reflector`` keyword-only API (ADR 0013 wiring)."""
-    return kwargs["reader_outputs"], kwargs["search_results"]
+    from app.schemas.reflector import ReflectorPhaseSummary  # noqa: PLC0415
+
+    summary = ReflectorPhaseSummary(
+        loop_iteration=0,
+        questions_flagged_count=0,
+        questions_scheduled_count=0,
+        decision_method="rule_v1",
+        waves_used=0,
+    )
+    return kwargs["reader_outputs"], kwargs["search_results"], summary
 
 
 def test_orchestrator_transitions_to_research_reading_before_reader(

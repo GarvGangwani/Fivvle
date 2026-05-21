@@ -25,6 +25,7 @@ from app.llm.prompts.reflector_query_refinement import (
 from app.schemas.planner import ResearchPlan, ResearchQuestion
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.schemas.refinement import RefinedIdea
+from app.schemas.reflector import ReflectorPhaseSummary
 from app.services.reflector_service import (
     MAX_QUESTIONS_PER_RUN,
     MAX_REFINED_QUERIES_PER_QUESTION,
@@ -395,7 +396,7 @@ async def test_execute_reflector_skips_when_no_questions_trigger() -> None:
         "app.services.reflector_service.llm_client.complete_structured",
         llm_mock,
     ):
-        ro_out, sr_out = await execute_reflector(
+        ro_out, sr_out, summary = await execute_reflector(
             experiment_id=uuid4(),
             research_plan=plan,
             reader_outputs=outputs,
@@ -407,6 +408,7 @@ async def test_execute_reflector_skips_when_no_questions_trigger() -> None:
     llm_mock.assert_not_called()
     assert ro_out == outputs
     assert sr_out == search
+    assert summary.waves_used == 0
 
 
 @pytest.mark.asyncio
@@ -421,7 +423,7 @@ async def test_execute_reflector_passes_through_when_max_refinement_waves_zero()
     settings.reflector_max_refinement_waves = 0
 
     with structlog.testing.capture_logs() as cap:
-        ro_out, sr_out = await execute_reflector(
+        ro_out, sr_out, summary = await execute_reflector(
             experiment_id=uuid4(),
             research_plan=plan,
             reader_outputs=outputs,
@@ -432,6 +434,7 @@ async def test_execute_reflector_passes_through_when_max_refinement_waves_zero()
 
     assert ro_out == outputs
     assert sr_out == {}
+    assert summary.waves_used == 0
     assert not any(
         e.get("event") == "reflector signal snapshot" for e in cap
     )
@@ -448,7 +451,7 @@ async def test_execute_reflector_never_raises_on_internal_exception() -> None:
         "app.services.reflector_service._evaluate_all_rules",
         side_effect=RuntimeError("rules blew up"),
     ), structlog.testing.capture_logs() as cap:
-        ro_out, sr_out = await execute_reflector(
+        ro_out, sr_out, summary = await execute_reflector(
             experiment_id=uuid4(),
             research_plan=plan,
             reader_outputs=inp,
@@ -459,6 +462,7 @@ async def test_execute_reflector_never_raises_on_internal_exception() -> None:
 
     assert ro_out is inp
     assert sr_out is sr_in
+    assert summary.waves_used == 0
     assert any(
         "reflector phase encountered unexpected error" in str(e.get("event", ""))
         for e in cap
@@ -520,7 +524,7 @@ async def test_execute_reflector_merges_refined_evidence_on_success() -> None:
         "app.services.reflector_service._partial_re_read",
         AsyncMock(side_effect=fake_partial_read),
     ):
-        ro_out, sr_out = await execute_reflector(
+        ro_out, sr_out, summary = await execute_reflector(
             experiment_id=uuid4(),
             research_plan=plan,
             reader_outputs=outputs,
@@ -529,6 +533,7 @@ async def test_execute_reflector_merges_refined_evidence_on_success() -> None:
             settings=_refinement_settings(),
         )
 
+    assert summary.waves_used == 1
     assert ro_out["q1"] is refreshed
     assert ro_out["q2"] is unchanged
     urls_q1 = {a.source_url for a in ro_out["q1"].extracted_evidence}
@@ -581,7 +586,7 @@ async def test_execute_reflector_preserves_prior_evidence_when_re_read_fails() -
         "app.services.reader_service._extract_for_question",
         AsyncMock(side_effect=RuntimeError("reader slice failed")),
     ):
-        ro_out, _sr = await execute_reflector(
+        ro_out, _sr, summary = await execute_reflector(
             experiment_id=uuid4(),
             research_plan=plan,
             reader_outputs=outputs,
@@ -590,6 +595,7 @@ async def test_execute_reflector_preserves_prior_evidence_when_re_read_fails() -
             settings=_refinement_settings(),
         )
 
+    assert summary.waves_used == 1
     assert ro_out["q1"].extracted_evidence[0].paraphrase == "keep-me"
 
 
@@ -711,6 +717,61 @@ async def test_execute_reflector_logs_do_not_contain_quote_or_paraphrase_text() 
     assert leak_para not in blob
     assert leak_quote not in blob
     assert leak_tavily not in blob
+
+
+@pytest.mark.asyncio
+async def test_execute_reflector_fizzle_when_all_re_searches_fail_or_empty() -> None:
+    plan = _minimal_plan(("q1", "q2", "q3", "q4", "q5"))
+    outputs = {q.id: _make_reader_output(q.id, [], gap_note="x") for q in plan.questions}
+
+    async def empty_partial_search(**kwargs):  # noqa: ARG001
+        return {}, 0, 2
+
+    with patch(
+        "app.services.reflector_service._refine_queries_for_question",
+        AsyncMock(return_value=(["refined-q"], Decimal("0"))),
+    ), patch(
+        "app.services.reflector_service._partial_re_search",
+        AsyncMock(side_effect=empty_partial_search),
+    ), structlog.testing.capture_logs() as cap:
+        _ro, _sr, summary = await execute_reflector(
+            experiment_id=uuid4(),
+            research_plan=plan,
+            reader_outputs=outputs,
+            search_results={},
+            db=MagicMock(spec=[]),
+            settings=_refinement_settings(),
+        )
+
+    assert summary.waves_used == 0
+    fizzles = [e for e in cap if e.get("event") == "reflector wave fizzled"]
+    assert len(fizzles) == 1
+    assert fizzles[0]["reason"] == "re_search_failed_or_empty"
+    assert fizzles[0]["loop_iteration"] == 0
+
+
+@pytest.mark.asyncio
+async def test_execute_reflector_fizzle_when_refinement_not_executable() -> None:
+    plan = _minimal_plan(("q1", "q2", "q3", "q4", "q5"))
+    outputs = {q.id: _make_reader_output(q.id, [], gap_note="x") for q in plan.questions}
+
+    with patch(
+        "app.services.reflector_service._refine_queries_for_question",
+        AsyncMock(return_value=([], Decimal("0"))),
+    ), structlog.testing.capture_logs() as cap:
+        _ro, _sr, summary = await execute_reflector(
+            experiment_id=uuid4(),
+            research_plan=plan,
+            reader_outputs=outputs,
+            search_results={},
+            db=MagicMock(spec=[]),
+            settings=_refinement_settings(),
+        )
+
+    assert summary.waves_used == 0
+    fizzles = [e for e in cap if e.get("event") == "reflector wave fizzled"]
+    assert len(fizzles) == 1
+    assert fizzles[0]["reason"] == "no_executable_re_searches"
 
 
 # ---------------------------------------------------------------------------

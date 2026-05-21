@@ -178,7 +178,7 @@ async def run_research_engine(
     # -------------------------------------------------------------------------
     # Phase 4: Reflector (no status writes — mirrors research_engine_service)
     # -------------------------------------------------------------------------
-    reader_outputs, search_results = await execute_reflector(
+    reader_outputs, search_results, _reflector_summary = await execute_reflector(
         experiment_id=experiment_id,
         research_plan=research_plan,
         reader_outputs=reader_outputs,

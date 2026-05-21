@@ -81,8 +81,17 @@ def _fake_report() -> MagicMock:
     return report
 
 
-async def _reflector_passthrough(**kwargs: object) -> tuple[object, object]:
-    return kwargs["reader_outputs"], kwargs["search_results"]
+async def _reflector_passthrough(**kwargs: object) -> tuple[object, object, object]:
+    from app.schemas.reflector import ReflectorPhaseSummary  # noqa: PLC0415
+
+    summary = ReflectorPhaseSummary(
+        loop_iteration=0,
+        questions_flagged_count=0,
+        questions_scheduled_count=0,
+        decision_method="rule_v1",
+        waves_used=0,
+    )
+    return kwargs["reader_outputs"], kwargs["search_results"], summary
 
 
 def _trends_foo() -> TrendsSeries:

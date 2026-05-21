@@ -23,8 +23,10 @@ from __future__ import annotations
 import asyncio
 import os
 from contextlib import ExitStack
+
+import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
 
@@ -33,7 +35,11 @@ from app.db.enums import ExperimentStatus
 from app.integrations.tavily import TavilyResult
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.schemas.search import MergedSearchResults
-from app.services.research_engine_service import run_research_engine_pipeline
+from app.schemas.reflector import ReflectorPhaseSummary
+from app.services.research_engine_service import (
+    _write_validation_report,
+    run_research_engine_pipeline,
+)
 from app.services.synthesizer_service import SynthesizerHallucinatedCitation
 from tests.routers.test_confirm_and_research_status import (
     _AUTH_HEADER,
@@ -92,9 +98,16 @@ def _fake_report() -> MagicMock:
     return report
 
 
-async def _reflector_identity(**kwargs: object) -> tuple[object, object]:
+async def _reflector_identity(**kwargs: object) -> tuple[object, object, object]:
     """Async passthrough matching execute_reflector's keyword-only API."""
-    return kwargs["reader_outputs"], kwargs["search_results"]
+    summary = ReflectorPhaseSummary(
+        loop_iteration=0,
+        questions_flagged_count=0,
+        questions_scheduled_count=0,
+        decision_method="rule_v1",
+        waves_used=0,
+    )
+    return kwargs["reader_outputs"], kwargs["search_results"], summary
 
 
 def _fake_reader_outputs() -> dict[str, ReaderOutput]:
@@ -480,7 +493,39 @@ def test_subsequent_phases_not_called_after_planner_failure(
 # ---------------------------------------------------------------------------
 
 
-async def _reflect_merge_reader_outputs(**kwargs: object) -> tuple[object, object]:
+def _read_validation_report_reflection_loops(experiment_id: str) -> int:
+    from sqlalchemy import select  # noqa: PLC0415
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: PLC0415
+
+    from app.db.models.validation_report import ValidationReport  # noqa: PLC0415
+
+    result: dict[str, int] = {}
+
+    async def _run() -> None:
+        engine = create_async_engine(
+            get_settings().database_url, pool_size=1, max_overflow=0
+        )
+        sm = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        try:
+            async with sm() as session:
+                row = (
+                    await session.execute(
+                        select(ValidationReport.reflection_loops_used).where(
+                            ValidationReport.experiment_id == UUID(experiment_id)
+                        )
+                    )
+                ).scalar_one()
+                result["value"] = row
+        finally:
+            await engine.dispose()
+
+    asyncio.get_event_loop().run_until_complete(_run())
+    return result["value"]
+
+
+async def _reflect_merge_reader_outputs(
+    **kwargs: object,
+) -> tuple[object, object, object]:
     merged = dict(kwargs["reader_outputs"])  # type: ignore[arg-type]
     merged["stub_q"] = ReaderOutput(
         question_id="stub_q",
@@ -495,10 +540,19 @@ async def _reflect_merge_reader_outputs(**kwargs: object) -> tuple[object, objec
         ],
         evidence_gap_note=None,
     )
-    return merged, kwargs["search_results"]
+    summary = ReflectorPhaseSummary(
+        loop_iteration=0,
+        questions_flagged_count=0,
+        questions_scheduled_count=0,
+        decision_method="rule_v1",
+        waves_used=0,
+    )
+    return merged, kwargs["search_results"], summary
 
 
-async def _reflect_merge_search_results(**kwargs: object) -> tuple[object, object]:
+async def _reflect_merge_search_results(
+    **kwargs: object,
+) -> tuple[object, object, object]:
     sr = dict(kwargs["search_results"])  # type: ignore[arg-type]
     sr["stub_q"] = [
         TavilyResult(
@@ -507,7 +561,79 @@ async def _reflect_merge_search_results(**kwargs: object) -> tuple[object, objec
             content="snippet-after-reflector",
         ),
     ]
-    return kwargs["reader_outputs"], sr
+    summary = ReflectorPhaseSummary(
+        loop_iteration=0,
+        questions_flagged_count=0,
+        questions_scheduled_count=0,
+        decision_method="rule_v1",
+        waves_used=0,
+    )
+    return kwargs["reader_outputs"], sr, summary
+
+
+async def _reflector_one_wave_summary(**kwargs: object) -> tuple[object, object, object]:
+    summary = ReflectorPhaseSummary(
+        loop_iteration=0,
+        questions_flagged_count=5,
+        questions_scheduled_count=4,
+        decision_method="rule_v1",
+        waves_used=1,
+    )
+    return kwargs["reader_outputs"], kwargs["search_results"], summary
+
+
+@pytest.mark.asyncio
+async def test_write_validation_report_persists_reflection_loops_used() -> None:
+    from sqlalchemy import select  # noqa: PLC0415
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine  # noqa: PLC0415
+
+    from app.db.models.experiment import Experiment  # noqa: PLC0415
+    from app.db.models.user import User  # noqa: PLC0415
+    from app.db.models.validation_report import ValidationReport  # noqa: PLC0415
+
+    exp_id = uuid4()
+    engine = create_async_engine(get_settings().database_url, pool_size=1, max_overflow=0)
+    sm = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    try:
+        async with sm() as session:
+            user = User(
+                firebase_uid=f"refl-loop-{exp_id}",
+                email=f"refl-loop-{exp_id}@example.com",
+                name="t",
+            )
+            session.add(user)
+            await session.flush()
+            session.add(
+                Experiment(
+                    id=exp_id,
+                    user_id=user.id,
+                    raw_idea="idea",
+                    refined_idea={},
+                    status=ExperimentStatus.RESEARCHING,
+                )
+            )
+            await session.commit()
+
+        async with sm() as session:
+            await _write_validation_report(
+                session,
+                exp_id,
+                {"version": "test"},
+                reflection_loops_used=2,
+            )
+            await session.commit()
+
+        async with sm() as session:
+            stored = (
+                await session.execute(
+                    select(ValidationReport.reflection_loops_used).where(
+                        ValidationReport.experiment_id == exp_id
+                    )
+                )
+            ).scalar_one()
+        assert stored == 2
+    finally:
+        await engine.dispose()
 
 
 def test_orchestrator_calls_execute_reflector_between_reader_and_synthesizer(
@@ -745,3 +871,54 @@ def test_orchestrator_rebuilds_citation_hydration_index_after_reflector(
     assert rows[0].url == "https://post-reflector.example/hydrate-target"
     idx_passed_to_synth = mock_synth.await_args.kwargs["citation_hydration_index"]
     assert idx_passed_to_synth == {"tracked": "yes"}
+
+
+def test_orchestrator_persists_reflection_loops_used_from_reflector_summary(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    """RESEARCH_READY upsert stores reflector_summary.waves_used, not hardcoded 0."""
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "app.services.planner_service.plan_research",
+                AsyncMock(return_value=_fake_research_plan()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.searcher_service.execute_search_plan",
+                AsyncMock(return_value=_merged_searcher_result()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reader_service.execute_reader",
+                AsyncMock(return_value=_fake_reader_outputs()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reflector_service.execute_reflector",
+                AsyncMock(side_effect=_reflector_one_wave_summary),
+            ),
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_input.build_synthesizer_input",
+                return_value=MagicMock(),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_service.synthesize_report",
+                AsyncMock(return_value=_fake_report()),
+            )
+        )
+        _run_pipeline(exp_id)
+
+    assert _read_validation_report_reflection_loops(exp_id) == 1

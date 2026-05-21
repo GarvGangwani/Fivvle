@@ -134,5 +134,13 @@ class ReflectorPhaseSummary(BaseModel):
             "The decision method used. Currently only 'rule_v1' per ADR 0013."
         ),
     )
+    waves_used: int = Field(
+        ...,
+        ge=0,
+        description=(
+            "Refinement waves with at least one successful Tavily re-search that "
+            "returned new hits (maps to ValidationReport.reflection_loops_used)."
+        ),
+    )
 
     model_config = ConfigDict(extra="forbid")
