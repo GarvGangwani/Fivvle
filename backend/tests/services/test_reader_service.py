@@ -22,6 +22,7 @@ from app.integrations.tavily import TavilyResult
 from app.llm.client import LLMResult, USER_CACHE_ZONE_BOUNDARY
 from app.llm.prompts.reader import (
     PROMPT_NAME,
+    READER_CONTENT_EXCERPT_MAX_LEN,
     build_reader_user_prompt,
     reader_v1_legacy_flat_user_and_system,
 )
@@ -38,7 +39,9 @@ from app.services.reader_service import (
     SENTINEL_LLM_FAILURE_MESSAGE,
     SENTINEL_URL_THRESHOLD_MESSAGE,
     ReaderTotalFailure,
+    _classify_quote_guard,
     _extract_for_question,
+    _normalize_for_quote_match,
     _validate_question_output,
     execute_reader,
 )
@@ -302,6 +305,28 @@ def test_validate_url_threshold_exact_boundary_at_20pct() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Quote normalization
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_for_quote_match_curly_apostrophe_to_straight() -> None:
+    assert _normalize_for_quote_match("it\u2019s fine") == "it's fine"
+
+
+def test_normalize_for_quote_match_curly_double_quotes() -> None:
+    assert _normalize_for_quote_match("\u201chello\u201d") == '"hello"'
+
+
+def test_normalize_for_quote_match_nfkc() -> None:
+    # Fullwidth digits normalize under NFKC
+    assert _normalize_for_quote_match("１２３") == "123"
+
+
+def test_normalize_for_quote_match_collapses_whitespace() -> None:
+    assert _normalize_for_quote_match("  foo   bar \n baz  ") == "foo bar baz"
+
+
+# ---------------------------------------------------------------------------
 # Quote hallucination guard
 # ---------------------------------------------------------------------------
 
@@ -327,8 +352,12 @@ def test_validate_nulls_quote_when_substring_not_in_content() -> None:
             draft, tavily_results, "q1", exp_id, llm_meta=_llm_meta()
         )
 
-    warns = [e for e in cap if e.get("event") == "reader hallucinated quote"]
+    warns = [e for e in cap if e.get("event") == "reader quote guard trip"]
     assert len(warns) == 1
+    assert warns[0]["failure_class"] == "unmatched"
+    assert warns[0]["quote_len"] == len("NOT_IN_BODY")
+    assert warns[0]["source_host"] == "example.com"
+    assert "NOT_IN_BODY" not in str(warns[0])
     assert stats["quote_hallucination_count"] == 1
     assert out.extracted_evidence[0].verbatim_quote is None
     assert out.extracted_evidence[0].paraphrase == "kept"
@@ -358,7 +387,79 @@ def test_validate_keeps_quote_when_substring_matches() -> None:
     assert out.extracted_evidence[0].verbatim_quote == "QUOTE_HERE"
 
 
-def test_validate_quote_threshold_emits_error_but_keeps_items() -> None:
+def test_validate_keeps_quote_when_curly_apostrophe_differs_from_source() -> None:
+    """Old guard nulled curly-vs-straight copies; normalized match keeps them."""
+    exp_id = uuid4()
+    url = "https://example.com/page"
+    body = "The founder said it\u2019s growing fast in Q3."
+    quote = "it's growing fast"
+    tavily_results = [_tavily(url=url, content=body)]
+    draft = ReaderOutputDraft(
+        question_id="q1",
+        extracted_evidence=[
+            ExtractedEvidenceDraft(
+                source_url=url,
+                relevance="high",
+                verbatim_quote=quote,
+                paraphrase="ok",
+                named_entities=[],
+            ),
+        ],
+    )
+    with structlog.testing.capture_logs() as cap:
+        out, stats = _validate_question_output(
+            draft, tavily_results, "q1", exp_id, llm_meta=_llm_meta()
+        )
+
+    warns = [e for e in cap if e.get("event") == "reader quote guard trip"]
+    assert len(warns) == 1
+    assert warns[0]["failure_class"] == "normalization_recovered"
+    assert quote not in str(warns[0])
+    assert body not in str(warns[0])
+    assert stats["quote_hallucination_count"] == 0
+    assert out.extracted_evidence[0].verbatim_quote == quote
+
+
+def test_validate_keeps_quote_past_excerpt_boundary() -> None:
+    """Quote present in full content but beyond READER_CONTENT_EXCERPT_MAX_LEN."""
+    exp_id = uuid4()
+    url = "https://example.com/long"
+    pad = "x" * READER_CONTENT_EXCERPT_MAX_LEN
+    quote = "PAST_BOUNDARY_PHRASE"
+    body = pad + quote
+    assert quote not in body[:READER_CONTENT_EXCERPT_MAX_LEN]
+    assert quote in body
+    tavily_results = [_tavily(url=url, content=body)]
+    draft = ReaderOutputDraft(
+        question_id="q1",
+        extracted_evidence=[
+            ExtractedEvidenceDraft(
+                source_url=url,
+                relevance="high",
+                verbatim_quote=quote,
+                paraphrase="ok",
+                named_entities=[],
+            ),
+        ],
+    )
+    with structlog.testing.capture_logs() as cap:
+        out, stats = _validate_question_output(
+            draft, tavily_results, "q1", exp_id, llm_meta=_llm_meta()
+        )
+
+    warns = [e for e in cap if e.get("event") == "reader quote guard trip"]
+    assert len(warns) == 1
+    assert warns[0]["failure_class"] == "boundary_overrun"
+    assert stats["quote_hallucination_count"] == 0
+    assert out.extracted_evidence[0].verbatim_quote == quote
+
+
+def test_classify_quote_guard_returns_none_on_raw_excerpt_match() -> None:
+    body = "hello world"
+    assert _classify_quote_guard("world", body) is None
+
+
+def test_validate_quote_threshold_emits_error_only_on_unmatched_rate() -> None:
     exp_id = uuid4()
     url_template = "https://example.com/u{}"
     # 10 drafts with quotes; 2 hallucinated quotes → 2/10 = 0.2 > QUOTE threshold 0.10
@@ -393,6 +494,42 @@ def test_validate_quote_threshold_emits_error_but_keeps_items() -> None:
     assert len(errs) == 1
     assert stats["quote_hallucination_rate"] > QUOTE_HALLUCINATION_THRESHOLD
     assert len(out.extracted_evidence) == 10
+
+
+def test_validate_quote_threshold_does_not_fire_on_recovered_or_boundary_only() -> None:
+    """High normalization_recovered rate must not trip the unmatched threshold."""
+    exp_id = uuid4()
+    url_template = "https://example.com/u{}"
+    body_template = "prefix {} suffix with it\u2019s quoted"
+    tavily_results = [
+        _tavily(url=url_template.format(i), content=body_template.format(i))
+        for i in range(10)
+    ]
+    evidence: list[ExtractedEvidenceDraft] = []
+    for i in range(10):
+        evidence.append(
+            ExtractedEvidenceDraft(
+                source_url=url_template.format(i),
+                relevance="medium",
+                verbatim_quote=f"it's quoted",  # straight apostrophe vs curly source
+                paraphrase=f"p{i}",
+                named_entities=[],
+            ),
+        )
+    draft = ReaderOutputDraft(question_id="q1", extracted_evidence=evidence)
+
+    with structlog.testing.capture_logs() as cap:
+        out, stats = _validate_question_output(
+            draft, tavily_results, "q1", exp_id, llm_meta=_llm_meta()
+        )
+
+    errs = [
+        e for e in cap if e.get("event") == "reader quote hallucination rate exceeded threshold"
+    ]
+    assert errs == []
+    assert stats["quote_hallucination_count"] == 0
+    assert stats["quote_hallucination_rate"] == 0.0
+    assert all(e.verbatim_quote == "it's quoted" for e in out.extracted_evidence)
 
 
 def test_validate_quote_rate_zero_when_no_quotes_present() -> None:
@@ -933,6 +1070,33 @@ def test_reader_v1_cached_prompt_semantically_equivalent_to_v1() -> None:
     ):
         assert anchor in flat
     assert PROMPT_NAME == "reader_v1_cached"
+
+
+def test_reader_prompt_serializes_unicode_without_ascii_escapes() -> None:
+    q = ResearchQuestion(
+        id="q1",
+        question="What is X?",
+        rationale="r",
+        search_queries=["sq"],
+    )
+    tav = [
+        {
+            "url": "https://ex.com/a",
+            "title": "t",
+            "content": "it\u2019s unicode",
+            "score": 0.5,
+        }
+    ]
+    user = build_reader_user_prompt(
+        refined_idea=_minimal_refined_idea(),
+        research_questions=[q],
+        question_id=q.id,
+        question_text=q.question,
+        tavily_results=tav,
+        for_cache=False,
+    )
+    assert "\\u2019" not in user
+    assert "it\u2019s unicode" in user
 
 
 async def test_reader_service_falls_back_when_cache_breakpoints_none() -> None:

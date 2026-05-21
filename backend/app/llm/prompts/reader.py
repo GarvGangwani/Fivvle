@@ -37,6 +37,9 @@ PROMPT_NAME = "reader_v1_cached"
 # Deprecated: previous logged prompt_name before cache layout split (commit H-2).
 PROMPT_NAME_V1_LEGACY = "reader_v1"
 
+# Per planning doc §6.3 — shared by prompt serialization and quote guard validation.
+READER_CONTENT_EXCERPT_MAX_LEN = 2000
+
 # Instructions moved to Zone A of the user message for Anthropic cache breakpoints.
 READER_SYSTEM_PROMPT = ""
 
@@ -195,12 +198,12 @@ def _build_zone_c(
             {
                 "url": r.get("url", ""),
                 "title": r.get("title", ""),
-                "content_excerpt": raw_content[:2000],
+                "content_excerpt": raw_content[:READER_CONTENT_EXCERPT_MAX_LEN],
                 "score": r.get("score"),
             }
         )
 
-    results_json = json.dumps(truncated_results, indent=2)
+    results_json = json.dumps(truncated_results, indent=2, ensure_ascii=False)
     parts.append(
         f'<tavily_results question_id="{question_id}">\n'
         f"{results_json}\n"
@@ -252,7 +255,7 @@ def build_reader_user_prompt(
     is disabled).
 
     Content truncation: each Tavily result ``content`` field is truncated to
-    2 000 characters per planning doc §6.3.
+    :data:`READER_CONTENT_EXCERPT_MAX_LEN` characters per planning doc §6.3.
     """
     zone_a, zone_b, zone_c = build_reader_user_messages(
         refined_idea=refined_idea,

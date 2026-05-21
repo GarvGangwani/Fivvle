@@ -14,8 +14,11 @@ threshold — no per-item raise path (§8.4).
 from __future__ import annotations
 
 import asyncio
+import re
+import unicodedata
 from decimal import Decimal
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID
 
 from sqlalchemy import select
@@ -27,6 +30,7 @@ from app.db.models.experiment import Experiment
 from app.integrations.tavily import TavilyResult
 from app.llm.prompts.reader import (
     PROMPT_NAME,
+    READER_CONTENT_EXCERPT_MAX_LEN,
     READER_SYSTEM_PROMPT,
     build_reader_user_prompt,
 )
@@ -67,6 +71,59 @@ READER_CACHE_BREAKPOINTS: list[llm_client.CacheBreakpoint] = [
 # Sentinel: default ``_extract_for_question(..., cache_breakpoints=...)`` uses
 # :data:`READER_CACHE_BREAKPOINTS`; pass ``None`` explicitly to disable caching.
 _READER_CACHE_BPS_DEFAULT = object()
+
+_CURLY_TO_STRAIGHT = str.maketrans(
+    {
+        "\u2018": "'",  # left single quotation mark
+        "\u2019": "'",  # right single quotation mark / apostrophe
+        "\u201a": "'",  # single low-9 quotation mark
+        "\u201b": "'",  # single high-reversed-9 quotation mark
+        "\u201c": '"',  # left double quotation mark
+        "\u201d": '"',  # right double quotation mark
+        "\u201e": '"',  # double low-9 quotation mark
+        "\u201f": '"',  # double high-reversed-9 quotation mark
+    }
+)
+
+
+def _normalize_for_quote_match(s: str) -> str:
+    """Deterministic normalization for quote substring checks (not fuzzy matching)."""
+    normalized = unicodedata.normalize("NFKC", s)
+    normalized = normalized.translate(_CURLY_TO_STRAIGHT)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()
+
+
+def _source_host(url: str) -> str:
+    """Domain only — safe for structured logs (no path/query)."""
+    return urlparse(url).netloc or ""
+
+
+def _classify_quote_guard(
+    quote: str,
+    source_content: str,
+    *,
+    excerpt_max_len: int = READER_CONTENT_EXCERPT_MAX_LEN,
+) -> str | None:
+    """Classify a quote that failed raw exact match against the model-visible excerpt.
+
+    Returns ``None`` when the quote passes without guard attention (raw exact
+    substring of the excerpt). Otherwise returns one of:
+    ``normalization_recovered``, ``boundary_overrun``, or ``unmatched``.
+    """
+    excerpt = source_content[:excerpt_max_len]
+    if quote in excerpt:
+        return None
+
+    norm_quote = _normalize_for_quote_match(quote)
+    norm_excerpt = _normalize_for_quote_match(excerpt)
+    norm_full = _normalize_for_quote_match(source_content)
+
+    if norm_quote in norm_excerpt:
+        return "normalization_recovered"
+    if norm_quote in norm_full:
+        return "boundary_overrun"
+    return "unmatched"
 
 
 class ReaderTotalFailure(Exception):  # noqa: N818 — name fixed by planning doc §8.2
@@ -246,15 +303,19 @@ def _validate_question_output(
         quote = evidence_draft.verbatim_quote
         if quote is not None:
             source_content = content_by_url.get(evidence_draft.source_url, "")
-            if quote not in source_content:
-                quote_hallucination_count += 1
+            failure_class = _classify_quote_guard(quote, source_content)
+            if failure_class is not None:
                 _logger.warning(
-                    "reader hallucinated quote",
+                    "reader quote guard trip",
                     question_id=question_id,
                     experiment_id=str(experiment_id),
-                    quote_hallucination_count=quote_hallucination_count,
+                    failure_class=failure_class,
+                    quote_len=len(quote),
+                    source_host=_source_host(evidence_draft.source_url),
                 )
-                quote = None
+                if failure_class == "unmatched":
+                    quote_hallucination_count += 1
+                    quote = None
 
         final_evidence.append(
             ExtractedEvidence(
