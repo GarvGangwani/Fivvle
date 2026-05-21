@@ -670,5 +670,6 @@ async def execute_reflector(
             ),
             experiment_id=str(experiment_id),
             error_type=type(exc).__name__,
+            exc_info=True,
         )
         return reader_outputs, search_results, _zero_phase_summary()

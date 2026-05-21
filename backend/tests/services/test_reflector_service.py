@@ -8,13 +8,16 @@ Observability uses ``structlog.testing.capture_logs()`` where stable.
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+import structlog
 import structlog.testing
 
+import app.services.reflector_service as reflector_mod
 from app.integrations.tavily import TavilyResult
 from app.llm.client import LLMResult, USER_CACHE_ZONE_BOUNDARY
 from app.llm.prompts.reflector_query_refinement import (
@@ -467,6 +470,85 @@ async def test_execute_reflector_never_raises_on_internal_exception() -> None:
         "reflector phase encountered unexpected error" in str(e.get("event", ""))
         for e in cap
     ), cap
+
+
+@pytest.mark.asyncio
+async def test_execute_reflector_degrade_path_logs_exc_info_on_post_research_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Post-re-search failures degrade to inputs and log stack traces (exc_info)."""
+    plan = _minimal_plan(("q1", "q2", "q3", "q4", "q5"))
+    inp = {
+        q.id: _make_reader_output(q.id, [], gap_note="g") for q in plan.questions
+    }
+    sr_in: dict[str, list[TavilyResult]] = {}
+    new_row = TavilyResult(
+        title="fresh",
+        url="https://fresh.example/n",
+        content="fresh slice",
+        score=0.9,
+    )
+
+    async def fake_partial_search(**kwargs):  # noqa: ARG001
+        return {"q1": [new_row]}, 1, 0
+
+    with (
+        patch(
+            "app.services.reflector_service._refine_queries_for_question",
+            AsyncMock(return_value=(["rq-one"], Decimal("0"))),
+        ),
+        patch(
+            "app.services.reflector_service._partial_re_search",
+            AsyncMock(side_effect=fake_partial_search),
+        ),
+        patch(
+            "app.services.reflector_service._merge_search_results",
+            side_effect=TypeError("post-re-search merge failed"),
+        ),
+        patch.object(
+            reflector_mod._logger,
+            "error",
+            wraps=reflector_mod._logger.error,
+        ) as error_mock,
+        structlog.testing.capture_logs(
+            processors=[
+                structlog.processors.add_log_level,
+                structlog.processors.format_exc_info,
+            ],
+        ) as cap,
+        caplog.at_level(logging.ERROR),
+    ):
+        ro_out, sr_out, summary = await execute_reflector(
+            experiment_id=uuid4(),
+            research_plan=plan,
+            reader_outputs=inp,
+            search_results=sr_in,
+            db=MagicMock(spec=[]),
+            settings=_refinement_settings(),
+        )
+
+    assert ro_out is inp
+    assert sr_out is sr_in
+    assert summary.waves_used == 0
+
+    degrade_logs = [
+        e
+        for e in cap
+        if "reflector phase encountered unexpected error" in str(e.get("event", ""))
+    ]
+    assert len(degrade_logs) == 1
+    exc_text = degrade_logs[0].get("exception", "")
+    assert "Traceback" in exc_text
+    assert "TypeError" in exc_text
+    assert "post-re-search merge failed" in exc_text
+    assert degrade_logs[0].get("error_type") == "TypeError"
+    assert error_mock.call_args.kwargs.get("exc_info") is True
+
+    exc_records = [r for r in caplog.records if r.exc_info is not None]
+    if exc_records:
+        assert exc_records[0].exc_info[0] is TypeError
+    else:
+        assert "Traceback" in exc_text
 
 
 @pytest.mark.asyncio
