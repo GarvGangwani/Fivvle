@@ -193,6 +193,35 @@ Eleven experiments: audit **eight** + F‑1 + H‑4 + M‑1. Re-run `scripts/cos
 
 ---
 
+## 2026-05-21 — Multi-Source Searcher v2 calibration (Task M-2)
+
+Single-idea end-to-end smoke on experiment **`d47261f9-00e4-4264-8832-7a8b0667fd56`**: **byte-identical** toddler sensory-play subscription box to Task M‑1 (`2310ec98…`), after Commits 5/6/7 on `main` @ `7ffe839`. Pipeline reached **`RESEARCH_READY`**. Timestamps: **17:56:51 → 18:09:03 UTC** (~**732 s** DB span; **741.10 s** smoke client). Calibration detail: `docs/calibration/runs/2026-05-21-multi-source-v2-calibration.md`.
+
+| Date | Activity | Anthropic | Tavily | pytrends | Notes |
+|---|---|---|---|---|---|
+| 2026-05-21 (UTC) | Multi-source v2 calibration (M‑2), same idea as M‑1 | $0.981813 | $0.528 | $0.00 | `RESEARCH_READY`; **14** LLM rows, **33** Tavily; **1** pytrends **`success=false`** (`ResponseError`); Reader guard trips **11** (**10** `normalization_recovered`, **1** `unmatched`); `reflection_loops_used=0` (Reflector `TypeError` after re-search) |
+
+**Subtotal (this line item):** Anthropic **$0.981813** + Tavily **$0.528** ≈ **$1.510** combined (**below** M‑1 ~$1.579; **at** ~$1.50 envelope).
+
+### Comparison vs Task M‑1
+
+| Metric | M‑1 | M‑2 | Delta |
+|---|---|---|---|
+| Anthropic | $1.050996 | $0.981813 | **−$0.069 (−6.6%)** |
+| Tavily | $0.528 | $0.528 | **$0** |
+| Combined | ~$1.579 | **~$1.510** | **−$0.069** |
+| Wall‑clock | ~531 s | ~741 s | +210 s (Synthesizer retry/latency) |
+| pytrends | fail (`TooManyRequests`) | fail (`ResponseError`) | still no Trends series |
+| Reader >10% threshold trips | ~5/7 questions | **1/7** (`q1`) | guard fix validated |
+| Trends disclosure in report | No | No | Commit 5 not observed |
+| `reflection_loops_used` | 0 | 0 | Commit 7 blocked by Reflector `TypeError` |
+
+### Tracked cohort — projection refresh (includes M‑2)
+
+Twelve experiments: audit **eight** + F‑1 + H‑4 + M‑1 + M‑2. Re-run `scripts/cost_ledger_audit.py` for exact mean/p90.
+
+---
+
 ### Known instrumentation gaps
 
 1. **Tavily cost in DB:** Older runs often show **`cost_usd = 0`** for Tavily when the integration wrapper did not persist spend. **Task F-1 (2026-05-18)** recorded **non-zero** Tavily dollars on `ExternalAPICall` rows — treats earlier “always zero” statement as **historical**, not current.

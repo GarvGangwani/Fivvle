@@ -97,3 +97,11 @@ Caching **N=1** cold-cache measurement complete for the **same vague freelancer-
 **Verdict:** Caps **hold comfortably** under this run; **no cap raise recommended** from M-1 data alone. **Re-calibrate on M-2** when a successful fetch returns a full `interest_over_time` window (expect **≤53 weekly points** for `today 12-m` timeframe — well under 520).
 
 **Pending:** Log `len(points)` and `len(keyword)` at DEBUG in `integrations/trends.py` post-success for empirical max harvest (per planning doc §13).
+
+## Multi-Source Searcher v1 — TrendsSeries caps (Task M-2) — 2026-05-21
+
+**Run:** `docs/calibration/runs/2026-05-21-multi-source-v2-calibration.md` (experiment `d47261f9-00e4-4264-8832-7a8b0667fd56`; same idea as M-1).
+
+**Observed max (N=2 attempt):** **Still no series** — pytrends `fetch_trends` failed again (`ExternalAPICall.success=false`, log `error_type=ResponseError`, `latency_ms≈10528`). Effective observed max remains **0 points per keyword**.
+
+**Verdict:** Caps **unchanged** — still **hold comfortably**; **no cap raise**. **M-3 or mocked fixture** required before empirical `len(points)` harvest.
