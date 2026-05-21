@@ -569,7 +569,7 @@ def test_synthesizer_v3_prompt_includes_trends_block_when_signals_populated() ->
     assert "<keyword>foo</keyword>" in prompt
 
 
-def test_synthesizer_v3_prompt_omits_trends_when_signals_none() -> None:
+def test_synthesizer_v3_prompt_discloses_unavailable_trends_when_signals_none() -> None:
     synth_input = build_synthesizer_input(
         refined_idea=_make_refined_idea(),
         research_plan=_make_plan(5),
@@ -579,11 +579,17 @@ def test_synthesizer_v3_prompt_omits_trends_when_signals_none() -> None:
     )
     prompt = build_synthesizer_v3_user_prompt(synth_input, for_cache=True)
     assert "<trends_signals>" not in prompt
-    assert "<trends_framing>" not in prompt
+    assert "<trends_framing>" in prompt
     assert "Trends signals indicate" not in prompt
+    assert "research_limitations" in prompt
+    assert (
+        "demand-trajectory (search-interest) data could not be retrieved for this run"
+        in prompt
+    )
+    assert "findings rest on the cited web sources alone" in prompt
 
 
-def test_synthesizer_v3_prompt_omits_trends_when_signals_empty_dict() -> None:
+def test_synthesizer_v3_prompt_discloses_unavailable_trends_when_signals_empty_dict() -> None:
     synth_input = build_synthesizer_input(
         refined_idea=_make_refined_idea(),
         research_plan=_make_plan(5),
@@ -593,7 +599,11 @@ def test_synthesizer_v3_prompt_omits_trends_when_signals_empty_dict() -> None:
     )
     prompt = build_synthesizer_v3_user_prompt(synth_input, for_cache=True)
     assert "<trends_signals>" not in prompt
-    assert "<trends_framing>" not in prompt
+    assert "<trends_framing>" in prompt
+    assert (
+        "demand-trajectory (search-interest) data could not be retrieved for this run"
+        in prompt
+    )
 
 
 @pytest.mark.asyncio

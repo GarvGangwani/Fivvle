@@ -1,6 +1,8 @@
-"""H-3 semantic equivalence: synthesizer_v3_cached matches v2 when trends_signals is None."""
+"""H-3 semantic equivalence: synthesizer_v3_cached vs v2 when trends_signals is None."""
 
 from __future__ import annotations
+
+import re
 
 from app.llm.client import USER_CACHE_ZONE_BOUNDARY
 from app.llm.prompts.synthesizer import (
@@ -17,6 +19,12 @@ _VALID_RISKS = [
     "Do HR teams have compliance concerns?",
     "Is handbook staleness the real blocker?",
 ]
+
+_TRENDS_FRAMING_RE = re.compile(r"<trends_framing>.*?</trends_framing>\s*", re.DOTALL)
+
+_DISCLOSURE_ANCHOR = (
+    "demand-trajectory (search-interest) data could not be retrieved for this run"
+)
 
 
 def _make_refined_idea() -> RefinedIdea:
@@ -64,8 +72,14 @@ def _make_reader_outputs(question_count: int = 5) -> dict[str, ReaderOutput]:
     }
 
 
-def test_v3_cached_user_prompt_byte_identical_to_v2_when_trends_signals_none() -> None:
-    """ADR 0016: absent Trends must not change Zone B or add Zone C content."""
+def test_v3_empty_path_includes_disclosure_and_differs_from_v2_only_by_framing() -> None:
+    """v3 empty-trends path adds degraded-path disclosure; v2 had no Trends concept.
+
+    Commit 5: when trends_signals is absent, v3 must instruct the model to disclose
+    unavailable demand-trajectory data in research_limitations. v2 prompts never
+    contained this block, so byte-identical equivalence no longer holds — the sole
+    intentional difference is the absent-path <trends_framing> block.
+    """
     synth_input = build_synthesizer_input(
         refined_idea=_make_refined_idea(),
         research_plan=_make_plan(5),
@@ -75,5 +89,14 @@ def test_v3_cached_user_prompt_byte_identical_to_v2_when_trends_signals_none() -
     )
     v2_prompt = build_synthesizer_user_prompt(synth_input, for_cache=True)
     v3_prompt = build_synthesizer_v3_user_prompt(synth_input, for_cache=True)
-    assert v3_prompt == v2_prompt
+
+    assert v3_prompt != v2_prompt
+    assert _DISCLOSURE_ANCHOR in v3_prompt
+    assert "research_limitations" in v3_prompt
+    assert _DISCLOSURE_ANCHOR not in v2_prompt
+    assert "<trends_framing>" in v3_prompt
+    assert "<trends_framing>" not in v2_prompt
+
+    v3_without_framing = _TRENDS_FRAMING_RE.sub("", v3_prompt)
+    assert v3_without_framing == v2_prompt
     assert v3_prompt.count(USER_CACHE_ZONE_BOUNDARY) == 2

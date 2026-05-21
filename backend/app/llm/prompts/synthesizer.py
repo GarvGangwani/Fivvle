@@ -196,15 +196,23 @@ per planning §10 before tightening prose thresholds.
 """
 
 
-_TRENDS_ZONE_B_FRAMING = """\
+_TRENDS_ZONE_B_FRAMING_PRESENT = """\
 <trends_framing>
 Trends signals indicate search interest trajectory over the last 12 months. Treat as \
 supporting context, not authoritative evidence. Cite Reader outputs for all claims; \
 reference Trends only to characterize demand trajectory.
 If Trends data contradicts Reader evidence, prefer Reader (verbatim-source-attributed). \
 Note the contradiction in research_limitations.
-If trends_signals is empty or absent, do not mention Trends. Synthesize from Reader \
-outputs alone, exactly as v2.
+</trends_framing>
+
+"""
+
+_TRENDS_ZONE_B_FRAMING_ABSENT = """\
+<trends_framing>
+When trends_signals is empty or absent, add exactly one sentence to research_limitations \
+stating that demand-trajectory (search-interest) data could not be retrieved for this run \
+and findings rest on the cited web sources alone. Do NOT fabricate trajectory. Do NOT \
+mention Trends anywhere else in the report.
 </trends_framing>
 
 """
@@ -335,9 +343,12 @@ def _build_zone_b(synth_input: SynthesizerInput, *, extra_before_closing: str = 
 
 
 def _build_zone_b_v3(synth_input: SynthesizerInput) -> str:
-    if not _trends_signals_present(synth_input):
-        return _build_zone_b(synth_input)
-    return _build_zone_b(synth_input, extra_before_closing=_TRENDS_ZONE_B_FRAMING)
+    framing = (
+        _TRENDS_ZONE_B_FRAMING_PRESENT
+        if _trends_signals_present(synth_input)
+        else _TRENDS_ZONE_B_FRAMING_ABSENT
+    )
+    return _build_zone_b(synth_input, extra_before_closing=framing)
 
 
 def build_synthesizer_user_messages(
