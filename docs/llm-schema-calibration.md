@@ -85,3 +85,15 @@ Caching **N=1** cold-cache measurement complete for the **same vague freelancer-
 **Quality:** Preserved vs baseline spot-check — real named competitors/citations (`pewresearch.org`, `ipse.co.uk`, `leapers.co`, `investors.upwork.com`, `focusmate.com`, etc.), honest **`research_limitations`**, **`overall_recommendation`: iterate**. Row-count gap (−5 LLM calls) is **Reflector variance**, not a caching layout effect.
 
 **Follow-up:** **N=2** within **1 h Zone A TTL** needed to measure **cross-experiment / warm-cache** savings where read discounts amortize write tax; per-phase read share on this run skews **Synthesizer ~61%** of cache reads (see `docs/calibration/runs/2026-05-18-caching-calibration.md`).
+
+## Multi-Source Searcher v1 — TrendsSeries caps (Task M-1) — 2026-05-19
+
+**Run:** `docs/calibration/runs/2026-05-19-multi-source-v1-calibration.md` (experiment `2310ec98-95f3-4cb0-ab57-afe38ed971e4`).
+
+**Current caps** (`backend/app/schemas/search.py`): `TrendsSeries.keyword` **max_length=100**; `TrendsSeries.points` **max_length=520**; `TrendsPoint.value` **ge=0, le=100**.
+
+**Observed max (N=1):** **No series materialized** — pytrends `fetch_trends` failed (`TooManyRequestsError`, `ExternalAPICall.success=false`). Effective observed max: **0 points per keyword**, longest planned keyword phrase ≈ **headline length ~55 chars** (under 100).
+
+**Verdict:** Caps **hold comfortably** under this run; **no cap raise recommended** from M-1 data alone. **Re-calibrate on M-2** when a successful fetch returns a full `interest_over_time` window (expect **≤53 weekly points** for `today 12-m` timeframe — well under 520).
+
+**Pending:** Log `len(points)` and `len(keyword)` at DEBUG in `integrations/trends.py` post-success for empirical max harvest (per planning doc §13).
