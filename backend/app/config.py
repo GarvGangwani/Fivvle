@@ -66,18 +66,18 @@ class Settings(BaseSettings):
         ),
     )
 
-    # Per-phase LLM selection. Beta: Haiku across all phases (founding-team decision).
+    # Per-phase LLM selection. Default Sonnet — Haiku swap blocked by max_length cap overruns (see docs/calibration/runs/2026-05-27-haiku-attempt.md). Haiku migration requires per-phase cap recalibration.
     # provider must be a value the llm.client wrapper supports ("anthropic" | "groq").
     refinement_provider: str = Field(default="anthropic")
-    refinement_model: str = Field(default="claude-haiku-4-5")
+    refinement_model: str = Field(default="claude-sonnet-4-6")
     planner_provider: str = Field(default="anthropic")
-    planner_model: str = Field(default="claude-haiku-4-5")
+    planner_model: str = Field(default="claude-sonnet-4-6")
     reader_provider: str = Field(default="anthropic")
-    reader_model: str = Field(default="claude-haiku-4-5")
+    reader_model: str = Field(default="claude-sonnet-4-6")
     reflector_query_provider: str = Field(default="anthropic")
-    reflector_query_model: str = Field(default="claude-haiku-4-5")
+    reflector_query_model: str = Field(default="claude-sonnet-4-6")
     synthesizer_provider: str = Field(default="anthropic")
-    synthesizer_model: str = Field(default="claude-haiku-4-5")
+    synthesizer_model: str = Field(default="claude-sonnet-4-6")
 
     # --- Research dispatcher (ADR 0009) ---
     # in_process: invokes the research engine directly via asyncio.create_task (dev/test).
