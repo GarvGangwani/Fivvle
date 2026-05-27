@@ -398,7 +398,10 @@ async def _partial_re_read(
     experiment_id: UUID,
     questions_to_re_read: list[ResearchQuestion],
     search_results: dict[str, list[TavilyResult]],
+    refined_idea: RefinedIdea,
+    research_questions: list[ResearchQuestion],
 ) -> dict[str, ReaderOutput]:
+    """Re-run Reader extraction for a subset of questions after partial re-search."""
     from app.services.reader_service import _extract_for_question  # noqa: PLC0415
 
     tasks = [
@@ -407,6 +410,8 @@ async def _partial_re_read(
             experiment_id=experiment_id,
             question=q,
             tavily_results=search_results.get(q.id, []),
+            refined_idea=refined_idea,
+            research_questions=research_questions,
         )
         for q in questions_to_re_read
     ]
@@ -484,7 +489,7 @@ async def execute_reflector(
         current_reader_outputs = reader_outputs
         current_search_results = search_results
 
-        refined_idea: RefinedIdea | None = None
+        refined_idea = await _load_refined_idea_for_reader(db, experiment_id)
 
         for wave in range(max_waves):
             flagged, skipped_due_to_budget = _evaluate_all_rules(
@@ -522,11 +527,6 @@ async def execute_reflector(
 
             if not flagged:
                 break
-
-            if refined_idea is None:
-                refined_idea = await _load_refined_idea_for_reader(db, experiment_id)
-
-            assert refined_idea is not None
 
             q_by_id: dict[str, ResearchQuestion] = {
                 q.id: q for q in research_plan.questions
@@ -633,6 +633,8 @@ async def execute_reflector(
                 experiment_id=experiment_id,
                 questions_to_re_read=questions_to_re_read,
                 search_results=current_search_results,
+                refined_idea=refined_idea,
+                research_questions=research_plan.questions,
             )
             total_partial_re_read_successes += len(re_read_outputs)
             current_reader_outputs = _merge_reader_outputs(
