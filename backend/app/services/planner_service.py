@@ -31,6 +31,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.llm.client as llm_client
+from app.config import get_settings
 from app.llm.prompts.planner import (
     PLANNER_SYSTEM_PROMPT,
     PROMPT_NAME,
@@ -49,10 +50,8 @@ PLANNER_CACHE_BREAKPOINTS: list[llm_client.CacheBreakpoint] = [
 
 _PLANNER_CACHE_BPS_DEFAULT = object()
 
-# Claude Sonnet 4.6 — matches refinement_service.py. Per .cursorrules:
-# "Do not downgrade models to save pennies. Use Claude for all research phases."
-_PLANNER_MODEL = "claude-sonnet-4-6"
-_PLANNER_PROVIDER = "anthropic"
+# Model/provider defaults live in Settings (planner_provider/planner_model).
+# Beta ships Haiku across all phases; override via env without code changes.
 
 # Planner output is larger than refinement (5-7 questions × rationale + queries).
 # 2048 tokens provides headroom without runaway cost.
@@ -128,10 +127,12 @@ async def plan_research(
 
     user_prompt = build_planner_user_prompt(refined_idea, for_cache=use_cache)
 
+    settings = get_settings()
+
     parsed, meta = await llm_client.complete_structured(
         db,
-        provider=_PLANNER_PROVIDER,
-        model=_PLANNER_MODEL,
+        provider=settings.planner_provider,
+        model=settings.planner_model,
         prompt_name=PROMPT_NAME,
         system=PLANNER_SYSTEM_PROMPT,
         user=user_prompt,

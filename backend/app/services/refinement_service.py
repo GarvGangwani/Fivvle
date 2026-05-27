@@ -36,6 +36,7 @@ from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.llm.client as llm_client
+from app.config import get_settings
 from app.llm.prompts.refinement import (
     PROMPT_NAME,
     REFINEMENT_SYSTEM_PROMPT,
@@ -46,18 +47,14 @@ from app.schemas.refinement import RefinedIdea
 
 _logger = get_logger(__name__)
 
-# Claude Sonnet 4.6 — "best balance of speed and intelligence" per cost.py.
-# Refinement is a user-facing synchronous call (5-10s budget per USER_FLOW Step 2.2).
-# Use Sonnet, not Haiku: quality matters here — the refinement output seeds both
-# market research questions and the landing page copy.
-_REFINEMENT_MODEL = "claude-sonnet-4-6"
-_REFINEMENT_PROVIDER = "anthropic"
+# Model/provider defaults live in Settings (refinement_provider/refinement_model).
+# Beta ships Haiku across all phases; override via env without code changes.
 
 # Per .cursorrules "Required timeouts": 60s for refinement LLM calls.
 _REFINEMENT_MAX_TOKENS = 1024  # RefinedIdea output is small; cap prevents runaway cost.
 
 _MAX_GRACEFUL_RETRIES = 1  # Service-level retry budget on ValidationError.
-# Each retry is one extra LLM call (~$0.018 Sonnet 4.6).
+# Each retry is one extra LLM call; cost depends on Settings refinement_model.
 # See docs/llm-schema-calibration.md.
 
 _REFINEMENT_PROMPT_NAME_RETRY = "refinement_v1_retry"
@@ -174,11 +171,13 @@ async def refine_idea(
         feedback=feedback,
     )
 
+    settings = get_settings()
+
     try:
         parsed, meta = await llm_client.complete_structured(
             db,
-            provider=_REFINEMENT_PROVIDER,
-            model=_REFINEMENT_MODEL,
+            provider=settings.refinement_provider,
+            model=settings.refinement_model,
             prompt_name=PROMPT_NAME,
             system=REFINEMENT_SYSTEM_PROMPT,
             user=user_prompt,
@@ -214,8 +213,8 @@ async def refine_idea(
         try:
             parsed, meta = await llm_client.complete_structured(
                 db,
-                provider=_REFINEMENT_PROVIDER,
-                model=_REFINEMENT_MODEL,
+                provider=settings.refinement_provider,
+                model=settings.refinement_model,
                 prompt_name=_REFINEMENT_PROMPT_NAME_RETRY,
                 system=REFINEMENT_SYSTEM_PROMPT,
                 user=retry_user,

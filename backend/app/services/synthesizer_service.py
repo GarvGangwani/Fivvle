@@ -45,6 +45,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.llm.client as llm_client
+from app.config import get_settings
 from app.llm.prompts.synthesizer import (
     PROMPT_NAME_V3_CACHED,
     SYNTHESIZER_SYSTEM_PROMPT,
@@ -72,11 +73,8 @@ SYNTHESIZER_CACHE_BREAKPOINTS: list[llm_client.CacheBreakpoint] = [
 
 _SYNTH_CACHE_BPS_DEFAULT = object()
 
-# Claude Sonnet 4.6 — per .cursorrules: "Do not downgrade models to save pennies.
-# Use Claude for all research phases." The synthesizer is the highest-stakes call
-# in the pipeline — quality is the priority.
-_SYNTHESIZER_MODEL = "claude-sonnet-4-6"
-_SYNTHESIZER_PROVIDER = "anthropic"
+# Model/provider defaults live in Settings (synthesizer_provider/synthesizer_model).
+# Beta ships Haiku across all phases; override via env without code changes.
 
 # 16384 tokens for the synthesizer — safety margin after the URL-only citation
 # optimization. Even with the ~30% output-token reduction from Draft citations,
@@ -325,10 +323,12 @@ async def synthesize_report(
     user_prompt = build_synthesizer_v3_user_prompt(synth_input, for_cache=use_cache)
     cache_breakpoints_used = len(breakpoints) if breakpoints else 0
 
+    settings = get_settings()
+
     draft, meta = await llm_client.complete_structured(
         db,
-        provider=_SYNTHESIZER_PROVIDER,
-        model=_SYNTHESIZER_MODEL,
+        provider=settings.synthesizer_provider,
+        model=settings.synthesizer_model,
         prompt_name=PROMPT_NAME,
         system=SYNTHESIZER_SYSTEM_PROMPT,
         user=user_prompt,

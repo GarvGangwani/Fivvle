@@ -66,6 +66,19 @@ class Settings(BaseSettings):
         ),
     )
 
+    # Per-phase LLM selection. Beta: Haiku across all phases (founding-team decision).
+    # provider must be a value the llm.client wrapper supports ("anthropic" | "groq").
+    refinement_provider: str = Field(default="anthropic")
+    refinement_model: str = Field(default="claude-haiku-4-5")
+    planner_provider: str = Field(default="anthropic")
+    planner_model: str = Field(default="claude-haiku-4-5")
+    reader_provider: str = Field(default="anthropic")
+    reader_model: str = Field(default="claude-haiku-4-5")
+    reflector_query_provider: str = Field(default="anthropic")
+    reflector_query_model: str = Field(default="claude-haiku-4-5")
+    synthesizer_provider: str = Field(default="anthropic")
+    synthesizer_model: str = Field(default="claude-haiku-4-5")
+
     # --- Research dispatcher (ADR 0009) ---
     # in_process: invokes the research engine directly via asyncio.create_task (dev/test).
     # http: POSTs to the Cloud Function HTTPS endpoint with an OIDC token (staging/prod).

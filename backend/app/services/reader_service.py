@@ -58,8 +58,8 @@ SENTINEL_URL_THRESHOLD_MESSAGE = (
     "threshold — content discarded."
 )
 
-_READER_MODEL = "claude-sonnet-4-6"
-_READER_PROVIDER = "anthropic"
+# Model/provider defaults live in Settings (reader_provider/reader_model).
+# Beta ships Haiku across all phases; override via env without code changes.
 _READER_MAX_TOKENS = 4096
 _READER_TEMPERATURE = 0.3
 
@@ -362,6 +362,7 @@ async def _extract_for_question(
     tavily_results: list[TavilyResult],
     refined_idea: RefinedIdea,
     research_questions: list[ResearchQuestion],
+    settings: Settings,
     cache_breakpoints: list[llm_client.CacheBreakpoint] | None | object = _READER_CACHE_BPS_DEFAULT,
 ) -> tuple[ReaderOutput, dict[str, Any]]:
     if cache_breakpoints is _READER_CACHE_BPS_DEFAULT:
@@ -385,8 +386,8 @@ async def _extract_for_question(
     try:
         draft, meta = await llm_client.complete_structured(
             db,
-            provider=_READER_PROVIDER,
-            model=_READER_MODEL,
+            provider=settings.reader_provider,
+            model=settings.reader_model,
             prompt_name=PROMPT_NAME,
             system=READER_SYSTEM_PROMPT,
             user=user_prompt,
@@ -482,6 +483,7 @@ async def execute_reader(
                 tavily_results=results,
                 refined_idea=refined_idea,
                 research_questions=research_questions,
+                settings=settings,
             )
 
     task_outcomes: list[

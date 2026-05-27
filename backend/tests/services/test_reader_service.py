@@ -18,6 +18,7 @@ import structlog.testing
 from pydantic import ValidationError
 
 import app.services.reader_service as reader_svc
+from app.config import get_settings
 from app.integrations.tavily import TavilyResult
 from app.llm.client import LLMResult, USER_CACHE_ZONE_BOUNDARY
 from app.llm.prompts.reader import (
@@ -604,6 +605,7 @@ async def test_extract_for_question_success_returns_validated_output() -> None:
             tavily_results=tavily_results,
             refined_idea=_minimal_refined_idea(),
             research_questions=[question],
+            settings=get_settings(),
         )
 
     assert isinstance(out, ReaderOutput)
@@ -650,6 +652,7 @@ async def test_extract_for_question_llm_exception_returns_sentinel() -> None:
             tavily_results=[_tavily()],
             refined_idea=_minimal_refined_idea(),
             research_questions=[question],
+            settings=get_settings(),
         )
 
     assert out.extracted_evidence == []
@@ -999,6 +1002,7 @@ async def test_reader_service_passes_cache_breakpoints_to_client() -> None:
             tavily_results=[_tavily()],
             refined_idea=_minimal_refined_idea(),
             research_questions=[question],
+            settings=get_settings(),
         )
 
     bps = captured["cache_breakpoints"]
@@ -1126,6 +1130,7 @@ async def test_reader_service_falls_back_when_cache_breakpoints_none() -> None:
             tavily_results=[_tavily()],
             refined_idea=_minimal_refined_idea(),
             research_questions=[question],
+            settings=get_settings(),
             cache_breakpoints=None,
         )
 

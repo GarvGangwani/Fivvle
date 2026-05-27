@@ -35,6 +35,7 @@ from app.schemas.validation_report import (
     ValidationReport,
     ValidationReportDraft,
 )
+from app.config import get_settings
 from app.services.synthesizer_input import (
     CitationHydrationEntry,
     SynthesizerInput,
@@ -43,8 +44,6 @@ from app.services.synthesizer_input import (
 )
 from app.services.synthesizer_service import (
     _SYNTHESIZER_MAX_TOKENS,
-    _SYNTHESIZER_MODEL,
-    _SYNTHESIZER_PROVIDER,
     _SYNTHESIZER_TEMPERATURE,
     SYNTHESIZER_CACHE_BREAKPOINTS,
     SynthesizerHallucinatedCitation,
@@ -199,8 +198,9 @@ def _make_mock_llm_meta() -> MagicMock:
 
 
 def test_synthesizer_service_constants() -> None:
-    assert _SYNTHESIZER_MODEL == "claude-sonnet-4-6"
-    assert _SYNTHESIZER_PROVIDER == "anthropic"
+    settings = get_settings()
+    assert settings.synthesizer_model == "claude-haiku-4-5"
+    assert settings.synthesizer_provider == "anthropic"
     assert _SYNTHESIZER_MAX_TOKENS == 16384
     assert _SYNTHESIZER_TEMPERATURE == 0.3
 
@@ -227,8 +227,9 @@ async def test_synthesize_report_calls_complete_structured_with_synthesizer_v3()
     _, call_kwargs = mock_complete.call_args
     assert call_kwargs["prompt_name"] == PROMPT_NAME_V3_CACHED
     assert call_kwargs["prompt_name"] == PROMPT_NAME
-    assert call_kwargs["provider"] == _SYNTHESIZER_PROVIDER
-    assert call_kwargs["model"] == _SYNTHESIZER_MODEL
+    settings = get_settings()
+    assert call_kwargs["provider"] == settings.synthesizer_provider
+    assert call_kwargs["model"] == settings.synthesizer_model
 
 
 @pytest.mark.asyncio

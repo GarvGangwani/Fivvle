@@ -63,8 +63,8 @@ _SEARCH_DEPTH: Literal["basic", "advanced"] = "advanced"
 _MAX_RESULTS_PER_QUERY = 5
 _TOP_RESULTS_PER_QUESTION = 10
 
-_REFINEMENT_MODEL = "claude-sonnet-4-6"
-_REFINEMENT_PROVIDER = "anthropic"
+# Model/provider defaults live in Settings (reflector_query_provider/reflector_query_model).
+# Beta ships Haiku across all phases; override via env without code changes.
 _REFINEMENT_MAX_TOKENS = 1024
 _REFINEMENT_TEMPERATURE = 0.4
 
@@ -181,6 +181,7 @@ async def _refine_queries_for_question(
     triggers: list[str],
     refined_idea: RefinedIdea,
     research_plan: ResearchPlan,
+    settings: Settings,
     cache_breakpoints: list[llm_client.CacheBreakpoint] | None | object = _REFLECTOR_CACHE_BPS_DEFAULT,
 ) -> tuple[list[str], Decimal]:
     """LLM call for one flagged question; ([], …) means skip that re-search."""
@@ -221,8 +222,8 @@ async def _refine_queries_for_question(
     try:
         draft, meta = await llm_client.complete_structured(
             db,
-            provider=_REFINEMENT_PROVIDER,
-            model=_REFINEMENT_MODEL,
+            provider=settings.reflector_query_provider,
+            model=settings.reflector_query_model,
             prompt_name=REFINEMENT_PROMPT_NAME,
             system=REFLECTOR_QUERY_REFINEMENT_SYSTEM_PROMPT,
             user=user_prompt,
@@ -400,6 +401,7 @@ async def _partial_re_read(
     search_results: dict[str, list[TavilyResult]],
     refined_idea: RefinedIdea,
     research_questions: list[ResearchQuestion],
+    settings: Settings,
 ) -> dict[str, ReaderOutput]:
     """Re-run Reader extraction for a subset of questions after partial re-search."""
     from app.services.reader_service import _extract_for_question  # noqa: PLC0415
@@ -412,6 +414,7 @@ async def _partial_re_read(
             tavily_results=search_results.get(q.id, []),
             refined_idea=refined_idea,
             research_questions=research_questions,
+            settings=settings,
         )
         for q in questions_to_re_read
     ]
@@ -547,6 +550,7 @@ async def execute_reflector(
                         triggers=triggers,
                         refined_idea=refined_idea,
                         research_plan=research_plan,
+                        settings=settings,
                     )
                 )
             refinement_batches = await asyncio.gather(*refinement_tasks)
@@ -635,6 +639,7 @@ async def execute_reflector(
                 search_results=current_search_results,
                 refined_idea=refined_idea,
                 research_questions=research_plan.questions,
+                settings=settings,
             )
             total_partial_re_read_successes += len(re_read_outputs)
             current_reader_outputs = _merge_reader_outputs(

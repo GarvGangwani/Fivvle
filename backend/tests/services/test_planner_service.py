@@ -32,11 +32,10 @@ from app.llm.prompts.planner import (
     build_planner_user_prompt,
     planner_v1_legacy_flat_user_and_system,
 )
+from app.config import get_settings
 from app.schemas.planner import ResearchPlan, ResearchQuestion
 from app.schemas.refinement import RefinedIdea
 from app.services.planner_service import (
-    _PLANNER_MODEL,
-    _PLANNER_PROVIDER,
     PLANNER_CACHE_BREAKPOINTS,
     PROMPT_NAME,
     plan_research,
@@ -294,8 +293,9 @@ async def test_plan_research_calls_complete_structured_correctly(
     mock_complete.assert_awaited_once()
 
     _, call_kwargs = mock_complete.call_args
-    assert call_kwargs["provider"] == _PLANNER_PROVIDER
-    assert call_kwargs["model"] == _PLANNER_MODEL
+    settings = get_settings()
+    assert call_kwargs["provider"] == settings.planner_provider
+    assert call_kwargs["model"] == settings.planner_model
     assert call_kwargs["prompt_name"] == PROMPT_NAME
     assert call_kwargs["response_model"] is ResearchPlan
     assert call_kwargs["experiment_id"] == experiment_id

@@ -18,6 +18,7 @@ import structlog
 import structlog.testing
 
 import app.services.reflector_service as reflector_mod
+from app.config import get_settings
 from app.integrations.tavily import TavilyResult
 from app.llm.client import LLMResult, USER_CACHE_ZONE_BOUNDARY
 from app.llm.prompts.reflector_query_refinement import (
@@ -297,6 +298,7 @@ async def test_refine_queries_returns_validated_list_on_success() -> None:
             triggers=["sparse_atoms"],
             refined_idea=_minimal_refined_idea_reflect(),
             research_plan=_minimal_plan(("q1", "q2", "q3", "q4", "q5")),
+            settings=get_settings(),
         )
     assert out == ["refined query 1", "refined query 2", "refined query 3"]
     assert cost == Decimal("0.02")
@@ -320,6 +322,7 @@ async def test_refine_queries_returns_empty_list_on_llm_failure() -> None:
             triggers=["sparse_atoms"],
             refined_idea=_minimal_refined_idea_reflect(),
             research_plan=_minimal_plan(("q1", "q2", "q3", "q4", "q5")),
+            settings=get_settings(),
         )
     assert out == []
     assert cost == Decimal("0")
@@ -347,6 +350,7 @@ async def test_refine_queries_truncates_long_queries() -> None:
             triggers=["sparse_atoms"],
             refined_idea=_minimal_refined_idea_reflect(),
             research_plan=_minimal_plan(("q1", "q2", "q3", "q4", "q5")),
+            settings=get_settings(),
         )
     assert len(out) == 1
     assert len(out[0]) == 200
@@ -373,6 +377,7 @@ async def test_refine_queries_caps_at_max_refined_queries_per_question() -> None
             triggers=["sparse_atoms"],
             refined_idea=_minimal_refined_idea_reflect(),
             research_plan=_minimal_plan(("q1", "q2", "q3", "q4", "q5")),
+            settings=get_settings(),
         )
     assert out == ["a", "b", "c"]
     assert len(out) == MAX_REFINED_QUERIES_PER_QUESTION
@@ -885,6 +890,7 @@ async def test_reflector_passes_cache_breakpoints_to_client() -> None:
             triggers=["sparse_atoms"],
             refined_idea=_minimal_refined_idea_reflect(),
             research_plan=_minimal_plan(("q1", "q2", "q3", "q4", "q5")),
+            settings=get_settings(),
         )
 
     bps = captured["cache_breakpoints"]
@@ -1001,6 +1007,7 @@ async def test_reflector_falls_back_when_cache_breakpoints_none() -> None:
             triggers=["sparse_atoms"],
             refined_idea=_minimal_refined_idea_reflect(),
             research_plan=_minimal_plan(("q1", "q2", "q3", "q4", "q5")),
+            settings=get_settings(),
             cache_breakpoints=None,
         )
 

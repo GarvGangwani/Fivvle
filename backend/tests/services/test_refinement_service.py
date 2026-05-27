@@ -28,11 +28,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.enums import ExperimentStatus
 from app.db.models.experiment import Experiment
 from app.schemas.refinement import RefinedIdea
+from app.config import get_settings
 from app.services.experiment_service import create_experiment_with_refinement
 from app.services.refinement_service import (
     PROMPT_NAME,
-    _REFINEMENT_MODEL,
-    _REFINEMENT_PROVIDER,
     refine_idea,
 )
 
@@ -210,8 +209,9 @@ async def test_refine_idea_calls_complete_structured_correctly(
     mock_complete.assert_awaited_once()
 
     _, call_kwargs = mock_complete.call_args
-    assert call_kwargs["provider"] == _REFINEMENT_PROVIDER
-    assert call_kwargs["model"] == _REFINEMENT_MODEL
+    settings = get_settings()
+    assert call_kwargs["provider"] == settings.refinement_provider
+    assert call_kwargs["model"] == settings.refinement_model
     assert call_kwargs["prompt_name"] == PROMPT_NAME
     assert call_kwargs["response_model"] is RefinedIdea
     assert call_kwargs["experiment_id"] == experiment_id
