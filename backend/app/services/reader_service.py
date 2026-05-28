@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import re
 import unicodedata
+from difflib import SequenceMatcher
 from decimal import Decimal
 from typing import Any
 from urllib.parse import urlparse
@@ -48,6 +49,7 @@ _logger = get_logger(__name__)
 
 URL_HALLUCINATION_THRESHOLD = 0.20  # Per planning doc §8.4, calibration-pending
 QUOTE_HALLUCINATION_THRESHOLD = 0.10  # Per planning doc §4.2, calibration-pending
+QUOTE_NEAR_MATCH_THRESHOLD = 0.85  # ADR 0017: deterministic partial-ratio floor for near-verbatim quotes; calibrated (genuine ≥0.85, fabrication ≤0.39)
 
 SENTINEL_LLM_FAILURE_MESSAGE = (
     "Reader extraction failed for this question — Synthesizer will receive "
@@ -99,6 +101,22 @@ def _source_host(url: str) -> str:
     return urlparse(url).netloc or ""
 
 
+def _partial_ratio(norm_quote: str, norm_source: str) -> float:
+    """Best SequenceMatcher ratio of norm_quote vs any same-length window of norm_source. Deterministic — not fuzzy gating; a thresholded near-match per ADR 0017."""
+    if not norm_quote:
+        return 1.0 if not norm_source else 0.0
+    q_len = len(norm_quote)
+    s_len = len(norm_source)
+    if q_len > s_len:
+        return SequenceMatcher(None, norm_quote, norm_source).ratio()
+    best = 0.0
+    for i in range(s_len - q_len + 1):
+        ratio = SequenceMatcher(None, norm_quote, norm_source[i : i + q_len]).ratio()
+        if ratio > best:
+            best = ratio
+    return best
+
+
 def _classify_quote_guard(
     quote: str,
     source_content: str,
@@ -109,7 +127,8 @@ def _classify_quote_guard(
 
     Returns ``None`` when the quote passes without guard attention (raw exact
     substring of the excerpt). Otherwise returns one of:
-    ``normalization_recovered``, ``boundary_overrun``, or ``unmatched``.
+    ``normalization_recovered``, ``boundary_overrun``, ``near_match_recovered``,
+    or ``unmatched``.
     """
     excerpt = source_content[:excerpt_max_len]
     if quote in excerpt:
@@ -123,6 +142,9 @@ def _classify_quote_guard(
         return "normalization_recovered"
     if norm_quote in norm_full:
         return "boundary_overrun"
+    partial = _partial_ratio(norm_quote, norm_full)
+    if partial >= QUOTE_NEAR_MATCH_THRESHOLD:
+        return "near_match_recovered"
     return "unmatched"
 
 
