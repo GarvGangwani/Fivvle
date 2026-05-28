@@ -81,6 +81,14 @@ _PRICING: dict[tuple[str, str], ModelPricing] = {
         input_per_1m=Decimal("0.05"),
         output_per_1m=Decimal("0.08"),
     ),
+    # -----------------------------------------------------------------------
+    # Kimi K2.6 via Moonshot direct — verify against Moonshot dashboard;
+    # cached input ~$0.16 not yet modeled.
+    # -----------------------------------------------------------------------
+    ("kimi", "kimi-k2.6"): ModelPricing(
+        input_per_1m=Decimal("0.95"),
+        output_per_1m=Decimal("4.00"),
+    ),
 }
 
 

@@ -26,6 +26,7 @@ from uuid import UUID
 import anthropic
 import groq
 import instructor
+from openai import AsyncOpenAI
 from instructor.core.hooks import Hooks
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,13 +46,15 @@ _logger = get_logger(__name__)
 # Lazy module-level client cache. Built on first use of each provider.
 _anthropic_client: anthropic.AsyncAnthropic | None = None
 _groq_client: groq.AsyncGroq | None = None
+_kimi_client: AsyncOpenAI | None = None
 _instructor_anthropic_client: instructor.AsyncInstructor | None = None
 _instructor_groq_client: instructor.AsyncInstructor | None = None
+_instructor_kimi_client: instructor.AsyncInstructor | None = None
 
 
 T = TypeVar("T", bound=BaseModel)
 
-ProviderName = Literal["anthropic", "groq"]
+ProviderName = Literal["anthropic", "groq", "kimi"]
 
 # Callers that use ``cache_breakpoints`` with ``user_zone_a_end`` / ``user_zone_b_end``
 # must join user zones with this exact separator (Zone A | Zone B | Zone C).
@@ -312,6 +315,24 @@ def _get_instructor_groq() -> instructor.AsyncInstructor:
     return _instructor_groq_client
 
 
+def _get_kimi_client() -> AsyncOpenAI:
+    global _kimi_client  # noqa: PLW0603
+    if _kimi_client is None:
+        settings = get_settings()
+        _kimi_client = AsyncOpenAI(
+            api_key=settings.moonshot_api_key,
+            base_url="https://api.moonshot.ai/v1",
+        )
+    return _kimi_client
+
+
+def _get_instructor_kimi() -> instructor.AsyncInstructor:
+    global _instructor_kimi_client  # noqa: PLW0603
+    if _instructor_kimi_client is None:
+        _instructor_kimi_client = instructor.from_openai(_get_kimi_client())
+    return _instructor_kimi_client
+
+
 async def _log_llm_call(
     db: AsyncSession,
     *,
@@ -438,6 +459,30 @@ async def complete(
                 return await get_breaker("groq").call(_do_groq_call)
 
             response = await _call_groq_with_retry()
+            text = response.choices[0].message.content or ""
+            prompt_tokens = response.usage.prompt_tokens if response.usage else 0
+            completion_tokens = response.usage.completion_tokens if response.usage else 0
+            request_id = response.id
+
+        elif provider == "kimi":
+            client = _get_kimi_client()
+
+            async def _do_kimi_call():
+                return await client.chat.completions.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                )
+
+            @retry_async()
+            async def _call_kimi_with_retry():
+                return await get_breaker("kimi").call(_do_kimi_call)
+
+            response = await _call_kimi_with_retry()
             text = response.choices[0].message.content or ""
             prompt_tokens = response.usage.prompt_tokens if response.usage else 0
             completion_tokens = response.usage.completion_tokens if response.usage else 0
@@ -695,6 +740,59 @@ async def complete_structured(
                 return await get_breaker("groq").call(_do_groq_structured)
 
             parsed, raw = await _call_groq_structured_with_retry()
+            if _usage_acc["attempts"] > 0:
+                prompt_tokens = _usage_acc["prompt_tokens"]
+                completion_tokens = _usage_acc["completion_tokens"]
+            else:
+                prompt_tokens = raw.usage.prompt_tokens if raw.usage else 0
+                completion_tokens = raw.usage.completion_tokens if raw.usage else 0
+            cost_usd = compute_cost_usd(provider, model, prompt_tokens, completion_tokens)
+            request_id = raw.id
+            instructor_attempts = _usage_acc["attempts"]
+
+        elif provider == "kimi":
+            iclient = _get_instructor_kimi()
+
+            _usage_acc = {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "attempts": 0,
+            }
+
+            def _accumulate_kimi_usage(response: object) -> None:
+                _usage_acc["attempts"] += 1
+                usage = getattr(response, "usage", None)
+                if usage is not None:
+                    _usage_acc["prompt_tokens"] += getattr(usage, "prompt_tokens", 0)
+                    _usage_acc["completion_tokens"] += getattr(
+                        usage, "completion_tokens", 0
+                    )
+
+            call_hooks = Hooks()
+            call_hooks.on("completion:response", _accumulate_kimi_usage)
+
+            async def _do_kimi_structured():
+                # TODO(kimi): K2.6 defaults to thinking mode; if Instructor JSON
+                # parsing fails or output cost is high, set instant mode via
+                # extra_body. Verify in smoke test.
+                return await iclient.create_with_completion(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    max_retries=max_retries,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    response_model=response_model,
+                    hooks=call_hooks,
+                )
+
+            @retry_async()
+            async def _call_kimi_structured_with_retry():
+                return await get_breaker("kimi").call(_do_kimi_structured)
+
+            parsed, raw = await _call_kimi_structured_with_retry()
             if _usage_acc["attempts"] > 0:
                 prompt_tokens = _usage_acc["prompt_tokens"]
                 completion_tokens = _usage_acc["completion_tokens"]
