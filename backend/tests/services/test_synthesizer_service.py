@@ -199,8 +199,8 @@ def _make_mock_llm_meta() -> MagicMock:
 
 def test_synthesizer_service_constants() -> None:
     settings = get_settings()
-    assert settings.synthesizer_model == "claude-sonnet-4-6"
-    assert settings.synthesizer_provider == "anthropic"
+    assert settings.synthesizer_model == "kimi-k2.6"
+    assert settings.synthesizer_provider == "kimi"
     assert _SYNTHESIZER_MAX_TOKENS == 16384
     assert _SYNTHESIZER_TEMPERATURE == 0.3
 
