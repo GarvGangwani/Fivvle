@@ -146,8 +146,19 @@ async def _cleanup_test_users() -> AsyncGenerator[None, None]:
     sm = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
     try:
         async with sm() as session:
+            # Delete the canonical admin test user AND any secondary test users
+            # created by tests (firebase_uid prefix "other-firebase-uid-" or email
+            # ending @example.com). Test data only — production emails never use
+            # @example.com.
+            from sqlalchemy import or_  # noqa: PLC0415
             await session.execute(
-                delete(User).where(User.firebase_uid == FAKE_FIREBASE_UID)
+                delete(User).where(
+                    or_(
+                        User.firebase_uid == FAKE_FIREBASE_UID,
+                        User.firebase_uid.like("other-firebase-uid-%"),
+                        User.email.like("%@example.com"),
+                    )
+                )
             )
             await session.commit()
     except OSError:
