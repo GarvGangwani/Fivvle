@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     # --- LLM and search APIs ---
     anthropic_api_key: str
     groq_api_key: str
+    moonshot_api_key: str = ""
     tavily_api_key: str
 
     # --- Reddit (read-only research) ---
