@@ -468,10 +468,12 @@ async def complete(
             client = _get_kimi_client()
 
             async def _do_kimi_call():
+                # Kimi K2.6 constraints (verified 2026-05): thinking must be disabled (Instructor tool_choice incompat); when thinking off, temperature must be exactly 0.6.
                 return await client.chat.completions.create(
                     model=model,
                     max_tokens=max_tokens,
-                    temperature=temperature,
+                    temperature=0.6,
+                    extra_body={"thinking": {"type": "disabled"}},
                     messages=[
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},
@@ -772,13 +774,12 @@ async def complete_structured(
             call_hooks.on("completion:response", _accumulate_kimi_usage)
 
             async def _do_kimi_structured():
-                # TODO(kimi): K2.6 defaults to thinking mode; if Instructor JSON
-                # parsing fails or output cost is high, set instant mode via
-                # extra_body. Verify in smoke test.
+                # Kimi K2.6 constraints (verified 2026-05): thinking must be disabled (Instructor tool_choice incompat); when thinking off, temperature must be exactly 0.6.
                 return await iclient.create_with_completion(
                     model=model,
                     max_tokens=max_tokens,
-                    temperature=temperature,
+                    temperature=0.6,
+                    extra_body={"thinking": {"type": "disabled"}},
                     max_retries=max_retries,
                     messages=[
                         {"role": "system", "content": system},
