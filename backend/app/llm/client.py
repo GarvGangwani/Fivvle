@@ -469,15 +469,17 @@ async def complete(
 
             async def _do_kimi_call():
                 # Kimi K2.6 constraints (verified 2026-05): thinking must be disabled (Instructor tool_choice incompat); when thinking off, temperature must be exactly 0.6.
+                # Drop empty system: Moonshot rejects empty role=system; Anthropic accepts it (caching). Kimi-only behavior.
+                msgs = []
+                if system and system.strip():
+                    msgs.append({"role": "system", "content": system})
+                msgs.append({"role": "user", "content": user})
                 return await client.chat.completions.create(
                     model=model,
                     max_tokens=max_tokens,
                     temperature=0.6,
                     extra_body={"thinking": {"type": "disabled"}},
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user},
-                    ],
+                    messages=msgs,
                 )
 
             @retry_async()
@@ -775,16 +777,18 @@ async def complete_structured(
 
             async def _do_kimi_structured():
                 # Kimi K2.6 constraints (verified 2026-05): thinking must be disabled (Instructor tool_choice incompat); when thinking off, temperature must be exactly 0.6.
+                # Drop empty system: Moonshot rejects empty role=system; Anthropic accepts it (caching). Kimi-only behavior.
+                msgs = []
+                if system and system.strip():
+                    msgs.append({"role": "system", "content": system})
+                msgs.append({"role": "user", "content": user})
                 return await iclient.create_with_completion(
                     model=model,
                     max_tokens=max_tokens,
                     temperature=0.6,
                     extra_body={"thinking": {"type": "disabled"}},
                     max_retries=max_retries,
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user},
-                    ],
+                    messages=msgs,
                     response_model=response_model,
                     hooks=call_hooks,
                 )
