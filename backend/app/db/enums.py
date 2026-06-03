@@ -73,3 +73,23 @@ class InsightRecommendation(StrEnum):
     ITERATE = "iterate"
     PIVOT = "pivot"
     KILL = "kill"
+
+
+class ChatRole(StrEnum):
+    USER = "user"
+    ASSISTANT = "assistant"
+
+
+class ChatTurnKind(StrEnum):
+    NORMAL_CHAT = "normal_chat"
+    REFINEMENT_CLARIFY = "refinement_clarify"
+    REFINEMENT_FINALIZE = "refinement_finalize"
+    DISPATCH_ANNOUNCE = "dispatch_announce"
+    PIPELINE_PROGRESS = "pipeline_progress"
+    PIPELINE_COMPLETE = "pipeline_complete"
+    PIPELINE_FAILED = "pipeline_failed"
+
+
+class DispatchTrigger(StrEnum):
+    USER_CONFIRM = "user_confirm"
+    AUTO_FIRE = "auto_fire"

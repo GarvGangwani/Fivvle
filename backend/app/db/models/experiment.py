@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.enums import ExperimentStatus
+from app.db.enums import DispatchTrigger, ExperimentStatus
 
 if TYPE_CHECKING:
     from app.db.models.external_api_call import ExternalAPICall
@@ -85,6 +85,23 @@ class Experiment(Base):
     # research_engine_service.py _sanitize_error_detail().
     research_error_detail: Mapped[str | None] = mapped_column(
         Text,
+        nullable=True,
+    )
+    # Links experiment to chat thread; null for non-chat paths (admin, eval).
+    thread_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("chat_threads.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Audit: user_confirm (/confirm) vs auto_fire (chat refinement complete).
+    dispatch_trigger: Mapped[DispatchTrigger | None] = mapped_column(
+        SQLEnum(
+            DispatchTrigger,
+            name="dispatch_trigger",
+            native_enum=False,
+            length=20,
+        ),
         nullable=True,
     )
 
