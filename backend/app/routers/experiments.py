@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.auth.dependencies import get_current_user
-from app.db.enums import ExperimentStatus
+from app.db.enums import DispatchTrigger, ExperimentStatus
 from app.db.models.experiment import Experiment
 from app.db.models.user import User
 from app.db.session import get_session
@@ -43,6 +43,7 @@ from app.schemas.experiment import (
     RegenerateRefinementRequest,
     ResearchStatusResponse,
 )
+from app.services.dispatch_service import transition_to_researching_and_dispatch
 from app.services.experiment_service import (
     InvalidExperimentState,
     RefinementLimitExceeded,
@@ -168,12 +169,6 @@ async def refine_experiment(
 # POST /experiments/{id}/confirm — trigger research, 202 response
 # ---------------------------------------------------------------------------
 
-_CONFIRM_ALLOWED_STATUSES = {
-    ExperimentStatus.REFINED,
-    ExperimentStatus.RESEARCH_FAILED,  # re-dispatch after failed run
-}
-
-
 @router.post(
     "/{experiment_id}/confirm",
     response_model=ConfirmResearchResponse,
@@ -192,25 +187,22 @@ async def confirm_research(
     experiment = result.scalar_one_or_none()
     if experiment is None or experiment.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
-    if experiment.status not in _CONFIRM_ALLOWED_STATUSES:
+
+    try:
+        await transition_to_researching_and_dispatch(
+            db,
+            experiment,
+            DispatchTrigger.USER_CONFIRM,
+            dispatcher,
+        )
+    except InvalidExperimentState:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
                 "Experiment must be in REFINED or RESEARCH_FAILED status to confirm "
                 f"research (current: {experiment.status})"
             ),
-        )
-
-    # Clear stale error detail BEFORE setting new status so the old status
-    # read on the next line is still meaningful (== RESEARCH_FAILED check).
-    if experiment.status == ExperimentStatus.RESEARCH_FAILED:
-        experiment.research_error_detail = None
-    experiment.status = ExperimentStatus.RESEARCHING
-    await db.flush()
-    await db.commit()
-
-    try:
-        await dispatcher.dispatch(experiment_id)
+        ) from None
     except DispatchError as exc:
         _logger.error(
             "dispatch failed",
