@@ -16,9 +16,9 @@ even without reading the full system prompt.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # Per-item constraint for the risks list: each risk is a single sentence, max 200 chars.
 _RiskStr = Annotated[str, Field(min_length=1, max_length=250)]
@@ -136,3 +136,63 @@ class RefinedIdea(BaseModel):
             ),
         ),
     ]
+
+
+_BANNED_FILLER_PHRASES = (
+    "great question",
+    "let me think",
+    "i'd love to help",
+)
+
+
+class RefinementTurnDecision(BaseModel):
+    """Per-turn structured output for chat-mode refinement (planning doc §2)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision: Literal["clarify", "finalize"]
+    assistant_message: Annotated[str, Field(max_length=600)]
+    clarifying_dimension: Literal[
+        "audience",
+        "problem",
+        "solution",
+        "scope",
+        "contradiction",
+        "pivot_resolution",
+        "other",
+    ] | None = None
+    refined_idea: RefinedIdea | None = None
+    reasoning_trace: Annotated[str, Field(max_length=400)] = ""
+
+    @model_validator(mode="after")
+    def _check_decision_consistency(self) -> "RefinementTurnDecision":
+        msg_lower = self.assistant_message.lower()
+        for phrase in _BANNED_FILLER_PHRASES:
+            if phrase in msg_lower:
+                raise ValueError(
+                    f"assistant_message must not contain banned filler phrase: {phrase!r}"
+                )
+
+        if self.decision == "clarify":
+            if self.clarifying_dimension is None:
+                raise ValueError(
+                    "clarifying_dimension must be set when decision is clarify"
+                )
+            if self.refined_idea is not None:
+                raise ValueError("refined_idea must be null when decision is clarify")
+            if not self.assistant_message.rstrip().endswith("?"):
+                raise ValueError(
+                    "assistant_message must end with '?' when decision is clarify"
+                )
+        elif self.decision == "finalize":
+            if self.refined_idea is None:
+                raise ValueError("refined_idea must be set when decision is finalize")
+            if self.clarifying_dimension is not None:
+                raise ValueError(
+                    "clarifying_dimension must be null when decision is finalize"
+                )
+            if not self.assistant_message.lower().startswith("researching:"):
+                raise ValueError(
+                    "assistant_message must start with 'Researching:' when decision is finalize"
+                )
+        return self

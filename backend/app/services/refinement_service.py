@@ -37,13 +37,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.llm.client as llm_client
 from app.config import get_settings
+from app.db.models.experiment import Experiment
 from app.llm.prompts.refinement import (
     PROMPT_NAME,
+    PROMPT_NAME_V2_CHAT,
     REFINEMENT_SYSTEM_PROMPT,
+    REFINEMENT_V2_CHAT_SYSTEM_PROMPT,
     build_refinement_user_prompt,
+    build_refinement_v2_chat_user_prompt,
 )
 from app.logging_config import get_logger
-from app.schemas.refinement import RefinedIdea
+from app.schemas.refinement import RefinedIdea, RefinementTurnDecision
 
 _logger = get_logger(__name__)
 
@@ -58,6 +62,8 @@ _MAX_GRACEFUL_RETRIES = 1  # Service-level retry budget on ValidationError.
 # See docs/llm-schema-calibration.md.
 
 _REFINEMENT_PROMPT_NAME_RETRY = "refinement_v1_retry"
+
+PROMPT_NAME_V2_CHAT_RETRY = "refinement_v2_chat_retry"
 
 
 def _format_error_loc(loc: object) -> str:
@@ -252,3 +258,72 @@ async def refine_idea(
     )
 
     return parsed
+
+
+async def run_turn(
+    db: AsyncSession,
+    experiment: Experiment,
+    chat_history: list[tuple[str, str]],
+    latest_message: str,
+) -> RefinementTurnDecision:
+    """Run one refinement turn. Returns clarify or finalize decision.
+
+    Side effects (in-place on experiment, no commit — caller commits):
+    - On clarifying_dimension == "pivot_resolution": reset experiment.refinement_count to 0.
+    - On any other clarify: increment experiment.refinement_count by 1.
+    - On finalize: persist refined_idea into experiment.refined_idea (as JSONB dict).
+    - Does NOT change experiment.status. (Status transitions are the chat service's job.)
+    """
+    turn_count = experiment.refinement_count
+
+    _logger.info(
+        "refinement chat turn started",
+        experiment_id=str(experiment.id),
+        turn_count=turn_count,
+        history_length=len(chat_history),
+        latest_message_length=len(latest_message),
+    )
+
+    user_prompt = build_refinement_v2_chat_user_prompt(
+        chat_history=chat_history,
+        latest_message=latest_message,
+        turn_count=turn_count,
+    )
+
+    settings = get_settings()
+
+    parsed, meta = await llm_client.complete_structured(
+        db,
+        provider=settings.refinement_provider,
+        model=settings.refinement_model,
+        prompt_name=PROMPT_NAME_V2_CHAT,
+        system=REFINEMENT_V2_CHAT_SYSTEM_PROMPT,
+        user=user_prompt,
+        response_model=RefinementTurnDecision,
+        max_tokens=_REFINEMENT_MAX_TOKENS,
+        temperature=0.4,
+        max_retries=0,
+        experiment_id=experiment.id,
+        phase="refinement_chat",
+    )
+
+    if parsed.decision == "clarify":
+        if parsed.clarifying_dimension == "pivot_resolution":
+            experiment.refinement_count = 0
+        else:
+            experiment.refinement_count = turn_count + 1
+    elif parsed.decision == "finalize" and parsed.refined_idea is not None:
+        experiment.refined_idea = parsed.refined_idea.model_dump()
+
+    _logger.info(
+        "refinement chat turn completed",
+        experiment_id=str(experiment.id),
+        decision=parsed.decision,
+        clarifying_dimension=parsed.clarifying_dimension,
+        refinement_count=experiment.refinement_count,
+        prompt_tokens=meta.prompt_tokens,
+        completion_tokens=meta.completion_tokens,
+        cost_usd=str(meta.cost_usd),
+    )
+
+    return parsed.model_copy(update={"reasoning_trace": ""})

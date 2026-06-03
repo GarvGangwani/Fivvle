@@ -27,12 +27,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.enums import ExperimentStatus
 from app.db.models.experiment import Experiment
-from app.schemas.refinement import RefinedIdea
+from app.llm.prompts.refinement import (
+    PROMPT_NAME_V2_CHAT,
+    build_refinement_v2_chat_user_prompt,
+)
+from app.schemas.refinement import RefinedIdea, RefinementTurnDecision
 from app.config import get_settings
 from app.services.experiment_service import create_experiment_with_refinement
 from app.services.refinement_service import (
     PROMPT_NAME,
     refine_idea,
+    run_turn,
 )
 
 # ---------------------------------------------------------------------------
@@ -488,3 +493,212 @@ async def test_refinement_two_validation_errors_returns_to_draft() -> None:
     assert mock_complete.await_args_list[1].kwargs["prompt_name"] == _REFINEMENT_V1_RETRY
 
     db.commit.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Chat-mode refinement: RefinementTurnDecision schema + run_turn()
+# ---------------------------------------------------------------------------
+
+
+def _make_experiment_for_run_turn(refinement_count: int = 0) -> Experiment:
+    return Experiment(
+        user_id=uuid4(),
+        raw_idea="I want to build something for fitness people.",
+        status=ExperimentStatus.REFINING,
+        refinement_count=refinement_count,
+    )
+
+
+def _make_clarify_decision(**overrides) -> RefinementTurnDecision:
+    defaults = {
+        "decision": "clarify",
+        "assistant_message": "What's the specific moment when they feel stuck?",
+        "clarifying_dimension": "problem",
+        "refined_idea": None,
+        "reasoning_trace": "need problem grounding",
+    }
+    defaults.update(overrides)
+    return RefinementTurnDecision(**defaults)
+
+
+def _make_finalize_decision(
+    refined_idea: RefinedIdea | None = None,
+    **overrides,
+) -> RefinementTurnDecision:
+    defaults = {
+        "decision": "finalize",
+        "assistant_message": (
+            "Researching: a tool for CrossFit coaches that speeds up client program design."
+        ),
+        "clarifying_dimension": None,
+        "refined_idea": refined_idea or _make_valid_refined_idea(),
+        "reasoning_trace": "ready to hand off",
+    }
+    defaults.update(overrides)
+    return RefinementTurnDecision(**defaults)
+
+
+@pytest.mark.asyncio
+async def test_run_turn_clarify_on_turn_zero_increments_count_and_strips_trace(
+    valid_refined_idea: RefinedIdea,
+) -> None:
+    """Clarify on turn 0 increments refinement_count to 1; reasoning_trace stripped."""
+    db = AsyncMock(spec=AsyncSession)
+    experiment = _make_experiment_for_run_turn(refinement_count=0)
+    decision = _make_clarify_decision()
+    mock_meta = _make_mock_llm_result()
+
+    with patch(
+        "app.services.refinement_service.llm_client.complete_structured",
+        AsyncMock(return_value=(decision, mock_meta)),
+    ):
+        result = await run_turn(
+            db=db,
+            experiment=experiment,
+            chat_history=[],
+            latest_message="I want to build something for fitness people.",
+        )
+
+    assert result.decision == "clarify"
+    assert result.reasoning_trace == ""
+    assert experiment.refinement_count == 1
+    assert experiment.refined_idea is None
+
+
+@pytest.mark.asyncio
+async def test_run_turn_clarify_pivot_resolution_resets_count(
+    valid_refined_idea: RefinedIdea,
+) -> None:
+    """pivot_resolution clarify resets refinement_count to 0."""
+    db = AsyncMock(spec=AsyncSession)
+    experiment = _make_experiment_for_run_turn(refinement_count=2)
+    decision = _make_clarify_decision(
+        clarifying_dimension="pivot_resolution",
+        assistant_message="Got it, pivoting — who is the new target user?",
+    )
+    mock_meta = _make_mock_llm_result()
+
+    with patch(
+        "app.services.refinement_service.llm_client.complete_structured",
+        AsyncMock(return_value=(decision, mock_meta)),
+    ):
+        await run_turn(
+            db=db,
+            experiment=experiment,
+            chat_history=[("user", "SAT tutor"), ("assistant", "What's the gap?")],
+            latest_message="Actually AP Bio instead.",
+        )
+
+    assert experiment.refinement_count == 0
+
+
+@pytest.mark.asyncio
+async def test_run_turn_finalize_persists_refined_idea_count_unchanged(
+    valid_refined_idea: RefinedIdea,
+) -> None:
+    """Finalize persists refined_idea; refinement_count unchanged."""
+    db = AsyncMock(spec=AsyncSession)
+    experiment = _make_experiment_for_run_turn(refinement_count=0)
+    decision = _make_finalize_decision(refined_idea=valid_refined_idea)
+    mock_meta = _make_mock_llm_result()
+
+    with patch(
+        "app.services.refinement_service.llm_client.complete_structured",
+        AsyncMock(return_value=(decision, mock_meta)),
+    ):
+        result = await run_turn(
+            db=db,
+            experiment=experiment,
+            chat_history=[],
+            latest_message="AI weekly exec summaries for EMs at 50-500 person orgs.",
+        )
+
+    assert result.decision == "finalize"
+    assert experiment.refinement_count == 0
+    assert experiment.refined_idea == valid_refined_idea.model_dump()
+
+
+@pytest.mark.asyncio
+async def test_run_turn_fourth_turn_prompt_includes_force_finalize_note(
+    valid_refined_idea: RefinedIdea,
+) -> None:
+    """When refinement_count is 3, user prompt includes the fourth-turn finalize note."""
+    db = AsyncMock(spec=AsyncSession)
+    experiment = _make_experiment_for_run_turn(refinement_count=3)
+    decision = _make_finalize_decision(refined_idea=valid_refined_idea)
+    mock_meta = _make_mock_llm_result()
+    mock_complete = AsyncMock(return_value=(decision, mock_meta))
+
+    with patch(
+        "app.services.refinement_service.llm_client.complete_structured",
+        mock_complete,
+    ):
+        await run_turn(
+            db=db,
+            experiment=experiment,
+            chat_history=[
+                ("user", "fitness app"),
+                ("assistant", "Who specifically?"),
+            ],
+            latest_message="CrossFit coaches only.",
+        )
+
+    user_prompt: str = mock_complete.call_args.kwargs["user"]
+    assert "This is the fourth turn" in user_prompt
+    assert mock_complete.call_args.kwargs["prompt_name"] == PROMPT_NAME_V2_CHAT
+    assert mock_complete.call_args.kwargs["phase"] == "refinement_chat"
+
+
+def test_refinement_turn_decision_clarify_requires_dimension() -> None:
+    """Clarify without clarifying_dimension raises ValidationError."""
+    with pytest.raises(ValidationError):
+        RefinementTurnDecision(
+            decision="clarify",
+            assistant_message="Who is your target user?",
+            clarifying_dimension=None,
+            refined_idea=None,
+        )
+
+
+def test_refinement_turn_decision_finalize_requires_researching_prefix() -> None:
+    """Finalize without Researching: prefix raises ValidationError."""
+    with pytest.raises(ValidationError):
+        RefinementTurnDecision(
+            decision="finalize",
+            assistant_message="Starting research on your fitness tool.",
+            refined_idea=_make_valid_refined_idea(),
+        )
+
+
+def test_refinement_turn_decision_rejects_banned_filler_phrase() -> None:
+    """Banned filler phrases in assistant_message raise ValidationError."""
+    with pytest.raises(ValidationError):
+        RefinementTurnDecision(
+            decision="clarify",
+            assistant_message="Great question — who is your target user?",
+            clarifying_dimension="audience",
+        )
+
+
+def test_refinement_turn_decision_clarify_requires_question_mark() -> None:
+    """Clarify assistant_message must end with '?'."""
+    with pytest.raises(ValidationError):
+        RefinementTurnDecision(
+            decision="clarify",
+            assistant_message="Tell me more about your target user",
+            clarifying_dimension="audience",
+        )
+
+
+def test_build_refinement_v2_chat_user_prompt_fourth_turn_note_at_count_three() -> None:
+    """Prompt builder appends force-finalize note when turn_count >= 3."""
+    prompt = build_refinement_v2_chat_user_prompt(
+        chat_history=[("user", "earlier"), ("assistant", "Who?")],
+        latest_message="CrossFit coaches.",
+        turn_count=3,
+    )
+    assert "<chat_history>" in prompt
+    assert "[user]: CrossFit coaches." in prompt
+    assert "Latest user message: CrossFit coaches." in prompt
+    assert "Clarifying turns used so far: 3" in prompt
+    assert "This is the fourth turn" in prompt
