@@ -302,7 +302,7 @@ async def run_turn(
         response_model=RefinementTurnDecision,
         max_tokens=_REFINEMENT_MAX_TOKENS,
         temperature=0.4,
-        max_retries=0,
+        max_retries=6,
         experiment_id=experiment.id,
         phase="refinement_chat",
     )
