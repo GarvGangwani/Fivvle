@@ -89,6 +89,15 @@ class Settings(BaseSettings):
     # Leave unset in local dev (in_process mode ignores it).
     research_engine_url: str | None = None
 
+    auto_fire_chat_enabled: Literal["off", "shadow", "cohort_10", "cohort_50", "on"] = Field(
+        default="off",
+        description=(
+            "Progressive rollout for /chat/turn auto-fire. off=endpoint 404s; "
+            "shadow=no dispatch (logs would-have-fired); cohort_10/50=deterministic % "
+            "of experiments dispatch; on=all dispatch."
+        ),
+    )
+
     # ------------------------------------------------------------------
     # Derived helpers (not env vars)
     # ------------------------------------------------------------------

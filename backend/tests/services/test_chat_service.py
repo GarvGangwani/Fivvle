@@ -5,10 +5,10 @@ All LLM and dispatcher calls are mocked. Uses a real async DB session per test.
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from instructor.core.exceptions import InstructorRetryException
@@ -30,6 +30,8 @@ from app.services.chat_service import (
     handle_turn,
 )
 from app.services.experiment_service import InvalidExperimentState
+from app.services.rollout import _hash_bucket
+from tests.services.test_rollout import _find_uuid
 
 _DR_MESSAGE = (
     "I want to build a tool for CrossFit coaches who spend hours each week "
@@ -90,6 +92,15 @@ class _RecordingDispatcher:
         self.dispatched.append(experiment_id)
 
 
+@pytest.fixture(autouse=True)
+def _auto_fire_chat_on_by_default(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    """Most chat_service tests expect the pre-rollout dispatch path (mode=on)."""
+    monkeypatch.setenv("AUTO_FIRE_CHAT_ENABLED", "on")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture
 async def db_session() -> AsyncGenerator[AsyncSession, None]:
     engine = create_async_engine(get_settings().database_url, pool_size=1, max_overflow=0)
@@ -124,6 +135,27 @@ async def _persist_thread(
     await db.commit()
     await db.refresh(thread)
     return thread
+
+
+async def _persist_refinement_experiment_with_id(
+    db: AsyncSession,
+    user: User,
+    thread: ChatThread,
+    experiment_id: UUID,
+) -> Experiment:
+    experiment = Experiment(
+        id=experiment_id,
+        user_id=user.id,
+        thread_id=thread.id,
+        raw_idea=_DR_MESSAGE,
+        status=ExperimentStatus.REFINING,
+        refinement_count=0,
+        slug=f"chat-svc-{uuid4().hex[:12]}",
+    )
+    db.add(experiment)
+    await db.commit()
+    await db.refresh(experiment)
+    return experiment
 
 
 async def _persist_refinement_experiment(
@@ -357,6 +389,115 @@ async def test_dr_finalize_dispatch_error_sets_research_failed(
     assert "DispatchError" in result.research_error_detail
     assert result.user_facing_error is not None
     assert result.user_facing_error.message.startswith("Research didn't complete")
+
+
+@pytest.mark.asyncio
+@patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
+async def test_dr_finalize_shadow_gates_dispatch(
+    mock_run_turn: AsyncMock,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTO_FIRE_CHAT_ENABLED", "shadow")
+    get_settings.cache_clear()
+
+    mock_run_turn.return_value = _finalize_decision()
+    user = await _persist_user(db_session)
+    dispatcher = _RecordingDispatcher()
+
+    with patch("app.services.chat_service._logger.info") as mock_info:
+        result = await handle_turn(
+            db_session,
+            user,
+            _DR_MESSAGE,
+            deep_research=True,
+            thread_id=None,
+            experiment_id=None,
+            idempotency_key=str(uuid4()),
+            dispatcher=dispatcher,
+        )
+
+    assert result.pipeline_dispatched is False
+    assert result.experiment_status == ExperimentStatus.REFINED
+    assert dispatcher.dispatched == []
+    mock_info.assert_called_once()
+    assert mock_info.call_args.args[0] == "auto_fire_gated"
+    assert mock_info.call_args.kwargs["mode"] == "shadow"
+    assert mock_info.call_args.kwargs["would_have_fired"] is True
+
+
+@pytest.mark.asyncio
+@patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
+async def test_dr_finalize_cohort_10_in_bucket_dispatches(
+    mock_run_turn: AsyncMock,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTO_FIRE_CHAT_ENABLED", "cohort_10")
+    get_settings.cache_clear()
+
+    experiment_id = _find_uuid(bucket_lt=10)
+    assert _hash_bucket(experiment_id) < 10
+
+    mock_run_turn.return_value = _finalize_decision()
+    user = await _persist_user(db_session)
+    thread = await _persist_thread(db_session, user)
+    await _persist_refinement_experiment_with_id(
+        db_session, user, thread, experiment_id
+    )
+    dispatcher = _RecordingDispatcher()
+
+    result = await handle_turn(
+        db_session,
+        user,
+        _DR_MESSAGE,
+        deep_research=True,
+        thread_id=thread.id,
+        experiment_id=experiment_id,
+        idempotency_key=str(uuid4()),
+        dispatcher=dispatcher,
+    )
+
+    assert result.pipeline_dispatched is True
+    assert result.experiment_status == ExperimentStatus.RESEARCHING
+    assert dispatcher.dispatched == [experiment_id]
+
+
+@pytest.mark.asyncio
+@patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
+async def test_dr_finalize_cohort_10_out_of_bucket_refined(
+    mock_run_turn: AsyncMock,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTO_FIRE_CHAT_ENABLED", "cohort_10")
+    get_settings.cache_clear()
+
+    experiment_id = _find_uuid(bucket_ge=10)
+    assert _hash_bucket(experiment_id) >= 10
+
+    mock_run_turn.return_value = _finalize_decision()
+    user = await _persist_user(db_session)
+    thread = await _persist_thread(db_session, user)
+    await _persist_refinement_experiment_with_id(
+        db_session, user, thread, experiment_id
+    )
+    dispatcher = _RecordingDispatcher()
+
+    result = await handle_turn(
+        db_session,
+        user,
+        _DR_MESSAGE,
+        deep_research=True,
+        thread_id=thread.id,
+        experiment_id=experiment_id,
+        idempotency_key=str(uuid4()),
+        dispatcher=dispatcher,
+    )
+
+    assert result.pipeline_dispatched is False
+    assert result.experiment_status == ExperimentStatus.REFINED
+    assert dispatcher.dispatched == []
 
 
 @pytest.mark.asyncio

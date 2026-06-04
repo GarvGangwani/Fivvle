@@ -32,7 +32,7 @@ from app.llm.prompts.chat_normal import (
 )
 from app.logging_config import get_logger
 from app.schemas.refinement import RefinementTurnDecision
-from app.services import dispatch_service
+from app.services import dispatch_service, rollout
 from app.services.error_translation import UserFacingError, translate_engineer_error
 from app.services.experiment_service import InvalidExperimentState
 
@@ -535,42 +535,53 @@ async def _handle_deep_research_turn(
     research_error_detail = experiment.research_error_detail
 
     if decision.decision == "finalize":
-        try:
-            await dispatch_service.transition_to_researching_and_dispatch(
-                db,
-                experiment,
-                DispatchTrigger.AUTO_FIRE,
-                dispatcher,
-            )
-            pipeline_dispatched = True
-            dispatched_at = datetime.now(UTC)
-        except DispatchError as exc:
-            detail = _sanitize_error_detail("dispatch", exc)
-            experiment.status = ExperimentStatus.RESEARCH_FAILED
-            experiment.research_error_detail = detail
-            research_error_detail = detail
+        settings = get_settings()
+        if rollout.should_auto_fire(experiment.id, settings.auto_fire_chat_enabled):
+            try:
+                await dispatch_service.transition_to_researching_and_dispatch(
+                    db,
+                    experiment,
+                    DispatchTrigger.AUTO_FIRE,
+                    dispatcher,
+                )
+                pipeline_dispatched = True
+                dispatched_at = datetime.now(UTC)
+            except DispatchError as exc:
+                detail = _sanitize_error_detail("dispatch", exc)
+                experiment.status = ExperimentStatus.RESEARCH_FAILED
+                experiment.research_error_detail = detail
+                research_error_detail = detail
+                await db.commit()
+                user_facing_error = translate_engineer_error(
+                    "DispatchError",
+                    detail,
+                    experiment.status,
+                )
+                result = ChatTurnResult(
+                    thread_id=thread.id,
+                    message_id=assistant_msg.id,
+                    experiment_id=experiment.id,
+                    assistant_message=decision.assistant_message,
+                    turn_kind=turn_kind,
+                    clarifying_dimension=clarifying_dimension,
+                    pipeline_dispatched=False,
+                    dispatched_at=None,
+                    experiment_status=experiment.status,
+                    research_error_detail=research_error_detail,
+                    user_facing_error=user_facing_error,
+                )
+                await _store_idempotency(db, thread.id, idempotency_key, result)
+                await db.commit()
+                return result
+        else:
+            experiment.status = ExperimentStatus.REFINED
             await db.commit()
-            user_facing_error = translate_engineer_error(
-                "DispatchError",
-                detail,
-                experiment.status,
+            _logger.info(
+                "auto_fire_gated",
+                experiment_id=str(experiment.id),
+                mode=settings.auto_fire_chat_enabled,
+                would_have_fired=True,
             )
-            result = ChatTurnResult(
-                thread_id=thread.id,
-                message_id=assistant_msg.id,
-                experiment_id=experiment.id,
-                assistant_message=decision.assistant_message,
-                turn_kind=turn_kind,
-                clarifying_dimension=clarifying_dimension,
-                pipeline_dispatched=False,
-                dispatched_at=None,
-                experiment_status=experiment.status,
-                research_error_detail=research_error_detail,
-                user_facing_error=user_facing_error,
-            )
-            await _store_idempotency(db, thread.id, idempotency_key, result)
-            await db.commit()
-            return result
     else:
         await db.commit()
 

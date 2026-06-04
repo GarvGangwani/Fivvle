@@ -172,6 +172,15 @@ def fake_dispatcher() -> Generator[FakeDispatcher, None, None]:
     app.dependency_overrides.pop(get_dispatcher_dep, None)
 
 
+@pytest.fixture(autouse=True)
+def _auto_fire_chat_on_by_default(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    """Router tests expect /chat/turn enabled unless a test overrides mode=off."""
+    monkeypatch.setenv("AUTO_FIRE_CHAT_ENABLED", "on")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 @pytest.fixture
 def mock_run_turn() -> Generator[AsyncMock, None, None]:
     with patch(
@@ -458,3 +467,46 @@ def test_chat_turn_empty_message_422(
         headers=_AUTH_HEADER,
     )
     assert resp.status_code == 422
+
+
+def test_chat_turn_off_returns_404(
+    client: TestClient,
+    mock_firebase: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTO_FIRE_CHAT_ENABLED", "off")
+    get_settings.cache_clear()
+
+    _sync_user(client)
+    resp = client.post(
+        "/chat/turn",
+        json=_chat_turn_payload(idempotency_key=str(uuid4())),
+        headers=_AUTH_HEADER,
+    )
+    assert resp.status_code == 404
+
+
+def test_chat_turn_shadow_finalize_refined_no_dispatch(
+    client: TestClient,
+    mock_firebase: None,
+    mock_run_turn: AsyncMock,
+    fake_dispatcher: FakeDispatcher,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AUTO_FIRE_CHAT_ENABLED", "shadow")
+    get_settings.cache_clear()
+
+    mock_run_turn.return_value = _finalize_decision()
+    _sync_user(client)
+
+    resp = client.post(
+        "/chat/turn",
+        json=_chat_turn_payload(idempotency_key=str(uuid4())),
+        headers=_AUTH_HEADER,
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["experiment_status"] == ExperimentStatus.REFINED.value
+    assert data["pipeline_dispatched"] is False
+    assert fake_dispatcher.dispatched == []

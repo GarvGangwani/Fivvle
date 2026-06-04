@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
+from app.config import get_settings
 from app.db.models.user import User
 from app.db.session import get_session
 from app.dispatchers.dependencies import get_dispatcher_dep
@@ -40,6 +41,9 @@ async def chat_turn(
     current_user: Annotated[User, Depends(get_current_user)],
     dispatcher: Annotated[ResearchDispatcher, Depends(get_dispatcher_dep)],
 ) -> ChatTurnResponse:
+    if get_settings().auto_fire_chat_enabled == "off":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
     try:
         result = await handle_turn(
             db,
