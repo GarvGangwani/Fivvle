@@ -26,25 +26,56 @@ The complete journey of a founder from landing on the site to receiving a valida
 
 ## Stage 2: Idea Submission & Cognitive Refinement
 
-**Step 2.1 — Enters raw idea**
-- Sees: textarea with prompt — "Describe your idea: what's the problem, who's it for, and what's your proposed solution?"
-- Does: writes 2-5 sentences in their own words
-- System: POST to FastAPI `/experiments`. Backend verifies token, creates `Experiment` (status=DRAFT), transitions to `REFINING`
+The chat UI is the single founder-facing surface. A "Deep Research" toggle in the chat input area controls whether each message routes through the validation pipeline (`deep_research=true`) or through plain conversation (`deep_research=false`).
 
-**Step 2.2 — Waits while AI refines (5-10 seconds — sync)**
-- Sees: loading state with progress messaging
-- Does: waits
-- System: FastAPI calls Claude. Returns refined one-liner, target audience, value prop, risks, headline/subheadline/CTA copy. Stored as JSON in `Experiment.refined_idea`. Status moves to `REFINED`. Logged to `LLMCall`.
+**Default toggle state: ON.** A new chat session opens with Deep Research enabled, so a casual idea pitch immediately routes through validation. The toggle's current state is always visible in the UI; founders can flip it per-message.
 
-**Step 2.3 — Reviews and edits AI refinement**
-- Sees: structured form with each AI-generated field editable inline
-- Does: reads, edits inline, or clicks "Refine again" with optional feedback
-- System: regeneration capped at 5 per experiment
+### 2.1 — Deep Research ON: refinement exchange
 
-**Step 2.4 — Accepts the refinement**
-- Sees: "Accept and continue" button with note: "We'll now run a deep market research investigation. This takes 2-4 minutes — we'll email you when it's ready."
-- Does: clicks
-- System: status → `RESEARCHING`, triggers research Cloud Function. User moves to research-in-progress screen.
+When the founder sends a message with `deep_research=true`, the backend:
+
+1. Creates a `chat_threads` row (if first message in the thread) or appends to the existing thread.
+2. Either continues an in-flight `REFINING` experiment in the same thread (within a 30-minute window) or creates a new `Experiment` in `REFINING` state.
+3. Calls `refinement_service.run_turn()`, which returns a structured decision: **clarify** (assistant asks a sharp question) or **finalize** (assistant restates the scope and emits the structured `RefinedIdea`).
+
+Typical refinement exchanges:
+
+- A crisp idea finalizes on turn 0 — no clarifying turns.
+- A vague idea takes 1–3 clarifying turns before finalization.
+- A pivot mid-conversation is acknowledged via `clarifying_dimension="pivot_resolution"`, which resets the clarifying-turn counter.
+
+The decision to clarify or finalize is the refinement LLM's call, guided by the `refinement_v2_chat` prompt's six-point readiness check + Finalize Traps + Stop-Clarifying rules. Anti-loop hard cap: 3 clarifying turns per experiment (counter resets on pivot).
+
+### 2.2 — Auto-dispatch on finalize
+
+When `run_turn()` returns `decision=finalize`:
+
+- The structured `RefinedIdea` is persisted on the experiment.
+- The progressive-rollout gate (`rollout.should_auto_fire`, controlled by env var `AUTO_FIRE_CHAT_ENABLED`) decides whether to dispatch immediately or leave the experiment in `REFINED` for an explicit user-confirm.
+- **Allowed to dispatch:** `dispatch_service.transition_to_researching_and_dispatch(experiment, trigger=auto_fire, dispatcher)` flips status `REFINING → RESEARCHING` and invokes the research pipeline (ADR 0009).
+- **Gated (mode off/shadow/cohort-skip):** status flips `REFINING → REFINED`. The frontend surfaces an "Accept and continue" affordance backed by `POST /experiments/{id}/confirm` (Sequence 8a).
+
+The founder sees the assistant's `"Researching: …"` message in the chat bubble. The canvas opens and renders phase-level progress polled from `GET /experiments/{id}/research-status`.
+
+### 2.3 — Deep Research OFF: plain chat
+
+Messages with `deep_research=false` route through `chat_service.reply_plain()`. The plain-chat LLM sees only the current thread's user + clarifying messages — no prior ValidationReport content, per AGENTS.md prompt-injection avoidance. It does not perform research; if the founder describes a startup idea, it redirects them to toggle Deep Research on.
+
+### 2.4 — Pipeline failure surface
+
+If dispatch raises or the pipeline fails mid-run:
+- Status moves to `RESEARCH_FAILED`.
+- `research_error_detail` is sanitized and persisted on the experiment.
+- The frontend renders a `pipeline_failed` chat bubble using the translated message from `error_translation.translate_engineer_error`.
+- Retry calls `POST /experiments/{id}/confirm` (ADR 0009 re-dispatch path).
+
+### 2.5 — Legacy surface (Sequence 8a)
+
+`POST /experiments`, `POST /experiments/{id}/refine`, and `POST /experiments/{id}/confirm` remain unchanged. They are used by admin tooling and the eval harness — `backend/scripts/run_eval.py` bypasses HTTP entirely and seeds Experiments directly with pre-baked `refined_idea`.
+
+---
+
+See: ADR 0019, `docs/planning/chat-mode-refinement.md`, ARCHITECTURE.md Sequence 8a-prime.
 
 ---
 

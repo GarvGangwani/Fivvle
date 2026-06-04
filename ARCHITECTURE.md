@@ -165,21 +165,21 @@ classDiagram
     }
 
     class ValidationReport {
-        +UUID id
-        +UUID experiment_id
-        +JSON research_questions
-        +JSON findings_per_question
-        +JSON competitors
-        +JSON reddit_signals
-        +JSON search_trends
-        +JSON news_signals
-        +JSON citations
-        +int clarity_score
-        +JSON risks
-        +text market_summary
-        +int reflection_loops_used
-        +timestamp generated_at
+        <<Pydantic — validation_report.py>>
+        +str executive_summary
+        +list~QuestionFindings~ questions_and_findings
+        +list~CompetitorMention~ competitors
+        +str market_signals
+        +str distribution_signals
+        +str regulatory_signals
+        +str risks_assessment
+        +enum overall_recommendation
+        +str recommendation_rationale
+        +str research_limitations
+        +str rubric_version_used
     }
+
+    note for ValidationReport "ORM (validation_reports): id, experiment_id (1:1); full Pydantic payload in raw_report JSONB; queryable scalars clarity_score (nullable int, reflector), reflection_loops_used (int, default 0), generated_at. Ref: backend/app/db/models/validation_report.py"
 
     class LLMCall {
         +UUID id
@@ -612,6 +612,62 @@ sequenceDiagram
     API->>API: Trigger research function (async)
     API-->>FE: 200 OK
 ```
+
+---
+
+### Sequence 8a-prime — Chat-Mode Auto-Dispatch
+
+Introduced in ADR 0019. Coexists with Sequence 8a (the explicit user-confirm path), which remains valid for `/experiments` + `/refine` + `/confirm` (admin tools and the eval harness). Sequence 8a-prime is the founder-facing chat-mode trigger.
+
+```mermaid
+sequenceDiagram
+    actor F as Founder
+    participant FE as Frontend (chat UI)
+    participant API as POST /chat/turn
+    participant CS as chat_service.handle_turn
+    participant RS as refinement_service.run_turn
+    participant Roll as rollout.should_auto_fire
+    participant DS as dispatch_service.transition_to_researching_and_dispatch
+    participant D as ResearchDispatcher
+    participant Eng as Research Engine
+
+    F->>FE: Types message (Deep Research toggle defaults ON)
+    FE->>API: POST {message, deep_research=true, idempotency_key}
+    API->>CS: handle_turn(user, message, ...)
+    CS->>CS: Resolve thread (create if null)
+    CS->>CS: Idempotency lookup; replay if hit
+    CS->>CS: Resolve experiment (continue active REFINING within 30 min, else create)
+    CS->>RS: run_turn(experiment, history, message)
+    RS-->>CS: RefinementTurnDecision
+
+    alt decision = clarify
+        CS->>CS: Persist assistant message (turn_kind=refinement_clarify)
+        CS-->>API: ChatTurnResult (pipeline_dispatched=false)
+        API-->>FE: 200
+        FE-->>F: Render clarifying question
+    else decision = finalize
+        CS->>CS: Persist assistant message (turn_kind=refinement_finalize)
+        CS->>Roll: should_auto_fire(experiment.id, AUTO_FIRE_CHAT_ENABLED)
+        alt allowed
+            CS->>DS: transition_to_researching_and_dispatch(AUTO_FIRE)
+            DS->>D: dispatch(experiment_id)
+            D->>Eng: Pipeline starts
+            CS-->>API: ChatTurnResult (pipeline_dispatched=true, status=RESEARCHING)
+            API-->>FE: 200
+            FE->>FE: Open canvas; poll GET /experiments/{id}/research-status
+        else gated (off, shadow, cohort skip)
+            CS->>CS: status REFINING → REFINED; structlog auto_fire_gated
+            CS-->>API: ChatTurnResult (pipeline_dispatched=false, status=REFINED)
+            API-->>FE: 200
+            FE-->>F: Show "Accept and continue" → POST /experiments/{id}/confirm (Sequence 8a)
+        end
+    end
+```
+
+**Failure paths:**
+
+- **Refinement LLM raises:** `chat_service.handle_turn` catches, calls `error_translation.translate_engineer_error`, persists the translated text as an assistant turn, returns with `user_facing_error` populated. Status does not advance.
+- **`DispatchError`:** `chat_service.handle_turn` catches, sets `Experiment.status = RESEARCH_FAILED`, populates `research_error_detail`, returns with `pipeline_dispatched=false`. Retry via `/confirm` (Sequence 8a re-dispatch path).
 
 ---
 
