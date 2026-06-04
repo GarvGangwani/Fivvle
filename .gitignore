@@ -70,3 +70,6 @@ dist/
 # Local verification artifacts (untracked helpers, throwaway request bodies)
 backend/body.json
 backend/scripts/_*.py
+
+# Cloud Function deploy artifact — populated by the deploy script.
+functions/research_engine/app/

@@ -1,0 +1,12 @@
+# Exclude dev artifacts; KEEP the `app/` subdir at deploy time (the deploy script populates it).
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+tests/
+.pytest_cache/
+.env
+.env.example
+*.md
+!README.md
+.DS_Store
