@@ -46,6 +46,7 @@ from app.middleware.sentry_context import SentryContextMiddleware
 from app.observability.sentry import init_sentry
 from app.reliability.rate_limit import limiter, rate_limit_exceeded_handler
 from app.routers.admin import router as admin_router
+from app.routers.admin_chat_quality import router as admin_chat_quality_router
 from app.routers.chat import router as chat_router
 from app.routers.experiments import router as experiments_router
 from app.routers.health import router as health_router
@@ -207,3 +208,4 @@ app.include_router(users_router)
 app.include_router(experiments_router)
 app.include_router(chat_router)
 app.include_router(admin_router)
+app.include_router(admin_chat_quality_router)
