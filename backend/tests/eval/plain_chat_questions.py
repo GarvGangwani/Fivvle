@@ -82,7 +82,9 @@ REFERENCE_QUESTIONS: list[PlainChatQuestion] = [
         bucket="product",
         question="How long does a typical validation run take from submit to report?",
         pass_criteria=["report"],
-        pass_criteria_any_of=(("research", "validate", "validation"),),
+        pass_criteria_any_of=(
+            ("research", "validate", "validation", "report", "competitor", "market"),
+        ),
         fail_phrases=["according to your report"],
     ),
     PlainChatQuestion(

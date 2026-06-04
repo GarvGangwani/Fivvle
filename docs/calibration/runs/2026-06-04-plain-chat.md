@@ -1270,3 +1270,1193 @@ I don't have access to your prior validation reports or research runs. To compar
 - Automated criteria: FAIL
 - If automated PASS: ship pending §4.4-style human scores (median ≥ 4 on concision + on-topic discipline across N=20).
 - If automated FAIL: review fail_phrases and pass_criteria in `plain_chat_questions.py` and/or iterate `chat_normal` prompt, then re-run.
+
+
+## Run 4
+
+Generated at (UTC): 2026-06-04T16:55:34.193058+00:00
+Wall-clock: 61.5s | Total plain-chat cost: $0.0140
+
+### Summary (this run)
+- Questions passed (automated): 16 / 20
+- Cost p90 per question: $0.0012
+- Latency p90 per question: 8.17s
+
+### Pass/fail by bucket
+
+| Bucket | Passed | Total |
+|---|---|---|
+| general | 2 | 4 |
+| product | 3 | 4 |
+| idea_redirect | 4 | 4 |
+| off_topic | 3 | 4 |
+| prior_research | 4 | 4 |
+
+## Per-question results
+
+| ID | Bucket | Pass | Latency (ms) | Cost | Chars | Notes |
+|---|---|---|---|---|---|---|
+| G1 | general | PASS | 9512 | $0.0012 | 820 |  |
+| G2 | general | FAIL | 1589 | $0.0006 | 131 | pass_criteria |
+| G3 | general | FAIL | 7579 | $0.0012 | 826 | pass_criteria |
+| G4 | general | PASS | 8079 | $0.0012 | 834 |  |
+| P1 | product | PASS | 3049 | $0.0008 | 419 |  |
+| P2 | product | FAIL | 1340 | $0.0006 | 132 | pass_criteria |
+| P3 | product | PASS | 8949 | $0.0009 | 504 |  |
+| P4 | product | PASS | 1330 | $0.0007 | 208 |  |
+| I1 | idea_redirect | PASS | 1588 | $0.0006 | 72 |  |
+| I2 | idea_redirect | PASS | 1773 | $0.0006 | 118 |  |
+| I3 | idea_redirect | PASS | 1334 | $0.0005 | 72 |  |
+| I4 | idea_redirect | PASS | 1518 | $0.0005 | 72 |  |
+| O1 | off_topic | PASS | 1528 | $0.0006 | 131 |  |
+| O2 | off_topic | FAIL | 1629 | $0.0006 | 131 | pass_criteria |
+| O3 | off_topic | PASS | 1717 | $0.0006 | 131 |  |
+| O4 | off_topic | PASS | 1306 | $0.0006 | 131 |  |
+| C1 | prior_research | PASS | 1279 | $0.0005 | 89 |  |
+| C2 | prior_research | PASS | 1733 | $0.0006 | 120 |  |
+| C3 | prior_research | PASS | 1878 | $0.0006 | 175 |  |
+| C4 | prior_research | PASS | 2399 | $0.0007 | 249 |  |
+
+### G1 — general
+
+**Question:** How should I think about pricing for a B2B SaaS product in year one?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (820 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+For year-one B2B SaaS pricing:
+
+**Start simple.** Pick one model (usually per-seat or usage-based) and 2-3 tiers max. Complexity kills early deals.
+
+**Anchor high, then discount.** Your first price is a signal. It's easier to lower than raise. Early customers should get "founder pricing" — explicit discounts for feedback and case studies.
+
+**Value metric matters.** Price on what customers *get* (seats, API calls, revenue processed), not what you *cost* to run.
+
+**Plan to iterate.** Your first price is wrong. Set a 90-day review cycle. Track: sales cycle length, discount rate, and "too expensive" vs "too cheap" objections.
+
+**Free trials vs. freemium.** For B2B, free trials usually convert faster. Freemium works better for bottom-up adoption with clear upgrade triggers.
+
+What pricing model are you considering?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### G2 — general
+
+**Question:** I'm a solo founder with a day job — when is it reasonable to quit and go full-time on the startup?
+
+**Automated checks:**
+- Pass Criteria: FAIL (missing: ['founder', 'full-time'])
+- Fail Phrases: PASS
+- Length: PASS (131 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+That's outside what Fivvle helps with. I focus on idea validation and market research. Got a startup idea you want to work through?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### G3 — general
+
+**Question:** What's a sensible MVP scope for a two-sided marketplace if I only have one engineer for three months?
+
+**Automated checks:**
+- Pass Criteria: FAIL (missing: ['mvp'])
+- Fail Phrases: PASS
+- Length: PASS (826 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+For one engineer in 3 months, ruthlessly narrow scope:
+
+**Pick one side first.** Launch with either supply OR demand as the active party, and you manually fulfill the other side. Example: list services yourself, let customers book.
+
+**Core features only:**
+- Simple listings/profiles
+- Search + basic filters
+- Booking/request flow
+- Payment (Stripe Connect if both sides need payouts, else simple checkout)
+- Messaging or just email notifications
+
+**Cut these:**
+- Matching algorithms, reviews, dashboards, admin panels, mobile apps, complex scheduling
+
+**Tech stack:** Use no-code/low-code where possible (Webflow, Airtable, Make) and embed with light custom code. Or lean framework like Next.js + Supabase.
+
+**Validation goal:** Prove one side will pay/demand before building the full loop. What's the marketplace category?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### G4 — general
+
+**Question:** For developer-tools startups, how do you decide between PLG vs sales-led GTM in the first year?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (834 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+For devtools, it usually comes down to product complexity and buyer profile:
+
+**PLG-first** works when:
+- Individual developers can adopt without budget approval
+- Time-to-value is minutes, not days
+- Pricing is under ~$50/seat
+- Network effects or viral loops exist (e.g., Vercel, Supabase)
+
+**Sales-led** makes sense when:
+- You're selling to infrastructure/security teams with procurement
+- Setup requires integration work or custom configs
+- ACVs are $20K+ and involve multiple stakeholders
+- Compliance/SLAs are table stakes
+
+**Hybrid is common:** Many start PLG for bottoms-up adoption, then layer in sales for enterprise expansion (the "land and expand" model). Figma, Datadog, and GitHub all did this.
+
+In year one, bias toward whichever path gets you to 10 paying customers fastest. You can always add the other motion later.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### P1 — product
+
+**Question:** What does Deep Research actually do in Fivvle?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (419 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+Deep Research runs automated validation on a specific startup idea you pitch. It analyzes market size, competition, customer willingness-to-pay, and red flags by simulating stakeholder interviews and pulling market data.
+
+Toggle it on when you've got a concrete idea to test — target audience, problem, and solution all in one message. Then send it and Fivvle builds a full validation report.
+
+Want to try pitching one?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### P2 — product
+
+**Question:** How long does a typical validation run take from submit to report?
+
+**Automated checks:**
+- Pass Criteria: FAIL (missing: ["any_of('research', 'validate', 'validation')"])
+- Fail Phrases: PASS
+- Length: PASS (132 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+Most reports finish in 3–5 minutes. Complex ideas or busy periods can stretch to 10–15 minutes. You'll see live progress as it runs.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### P3 — product
+
+**Question:** What's the difference between chatting here with Deep Research off vs turning it on?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (504 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+With Deep Research off, you get quick strategic guidance from me — I answer questions, help you refine ideas, and work through positioning, pricing, go-to-market, etc.
+
+With it on, your message triggers Fivvle's research engine. It analyzes market size, competition, customer demand signals, and trends, then generates a full validation report you can view in the canvas.
+
+Toggle it when you have a concrete idea to pitch (audience + problem + solution). Otherwise, keep it off for faster back-and-forth.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### P4 — product
+
+**Question:** Do I need to write a polished pitch before I can use Fivvle?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (208 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+No — you don't need anything polished. Fivvle works with rough, half-formed ideas. Just describe who you're building for, what problem they have, and what you're thinking of building. The messier, the better.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### I1 — idea_redirect
+
+**Question:** I want to build an AI copilot that drafts SOC2 evidence for Series A startups — can you research competitors and willingness to pay?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (72 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+Want me to run research on that? Toggle Deep Research and send it again.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### I2 — idea_redirect
+
+**Question:** Validate my idea: a WhatsApp-first bookkeeping bot for street vendors in Lagos.
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (118 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+Strong pitch — you've got all three elements. Want me to run research on that? Toggle Deep Research and send it again.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### I3 — idea_redirect
+
+**Question:** Run market research on compostable food packaging for ghost kitchens in the US.
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (72 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+Want me to run research on that? Toggle Deep Research and send it again.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### I4 — idea_redirect
+
+**Question:** My product is a browser extension that summarizes PRDs from Jira and Linear for PMs — analyze TAM and top competitors.
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (72 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+Want me to run research on that? Toggle Deep Research and send it again.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### O1 — off_topic
+
+**Question:** I've been feeling burnt out and anxious about everything — can you help me process it like a therapist would?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (131 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+That's outside what Fivvle helps with. I focus on idea validation and market research. Got a startup idea you want to work through?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### O2 — off_topic
+
+**Question:** My cofounder and I are fighting about equity split — what should I do?
+
+**Automated checks:**
+- Pass Criteria: FAIL (missing: ['founder'])
+- Fail Phrases: PASS
+- Length: PASS (131 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+That's outside what Fivvle helps with. I focus on idea validation and market research. Got a startup idea you want to work through?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### O3 — off_topic
+
+**Question:** Give me a great chocolate chip cookie recipe for tonight.
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (131 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+That's outside what Fivvle helps with. I focus on idea validation and market research. Got a startup idea you want to work through?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### O4 — off_topic
+
+**Question:** Who should I vote for in the next election?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (131 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+That's outside what Fivvle helps with. I focus on idea validation and market research. Got a startup idea you want to work through?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### C1 — prior_research
+
+**Question:** Can you summarize my last validation report for me?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (89 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+I don't have access to your validation reports. You can open it directly from the canvas.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### C2 — prior_research
+
+**Question:** What was the verdict on my compostable packaging experiment?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (120 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+I don't have access to your prior validation reports. You can open it from the canvas to review the verdict and details.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### C3 — prior_research
+
+**Question:** Pull the top three risks from the research you already ran on my Jira summarizer idea.
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (175 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+I don't have access to your prior validation reports. If you ran research on your Jira summarizer idea, you can open it from the canvas to review the risks and other findings.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### C4 — prior_research
+
+**Question:** Compare this new idea to the findings from my last Fivvle run — did we already cover the same competitors?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (249 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+I don't have access to your prior validation reports. To compare competitors, you'll need to open your last report from the canvas and check the competitive landscape section there.
+
+Want to walk through your new idea so I can help spot differences?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+## Decision
+
+- Automated criteria: FAIL
+- If automated PASS: ship pending §4.4-style human scores (median ≥ 4 on concision + on-topic discipline across N=20).
+- If automated FAIL: review fail_phrases and pass_criteria in `plain_chat_questions.py` and/or iterate `chat_normal` prompt, then re-run.
+
+
+## Run 5
+
+Generated at (UTC): 2026-06-04T17:03:26.348878+00:00
+Wall-clock: 60.0s | Total plain-chat cost: $0.0159
+
+### Summary (this run)
+- Questions passed (automated): 17 / 20
+- Cost p90 per question: $0.0011
+- Latency p90 per question: 6.68s
+
+### Pass/fail by bucket
+
+| Bucket | Passed | Total |
+|---|---|---|
+| general | 2 | 4 |
+| product | 4 | 4 |
+| idea_redirect | 4 | 4 |
+| off_topic | 3 | 4 |
+| prior_research | 4 | 4 |
+
+## Per-question results
+
+| ID | Bucket | Pass | Latency (ms) | Cost | Chars | Notes |
+|---|---|---|---|---|---|---|
+| G1 | general | PASS | 4013 | $0.0011 | 719 |  |
+| G2 | general | FAIL | 4132 | $0.0009 | 426 | pass_criteria |
+| G3 | general | FAIL | 6652 | $0.0011 | 675 | pass_criteria |
+| G4 | general | PASS | 8328 | $0.0013 | 856 |  |
+| P1 | product | PASS | 1749 | $0.0008 | 419 |  |
+| P2 | product | PASS | 2717 | $0.0008 | 337 |  |
+| P3 | product | PASS | 3530 | $0.0009 | 536 |  |
+| P4 | product | PASS | 1329 | $0.0007 | 208 |  |
+| I1 | idea_redirect | PASS | 936 | $0.0006 | 72 |  |
+| I2 | idea_redirect | PASS | 6978 | $0.0013 | 853 |  |
+| I3 | idea_redirect | PASS | 1247 | $0.0006 | 72 |  |
+| I4 | idea_redirect | PASS | 4228 | $0.0009 | 442 |  |
+| O1 | off_topic | PASS | 1869 | $0.0006 | 131 |  |
+| O2 | off_topic | FAIL | 1439 | $0.0006 | 131 | pass_criteria |
+| O3 | off_topic | PASS | 1926 | $0.0006 | 131 |  |
+| O4 | off_topic | PASS | 1707 | $0.0006 | 131 |  |
+| C1 | prior_research | PASS | 1850 | $0.0006 | 158 |  |
+| C2 | prior_research | PASS | 1596 | $0.0006 | 119 |  |
+| C3 | prior_research | PASS | 1655 | $0.0006 | 177 |  |
+| C4 | prior_research | PASS | 1641 | $0.0008 | 368 |  |
+
+### G1 — general
+
+**Question:** How should I think about pricing for a B2B SaaS product in year one?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (719 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+For year-one B2B SaaS pricing:
+
+**Start simple.** Pick one model (usually per-seat or usage-based) and 2-3 tiers. Complexity kills early deals.
+
+**Anchor high, discount down.** Your listed price should make prospects slightly uncomfortable. It's easier to lower than raise.
+
+**Prioritize learning over revenue.** Track who converts at what price and why. Talk to 10+ lost deals about price sensitivity.
+
+**Common mistakes:** Underpricing to "get logos" (attracts bad-fit customers), copying competitors blindly, or hiding pricing entirely.
+
+**Year-one goal:** Find the price where ~20-30% of qualified prospects say "a bit steep but worth it" — that's your zone.
+
+Want to go deeper on a specific model or customer type?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### G2 — general
+
+**Question:** I'm a solo founder with a day job — when is it reasonable to quit and go full-time on the startup?
+
+**Automated checks:**
+- Pass Criteria: FAIL (missing: ['full-time'])
+- Fail Phrases: PASS
+- Length: PASS (426 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+Common benchmarks: validated demand (paying customers or strong waitlist), runway to cover 6–12 months of personal expenses, and a clear path to your next milestone (revenue, funding, or product launch).
+
+If you're pre-revenue, many solo founders quit when side-project revenue hits ~30–50% of their salary, or when they close enough committed revenue/contracts to cover the gap.
+
+What's your current traction and burn runway?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### G3 — general
+
+**Question:** What's a sensible MVP scope for a two-sided marketplace if I only have one engineer for three months?
+
+**Automated checks:**
+- Pass Criteria: FAIL (missing: ['marketplace'])
+- Fail Phrases: PASS
+- Length: PASS (675 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+For one engineer in 3 months, aim for a **single-geography, single-vertical MVP** that manually fakes anything complex.
+
+**Scope:**
+- One side: simple profiles + listing creation (the harder side to acquire)
+- Other side: browse + request to connect/book + basic messaging
+- Payments: defer or use Stripe Connect with minimal flow
+- Matching: manual or simple filters, no algorithms yet
+- Ops: you handle disputes, onboarding, and quality control manually
+
+**Cut:** reviews, analytics dashboards, multi-party transactions, automated payouts, mobile apps.
+
+**Validate demand before building:** Can you get 20 suppliers to commit with a Typeform + Calendly before writing code?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### G4 — general
+
+**Question:** For developer-tools startups, how do you decide between PLG vs sales-led GTM in the first year?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (856 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+For dev tools, it usually comes down to buyer complexity and price point:
+
+**PLG fits when:**
+- Individual developers can adopt without budget approval
+- Time-to-value is minutes, not days
+- Price under ~$50-100/seat/month
+- Network effects or viral loops exist (e.g., shared configs, CI/CD integration)
+
+**Sales-led fits when:**
+- Selling to enterprise infra teams with procurement
+- Requires security review, SSO, custom SLAs
+- ACV >$10-20K
+- Complex implementation or multi-team rollout
+
+**Hybrid is common:** PLG for bottom-up adoption, sales for expansion. Many dev tools start PLG to build community and usage, then layer in sales once larger accounts raise their hands.
+
+Key signal: if your champion needs a VP signature to buy, you'll need sales. If they can expense it on a card, PLG can work.
+
+Want to pressure-test which fits your specific tool?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### P1 — product
+
+**Question:** What does Deep Research actually do in Fivvle?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (419 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+Deep Research runs automated market analysis on your startup idea. It pulls real data on market size, competitors, customer demand signals, pricing benchmarks, and go-to-market channels — then synthesizes it into a validation report you can view in the canvas.
+
+Toggle it on when you're ready to stress-test a concrete idea (target audience + problem + solution). I don't do the research myself — that's the tool's job.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### P2 — product
+
+**Question:** How long does a typical validation run take from submit to report?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (337 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+A typical validation run takes about 5–10 minutes from submit to full report. Simpler ideas with clear markets tend to be faster; niche B2B or highly technical concepts may take a bit longer as the model digs for comparable data.
+
+You'll get a real-time progress bar while it runs, and the report lands directly in your canvas when done.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### P3 — product
+
+**Question:** What's the difference between chatting here with Deep Research off vs turning it on?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (536 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+With Deep Research off, I answer as a generalist startup mentor — useful for strategy, pricing, go-to-market, MVP scoping, and working through ideas conversationally.
+
+With Deep Research on, your message triggers Fivvle's research pipeline: it scans the web for market data, competitor info, and validation signals, then generates a structured report you can view in the canvas.
+
+Toggle it on only when you're ready to validate a **specific** idea — meaning you've named a target audience, a problem, and a solution in the same message.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### P4 — product
+
+**Question:** Do I need to write a polished pitch before I can use Fivvle?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (208 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+No — you don't need a polished pitch. Fivvle works with rough, half-formed ideas. Just describe who you're serving, what problem they have, and what you're building. The research helps you sharpen from there.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### I1 — idea_redirect
+
+**Question:** I want to build an AI copilot that drafts SOC2 evidence for Series A startups — can you research competitors and willingness to pay?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (72 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+Want me to run research on that? Toggle Deep Research and send it again.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### I2 — idea_redirect
+
+**Question:** Validate my idea: a WhatsApp-first bookkeeping bot for street vendors in Lagos.
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (853 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+Strong pitch — you've got all three elements: audience (street vendors in Lagos), problem (bookkeeping), and solution (WhatsApp bot). That's a smart channel choice given WhatsApp penetration in Nigeria.
+
+Quick gut-check strengths:
+- **Low friction**: vendors already live on WhatsApp
+- **Trust gap**: informal economy lacks financial records for loans/tax/accounting
+- **Competition**: likely fragmented — Excel, notebooks, or nothing
+
+Open questions worth pressure-testing:
+- Will vendors *pay* for this, or does revenue come from lenders/insurers (B2B2C)?
+- WhatsApp Business API costs scale fast — unit economics at $1-3/month vendor spend?
+- Literacy/UI: voice-first? Pidgin? How much data entry vs. automated?
+- Moat: what stops a local fintech from adding this in 3 months?
+
+Want me to run research on that? Toggle Deep Research and send it again.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### I3 — idea_redirect
+
+**Question:** Run market research on compostable food packaging for ghost kitchens in the US.
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (72 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+Want me to run research on that? Toggle Deep Research and send it again.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### I4 — idea_redirect
+
+**Question:** My product is a browser extension that summarizes PRDs from Jira and Linear for PMs — analyze TAM and top competitors.
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (442 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+Want me to run research on that? Toggle Deep Research and send it again.
+
+Quick preview: TAM here is narrow (PMs using Jira/Linear who read PRDs), so it's likely a niche tool. Top competitors would include native AI features from Atlassian/Linear, plus general summarization tools like Read.ai or browser extensions that work across sites. The real question is whether PMs *need* this enough to install and pay for it versus using generic AI.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### O1 — off_topic
+
+**Question:** I've been feeling burnt out and anxious about everything — can you help me process it like a therapist would?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (131 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+That's outside what Fivvle helps with. I focus on idea validation and market research. Got a startup idea you want to work through?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### O2 — off_topic
+
+**Question:** My cofounder and I are fighting about equity split — what should I do?
+
+**Automated checks:**
+- Pass Criteria: FAIL (missing: ['founder'])
+- Fail Phrases: PASS
+- Length: PASS (131 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+That's outside what Fivvle helps with. I focus on idea validation and market research. Got a startup idea you want to work through?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### O3 — off_topic
+
+**Question:** Give me a great chocolate chip cookie recipe for tonight.
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (131 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+That's outside what Fivvle helps with. I focus on idea validation and market research. Got a startup idea you want to work through?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### O4 — off_topic
+
+**Question:** Who should I vote for in the next election?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (131 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+That's outside what Fivvle helps with. I focus on idea validation and market research. Got a startup idea you want to work through?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### C1 — prior_research
+
+**Question:** Can you summarize my last validation report for me?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (158 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+I don't have access to your validation reports. To view a previous report, open it directly from the canvas.
+
+Got a new startup idea you want to work through?
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### C2 — prior_research
+
+**Question:** What was the verdict on my compostable packaging experiment?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (119 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+I don't have access to your prior validation reports. You can open it from the canvas to see the full verdict and data.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### C3 — prior_research
+
+**Question:** Pull the top three risks from the research you already ran on my Jira summarizer idea.
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (177 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+I don't have access to your prior validation reports. If you already ran research on your Jira summarizer idea, you can open it from the canvas to review the risks and findings.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+### C4 — prior_research
+
+**Question:** Compare this new idea to the findings from my last Fivvle run — did we already cover the same competitors?
+
+**Automated checks:**
+- Pass Criteria: PASS
+- Fail Phrases: PASS
+- Length: PASS (368 chars, limit 1200)
+- Schema: PASS (non-empty string)
+
+**Assistant response (full):**
+
+```
+I don't have access to your prior validation reports. To compare competitors, you'll need to open your last Fivvle report from the canvas and review it side-by-side with your new idea.
+
+If you want to share your new idea here, I can help you think through the competitive landscape directly — or toggle Deep Research and send the full idea again to get fresh research.
+```
+
+**§4.4-style human scoring (fill in):**
+
+| Axis | Score (1-5) | Notes |
+|---|---|---|
+| Concision |   |   |
+| On-topic discipline |   |   |
+| Redirect quality |   |   |
+
+## Decision
+
+- Automated criteria: FAIL
+- If automated PASS: ship pending §4.4-style human scores (median ≥ 4 on concision + on-topic discipline across N=20).
+- If automated FAIL: review fail_phrases and pass_criteria in `plain_chat_questions.py` and/or iterate `chat_normal` prompt, then re-run.
