@@ -85,6 +85,14 @@ class Settings(BaseSettings):
     # http: POSTs to the Cloud Function HTTPS endpoint with an OIDC token (staging/prod).
     # Selection is explicit — never auto-detected from environment.
     dispatcher_mode: Literal["in_process", "http"] = "in_process"
+    oidc_audience: str | None = Field(
+        default=None,
+        description=(
+            "OIDC audience for HttpDispatcher OIDC token. When None, defaults to "
+            "research_engine_url. Override only if the Cloud Function audience "
+            "differs from its URL."
+        ),
+    )
     # Required when dispatcher_mode="http". Must be the full HTTPS URL of the Cloud Function.
     # Leave unset in local dev (in_process mode ignores it).
     research_engine_url: str | None = None

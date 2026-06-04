@@ -1,30 +1,21 @@
-"""HttpDispatcher — production implementation of ResearchDispatcher (ADR 0009).
+"""HttpDispatcher — production ResearchDispatcher for DISPATCHER_MODE=http (ADR 0009).
 
-POSTs to the Cloud Function HTTPS endpoint with a Google OIDC token so the
-function can verify the caller is the Fivvle API service account.
-
-Not implemented in B2.4 — the in-process dispatcher is used for all
-environments in the current milestone.  This stub ensures:
-  1. The factory can return a typed object for DISPATCHER_MODE=http.
-  2. Tests can verify the factory routing without touching real network.
-  3. The class docstring documents the B3 implementation contract.
-
-B3 implementation checklist (do NOT implement here until B3):
-  - Use httpx.AsyncClient with a 30-second timeout.
-  - Obtain an OIDC token via google-auth for the Cloud Function audience.
-  - POST {"experiment_id": str(experiment_id)} to settings.research_engine_url.
-  - On non-2xx response: raise DispatchError with sanitized status code.
-  - On network error: raise DispatchError.
-  - Follow SSRF prevention rules in AGENTS.md (the URL comes from settings,
-    not from user input, so the blocklist check is a belt-and-suspenders
-    measure, not strictly required — but do it anyway).
+Per ADR 0020, POSTs ``{"experiment_id": "<uuid>"}`` to the configured Cloud Function
+URL with a GCP OIDC bearer token (audience defaults to the URL; override via
+``OIDC_AUDIENCE``). HTTP 200/202 means the trigger was accepted; the pipeline runs
+asynchronously in the Cloud Function after the response.
 """
 
 from __future__ import annotations
 
+import asyncio
 from uuid import UUID
 
+import httpx
 import structlog
+from google.auth.exceptions import DefaultCredentialsError
+from google.auth.transport.requests import Request as GoogleAuthRequest
+from google.oauth2.id_token import fetch_id_token
 
 from app.dispatchers.protocol import DispatchError
 
@@ -32,25 +23,79 @@ logger = structlog.get_logger(__name__)
 
 
 class HttpDispatcher:
-    """Trigger the research engine Cloud Function over HTTPS (B3 implementation).
+    """Trigger the research engine Cloud Function over HTTPS (ADR 0020).
 
     Accepts the Cloud Function URL at construction time.  The factory reads it
     from settings.research_engine_url and validates it is set before calling
     this constructor.
     """
 
-    def __init__(self, url: str) -> None:
+    def __init__(
+        self,
+        url: str,
+        audience: str | None = None,
+        timeout_seconds: float = 10.0,
+    ) -> None:
         self._url = url
+        self._audience = audience or url
+        self._timeout = timeout_seconds
 
     async def dispatch(self, experiment_id: UUID) -> None:
-        """POST to the Cloud Function.  NOT YET IMPLEMENTED — raises immediately."""
-        logger.error(
-            "http dispatcher not yet implemented",
+        """POST to the Cloud Function with an OIDC bearer token."""
+        log = logger.bind(
             dispatcher="http",
             experiment_id=str(experiment_id),
-            phase="failed",
         )
-        raise DispatchError(
-            "HttpDispatcher is not implemented in B2.4. "
-            "Set DISPATCHER_MODE=in_process for local dev."
+        log.info("http dispatch started", phase="dispatch_started")
+
+        try:
+            token = await asyncio.to_thread(
+                fetch_id_token,
+                GoogleAuthRequest(),
+                self._audience,
+            )
+        except DefaultCredentialsError:
+            log.error(
+                "failed to mint oidc token",
+                phase="failed",
+                error_type="DefaultCredentialsError",
+            )
+            raise DispatchError(
+                "Failed to mint OIDC token for Cloud Function dispatch"
+            ) from None
+        except Exception as exc:
+            log.error(
+                "failed to mint oidc token",
+                phase="failed",
+                error_type=type(exc).__name__,
+            )
+            raise DispatchError(
+                "Failed to mint OIDC token for Cloud Function dispatch"
+            ) from exc
+
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                response = await client.post(
+                    self._url,
+                    json={"experiment_id": str(experiment_id)},
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+        except httpx.TimeoutException:
+            raise DispatchError(
+                f"Cloud Function dispatch timed out after {self._timeout}s"
+            ) from None
+        except httpx.HTTPError as exc:
+            raise DispatchError(
+                f"Cloud Function dispatch transport error: {type(exc).__name__}"
+            ) from exc
+
+        if response.status_code not in {200, 202}:
+            raise DispatchError(
+                f"Cloud Function returned HTTP {response.status_code} (expected 202)"
+            )
+
+        log.info(
+            "http dispatch succeeded",
+            phase="dispatch_succeeded",
+            status_code=response.status_code,
         )

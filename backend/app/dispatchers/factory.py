@@ -48,7 +48,10 @@ def get_dispatcher(settings: Settings) -> ResearchDispatcher:
                 "DISPATCHER_MODE=http requires RESEARCH_ENGINE_URL to be set. "
                 "Add the Cloud Function HTTPS URL to your environment or .env file."
             )
-        return HttpDispatcher(url=settings.research_engine_url)
+        return HttpDispatcher(
+            url=settings.research_engine_url,
+            audience=settings.oidc_audience,
+        )
 
     # Unreachable if Pydantic's Literal constraint is enforced — defensive guard.
     raise ValueError(  # pragma: no cover

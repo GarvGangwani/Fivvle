@@ -16,6 +16,7 @@ dependencies = [
     "anthropic==0.100.0",
     "groq==1.2.0",
     "firebase-admin==7.4.0",
+    "google-auth>=2.30,<3",
     "httpx==0.28.1",
     "structlog==25.5.0",
     "sentry-sdk[fastapi]==2.59.0",

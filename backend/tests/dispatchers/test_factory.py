@@ -22,9 +22,18 @@ from app.dispatchers.http import HttpDispatcher
 from app.dispatchers.in_process import InProcessDispatcher
 
 
-def _ns(mode: str, url: str | None = None) -> types.SimpleNamespace:
+def _ns(
+    mode: str,
+    url: str | None = None,
+    *,
+    oidc_audience: str | None = None,
+) -> types.SimpleNamespace:
     """Minimal Settings-duck for factory tests (no I/O, no Pydantic)."""
-    return types.SimpleNamespace(dispatcher_mode=mode, research_engine_url=url)
+    return types.SimpleNamespace(
+        dispatcher_mode=mode,
+        research_engine_url=url,
+        oidc_audience=oidc_audience,
+    )
 
 
 # ---------------------------------------------------------------------------
