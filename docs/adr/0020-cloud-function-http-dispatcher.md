@@ -1,6 +1,7 @@
 # ADR 0020 — Cloud Function HTTP Dispatcher Wiring
 
-**Status:** Proposed
+**Status:** Accepted
+**Accepted:** 2026-06-04
 **Date:** 2026-06-04
 **Related:** ADR 0009 (pluggable dispatcher), ADR 0019 (chat-mode auto-fire)
 
