@@ -73,3 +73,6 @@ backend/scripts/_*.py
 
 # Cloud Function deploy artifact — populated by the deploy script.
 functions/research_engine/app/
+
+# Reader drift capture artifacts (dev-only, contains scraped Tavily content)
+docs/calibration/runs/*/reader-drift/
