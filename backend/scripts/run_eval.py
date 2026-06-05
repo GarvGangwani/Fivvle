@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import math
+import os
 import sys
 import time
 from dataclasses import dataclass
@@ -381,6 +382,11 @@ async def _async_main(args: argparse.Namespace) -> int:
     output_dir = _REPO_ROOT / "docs" / "calibration" / "runs" / run_label
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    if args.capture_reader_drift:
+        capture_dir = output_dir / "reader-drift"
+        os.environ["READER_DRIFT_CAPTURE_DIR"] = str(capture_dir)
+        _safe_log("reader drift capture enabled", path=str(capture_dir))
+
     settings = Settings()
     init_engine(settings)
     sessionmaker = get_sessionmaker()
@@ -437,6 +443,12 @@ def main() -> None:
         "--yes",
         action="store_true",
         help="Confirm real API spend after reading the cost warning",
+    )
+    parser.add_argument(
+        "--capture-reader-drift",
+        action="store_true",
+        default=False,
+        help="Write per-question Reader drift JSON under output_dir/reader-drift/",
     )
     args = parser.parse_args()
     try:

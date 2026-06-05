@@ -14,6 +14,8 @@ threshold — no per-item raise path (§8.4).
 from __future__ import annotations
 
 import asyncio
+import json
+import os
 import re
 import unicodedata
 from difflib import SequenceMatcher
@@ -249,6 +251,59 @@ def _emit_calibration_field_lengths(
     )
 
 
+def _capture_reader_drift(
+    *,
+    capture_dir: str,
+    experiment_id: UUID,
+    question_id: str,
+    question_text: str,
+    settings: Settings,
+    tavily_results: list[TavilyResult],
+    draft: ReaderOutputDraft,
+    reader_output: ReaderOutput,
+    stats: dict[str, Any],
+) -> None:
+    """Write per-question Reader drift artifact when READER_DRIFT_CAPTURE_DIR is set (dev-only)."""
+    content_by_url = {r.url: r.content for r in tavily_results}
+    per_quote_classifications: list[dict[str, Any]] = []
+    for evidence_draft in draft.extracted_evidence:
+        quote = evidence_draft.verbatim_quote
+        if quote is None:
+            continue
+        source_content = content_by_url.get(evidence_draft.source_url, "")
+        per_quote_classifications.append(
+            {
+                "source_url": evidence_draft.source_url,
+                "quote": quote,
+                "failure_class": _classify_quote_guard(quote, source_content),
+            }
+        )
+
+    stats_payload = dict(stats)
+    stats_payload["cost_usd"] = str(stats["cost_usd"])
+
+    artifact = {
+        "experiment_id": str(experiment_id),
+        "question_id": question_id,
+        "question_text": question_text,
+        "prompt_name": PROMPT_NAME,
+        "model": settings.reader_model,
+        "tavily_results": [
+            {"url": r.url, "title": r.title, "content": r.content} for r in tavily_results
+        ],
+        "raw_draft": draft.model_dump(),
+        "final_output": reader_output.model_dump(),
+        "per_quote_classifications": per_quote_classifications,
+        "stats": stats_payload,
+    }
+
+    out_dir = os.path.join(capture_dir, str(experiment_id))
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"{question_id}.json")
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(json.dumps(artifact, indent=2, default=str, ensure_ascii=False))
+
+
 def _validate_question_output(
     draft: ReaderOutputDraft,
     tavily_results: list[TavilyResult],
@@ -444,6 +499,27 @@ async def _extract_for_question(
                 reader_output=reader_output,
                 cache_breakpoints_used=cache_breakpoints_used,
             )
+
+        capture_dir = os.environ.get("READER_DRIFT_CAPTURE_DIR")
+        if capture_dir:
+            try:
+                _capture_reader_drift(
+                    capture_dir=capture_dir,
+                    experiment_id=experiment_id,
+                    question_id=question_id,
+                    question_text=question.question,
+                    settings=settings,
+                    tavily_results=tavily_results,
+                    draft=draft,
+                    reader_output=reader_output,
+                    stats=stats,
+                )
+            except Exception as exc:  # noqa: BLE001
+                _logger.warning(
+                    "reader drift capture failed",
+                    question_id=question_id,
+                    error_type=type(exc).__name__,
+                )
 
         return reader_output, stats
 
