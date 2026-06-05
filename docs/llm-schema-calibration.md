@@ -98,6 +98,16 @@ Caching **N=1** cold-cache measurement complete for the **same vague freelancer-
 
 **Pending:** Log `len(points)` and `len(keyword)` at DEBUG in `integrations/trends.py` post-success for empirical max harvest (per planning doc §13).
 
+## Reader prompt v1 → v2 (quote fidelity, 2026-06-04)
+
+- **Trigger:** N=6 calibration (`eval-20260604T175622Z`) — 9 unmatched quotes / ~270 total (~3% global), concentrated on vague-ai-productivity q4 (5) and fitness-accountability q6 (4).
+- **Patterns diagnosed:** (a) ellipsis bridging across non-adjacent text; (b) synthesizing pricing tables from prose.
+- **Fix:** two explicit prohibitions added to Reader Zone A QUOTE RULES.
+- **Prompt name:** `reader_v1_cached` → `reader_v2_cached`.
+- - **Validation result (`eval-20260605T063518Z`):** Unmatched 9 → 6 across same N=6 ideas (−33%). Max per-question 5 → 2 (below stop threshold of 3). Pattern A (ellipsis bridging) largely fixed — only 1 residual case. Pattern B (table-from-prose) partially fixed — 5 residual cases on pricing/financial pages with table-like or JSON-shaped source content (accountablo, stickk, dataintelo, lucid.now, plaid.com docs).
+- **Decision:** Ship v2. Do not iterate to v3. Residual ~2% global unmatched accepted per ADR 0018 trade-off.
+- **Caveat:** Run had 2 RESEARCH_FAILED from infrastructure transients — Tavily timeout storm cascading to Synthesizer (visa-deadline-tracker), Moonshot Connection error mid-planner (vague-ai-productivity). Not prompt-related. Tracked separately as resilience work, not Reader work.
+
 ## Multi-Source Searcher v1 — TrendsSeries caps (Task M-2) — 2026-05-21
 
 **Run:** `docs/calibration/runs/2026-05-21-multi-source-v2-calibration.md` (experiment `d47261f9-00e4-4264-8832-7a8b0667fd56`; same idea as M-1).

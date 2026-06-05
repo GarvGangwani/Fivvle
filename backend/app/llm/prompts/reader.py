@@ -18,7 +18,7 @@ PROMPT_NAME is the stable identifier logged to LLMCall.prompt_name. The
 semantic instructions match ``reader_v1``.
 
 Exports:
-    PROMPT_NAME -- current version string (``reader_v1_cached``)
+    PROMPT_NAME -- current version string (``reader_v2_cached``)
     PROMPT_NAME_V1_LEGACY -- deprecated alias ``reader_v1`` for migration analytics
     READER_SYSTEM_PROMPT -- empty; instructions are in Zone A of the user message
     build_reader_user_prompt() -- builds the full user turn (zones + boundaries)
@@ -32,7 +32,7 @@ from app.llm.client import USER_CACHE_ZONE_BOUNDARY
 from app.schemas.planner import ResearchQuestion
 from app.schemas.refinement import RefinedIdea
 
-PROMPT_NAME = "reader_v1_cached"
+PROMPT_NAME = "reader_v2_cached"
 
 # Deprecated: previous logged prompt_name before cache layout split (commit H-2).
 PROMPT_NAME_V1_LEGACY = "reader_v1"
@@ -83,7 +83,19 @@ is an exact substring of the source content. A failed check nulls the quote and 
 counts against prompt quality metrics.
 
 Do NOT paraphrase and label it a quote. Do NOT summarise and put it in quotes. \
-Do NOT approximate. If you cannot find an exact quotable phrase, leave \
+Do NOT approximate.
+
+Do NOT use ellipses ("...") inside a quote to skip over text. A quote must be \
+one continuous, unbroken span of characters from the source. If the phrase you \
+want is split across non-adjacent sentences, you CANNOT quote it — paraphrase \
+the content instead, or set verbatim_quote to null.
+
+Do NOT synthesize structured lists, tables, or bullet points from prose and \
+label them quotes. If the source explains pricing or features in flowing \
+sentences, you CANNOT reassemble them into a "Plan A: $X, Plan B: $Y" format \
+and call it a quote. Paraphrase the content, or set verbatim_quote to null.
+
+If you cannot find an exact quotable phrase, leave \
 verbatim_quote null — a good paraphrase is far better than a fabricated quote.
 
 When a quotable phrase exists: it should be a meaningful, specific claim from \

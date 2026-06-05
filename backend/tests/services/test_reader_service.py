@@ -1073,7 +1073,7 @@ def test_reader_v1_cached_prompt_semantically_equivalent_to_v1() -> None:
         "Extract evidence from the following search results",
     ):
         assert anchor in flat
-    assert PROMPT_NAME == "reader_v1_cached"
+    assert PROMPT_NAME == "reader_v2_cached"
 
 
 def test_reader_prompt_serializes_unicode_without_ascii_escapes() -> None:
