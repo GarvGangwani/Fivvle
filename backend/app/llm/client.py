@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.models.llm_call import LLMCall
+from app.db.session_lock import lock_for
 from app.llm.cost import compute_anthropic_cached_cost_usd, compute_cost_usd, is_known_model
 from app.logging_config import get_logger
 from app.reliability.circuit_breakers import get_breaker
@@ -364,8 +365,9 @@ async def _log_llm_call(
         latency_ms=latency_ms,
         request_id=request_id,
     )
-    db.add(call)
-    await db.flush()
+    async with lock_for(db):
+        db.add(call)
+        await db.flush()
 
 
 async def complete(
