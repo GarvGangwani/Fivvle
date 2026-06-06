@@ -76,3 +76,9 @@ functions/research_engine/app/
 
 # Reader drift capture artifacts (dev-only, contains scraped Tavily content)
 docs/calibration/runs/*/reader-drift/
+
+# Prototype reference (read-only)
+reference/
+
+# Prototype reference (read-only)
+reference/
