@@ -1,0 +1,493 @@
+.root {
+  --outer: 1240px;
+  --col: 720px;
+  --rail: 64px;
+  --pad: clamp(20px, 4vw, 40px);
+  background: var(--bg);
+  color: var(--fg);
+  font-family: "Hanken Grotesk", ui-sans-serif, system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  min-height: 100%;
+  position: relative;
+}
+
+.root[data-theme="light"] {
+  --bg: #f7efde;
+  --fg: #040404;
+  --fg-dim: #131210b0;
+  --fg-faint: #13121033;
+  --rule: #13121018;
+  --accent: #c73a1b;
+}
+
+.root[data-theme="dark"] {
+  --bg: #040404;
+  --fg: #f7efde;
+  --fg-dim: #f1ece0b0;
+  --fg-faint: #f1ece033;
+  --rule: #f1ece016;
+  --accent: #e55e40;
+}
+
+.root::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, var(--fg-faint) 0.6px, transparent 0.6px);
+  background-size: 48px 48px;
+  opacity: 0.25;
+}
+
+.outer {
+  max-width: var(--outer);
+  margin: 0 auto;
+  padding: 0 var(--pad);
+  position: relative;
+  z-index: 1;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, var(--col)) minmax(0, 1fr);
+  column-gap: clamp(24px, 4vw, 56px);
+  align-items: start;
+}
+
+.rail {
+  grid-column: 1;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--fg-faint);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-top: 12px;
+}
+
+.rail .n {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+.rail .n::before {
+  content: "";
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  background: var(--accent);
+  margin-right: 6px;
+  vertical-align: 0.16em;
+}
+
+.body {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.margin {
+  grid-column: 3;
+  min-width: 0;
+  padding-left: clamp(20px, 2.5vw, 36px);
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: color-mix(in oklab, var(--bg) 90%, transparent);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid transparent;
+}
+
+.headerScrolled {
+  border-bottom-color: var(--rule);
+}
+
+.headerRow {
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, var(--col)) minmax(0, 1fr);
+  column-gap: clamp(24px, 4vw, 56px);
+  align-items: center;
+  padding: 20px 0;
+}
+
+.brand {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-weight: 600;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.brandAst {
+  color: var(--accent);
+}
+
+.hdrTools {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  justify-self: end;
+}
+
+.themeBtn {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--fg-dim);
+  border-radius: 50%;
+  border: 1px solid var(--rule);
+  font-size: 11px;
+}
+
+.navCta {
+  font-size: 14px;
+  color: var(--fg-dim);
+  padding: 8px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+}
+
+.section {
+  padding: clamp(48px, 10vw, 100px) 0;
+  border-top: 1px solid var(--rule);
+}
+
+.eyebrow {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--fg-dim);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.eyebrowSym {
+  color: var(--accent);
+}
+
+.heroTitle {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-size: clamp(36px, 6vw, 72px);
+  line-height: 0.96;
+  letter-spacing: -0.045em;
+  font-weight: 500;
+  margin-bottom: 28px;
+}
+
+.heroAccent {
+  color: var(--accent);
+  font-style: italic;
+}
+
+.heroSub {
+  font-size: clamp(17px, 2vw, 20px);
+  line-height: 1.5;
+  color: var(--fg-dim);
+  max-width: 540px;
+  margin-bottom: 36px;
+}
+
+.ctaArea {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--fg);
+  color: var(--fg-on, var(--bg));
+  padding: 14px 22px;
+  border-radius: 100px;
+  font-size: 15px;
+  font-weight: 500;
+  border: none;
+  cursor: default;
+  max-width: min(100%, 320px);
+}
+
+.ctaArr {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--fg);
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.marginNote {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 11px;
+  color: var(--fg-dim);
+  line-height: 1.6;
+  padding-top: 48px;
+  max-width: 260px;
+}
+
+.marginNote .k {
+  color: var(--fg);
+}
+
+.prose p {
+  font-size: clamp(18px, 2vw, 21px);
+  line-height: 1.55;
+  margin-bottom: 1em;
+  color: var(--fg);
+}
+
+.prose p:last-child {
+  margin-bottom: 0;
+}
+
+.prose .hl {
+  color: var(--accent);
+  font-style: italic;
+}
+
+.featList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.featList li {
+  border-top: 1px solid var(--rule);
+}
+
+.featList li:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+
+.featRow {
+  display: grid;
+  grid-template-columns: 52px 1fr auto;
+  gap: 16px;
+  align-items: baseline;
+  padding: 20px 0;
+}
+
+.featNum {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--fg-faint);
+}
+
+.featTtl {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-size: clamp(20px, 2.5vw, 28px);
+  line-height: 1.1;
+  font-weight: 500;
+  margin: 0;
+}
+
+.featDesc {
+  padding: 0 0 24px 68px;
+  font-size: 16px;
+  color: var(--fg-dim);
+  line-height: 1.6;
+}
+
+.quote {
+  margin-bottom: 40px;
+}
+
+.quote blockquote {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-size: clamp(20px, 2.5vw, 28px);
+  line-height: 1.25;
+  font-style: italic;
+  margin-bottom: 14px;
+}
+
+.quoteLead {
+  color: var(--accent);
+  font-style: italic;
+  margin-right: 4px;
+}
+
+.cite {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+.faqItem {
+  border-top: 1px solid var(--rule);
+}
+
+.faqItem:last-child {
+  border-bottom: 1px solid var(--rule);
+}
+
+.faqQ {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  text-align: left;
+  padding: 18px 0;
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-size: clamp(16px, 1.8vw, 18px);
+  font-weight: 500;
+  color: var(--fg);
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.faqQOpen {
+  color: var(--accent);
+}
+
+.faqA {
+  padding: 0 0 20px;
+  font-size: 16px;
+  color: var(--fg-dim);
+  line-height: 1.6;
+  max-width: 560px;
+}
+
+.ctaSection {
+  display: block;
+  width: 100%;
+  padding: clamp(64px, 11vw, 120px) 0;
+}
+
+.ctaTitle {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-size: clamp(32px, 5vw, 56px);
+  line-height: 1.02;
+  font-weight: 500;
+  margin-bottom: 20px;
+}
+
+.ctaTitle em {
+  font-style: italic;
+  color: var(--accent);
+}
+
+.ctaSub {
+  font-size: 17px;
+  color: var(--fg-dim);
+  margin-bottom: 32px;
+  max-width: 480px;
+}
+
+.signup {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 1px solid var(--fg);
+  border-radius: 100px;
+  padding: 6px 6px 6px 22px;
+  max-width: min(100%, 480px);
+}
+
+.signup input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  min-width: 0;
+  font-size: 16px;
+}
+
+.signup input::placeholder {
+  color: var(--fg-faint);
+}
+
+.signup button {
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  background: var(--fg);
+  color: var(--fg-on, var(--bg));
+  border-radius: 100px;
+  border: none;
+  max-width: 100%;
+}
+
+.formMeta {
+  margin-top: 16px;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+.footer {
+  border-top: 1px solid var(--rule);
+  padding: 32px 0 40px;
+}
+
+.footerRow {
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, var(--col)) minmax(0, 1fr);
+  column-gap: clamp(24px, 4vw, 56px);
+  align-items: end;
+}
+
+.footerMeta {
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+  color: var(--fg-dim);
+}
+
+.footerMeta .k {
+  color: var(--fg);
+}
+
+.footerMade {
+  justify-self: end;
+  font-size: 13px;
+  color: var(--fg-dim);
+}
+
+.footerMade .ast {
+  color: var(--accent);
+}
+
+@media (max-width: 880px) {
+  .root {
+    --rail: 0px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+    row-gap: 8px;
+  }
+
+  .rail,
+  .body,
+  .margin {
+    grid-column: 1;
+  }
+
+  .margin {
+    padding-left: 0;
+  }
+
+  .headerRow,
+  .footerRow {
+    grid-template-columns: 1fr auto;
+  }
+
+  .featDesc {
+    padding-left: 0;
+  }
+}

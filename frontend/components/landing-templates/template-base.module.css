@@ -1,0 +1,57 @@
+/* Shared layout fixes — only real buttons/inputs, never section wrappers */
+
+.root {
+  overflow-x: clip;
+  max-width: 100%;
+  width: 100%;
+}
+
+.root :where(h1, h2, h3, h4, h5, p, blockquote, li, figcaption) {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+/* Actual buttons / pill links only (suffix match avoids .cta, .ctaInner, .ctaArea, etc.) */
+.root :where(
+  a[class*="btn"],
+  button[class*="btn"],
+  [class$="Btn"],
+  [class*="btnPrimary"],
+  [class*="btnSecondary"],
+  [class*="navCta"],
+  [class*="heroBtn"],
+  [class*="heroCta"],
+  [class*="ctaBtn"],
+  [class*="stamp"],
+  button[type="submit"]
+) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4em;
+  max-width: 100%;
+  min-height: 2.5rem;
+  text-align: center;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+  box-sizing: border-box;
+}
+
+.root :where(input[type="email"], input[type="text"]) {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Form rows only — not sections whose names contain "cta" */
+.root :where([class*="waitlistForm"], [class*="signup"]:not([class*="Section"])) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+}

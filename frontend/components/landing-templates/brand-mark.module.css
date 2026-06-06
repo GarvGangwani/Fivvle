@@ -1,0 +1,146 @@
+.wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.mark {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.markInitials {
+  width: 36px;
+  height: 36px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.markEmoji {
+  width: 36px;
+  height: 36px;
+  font-size: 20px;
+  background: transparent;
+}
+
+.markImage {
+  width: 36px;
+  height: 36px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.markImage img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.markDecor {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+}
+
+.nameBlock {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nameSingle,
+.nameBlock {
+  overflow-wrap: anywhere;
+}
+
+.nameSingle {
+  font-weight: 600;
+}
+
+/* Template-specific accents */
+[data-brand-variant="dark-premium"] .markInitials {
+  background: var(--accent-glow, rgba(201, 162, 95, 0.2));
+  color: var(--accent, #c9a25f);
+  border: 1px solid var(--line-strong, rgba(255, 255, 255, 0.15));
+}
+
+[data-brand-variant="bold-v1"] .markInitials {
+  background: var(--accent);
+  color: var(--accent-ink, #fff);
+}
+
+[data-brand-variant="bold-v1"] .markDecor {
+  background: var(--accent);
+  border-radius: 4px;
+}
+
+[data-brand-variant="minimal-v3"] .markInitials {
+  border: 1.5px solid var(--fg);
+  color: var(--fg);
+  border-radius: 4px;
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+}
+
+[data-brand-variant="minimal-v3"] .nameSingle {
+  font-family: var(--display, sans-serif);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+[data-brand-variant="editorial-saas"] .markInitials,
+[data-brand-variant="editorial-saas"] .markImage {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  font-size: 0;
+}
+
+[data-brand-variant="editorial-saas"] .markInitials {
+  background: var(--text, currentColor);
+  color: transparent;
+  border: none;
+}
+
+[data-brand-variant="editorial-saas"] .nameSingle {
+  font-family: var(--font-serif, Georgia, serif);
+  font-weight: 700;
+}
+
+[data-brand-variant="aether"] .markInitials,
+[data-brand-variant="aether"] .markImage {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 10px;
+}
+
+[data-brand-variant="aether"] .markInitials {
+  background: rgba(214, 253, 112, 0.15);
+  color: var(--accent, #d6fd70);
+  border: 1px solid rgba(214, 253, 112, 0.25);
+}
+
+[data-brand-variant="aether"] .nameSingle {
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.03em;
+}
+
+.nameAccent {
+  font-style: italic;
+  opacity: 0.85;
+}
