@@ -1,0 +1,150 @@
+{
+  "label": "auto-marketplace",
+  "experiment_id": "fd237ba2-1f03-49c8-bc9e-0e44b41758af",
+  "scenario": "insufficient_data",
+  "raw_idea": "I want to build a marketplace for independent auto mechanics \u2014 certified ones, not the Jiffy Lube franchise type. Finding a trustworthy mechanic when you move to a new city is genuinely hard. Yelp reviews are gamed, dealerships overcharge, and word-of-mouth only works if you know people. The mechanics I've talked to say they're already full \u2014 their regulars keep them busy \u2014 but they lose customers every year when people move away. I want a platform where mechanics list their availability and specialties, customers book directly, mechanics control their pricing, and we take a small booking fee. The supply is the hard side here \u2014 good mechanics don't need another lead-gen platform and I need to figure out the right incentive to get them to list.",
+  "analytics_used": {
+    "schema_version": 1,
+    "days_live": 4,
+    "total_page_views": 5,
+    "unique_visitors": 5,
+    "total_signups": 0,
+    "conversion_rate": 0.0,
+    "views_by_source": {
+      "unknown": 5
+    },
+    "signups_by_source": {},
+    "conversion_rate_by_source": {
+      "unknown": 0.0
+    },
+    "warm_network_bias_index": 0.0,
+    "time_on_page_p50_seconds": 22,
+    "time_on_page_p90_seconds": 60,
+    "signups_by_day": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "views_by_day": [
+      2,
+      1,
+      1,
+      1
+    ],
+    "drop_off_signals": {},
+    "data_quality_notes": []
+  },
+  "draft": {
+    "schema_version": 1,
+    "traffic_summary": {
+      "schema_version": 1,
+      "narrative": "The landing page has been live for only 4 days and has accumulated just 5 total page views from unknown sources, with zero signups and a 0% conversion rate. The median time-on-page of 22 seconds suggests minimal engagement, but the sample size is far too small to draw meaningful behavioral conclusions.",
+      "headline_metric": "5 page views in 4 days, 0 signups, 0% conversion",
+      "confidence": "low",
+      "confidence_rationale": "Only 5 views over 4 days with unknown traffic sources; any behavioral signal is statistically meaningless and cannot support directional claims.",
+      "source_type": "BEHAVIORAL"
+    },
+    "conversion_by_source": {
+      "schema_version": 1,
+      "per_source": [
+        {
+          "schema_version": 1,
+          "source_name": "unknown",
+          "views": 5,
+          "signups": 0,
+          "conversion_rate": 0.0,
+          "commentary": "All 5 page views came from unknown sources with 0 signups and 0% conversion. The lack of source attribution prevents any analysis of channel performance or audience quality.",
+          "confidence": "low"
+        }
+      ],
+      "warm_network_bias_commentary": "The warm-network bias index is 0.0, but this is uninformative given the tiny sample and unknown traffic sources. With only 5 views over 4 days, we cannot determine whether traffic came from the founder's network, organic search, or direct visits.",
+      "confidence": "low",
+      "confidence_rationale": "Warm-network bias index of 0.0 on 5 unknown-source views provides no actionable insight about audience composition or referral patterns."
+    },
+    "research_takeaways": [
+      {
+        "schema_version": 1,
+        "claim": "The 34% average price premium at dealerships versus independent shops represents a genuine customer pain point, supported by industry association data and customer satisfaction research.",
+        "cited_finding_ids": [
+          "q6.f0",
+          "q6.f1"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "high",
+        "confidence_rationale": "Multiple corroborating sources including an Automotive Aftermarket Industry Association study and Consumer Reports data consistently document both the price differential and customer dissatisfaction."
+      },
+      {
+        "schema_version": 1,
+        "claim": "YourMechanic's acquisition by Wrench after raising $40M from top-tier investors, combined with documented quality control failures including wrong parts and misdiagnoses, signals that the mobile mechanic marketplace model faced serious operational and trust challenges.",
+        "cited_finding_ids": [
+          "q1.f0",
+          "q1.f1"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "medium",
+        "confidence_rationale": "Acquisition facts are well-documented, but the causal link between consumer complaints and business model failure remains speculative without direct evidence of why the sale occurred."
+      },
+      {
+        "schema_version": 1,
+        "claim": "Independent shops experience an average 32% revenue decline during slow seasons, creating potential supply-side incentive for a marketplace, but no evidence confirms whether ASE-certified technicians in major metros\u2014the core target\u2014actually have excess capacity or are insulated by repeat customers.",
+        "cited_finding_ids": [
+          "q2.f0",
+          "q2.f1"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "medium",
+        "confidence_rationale": "Seasonal revenue decline data is robust, but the critical question about ASE-certified technician capacity utilization in target metros remains unaddressed."
+      },
+      {
+        "schema_version": 1,
+        "claim": "Behavioral data from the landing page is effectively missing: 5 views in 4 days with zero signups provides no signal to validate or invalidate customer demand for the proposed marketplace.",
+        "cited_finding_ids": [
+          "q5.f1"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "high",
+        "confidence_rationale": "With total_page_views of 5 and days_live of 4, the behavioral signal is below any threshold for meaningful inference; the Reddit evidence of shop owners seeking acquisition channels aligns with why behavioral testing matters."
+      },
+      {
+        "schema_version": 1,
+        "claim": "ASE certification verification appears to require manual document review rather than real-time API integration, adding operational complexity to any marketplace that promises verified mechanic credentials.",
+        "cited_finding_ids": [
+          "q7.f0",
+          "q7.f1"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "medium",
+        "confidence_rationale": "Indirect evidence from third-party platforms using manual workflows strongly suggests no widely available real-time verification API exists, though ASE has not explicitly confirmed or denied API availability."
+      }
+    ],
+    "recommendation_type": "iterate",
+    "recommendation": "ITERATE. The behavioral signal is effectively absent: 5 page views over 4 days with 0 signups and 0% conversion provides no evidence of customer or mechanic demand for the landing page value proposition. Per the INSUFFICIENT DATA pathway, the recommendation defaults to the ValidationReport's overall_recommendation of ITERATE.\n\nThe cognitive evidence supports this verdict. Finding q6.f0 documents a 34% average price premium at dealerships versus independent shops, and q6.f1 shows customers perceive dealership pricing as less satisfactory\u2014confirming a real customer pain point. However, finding q1.f0 reveals YourMechanic was acquired after raising $40M, suggesting the mobile mechanic marketplace model struggled as a standalone business, while q1.f1 documents quality control failures (wrong parts, misdiagnoses, $150 call-out fees) that hint at operational challenges. Finding q2.f0 shows independent shops experience 32% average revenue decline in slow seasons, creating theoretical supply-side incentive, but no evidence confirms whether ASE-certified technicians in target metros have excess capacity or rely on repeat customers year-round. Additionally, q7.f0 and q7.f1 indicate ASE certification verification likely requires manual document review rather than real-time API integration, adding operational friction. With no behavioral data to contradict or support these cognitive findings, the prudent path is to iterate the value proposition and distribution strategy before committing significant resources.",
+    "recommendation_confidence": "medium",
+    "recommendation_rationale": "The cognitive evidence identifies a real customer pain point (34% dealership premium) but also reveals unvalidated assumptions about supply acquisition, verification automation, and marketplace economics. With only 5 landing page views in 4 days, behavioral data cannot resolve these uncertainties. ITERATE is appropriate to test specific assumptions before PROCEED.",
+    "what_would_change_this": "If cold-traffic landing page views exceed 500 over 14 days with a conversion rate above 3% (15+ signups), this would provide behavioral evidence of independent demand and shift toward PROCEED. Alternatively, if direct outreach to 20 ASE-certified mechanics in a target metro yields 5+ expressions of interest in joining a marketplace with 15-20% take-home pay increase, this would validate the supply-side assumption and support PROCEED."
+  },
+  "cost_usd": 0.06517500000000001,
+  "latency_seconds": 23.936829200014472,
+  "valid_finding_ids": [
+    "q1.f0",
+    "q1.f1",
+    "q2.f0",
+    "q2.f1",
+    "q3.f0",
+    "q3.f1",
+    "q3.f2",
+    "q4.f0",
+    "q4.f1",
+    "q4.f2",
+    "q5.f0",
+    "q5.f1",
+    "q5.f2",
+    "q6.f0",
+    "q6.f1",
+    "q7.f0",
+    "q7.f1"
+  ],
+  "invalid_finding_ids": [],
+  "missing_source_type_count": 0
+}

@@ -1,0 +1,187 @@
+{
+  "label": "toddler-box",
+  "experiment_id": "d47261f9-00e4-4264-8832-7a8b0667fd56",
+  "scenario": "warm_only_low_volume",
+  "raw_idea": "A subscription box for parents of toddlers that delivers one age-appropriate sensory-play activity per week, with all materials pre-measured and a 5-minute setup card. Targets parents 28-40 with kids aged 1-3 who feel guilty about screen time but lack time to plan activities.",
+  "analytics_used": {
+    "schema_version": 1,
+    "days_live": 5,
+    "total_page_views": 30,
+    "unique_visitors": 25,
+    "total_signups": 4,
+    "conversion_rate": 0.16,
+    "views_by_source": {
+      "twitter": 18,
+      "linkedin": 9,
+      "discord": 3
+    },
+    "signups_by_source": {
+      "twitter": 3,
+      "linkedin": 1
+    },
+    "conversion_rate_by_source": {
+      "twitter": 0.167,
+      "linkedin": 0.111,
+      "discord": 0.0
+    },
+    "warm_network_bias_index": 1.0,
+    "time_on_page_p50_seconds": 42,
+    "time_on_page_p90_seconds": 180,
+    "signups_by_day": [
+      2,
+      1,
+      0,
+      1,
+      0
+    ],
+    "views_by_day": [
+      8,
+      6,
+      7,
+      5,
+      4
+    ],
+    "drop_off_signals": {},
+    "data_quality_notes": [
+      "Traffic concentrated on a single source (twitter) \u2014 results may not generalize."
+    ]
+  },
+  "draft": {
+    "schema_version": 1,
+    "traffic_summary": {
+      "schema_version": 1,
+      "narrative": "Over 5 days, the landing page attracted 30 total views and 4 signups (16% conversion). Traffic was heavily concentrated on Twitter (60% of views, 75% of signups), with minimal LinkedIn and Discord activity. The median time on page was 42 seconds \u2014 enough for a skim but not deep engagement.",
+      "headline_metric": "16% conversion rate on 30 views, but 100% warm-network traffic (bias index 1.0).",
+      "confidence": "low",
+      "confidence_rationale": "Sample size is extremely small (30 views, 4 signups), days live is only 5, and all traffic appears to originate from the founder's personal network. No cold-traffic or sustained cohort data exists.",
+      "source_type": "BEHAVIORAL"
+    },
+    "conversion_by_source": {
+      "schema_version": 1,
+      "per_source": [
+        {
+          "schema_version": 1,
+          "source_name": "twitter",
+          "views": 18,
+          "signups": 3,
+          "conversion_rate": 0.167,
+          "commentary": "Twitter drove 60% of all views and 75% of signups, converting at 16.7%. This is the founder's warm network \u2014 all traffic appears to originate from a single post. The rate is directionally encouraging but ungeneralizable.",
+          "confidence": "medium"
+        },
+        {
+          "schema_version": 1,
+          "source_name": "linkedin",
+          "views": 9,
+          "signups": 1,
+          "conversion_rate": 0.111,
+          "commentary": "LinkedIn produced 9 views and 1 signup (11.1% conversion). Sample is tiny but suggests mild cross-platform interest within the founder's professional network.",
+          "confidence": "low"
+        },
+        {
+          "schema_version": 1,
+          "source_name": "discord",
+          "views": 3,
+          "signups": 0,
+          "conversion_rate": 0.0,
+          "commentary": "Discord generated 3 views and zero signups. Likely a cold or semi-cold community drop; the null result is not informative at N=3.",
+          "confidence": "low"
+        }
+      ],
+      "warm_network_bias_commentary": "The warm-network bias index is 1.0 \u2014 the maximum possible \u2014 because every signup and nearly all views came from Twitter, which is the founder's personal network. This means the 16% aggregate conversion rate is not a market signal; it is a social-proof signal. No cold-traffic source (search ads, niche parenting communities, influencer referrals) is represented. The behavioral data cannot support a PROCEED verdict until cold-traffic conversion is measured.",
+      "confidence": "high",
+      "confidence_rationale": "The warm_network_bias_index is explicitly 1.0 and the data_quality_notes confirm traffic is concentrated on a single Twitter post. This is not inferential \u2014 it is definitional."
+    },
+    "research_takeaways": [
+      {
+        "schema_version": 1,
+        "claim": "Screen-time guilt is a documented, recurring psychological burden affecting 60\u201373% of U.S. parents, with causality established in peer-reviewed research \u2014 the core pain point is real and demographically aligned.",
+        "cited_finding_ids": [
+          "q2.f0"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "high",
+        "confidence_rationale": "Multiple independent peer-reviewed and survey sources with large samples converge on consistent prevalence and causal direction."
+      },
+      {
+        "schema_version": 1,
+        "claim": "Water beads face active CPSC enforcement, a 2023 infant death, and a March 2026 federal standard mandating 5mm expansion limits and warning labels \u2014 making them a near-certain liability for any product targeting children under 3.",
+        "cited_finding_ids": [
+          "q7.f0",
+          "q7.f1"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "high",
+        "confidence_rationale": "Evidence comes directly from CPSC official publications with specific injury statistics, recalls, and explicit age-group warnings; multiple sources confirm the March 2026 rule."
+      },
+      {
+        "schema_version": 1,
+        "claim": "At weekly cadence, shipping alone costs $286\u2013$468 per subscriber annually while the market price ceiling for sensory subscription boxes is approximately $44/month \u2014 the unit economics are structurally untenable without cadence reduction.",
+        "cited_finding_ids": [
+          "q5.f0",
+          "q5.f1"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "high",
+        "confidence_rationale": "Detailed cost breakdowns from subscription box operations sources and direct comparable pricing from Messy Play Kits establish the ceiling; the arithmetic is internally consistent."
+      },
+      {
+        "schema_version": 1,
+        "claim": "The 16% landing-page conversion rate is entirely attributable to warm-network traffic (bias index 1.0), meaning it measures social proof and founder affinity rather than independent market demand. No cold-traffic validation exists.",
+        "cited_finding_ids": [
+          "q2.f2"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "The behavioral data (30 views, 4 signups, 100% from Twitter) is too small to generalize, but the warm-network bias index is definitive. The synthesis with q2.f2 is that even though 2 in 3 parents want to reduce screen time, we have no evidence this landing page converts that latent demand into action without founder endorsement."
+      },
+      {
+        "schema_version": 1,
+        "claim": "The global kids subscription box market is growing at 6\u201310.5% CAGR with toddler activity boxes holding 40% category share, but incumbent Lovevery has 90,000-member brand loyalty and retail placements that create a structural CAC advantage unavailable to early-stage startups.",
+        "cited_finding_ids": [
+          "q3.f0",
+          "q3.f2",
+          "q1.f2",
+          "q6.f1"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "Market growth and category share are well-documented, but the competitive moat claim combines cognitive findings on Lovevery's retail advantage with the behavioral reality that the startup has no comparable distribution \u2014 requiring both streams to support the claim."
+      }
+    ],
+    "recommendation_type": "iterate",
+    "recommendation": "ITERATE. The behavioral data is too thin and too biased to override the ValidationReport's cognitive verdict. With only 30 page views over 5 days, 4 total signups, and a warm-network bias index of 1.0, the 16% conversion rate reflects founder-network social proof rather than genuine market demand. The ValidationReport finding q2.f0 establishes that screen-time guilt is a real, recurring pain point for 60\u201373% of parents \u2014 but that cognitive strength does not absolve the structural flaws flagged in q7.f0, q7.f1, and q5.f0. Water beads, named as a core material, face active CPSC enforcement with nearly 7,000 ER visits, a 2023 infant death, and a new federal standard effective March 2026 (q7.f0, q7.f1). The weekly cadence multiplies shipping costs to $286\u2013$468 per subscriber annually against a market price ceiling of ~$44/month (q5.f0, q5.f1). These constraints are economically and regulatorily binding regardless of landing-page enthusiasm. Recommended iteration: (1) replace water beads with CPSC-compliant sensory materials before any further testing; (2) shift from weekly to biweekly or monthly cadence and update landing-page pricing to $35\u2013$44/month; (3) run a paid cold-traffic test via Meta or parenting influencer micro-campaigns to measure conversion outside the founder's network. Only after these changes should the landing page be re-deployed to validate whether the revised value proposition converts at scale.",
+    "recommendation_confidence": "medium",
+    "recommendation_rationale": "The cognitive evidence from the ValidationReport is robust on pain-point validity (q2.f0, q2.f2) and market growth (q3.f0), but equally robust on regulatory risk (q7.f0, q7.f1) and unit-economic impossibility (q5.f0, q5.f1). The behavioral signal is insufficient to resolve these constraints: 30 views in 5 days with 100% warm-network traffic cannot validate cold-market demand. ITERATE is the only responsible verdict.",
+    "what_would_change_this": "If a cold-traffic test (Meta ads, parenting influencer micro-campaigns, or niche community posts) generates 200+ views and maintains conversion above 5% over 14 days, the behavioral signal would support PROCEED \u2014 provided water beads have been substituted and cadence shifted to biweekly or monthly. Alternatively, if CPSC issues a full ban on water beads or if comparable weekly sensory boxes achieve documented 6-month retention above 60%, the regulatory or competitive calculus would shift."
+  },
+  "cost_usd": 0.021797,
+  "latency_seconds": 20.983312200027285,
+  "valid_finding_ids": [
+    "q1.f0",
+    "q1.f1",
+    "q1.f2",
+    "q1.f3",
+    "q2.f0",
+    "q2.f1",
+    "q2.f2",
+    "q2.f3",
+    "q3.f0",
+    "q3.f1",
+    "q3.f2",
+    "q4.f0",
+    "q4.f1",
+    "q4.f2",
+    "q5.f0",
+    "q5.f1",
+    "q5.f2",
+    "q6.f0",
+    "q6.f1",
+    "q6.f2",
+    "q7.f0",
+    "q7.f1",
+    "q7.f2",
+    "q7.f3"
+  ],
+  "invalid_finding_ids": [],
+  "missing_source_type_count": 0
+}

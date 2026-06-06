@@ -1,0 +1,146 @@
+{
+  "label": "auto-marketplace",
+  "experiment_id": "fd237ba2-1f03-49c8-bc9e-0e44b41758af",
+  "scenario": "insufficient_data",
+  "raw_idea": "I want to build a marketplace for independent auto mechanics \u2014 certified ones, not the Jiffy Lube franchise type. Finding a trustworthy mechanic when you move to a new city is genuinely hard. Yelp reviews are gamed, dealerships overcharge, and word-of-mouth only works if you know people. The mechanics I've talked to say they're already full \u2014 their regulars keep them busy \u2014 but they lose customers every year when people move away. I want a platform where mechanics list their availability and specialties, customers book directly, mechanics control their pricing, and we take a small booking fee. The supply is the hard side here \u2014 good mechanics don't need another lead-gen platform and I need to figure out the right incentive to get them to list.",
+  "analytics_used": {
+    "schema_version": 1,
+    "days_live": 4,
+    "total_page_views": 5,
+    "unique_visitors": 5,
+    "total_signups": 0,
+    "conversion_rate": 0.0,
+    "views_by_source": {
+      "unknown": 5
+    },
+    "signups_by_source": {},
+    "conversion_rate_by_source": {
+      "unknown": 0.0
+    },
+    "warm_network_bias_index": 0.0,
+    "time_on_page_p50_seconds": 22,
+    "time_on_page_p90_seconds": 60,
+    "signups_by_day": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "views_by_day": [
+      2,
+      1,
+      1,
+      1
+    ],
+    "drop_off_signals": {},
+    "data_quality_notes": []
+  },
+  "draft": {
+    "schema_version": 1,
+    "traffic_summary": {
+      "schema_version": 1,
+      "narrative": "The landing page has been live for 4 days with only 5 total page views from unknown sources and zero signups. This represents effectively no behavioral signal \u2014 the sample is too small to draw any meaningful conclusions about market interest or conversion potential. The median time-on-page of 22 seconds suggests brief visits, but with only 5 visitors this metric is unreliable.",
+      "headline_metric": "5 page views over 4 days, 0 signups, 0% conversion",
+      "confidence": "low",
+      "confidence_rationale": "N=5 visitors over 4 days is insufficient for any statistical inference. Time-on-page median is based on a tiny sample and source attribution is entirely unknown.",
+      "source_type": "BEHAVIORAL"
+    },
+    "conversion_by_source": {
+      "schema_version": 1,
+      "per_source": [
+        {
+          "schema_version": 1,
+          "source_name": "unknown",
+          "views": 5,
+          "signups": 0,
+          "conversion_rate": 0.0,
+          "commentary": "All 5 page views came from unknown sources with 0 signups and 0% conversion. Without source attribution, we cannot distinguish warm-network traffic from cold traffic, making it impossible to assess whether the value proposition resonates with genuine prospects or merely with people who already know the founder.",
+          "confidence": "low"
+        }
+      ],
+      "warm_network_bias_commentary": "The warm-network bias index is 0.0, but this is misleading \u2014 with only 5 views from unknown sources and zero signups, there is no network to measure. The absence of source attribution means we cannot determine if any traffic came from the founder's personal network, organic search, or direct shares. A meaningful warm-network bias assessment requires at least 50+ attributed views with identifiable sources.",
+      "confidence": "low",
+      "confidence_rationale": "Cannot compute meaningful warm-network bias with unknown sources, N=5, and zero signups."
+    },
+    "research_takeaways": [
+      {
+        "schema_version": 1,
+        "claim": "The behavioral signal from the landing page is effectively absent: 5 views over 4 days with zero signups provides no evidence to validate or invalidate market demand. Any conversion-based conclusion would be pure noise.",
+        "cited_finding_ids": [
+          "q6.f0"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "high",
+        "confidence_rationale": "The analytics data is unambiguous \u2014 N=5 is below any threshold for inference. The cognitive finding that a 34% dealership price premium exists (q6.f0) creates demand-side plausibility, but the behavioral data does not test it."
+      },
+      {
+        "schema_version": 1,
+        "claim": "YourMechanic's $40M+ raise and 2022 acquisition by Wrench (q1.f0) signals the mobile mechanic marketplace model faced structural challenges, yet no source explains what specifically failed \u2014 leaving the founder at risk of repeating unidentified failure modes.",
+        "cited_finding_ids": [
+          "q1.f0"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "medium",
+        "confidence_rationale": "Acquisition facts are well-documented, but causal failure analysis is missing. The warning about repeated mistakes is sound but speculative."
+      },
+      {
+        "schema_version": 1,
+        "claim": "Independent shops experience 32% average revenue declines in slow seasons (q2.f0), creating theoretical supply-side incentive, but there is no behavioral evidence that ASE-certified technicians specifically have excess capacity or would join a booking platform.",
+        "cited_finding_ids": [
+          "q2.f0"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "Slow-season data is robust from a 250-shop study, but the landing page data cannot test whether mechanics would actually sign up. The synthesis is valid but the claim remains unvalidated on the supply side."
+      },
+      {
+        "schema_version": 1,
+        "claim": "ASE verification likely requires manual document review rather than real-time API integration (q7.f1), adding operational complexity that would scale poorly if the platform achieves meaningful mechanic volume.",
+        "cited_finding_ids": [
+          "q7.f1"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "medium",
+        "confidence_rationale": "Indirect evidence from third-party platforms using manual workflows strongly suggests no public API exists, but direct ASE confirmation is missing."
+      },
+      {
+        "schema_version": 1,
+        "claim": "52% of independent repair shops report no specific customer targeting (q5.f2), suggesting a large segment lacks marketing sophistication and might benefit from a discovery platform \u2014 but the landing page data cannot confirm mechanic willingness to adopt new channels.",
+        "cited_finding_ids": [
+          "q5.f2"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "The marketing sophistication finding is solid, but with zero signups and no mechanic-facing landing page data, the behavioral stream cannot validate adoption intent."
+      }
+    ],
+    "recommendation_type": "iterate",
+    "recommendation": "ITERATE. The landing page has generated 5 page views and 0 signups over 4 days \u2014 effectively no behavioral signal. Per the INSUFFICIENT DATA PATHWAY, the recommendation defaults to the ValidationReport's overall verdict of iterate. The cognitive research reveals a genuine customer pain point: repairs cost 34% more at dealerships than independents (q6.f0), and customers consistently rate independents higher on price satisfaction (q6.f1). However, three critical execution risks remain unvalidated and must be addressed before proceeding. First, YourMechanic raised over $40 million from Andreessen Horowitz and SoftBank, built a network of 350+ technicians across 30 states, and was still acquired by Wrench in 2022 (q1.f0). No source explains why this model failed \u2014 whether it was mechanic acquisition costs, quality control issues (consumer complaints document wrong parts and misdiagnoses, q1.f1), unit economics, or strategic investor pressure. Without understanding what broke, the founder risks repeating the same mistakes. Second, while independent shops see 32% average revenue declines in slow seasons (q2.f0), there is no evidence that ASE-certified technicians \u2014 the specific target \u2014 have excess capacity or are insulated by repeat customer bases. The platform's supply-side value proposition assumes mechanics need more customers, but this may not apply to the most credentialed, in-demand technicians. Third, ASE verification appears to require manual document review rather than real-time API integration (q7.f1), meaning the platform would face operational scaling challenges if it achieves meaningful volume. The founder should not treat the 0% conversion as market rejection \u2014 the sample is simply too small. Instead, they should use this iterate period to run targeted experiments: interview 10-15 ASE-certified shop owners about slow-season capacity and platform interest; contact ASE directly to clarify bulk verification options; and research YourMechanic's unit economics or speak with former employees to understand acquisition drivers. Only with these answers can the recommendation shift.",
+    "recommendation_confidence": "medium",
+    "recommendation_rationale": "The default to iterate is sound given the ValidationReport's thorough risk assessment and the complete absence of behavioral signal. Medium confidence because the cognitive research is robust on demand-side pain points but thin on supply-side validation and marketplace mechanics.",
+    "what_would_change_this": "If cold-traffic landing page views exceed 200 over 14 days with source attribution showing at least 50% from organic search or paid ads (not founder network), and signups reach 5+ from cold sources, this becomes PROCEED. Alternatively, if direct interviews with 10+ ASE-certified shop owners reveal 60%+ would list on a platform during slow season, and ASE confirms a bulk verification API exists, the supply-side risk drops enough to justify PROCEED even with modest traffic."
+  },
+  "cost_usd": 0.039377,
+  "latency_seconds": 27.968219400005182,
+  "valid_finding_ids": [
+    "q1.f0",
+    "q1.f1",
+    "q2.f0",
+    "q2.f1",
+    "q3.f0",
+    "q3.f1",
+    "q3.f2",
+    "q4.f0",
+    "q4.f1",
+    "q4.f2",
+    "q5.f0",
+    "q5.f1",
+    "q5.f2",
+    "q6.f0",
+    "q6.f1",
+    "q7.f0",
+    "q7.f1"
+  ],
+  "invalid_finding_ids": [],
+  "missing_source_type_count": 0
+}

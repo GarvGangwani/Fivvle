@@ -1,4 +1,4 @@
-"""Calibration runner for insight_v1_cached against real Kimi k2.6.
+﻿"""Calibration runner for insight_v1_cached against real Kimi k2.6.
 
 Picks 5 experiments from the dev DB, injects synthetic AnalyticsAggregate
 scenarios via monkeypatch, calls insight_service.generate_insight_report,
@@ -7,8 +7,8 @@ InsightReportOutput draft, and auto-checked quality signals.
 
 Outputs:
     docs/calibration/runs/eval-insight-<timestamp>/
-        summary.md             — auto-generated table + rubric template
-        <scenario>_<id8>.json  — full draft + scenario + analytics per run
+        summary.md             â€” auto-generated table + rubric template
+        <scenario>_<id8>.json  â€” full draft + scenario + analytics per run
 
 Pre-flight requirements (the script asserts these at startup):
     - MOONSHOT_API_KEY env var set
@@ -18,12 +18,12 @@ Pre-flight requirements (the script asserts these at startup):
 Run from project root:
     cd backend; uv run python ..\\scripts\\calibrate_insight.py; cd ..
 
-Per planning doc §10, calibration gates:
-    - ≥95% INSIGHT_READY (no failures)
-    - Mean cost ≤ $0.15
-    - p90 latency ≤ 30s
+Per planning doc Â§10, calibration gates:
+    - â‰¥95% INSIGHT_READY (no failures)
+    - Mean cost â‰¤ $0.15
+    - p90 latency â‰¤ 30s
     - Zero hallucinated finding IDs
-    - Rubric median ≥ 4/5 (manually scored in summary.md)
+    - Rubric median â‰¥ 4/5 (manually scored in summary.md)
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ from scripts.insight_calibration_scenarios import build_scenario_analytics  # no
 
 
 # ---------------------------------------------------------------------------
-# CONFIG — adjust if dev DB doesn't have these experiment IDs
+# CONFIG â€” adjust if dev DB doesn't have these experiment IDs
 # ---------------------------------------------------------------------------
 
 PICKS: list[tuple[str, str, str]] = [
@@ -247,9 +247,9 @@ def _write_summary(runs: list[CalibrationRun], output_dir: Path) -> None:
     total_missing_source_type = sum(r.missing_source_type_count for r in runs)
 
     gates = [
-        ("≥95% INSIGHT_READY", success_rate, ">= 95.0%", success_rate >= 95.0),
-        ("Mean cost ≤ $0.15", mean_cost, "<= 0.15", mean_cost <= 0.15),
-        ("p90 latency ≤ 30s", p90_latency, "<= 30.0s", p90_latency <= 30.0),
+        ("â‰¥95% INSIGHT_READY", success_rate, ">= 95.0%", success_rate >= 95.0),
+        ("Mean cost â‰¤ $0.15", mean_cost, "<= 0.15", mean_cost <= 0.15),
+        ("p90 latency â‰¤ 30s", p90_latency, "<= 30.0s", p90_latency <= 30.0),
         ("Zero hallucinated IDs", total_invalid_ids, "== 0", total_invalid_ids == 0),
         (
             "All takeaways tagged with source_type",
@@ -260,7 +260,7 @@ def _write_summary(runs: list[CalibrationRun], output_dir: Path) -> None:
     ]
 
     lines = [
-        f"# Insight calibration — eval-insight-{output_dir.name.split('-', 2)[-1]}",
+        f"# Insight calibration â€” eval-insight-{output_dir.name.split('-', 2)[-1]}",
         "",
         f"Prompt: `{PROMPT_NAME}` (insight_v1_cached, pre-N=5 calibration)",
         f"Runs: {total}",
@@ -271,7 +271,7 @@ def _write_summary(runs: list[CalibrationRun], output_dir: Path) -> None:
         "|---|---|---|---|",
     ]
     for name, observed, target, passed in gates:
-        lines.append(f"| {name} | {observed} | {target} | {'✅' if passed else '❌'} |")
+        lines.append(f"| {name} | {observed} | {target} | {'âœ…' if passed else 'âŒ'} |")
     lines.extend([
         "",
         "## Per-run summary",
@@ -281,8 +281,8 @@ def _write_summary(runs: list[CalibrationRun], output_dir: Path) -> None:
     ])
     for r in runs:
         lines.append(
-            f"| {r.label} | {r.scenario} | {'✅' if r.success else '❌'} | "
-            f"{r.recommendation_type or '—'} | {r.latency_seconds:.1f} | "
+            f"| {r.label} | {r.scenario} | {'âœ…' if r.success else 'âŒ'} | "
+            f"{r.recommendation_type or 'â€”'} | {r.latency_seconds:.1f} | "
             f"{r.cost_usd:.4f} | {r.cited_finding_id_count} | "
             f"{len(r.invalid_finding_ids)} | {r.missing_source_type_count} | "
             f"{r.what_would_change_chars} |"
@@ -296,9 +296,9 @@ def _write_summary(runs: list[CalibrationRun], output_dir: Path) -> None:
         f"- Mean latency: {mean_latency:.1f}s",
         f"- p90 latency: {p90_latency:.1f}s",
         "",
-        "## Rubric — fill manually after reading each draft JSON",
+        "## Rubric â€” fill manually after reading each draft JSON",
         "",
-        "Per planning doc §10. Score each dimension 1-5. Median ≥ 4 across all five",
+        "Per planning doc Â§10. Score each dimension 1-5. Median â‰¥ 4 across all five",
         "dimensions and all five runs is the gate.",
         "",
         "| Label | Non-obvious | Useful | Synthesis accuracy | Justification | Forward-looking |",
@@ -311,11 +311,11 @@ def _write_summary(runs: list[CalibrationRun], output_dir: Path) -> None:
         "",
         "### Dimension definitions",
         "",
-        "- **Non-obvious (1-5)** — Does the report surface something the founder couldn't have figured out from raw numbers? 1 = restates obvious facts. 5 = genuine insight.",
-        "- **Useful (1-5)** — Does the report enable a concrete decision? 1 = vague. 5 = pointed action.",
-        "- **Synthesis accuracy (1-5)** — Are [SYNTHESIZED] takeaways genuine cross-stream claims? 1 = label is decorative. 5 = labels are precise; [BEHAVIORAL]/[COGNITIVE]/[SYNTHESIZED] are used correctly.",
-        "- **Justification quality (1-5)** — Are confidence_rationale fields meaningful? 1 = generic. 5 = each rationale references specific data.",
-        "- **Forward-looking (1-5)** — Is what_would_change_this concrete and measurable? 1 = generic. 5 = specific threshold, specific data type, reachable.",
+        "- **Non-obvious (1-5)** â€” Does the report surface something the founder couldn't have figured out from raw numbers? 1 = restates obvious facts. 5 = genuine insight.",
+        "- **Useful (1-5)** â€” Does the report enable a concrete decision? 1 = vague. 5 = pointed action.",
+        "- **Synthesis accuracy (1-5)** â€” Are [SYNTHESIZED] takeaways genuine cross-stream claims? 1 = label is decorative. 5 = labels are precise; [BEHAVIORAL]/[COGNITIVE]/[SYNTHESIZED] are used correctly.",
+        "- **Justification quality (1-5)** â€” Are confidence_rationale fields meaningful? 1 = generic. 5 = each rationale references specific data.",
+        "- **Forward-looking (1-5)** â€” Is what_would_change_this concrete and measurable? 1 = generic. 5 = specific threshold, specific data type, reachable.",
         "",
         "## Errors",
         "",
@@ -328,6 +328,15 @@ def _write_summary(runs: list[CalibrationRun], output_dir: Path) -> None:
 
     (output_dir / "summary.md").write_text("\n".join(lines), encoding="utf-8")
 
+
+async def _delete_prior_insight_row(db, exp_id: UUID) -> None:
+    """Delete any existing InsightReport for this experiment so calibration
+    can re-run cleanly. v2 §6 says regen replaces the row; production service
+    will eventually upsert, but for calibration a simple DELETE suffices."""
+    from app.db.models.insight_report import InsightReport  # noqa: PLC0415
+    from sqlalchemy import delete  # noqa: PLC0415
+    await db.execute(delete(InsightReport).where(InsightReport.experiment_id == exp_id))
+    await db.commit()
 
 async def main() -> None:
     settings = get_settings()
@@ -352,6 +361,7 @@ async def main() -> None:
     sm = get_sessionmaker()
     for exp_id_str, scenario, label in PICKS:
         async with sm() as db:
+            await _delete_prior_insight_row(db, UUID(exp_id_str))
             run = await _run_one(db, UUID(exp_id_str), scenario, label, output_dir)
             runs.append(run)
         ok = "OK" if run.success else "FAIL"
@@ -367,3 +377,5 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+

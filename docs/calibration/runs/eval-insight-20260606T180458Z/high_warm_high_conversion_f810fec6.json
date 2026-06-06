@@ -1,0 +1,171 @@
+{
+  "label": "freelancer-loneliness",
+  "experiment_id": "f810fec6-6af3-4bb9-8b95-62e9a31b6fc1",
+  "scenario": "high_warm_high_conversion",
+  "raw_idea": "Something to help freelancers be less lonely. Intentionally vague: no named product, platform, or monetization.",
+  "analytics_used": {
+    "schema_version": 1,
+    "days_live": 6,
+    "total_page_views": 60,
+    "unique_visitors": 55,
+    "total_signups": 15,
+    "conversion_rate": 0.273,
+    "views_by_source": {
+      "twitter": 35,
+      "linkedin": 19,
+      "google-search": 6
+    },
+    "signups_by_source": {
+      "twitter": 11,
+      "linkedin": 4,
+      "google-search": 0
+    },
+    "conversion_rate_by_source": {
+      "twitter": 0.314,
+      "linkedin": 0.211,
+      "google-search": 0.0
+    },
+    "warm_network_bias_index": 0.9,
+    "time_on_page_p50_seconds": 88,
+    "time_on_page_p90_seconds": 210,
+    "signups_by_day": [
+      4,
+      3,
+      3,
+      2,
+      2,
+      1
+    ],
+    "views_by_day": [
+      12,
+      14,
+      10,
+      9,
+      8,
+      7
+    ],
+    "drop_off_signals": {},
+    "data_quality_notes": []
+  },
+  "draft": {
+    "schema_version": 1,
+    "traffic_summary": {
+      "schema_version": 1,
+      "narrative": "The landing page generated 60 page views across 6 days with a strong overall conversion rate of 27.3% (15 signups), but traffic is already decaying \u2014 daily views dropped from 14 on day 2 to 7 on day 6, and signups fell from 4 to 1 over the same period. The median time-on-page of 88 seconds suggests visitors are engaging meaningfully with the content, though the p90 of 210 seconds indicates a minority read deeply while most skim.",
+      "headline_metric": "27.3% overall conversion (15 signups / 55 unique visitors) but 90% warm-network sourced",
+      "confidence": "medium",
+      "confidence_rationale": "Sample size is small (55 unique visitors, 6 days), and the sharp day-over-day decay raises questions about whether the current traffic spike is sustainable or merely a one-time founder network burst.",
+      "source_type": "BEHAVIORAL"
+    },
+    "conversion_by_source": {
+      "schema_version": 1,
+      "per_source": [
+        {
+          "schema_version": 1,
+          "source_name": "twitter",
+          "views": 35,
+          "signups": 11,
+          "conversion_rate": 0.314,
+          "commentary": "Twitter drove 58% of traffic and 73% of signups at 31.4% conversion \u2014 the highest-performing source. This almost certainly reflects founder-follower amplification given the warm-network bias index of 0.9, meaning these signups are pre-qualified by social trust rather than pure value-proposition appeal.",
+          "confidence": "medium"
+        },
+        {
+          "schema_version": 1,
+          "source_name": "linkedin",
+          "views": 19,
+          "signups": 4,
+          "conversion_rate": 0.211,
+          "commentary": "LinkedIn produced 21.1% conversion on 19 views, below Twitter but still well above typical cold-traffic benchmarks. The 4 signups likely represent second-degree professional connections, still warm-network adjacent rather than true cold acquisition.",
+          "confidence": "medium"
+        },
+        {
+          "schema_version": 1,
+          "source_name": "google-search",
+          "views": 6,
+          "signups": 0,
+          "conversion_rate": 0.0,
+          "commentary": "Google Search \u2014 the only true cold-traffic source \u2014 generated 6 views and zero signups. This is the most important signal in the dataset: the value proposition has not yet been validated with strangers who have no prior relationship to the founder.",
+          "confidence": "medium"
+        }
+      ],
+      "warm_network_bias_commentary": "The warm-network bias index of 0.9 is extreme: 90% of signups came from Twitter and LinkedIn, platforms where the founder has direct social reach. This inverts the typical pattern where cold traffic converts lower than warm \u2014 here, cold traffic converts to zero. The 27.3% headline conversion rate is therefore misleading as a predictor of scalable acquisition; it primarily measures founder network enthusiasm, not product-market fit with unfamiliar freelancers.",
+      "confidence": "high",
+      "confidence_rationale": "The math is unambiguous: 15 of 15 signups came from founder-adjacent sources, and 0 of 6 cold-search visitors converted. No ambiguity in this calculation."
+    },
+    "research_takeaways": [
+      {
+        "schema_version": 1,
+        "claim": "Income instability consistently outranks loneliness as the primary freelancer stressor across every survey wave (finding q2.f0), yet the landing page copy and signup flow appear optimized around social connection rather than income protection \u2014 a potential mismatch between the highest-priority pain and the current value proposition.",
+        "cited_finding_ids": [
+          "q2.f0"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "high",
+        "confidence_rationale": "Multiple independent survey sources (Freelancers Union, JPMorgan, Leapers) converge on this ranking, and the landing page messaging can be directly audited against it."
+      },
+      {
+        "schema_version": 1,
+        "claim": "Existing tools (Focusmate, Designer Hangout, Freelancers Union, Indie Hackers) demonstrably do not serve the daily-colleague use case (findings q1.f0, q1.f1, q4.f0, q4.f1), leaving a genuine product gap \u2014 but the behavioral data shows this gap has not yet been communicated effectively to cold audiences, as evidenced by 0% Google Search conversion.",
+        "cited_finding_ids": [
+          "q1.f0",
+          "q1.f1",
+          "q4.f0",
+          "q4.f1"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "The cognitive evidence for the gap is strong, but the behavioral null result from search could reflect either a messaging problem or a demand problem \u2014 indistinguishable at N=6 views."
+      },
+      {
+        "schema_version": 1,
+        "claim": "Strict daily commitment structures drive significant dropout even among motivated participants (finding q7.f0), while cohort structure \u2014 not daily cadence \u2014 is the key retention mechanism (finding q7.f1). The landing page's 88-second median time-on-page suggests visitors engage briefly, which may indicate the daily commitment framing feels burdensome rather than motivating to cold audiences.",
+        "cited_finding_ids": [
+          "q7.f0",
+          "q7.f1"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "low",
+        "confidence_rationale": "The time-on-page interpretation is speculative \u2014 88 seconds is reasonable for a landing page, and we have no scroll-depth or heatmap data to confirm where visitors dropped. The link between q7 findings and this specific behavioral signal is inferential, not causal."
+      },
+      {
+        "schema_version": 1,
+        "claim": "The behavioral signal is severely limited by sample size and warm-network dominance: with only 6 days of data, 55 unique visitors, and zero cold-traffic signups, the analytics cannot validate or invalidate the core monetization and engagement theses. The recommendation therefore defaults to the ValidationReport's cognitive assessment.",
+        "cited_finding_ids": [
+          "q2.f2"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "high",
+        "confidence_rationale": "The data limitations are objective and unambiguous; the ValidationReport explicitly flags willingness-to-pay as its most critical evidence gap."
+      }
+    ],
+    "recommendation_type": "iterate",
+    "recommendation": "ITERATE. The 27.3% conversion rate (15 signups / 55 unique visitors) and 88-second median time-on-page are encouraging directional signals, but they are almost entirely artifacts of founder-network amplification \u2014 the warm-network bias index of 0.9 means every signup came from Twitter or LinkedIn, while Google Search produced 6 views and 0 signups. This matters because the ValidationReport's finding q2.f0 establishes that income instability, not loneliness, is the top-ranked freelancer stressor \u2014 and finding q2.f2 confirms no evidence exists that freelancers pay for peer-social solutions at scale. The current landing page appears to be selling social belonging to an audience whose primary stated pain is financial unpredictability, and the zero cold-traffic conversion suggests this framing does not resonate with strangers.\n\nThe iterate path is specific: reframe the landing page copy to anchor on productivity and income protection (\"don't lose days to isolation-driven burnout\") rather than social connection, per the ValidationReport's recommendation rationale and finding q5.f2's evidence that mastermind groups command $600\u2013$2,000/month when framed around ROI. Then re-distribute to cold sources \u2014 search ads, niche freelancer communities (r/freelance, Designer Hangout, Freelancers Union SPARK digital channels) \u2014 with a clear discipline-matching hook, since finding q3.f0 leans toward discipline and career-stage matching as the primary retention driver. Run this for 14 days or until 200+ cold-traffic views, whichever comes first. Only then can the behavioral stream meaningfully complement the cognitive evidence to support a PROCEED or PIVOT decision.",
+    "recommendation_confidence": "medium",
+    "recommendation_rationale": "The cognitive evidence for a real market gap is strong (findings q1.f0, q1.f1, q4.f0, q4.f1, q6.f0), but the behavioral data is too small and too warm-network biased to validate the core business model risks: willingness-to-pay for social products (q2.f2 gap) and cold-traffic conversion. The iterate recommendation is therefore the only responsible verdict \u2014 it preserves optionality while requiring specific, measurable next steps.",
+    "what_would_change_this": "Cold-traffic conversion at 5%+ over 200+ views in 14 days becomes PROCEED. Below 2% after reframing becomes PIVOT. Zero cold signups becomes KILL."
+  },
+  "cost_usd": 0.045028,
+  "latency_seconds": 88.21314950002125,
+  "valid_finding_ids": [
+    "q1.f0",
+    "q1.f1",
+    "q1.f2",
+    "q2.f0",
+    "q2.f1",
+    "q2.f2",
+    "q3.f0",
+    "q3.f1",
+    "q4.f0",
+    "q4.f1",
+    "q5.f0",
+    "q5.f1",
+    "q5.f2",
+    "q6.f0",
+    "q6.f1",
+    "q7.f0",
+    "q7.f1",
+    "q7.f2"
+  ],
+  "invalid_finding_ids": [],
+  "missing_source_type_count": 0
+}

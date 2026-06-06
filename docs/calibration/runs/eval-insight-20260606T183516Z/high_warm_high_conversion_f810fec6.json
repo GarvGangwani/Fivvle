@@ -1,0 +1,180 @@
+{
+  "label": "freelancer-loneliness",
+  "experiment_id": "f810fec6-6af3-4bb9-8b95-62e9a31b6fc1",
+  "scenario": "high_warm_high_conversion",
+  "raw_idea": "Something to help freelancers be less lonely. Intentionally vague: no named product, platform, or monetization.",
+  "analytics_used": {
+    "schema_version": 1,
+    "days_live": 6,
+    "total_page_views": 60,
+    "unique_visitors": 55,
+    "total_signups": 15,
+    "conversion_rate": 0.273,
+    "views_by_source": {
+      "twitter": 35,
+      "linkedin": 19,
+      "google-search": 6
+    },
+    "signups_by_source": {
+      "twitter": 11,
+      "linkedin": 4,
+      "google-search": 0
+    },
+    "conversion_rate_by_source": {
+      "twitter": 0.314,
+      "linkedin": 0.211,
+      "google-search": 0.0
+    },
+    "warm_network_bias_index": 0.9,
+    "time_on_page_p50_seconds": 88,
+    "time_on_page_p90_seconds": 210,
+    "signups_by_day": [
+      4,
+      3,
+      3,
+      2,
+      2,
+      1
+    ],
+    "views_by_day": [
+      12,
+      14,
+      10,
+      9,
+      8,
+      7
+    ],
+    "drop_off_signals": {},
+    "data_quality_notes": []
+  },
+  "draft": {
+    "schema_version": 1,
+    "traffic_summary": {
+      "schema_version": 1,
+      "narrative": "The landing page generated 60 views and 15 signups over 6 days, yielding a 27.3% headline conversion rate. However, 90% of traffic originated from the founder's warm network (Twitter and LinkedIn), with cold Google Search traffic converting at 0%. Daily signups decayed from 4 to 1 over the 6-day period, suggesting rapid warm-network exhaustion without cold-traffic replenishment.",
+      "headline_metric": "27.3% overall conversion, 0% cold-traffic conversion (6 Google Search views, 0 signups)",
+      "confidence": "medium",
+      "confidence_rationale": "Sample size is small (60 views, 15 signups) and heavily biased toward warm network; 6-day window is insufficient to establish stable conversion patterns, but the directional signal of warm-network dependence is strong.",
+      "source_type": "BEHAVIORAL"
+    },
+    "conversion_by_source": {
+      "schema_version": 1,
+      "per_source": [
+        {
+          "schema_version": 1,
+          "source_name": "twitter",
+          "views": 35,
+          "signups": 11,
+          "conversion_rate": 0.314,
+          "commentary": "Twitter drives the majority of views (58%) and signups (73%), converting at 31.4%. This is almost certainly founder-driven traffic given the warm-network bias index of 0.9, meaning followers likely trust the founder personally rather than evaluating the value proposition cold.",
+          "confidence": "medium"
+        },
+        {
+          "schema_version": 1,
+          "source_name": "linkedin",
+          "views": 19,
+          "signups": 4,
+          "conversion_rate": 0.211,
+          "commentary": "LinkedIn contributes 32% of views and 27% of signups at 21.1% conversion. Like Twitter, this likely reflects professional network goodwill rather than independent product-market fit validation.",
+          "confidence": "medium"
+        },
+        {
+          "schema_version": 1,
+          "source_name": "google-search",
+          "views": 6,
+          "signups": 0,
+          "conversion_rate": 0.0,
+          "commentary": "Google Search represents the only cold-traffic source but produced zero signups on 6 views. The sample is too small for statistical significance, but the complete absence of cold conversion is concerning given the product's need to attract strangers at scale.",
+          "confidence": "low"
+        }
+      ],
+      "warm_network_bias_commentary": "The warm-network bias index of 0.9 indicates near-total dependence on founder-affiliated traffic. This severely limits the interpretability of the 27.3% overall conversion rate: warm audiences convert on trust and relationship, not necessarily on value proposition clarity. The behavioral signal cannot distinguish between 'people want this product' and 'people want to support this founder.'",
+      "confidence": "high",
+      "confidence_rationale": "Mathematically, 54 of 60 views (90%) came from Twitter and LinkedIn, sources typically driven by personal networks; the warm-network bias index of 0.9 is an explicit metric confirming this interpretation."
+    },
+    "research_takeaways": [
+      {
+        "schema_version": 1,
+        "claim": "Income volatility ranks above loneliness as the top freelancer stressor (finding q2.f0), yet the landing page value proposition does not visibly address income stability \u2014 creating a potential mismatch between what freelancers prioritize and what the product offers.",
+        "cited_finding_ids": [
+          "q2.f0"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "high",
+        "confidence_rationale": "Finding q2.f0 is supported by multiple independent survey sources with high confidence in the ValidationReport; the landing page copy gap is inferred from standard landing page structure but not directly observed."
+      },
+      {
+        "schema_version": 1,
+        "claim": "Freelancer loneliness is severe and well-documented (71.9% felt isolated in 2024 per q2.f1), but existing communities like Designer Hangout and Freelancers Union explicitly do not serve daily accountability needs (q4.f0), leaving a genuine market gap. However, the behavioral data shows this gap has not yet attracted cold traffic.",
+        "cited_finding_ids": [
+          "q2.f1",
+          "q4.f0"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "The cognitive evidence for loneliness and community positioning is high, but the synthesized claim depends on the weak behavioral signal of 6 cold-traffic views with zero conversion \u2014 insufficient to confirm or reject market gap viability."
+      },
+      {
+        "schema_version": 1,
+        "claim": "Daily commitment structures show high dropout even among motivated participants (q7.f0), and cohort structure \u2014 not daily cadence \u2014 drives retention (q7.f1). The 6-day signup decay pattern (4\u21923\u21923\u21922\u21922\u21921) is directionally consistent with this finding, though the behavioral sample is too small to establish a trend.",
+        "cited_finding_ids": [
+          "q7.f0",
+          "q7.f1"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "The cognitive evidence for dropout and retention drivers is medium-confidence; the behavioral decay pattern aligns but could equally reflect normal warm-network exhaustion rather than product-specific commitment fatigue."
+      },
+      {
+        "schema_version": 1,
+        "claim": "No evidence confirms freelancers will pay for peer-social solutions specifically (q2.f2), and Focusmate's student-heavy base suggests free-to-paid conversion may be structurally limited (q5.f1). The 15 warm-network signups provide no signal on willingness-to-pay because warm audiences often engage without purchase intent.",
+        "cited_finding_ids": [
+          "q2.f2",
+          "q5.f1"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "The cognitive findings on willingness-to-pay are low-to-medium confidence, and the behavioral data is entirely uninformative on payment intent due to warm-network bias."
+      },
+      {
+        "schema_version": 1,
+        "claim": "The behavioral signal is missing for cold-traffic validation: with only 6 Google Search views and 0 signups over 6 days, no conclusion can be drawn about whether strangers find the value proposition compelling. This aligns with the ValidationReport's evidence gap on acquisition channels and conversion data.",
+        "cited_finding_ids": [
+          "q2.f2"
+        ],
+        "source_type": "BEHAVIORAL",
+        "confidence": "low",
+        "confidence_rationale": "The absence of cold-traffic data is a factual observation, but the 'missing signal' interpretation is itself a claim; confidence is low because 6 views is within normal variance for early-stage SEO."
+      }
+    ],
+    "recommendation_type": "iterate",
+    "recommendation": "ITERATE. The 27.3% overall conversion rate (15 signups on 60 views) appears strong on the surface but is fundamentally uninterpretable due to extreme warm-network bias: 90% of traffic came from Twitter and LinkedIn, sources almost certainly driven by the founder's personal network rather than organic product interest. The warm-network bias index of 0.9 means these signups reflect relationship capital, not validated demand. Cold-traffic conversion \u2014 the true test of product-market fit \u2014 stands at 0% on 6 Google Search views with 0 signups.\n\nThe cognitive evidence supports a real pain point: freelancer loneliness is severe (71.9% felt isolated in 2024, finding q2.f1), and existing communities like Designer Hangout and Freelancers Union explicitly do not serve daily accountability needs (finding q4.f0). However, income volatility consistently ranks above loneliness as the top stressor (finding q2.f0), and no evidence confirms freelancers will pay for peer-social solutions specifically (finding q2.f2). Daily commitment structures also show high dropout rates even among motivated participants (finding q7.f0), with cohort structure \u2014 not daily cadence \u2014 as the key retention driver (finding q7.f1). The 6-day signup decay (4\u21923\u21923\u21922\u21922\u21921) is directionally consistent with this risk, though too small to confirm.\n\nThe recommendation is to iterate before proceeding: redesign the landing page to explicitly address the income-stability angle (connecting daily accountability to revenue consistency), then run paid cold-traffic campaigns (search ads, niche freelancer communities) to achieve at least 200 cold-traffic views. Only with cold-traffic conversion data can the founder distinguish between network goodwill and genuine product-market fit.",
+    "recommendation_confidence": "medium",
+    "recommendation_rationale": "The cognitive evidence for a real pain point is strong, but the behavioral signal is compromised by warm-network bias and near-zero cold-traffic data. The ValidationReport itself recommended iteration, and the analytics do not provide sufficient counter-evidence to upgrade to PROCEED. Downgrading to PIVOT or KILL would be premature given the documented market gap and small sample size.",
+    "what_would_change_this": "If cold-traffic signups grow above 5% on at least 200 views from paid search or niche community ads within 14 days, this becomes PROCEED. If cold-traffic conversion remains below 2% after landing page copy explicitly addresses income stability (the top freelancer stressor per q2.f0), this becomes PIVOT to a revenue-accountability framing or KILL if cohort-based retention also fails."
+  },
+  "cost_usd": 0.059038,
+  "latency_seconds": 16.266451700008474,
+  "valid_finding_ids": [
+    "q1.f0",
+    "q1.f1",
+    "q1.f2",
+    "q2.f0",
+    "q2.f1",
+    "q2.f2",
+    "q3.f0",
+    "q3.f1",
+    "q4.f0",
+    "q4.f1",
+    "q5.f0",
+    "q5.f1",
+    "q5.f2",
+    "q6.f0",
+    "q6.f1",
+    "q7.f0",
+    "q7.f1",
+    "q7.f2"
+  ],
+  "invalid_finding_ids": [],
+  "missing_source_type_count": 0
+}

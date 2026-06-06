@@ -1,0 +1,189 @@
+{
+  "label": "vet-scribe",
+  "experiment_id": "c822a2f4-877b-4fff-9ed1-e1000b050940",
+  "scenario": "cold_high_volume_no_conversion",
+  "raw_idea": "A HIPAA-compliant AI scribe for veterinary practices that auto-generates SOAP notes from pet examination audio recordings and syncs to PIMS like Cornerstone and AVImark.",
+  "analytics_used": {
+    "schema_version": 1,
+    "days_live": 10,
+    "total_page_views": 200,
+    "unique_visitors": 185,
+    "total_signups": 0,
+    "conversion_rate": 0.0,
+    "views_by_source": {
+      "google-search": 120,
+      "reddit": 50,
+      "hackernews": 30
+    },
+    "signups_by_source": {},
+    "conversion_rate_by_source": {
+      "google-search": 0.0,
+      "reddit": 0.0,
+      "hackernews": 0.0
+    },
+    "warm_network_bias_index": 0.0,
+    "time_on_page_p50_seconds": 18,
+    "time_on_page_p90_seconds": 45,
+    "signups_by_day": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "views_by_day": [
+      15,
+      22,
+      28,
+      24,
+      18,
+      19,
+      20,
+      21,
+      16,
+      17
+    ],
+    "drop_off_signals": {
+      "zero_conversion": "\u226550 views with zero signups \u2014 check CTA visibility or value proposition clarity"
+    },
+    "data_quality_notes": []
+  },
+  "draft": {
+    "schema_version": 1,
+    "traffic_summary": {
+      "schema_version": 1,
+      "narrative": "The landing page attracted 200 views over 10 days from three cold-traffic sources \u2014 60% from Google search, 25% from Reddit, and 15% from Hacker News \u2014 with zero signups across all channels. Median time-on-page of 18 seconds (P90: 45s) suggests most visitors bounced before engaging deeply with the value proposition.",
+      "headline_metric": "200 views, 0 signups, 18s median time-on-page from 100% cold traffic over 10 days.",
+      "confidence": "high",
+      "confidence_rationale": "Metrics are directly measured from analytics aggregate with no data gaps; 10 days live provides sufficient temporal coverage.",
+      "source_type": "BEHAVIORAL"
+    },
+    "conversion_by_source": {
+      "schema_version": 1,
+      "per_source": [
+        {
+          "schema_version": 1,
+          "source_name": "google-search",
+          "views": 120,
+          "signups": 0,
+          "conversion_rate": 0.0,
+          "commentary": "120 views from search intent traffic with zero conversions. This is the highest-volume channel and the most diagnostically important \u2014 visitors arrived with active interest in veterinary AI scribes or PIMS integration, yet no one signed up. The 18s median time-on-page suggests the landing page failed to sustain attention long enough to communicate the core value proposition.",
+          "confidence": "high"
+        },
+        {
+          "schema_version": 1,
+          "source_name": "reddit",
+          "views": 50,
+          "signups": 0,
+          "conversion_rate": 0.0,
+          "commentary": "50 views from Reddit with zero conversions. Reddit communities (r/veterinaryprofession, r/AskVet) were identified in finding q2.f0 as channels where PIMS integration is the top unmet complaint \u2014 yet even this primed audience did not convert.",
+          "confidence": "high"
+        },
+        {
+          "schema_version": 1,
+          "source_name": "hackernews",
+          "views": 30,
+          "signups": 0,
+          "conversion_rate": 0.0,
+          "commentary": "30 views from Hacker News with zero conversions. This channel skews technical and is unlikely to contain veterinary clinicians, so low conversion is expected rather than alarming.",
+          "confidence": "high"
+        }
+      ],
+      "warm_network_bias_commentary": "Warm-network bias index is 0.0 \u2014 all 200 views came from cold sources with no founder network traffic. This is methodologically clean: the zero-conversion signal cannot be attributed to warm-network inflation. However, it also means there is no social-proof amplification to test whether referrals from trusted peers would have converted.",
+      "confidence": "high",
+      "confidence_rationale": "Warm-network bias index is explicitly 0.0 in analytics; source attribution is clean with no mixed-traffic ambiguity."
+    },
+    "research_takeaways": [
+      {
+        "schema_version": 1,
+        "claim": "Zero signups from 200 cold-traffic views with 18s median time-on-page indicates a landing page value proposition failure, not a market absence \u2014 the same audience segments (Google search, Reddit) that ValidationReport q2.f0 identified as actively seeking AI scribe solutions with PIMS integration as the top unmet need showed up but disengaged immediately.",
+        "cited_finding_ids": [
+          "q2.f0"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "The synthesis requires assuming search/Reddit traffic maps to the same user personas described in q2.f0; we cannot verify visitor job titles or practice affiliations. The directional alignment is strong but not proven."
+      },
+      {
+        "schema_version": 1,
+        "claim": "The core technical blocker identified in ValidationReport \u2014 no documented public API for SOAP note writeback into Cornerstone or AVImark (q1.f0, q1.f1) \u2014 may be visible to sophisticated visitors who recognize the integration gap, causing immediate disengagement. A landing page promising 'seamless PIMS sync' without credible technical substantiation would trigger skepticism in a market where competitors already use UI-overlay workarounds (q1.f1).",
+        "cited_finding_ids": [
+          "q1.f0",
+          "q1.f1"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "We cannot measure whether visitors bounced due to technical skepticism or poor copy; this is inferred from the 18s median dwell time and the known market sophistication around PIMS integration gaps."
+      },
+      {
+        "schema_version": 1,
+        "claim": "The competitive landscape is crowded with Talkatoo (30,000+ users), HappyDoc, Scribenote, and others (q2.f0, q2.f2), and HappyDoc explicitly claims 99.8% accuracy with PIMS integration for Cornerstone and AVImark (q2.f2). A landing page without clear differentiation against these incumbent alternatives would fail to capture attention in a market where buyers are already comparison-shopping.",
+        "cited_finding_ids": [
+          "q2.f0",
+          "q2.f2"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "high",
+        "confidence_rationale": "ValidationReport provides direct evidence of competitive density and HappyDoc's positioning; no behavioral data is required for this claim."
+      },
+      {
+        "schema_version": 1,
+        "claim": "Willingness to pay at $50\u2013$126/user/month is validated by Talkatoo's 30,000+ paying users (q5.f0), and price resistance is documented as a friction point requiring active rebuttal (q5.f1). The zero-conversion landing page cannot distinguish between 'not interested' and 'interested but unconvinced of value relative to price' \u2014 both are consistent with 18s bounce behavior.",
+        "cited_finding_ids": [
+          "q5.f0",
+          "q5.f1"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "high",
+        "confidence_rationale": "Pricing and willingness-to-pay evidence is well-sourced in ValidationReport; the interpretation of bounce behavior is inferential but grounded."
+      },
+      {
+        "schema_version": 1,
+        "claim": "Behavioral signal is insufficient to validate or invalidate the product concept: 200 views with zero signups provides a strong null on landing page efficacy but cannot test the core hypothesis of PIMS writeback demand, because the page may have failed on messaging, CTA placement, or audience targeting rather than product-market fit.",
+        "cited_finding_ids": [
+          "q2.f0"
+        ],
+        "source_type": "BEHAVIORAL",
+        "confidence": "high",
+        "confidence_rationale": "This is a direct interpretation of the analytics aggregate alone; no ValidationReport findings are required for the claim that 200 views and 0 signups is insufficient for product-market fit conclusions, though q2.f0 contextualizes why the null is particularly notable."
+      }
+    ],
+    "recommendation_type": "iterate",
+    "recommendation": "ITERATE. The behavioral signal is unambiguous but diagnostically rich: 200 cold-traffic views with zero signups and an 18-second median time-on-page reveals a landing page that is failing to communicate value, not a market that lacks demand. This is critical \u2014 the ValidationReport identified a real, validated pain point (vets spending 1\u20132 hours post-shift on SOAP notes) in a market with 10\u201325% AI scribe adoption and 1,680% YoY search growth (q2.f0). Talkatoo alone has 30,000+ paying users at $50\u2013$126/user/month (q5.f0). The traffic arrived \u2014 60% from Google search, 25% from Reddit \u2014 but left immediately.\n\nThe most probable cause is a value proposition credibility gap. The ValidationReport's core finding is that no documented public API enables SOAP note writeback into Cornerstone or AVImark (q1.f0), and the closest competitor, Scribenote, uses a UI overlay workaround (q1.f1). If the landing page promised 'seamless integration' without addressing this known industry skepticism, sophisticated visitors \u2014 especially those arriving from Reddit where PIMS integration is the top unmet complaint (q2.f0) \u2014 would bounce within seconds. HappyDoc claims 99.8% accuracy and explicit PIMS integration for the same platforms (q2.f2), setting a high bar for differentiation clarity. The page must either (a) credibly explain how it solves the writeback problem that HappyDoc and Scribenote have not, or (b) pivot messaging to a differentiable wedge (e.g., veterinary-specific accuracy, learning loop, or state compliance framing per q3.f1 and q3.f2) that does not depend on API writeback claims.\n\nBefore any PROCEED verdict, the founder must: (1) redesign the landing page with a sharpened, technically credible value proposition that acknowledges the PIMS integration landscape honestly; (2) add a low-friction conversion mechanism (e.g., waitlist with practice size/PIMS dropdown) to segment interest by integration need; and (3) run a second 10-day cold-traffic test targeting the same channels. If the redesigned page achieves >2% conversion on cold search traffic with >45s median time-on-page, the behavioral signal would support proceeding to validate the API pathway directly with IDEXX and Covetrus.",
+    "recommendation_confidence": "medium",
+    "recommendation_rationale": "The ITERATE verdict is anchored on the combination of strong cognitive validation (real pain point, validated willingness to pay, crowded but integration-deficient competitive landscape per q1.f0, q2.f0, q5.f0) and unambiguous negative behavioral signal (0% conversion, 18s median dwell). The confidence is medium because we cannot definitively distinguish between landing-page copy failure and deeper value proposition rejection without a redesigned test; however, the 18s bounce time strongly suggests the former.",
+    "what_would_change_this": "If a redesigned landing page achieves >2% cold-traffic conversion from Google search with median time-on-page >45 seconds over a 10-day retest, this becomes PROCEED \u2014 the behavioral signal would confirm that demand exists and the value proposition lands, shifting the remaining risk to the technical/API validation pathway (q1.f0). Conversely, if a second iteration with sharpened messaging still yields zero signups from >300 cold-traffic views, this becomes PIVOT \u2014 the market may be saturated by incumbents (Talkatoo, HappyDoc) or the PIMS writeback gap may be insurmountable as a differentiator."
+  },
+  "cost_usd": 0.024029,
+  "latency_seconds": 58.75852959998883,
+  "valid_finding_ids": [
+    "q1.f0",
+    "q1.f1",
+    "q1.f2",
+    "q2.f0",
+    "q2.f1",
+    "q2.f2",
+    "q3.f0",
+    "q3.f1",
+    "q3.f2",
+    "q4.f0",
+    "q4.f1",
+    "q4.f2",
+    "q5.f0",
+    "q5.f1",
+    "q5.f2",
+    "q6.f0",
+    "q6.f1",
+    "q6.f2",
+    "q7.f0",
+    "q7.f1",
+    "q7.f2"
+  ],
+  "invalid_finding_ids": [],
+  "missing_source_type_count": 0
+}

@@ -1,0 +1,182 @@
+{
+  "label": "cart-recovery",
+  "experiment_id": "abf721e0-8221-4983-a2bf-de079ec5203a",
+  "scenario": "bimodal_engagement",
+  "raw_idea": "A B2B SaaS platform that helps e-commerce brands automatically detect and recover abandoned checkout sessions using AI-written personalised follow-up emails, SMS, and WhatsApp nudges. The platform integrates with Shopify, WooCommerce, and BigCommerce, charges a flat monthly fee plus a small revenue-share on recovered orders, and targets brands doing $50k\u2013$2M GMV per month who cannot afford dedicated retention teams.",
+  "analytics_used": {
+    "schema_version": 1,
+    "days_live": 7,
+    "total_page_views": 80,
+    "unique_visitors": 72,
+    "total_signups": 6,
+    "conversion_rate": 0.083,
+    "views_by_source": {
+      "product-hunt": 40,
+      "twitter": 25,
+      "newsletter": 15
+    },
+    "signups_by_source": {
+      "product-hunt": 4,
+      "twitter": 1,
+      "newsletter": 1
+    },
+    "conversion_rate_by_source": {
+      "product-hunt": 0.1,
+      "twitter": 0.04,
+      "newsletter": 0.067
+    },
+    "warm_network_bias_index": 0.3125,
+    "time_on_page_p50_seconds": 0,
+    "time_on_page_p90_seconds": 240,
+    "signups_by_day": [
+      2,
+      2,
+      1,
+      0,
+      1,
+      0,
+      0
+    ],
+    "views_by_day": [
+      15,
+      18,
+      12,
+      10,
+      9,
+      8,
+      8
+    ],
+    "drop_off_signals": {
+      "bimodal_engagement": "Engagement distribution is bimodal \u2014 half of visitors leave instantly, the other half spend significant time"
+    },
+    "data_quality_notes": []
+  },
+  "draft": {
+    "schema_version": 1,
+    "traffic_summary": {
+      "schema_version": 1,
+      "narrative": "The landing page generated 80 page views across 72 unique visitors over 7 days, with a median time-on-page of 0 seconds but a 90th percentile of 240 seconds \u2014 indicating a bimodal engagement pattern where roughly half of visitors bounce immediately while the other half engages deeply. Daily view volume declined from 18 to 8 over the week, suggesting the initial distribution push is losing momentum and sustained acquisition channels are not yet established.",
+      "headline_metric": "8.3% overall conversion rate (6 signups / 72 unique visitors) with bimodal engagement: 50% instant bounce, 10% spending 4+ minutes.",
+      "confidence": "medium",
+      "confidence_rationale": "7 days of data with 72 unique visitors is directionally informative but too small for statistical significance on conversion rate confidence intervals; the bimodal engagement pattern is robust given the p50=0s and p90=240s spread.",
+      "source_type": "BEHAVIORAL"
+    },
+    "conversion_by_source": {
+      "schema_version": 1,
+      "per_source": [
+        {
+          "schema_version": 1,
+          "source_name": "product-hunt",
+          "views": 40,
+          "signups": 4,
+          "conversion_rate": 0.1,
+          "commentary": "Product Hunt drives the highest absolute volume (40 views, 50% of total traffic) and the strongest conversion rate at 10.0% (4 signups). This is the only source showing both scale and efficiency, but Product Hunt traffic is typically early-adopter biased and may not represent the target $50k\u2013$2M GMV merchant segment.",
+          "confidence": "medium"
+        },
+        {
+          "schema_version": 1,
+          "source_name": "twitter",
+          "views": 25,
+          "signups": 1,
+          "conversion_rate": 0.04,
+          "commentary": "Twitter contributed 25 views but only 1 signup (4.0% conversion), the weakest rate among the three sources. Given the warm-network bias index of 0.3125, this likely includes founder-network amplification rather than purely cold discovery, making the 4.0% rate even more concerning for organic social as an acquisition channel.",
+          "confidence": "medium"
+        },
+        {
+          "schema_version": 1,
+          "source_name": "newsletter",
+          "views": 15,
+          "signups": 1,
+          "conversion_rate": 0.067,
+          "commentary": "Newsletter traffic converted at 6.7% (1 signup from 15 views), performing between Product Hunt and Twitter. The small sample size (15 views) prevents reliable inference, but the directional signal suggests newsletter audiences may be more qualified than Twitter but less conversion-optimized than Product Hunt's discovery context.",
+          "confidence": "low"
+        }
+      ],
+      "warm_network_bias_commentary": "The warm-network bias index of 0.3125 indicates moderate founder-network contamination: roughly 31% of traffic likely originated from personal connections rather than cold discovery. This is not extreme (indices above 0.7 are highly suspect), but it means the 8.3% headline conversion rate likely overstates true cold-audience performance. Product Hunt's 10% rate is the most at risk of warm-network inflation, as founder-driven upvotes and comments often drive initial visibility.",
+      "confidence": "medium",
+      "confidence_rationale": "The warm-network bias index is a heuristic, not a direct measurement; 0.3125 is in the ambiguous middle range where some inflation is likely but not severe enough to dismiss the behavioral signal entirely."
+    },
+    "research_takeaways": [
+      {
+        "schema_version": 1,
+        "claim": "Product Hunt's 10% conversion rate on 40 views outperforms typical cold-traffic SaaS landing page benchmarks, but this source is structurally misaligned with the target $50k\u2013$2M GMV merchant segment \u2014 creating a false-positive efficiency signal that could mislead channel prioritization.",
+        "cited_finding_ids": [
+          "q7.f0"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "The behavioral data shows strong Product Hunt conversion, but finding q7.f0 establishes that the Shopify App Store is the dominant acquisition channel for cart-recovery tools (Postscript: 16,000 brands via App Store). Product Hunt's early-adopter audience does not map to App Store discovery behavior, so the efficiency signal is not transferable."
+      },
+      {
+        "schema_version": 1,
+        "claim": "The bimodal engagement pattern (p50 time-on-page of 0 seconds, p90 of 240 seconds) combined with finding q2.f0 that Shopify's native tool recovers only 2\u20134% of abandoned carts suggests the landing page is successfully capturing merchants who already recognize the problem, while failing to educate the 62% of stores with no automated recovery sequence.",
+        "cited_finding_ids": [
+          "q2.f0",
+          "q5.f1"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "The behavioral bimodality is robust (p50=0s, p90=240s), and q2.f0/q5.f1 establish both the native tool insufficiency and the 62% no-automation gap. The synthesis \u2014 that the page preaches to the converted \u2014 is inferential but well-supported by both streams."
+      },
+      {
+        "schema_version": 1,
+        "claim": "The revenue-share pricing model \u2014 the idea's core commercial differentiation \u2014 remains completely unvalidated by behavioral data: all 6 signups occurred without any pricing page exposure or payment commitment, and finding q4.f0 confirms that zero competitors in this category use revenue-share pricing.",
+        "cited_finding_ids": [
+          "q4.f0"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "high",
+        "confidence_rationale": "The behavioral data shows signups but no pricing friction exposure; q4.f0 documents the complete absence of revenue-share models in the competitive landscape. The gap between signup enthusiasm and actual pricing model acceptance is a critical unvalidated risk."
+      },
+      {
+        "schema_version": 1,
+        "claim": "Finding q6.f2 establishes that timing within 60 minutes and multi-email sequences produce 69% more orders than single emails \u2014 making the unvalidated AI-copy angle a secondary differentiator at best. The landing page's focus on 'AI-generated copy' as the headline value proposition may be misallocating differentiation emphasis relative to what actually drives recovery performance.",
+        "cited_finding_ids": [
+          "q6.f2"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "medium",
+        "confidence_rationale": "This is a pure ValidationReport insight: q6.f2 and the broader q6 findings show timing/sequence structure is well-evidenced as a primary driver, while AI-generated copy lacks controlled experimental validation. No behavioral data is required to support this claim."
+      },
+      {
+        "schema_version": 1,
+        "claim": "The 7-day behavioral dataset is insufficient to validate or invalidate the WhatsApp channel hypothesis: with only 80 total page views and no WhatsApp-specific landing page variant, the behavioral stream provides zero signal on whether sub-$2M GMV merchants will tolerate the $100\u2013$500 setup costs and per-conversation fees documented in finding q3.f0.",
+        "cited_finding_ids": [
+          "q3.f0"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "high",
+        "confidence_rationale": "The behavioral data literally contains zero WhatsApp-related signal (no variant testing, no channel-specific messaging), while q3.f0 documents real cost and complexity barriers. The absence of behavioral evidence on this critical differentiation dimension is itself a meaningful finding."
+      }
+    ],
+    "recommendation_type": "iterate",
+    "recommendation": "ITERATE. The behavioral signals are directionally encouraging but structurally misleading. The 8.3% overall conversion rate (6 signups / 72 unique visitors) and Product Hunt's 10% rate (4 signups / 40 views) appear strong on the surface, but the warm-network bias index of 0.3125 inflates these figures, and Product Hunt's audience is misaligned with the target $50k\u2013$2M GMV merchant segment that discovers tools via the Shopify App Store per finding q7.f0. Twitter's 4% conversion on likely network-amplified traffic is particularly weak \u2014 cold organic social is not yet a viable channel.\n\nMore critically, the two highest-stakes hypotheses from the ValidationReport remain completely unvalidated by this behavioral data. First, the revenue-share pricing model \u2014 the idea's core commercial hook \u2014 has zero evidence: all 6 signups came from a free landing page with no pricing exposure, and finding q4.f0 confirms no competitor in this $50k\u2013$2M GMV tier uses revenue-share pricing. The founder must test pricing model acceptance directly with 10\u201320 target merchants before building. Second, the AI-generated copy differentiation lacks controlled validation per q6 findings: timing and sequence structure (q6.f2: multi-email sequences produce 69% more orders) are well-evidenced primary drivers, while LLM-written copy has no head-to-head experimental support. The landing page should be revised to test whether 'AI-optimized timing and sequence' outperforms 'AI-written copy' as the headline value proposition.\n\nThe recommended iteration path: (1) add a pricing page exposing the revenue-share model to measure drop-off and qualitatively interview drop-offs; (2) A/B test landing page variants emphasizing timing/sequence optimization vs. AI-generated copy; (3) shift distribution from Product Hunt/Twitter toward Shopify community channels (forums, App Store research) to reach representative merchants; (4) defer WhatsApp integration to Phase 2 until email+SMS conversion is validated, given the compliance complexity and cost barriers in q3.f0.",
+    "recommendation_confidence": "medium",
+    "recommendation_rationale": "The market opportunity is real (q2.f0, q5.f1: Shopify native insufficiency, $350B+ GMV, 62% no automation), but the behavioral data is too small (7 days, 80 views) and too warm-network-contaminated to support a PROCEED verdict. The two critical risks \u2014 revenue-share pricing acceptance (q4) and AI-copy differentiation validity (q6) \u2014 remain unresolved. ITERATE is the only responsible recommendation.",
+    "what_would_change_this": "If cold-traffic signups from Shopify-specific channels (forums, App Store referrals, niche SEO) exceed 5% conversion at N>200 unique visitors over 14 days, AND a pricing-page A/B test shows <30% drop-off when the revenue-share model is exposed, this becomes PROCEED. Conversely, if merchant interviews reveal >50% resistance to revenue-share pricing or if AI-copy variant underperforms timing/sequence variant by >20% in A/B testing, this becomes PIVOT to a flat-fee SaaS model with AI-optimized timing as the differentiator."
+  },
+  "cost_usd": 0.022544,
+  "latency_seconds": 57.03513140001451,
+  "valid_finding_ids": [
+    "q1.f0",
+    "q1.f1",
+    "q1.f2",
+    "q2.f0",
+    "q2.f1",
+    "q2.f2",
+    "q3.f0",
+    "q3.f1",
+    "q3.f2",
+    "q4.f0",
+    "q4.f1",
+    "q5.f0",
+    "q5.f1",
+    "q6.f0",
+    "q6.f1",
+    "q6.f2",
+    "q7.f0",
+    "q7.f1"
+  ],
+  "invalid_finding_ids": [],
+  "missing_source_type_count": 0
+}

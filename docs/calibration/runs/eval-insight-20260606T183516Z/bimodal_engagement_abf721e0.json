@@ -1,0 +1,187 @@
+{
+  "label": "cart-recovery",
+  "experiment_id": "abf721e0-8221-4983-a2bf-de079ec5203a",
+  "scenario": "bimodal_engagement",
+  "raw_idea": "A B2B SaaS platform that helps e-commerce brands automatically detect and recover abandoned checkout sessions using AI-written personalised follow-up emails, SMS, and WhatsApp nudges. The platform integrates with Shopify, WooCommerce, and BigCommerce, charges a flat monthly fee plus a small revenue-share on recovered orders, and targets brands doing $50k\u2013$2M GMV per month who cannot afford dedicated retention teams.",
+  "analytics_used": {
+    "schema_version": 1,
+    "days_live": 7,
+    "total_page_views": 80,
+    "unique_visitors": 72,
+    "total_signups": 6,
+    "conversion_rate": 0.083,
+    "views_by_source": {
+      "product-hunt": 40,
+      "twitter": 25,
+      "newsletter": 15
+    },
+    "signups_by_source": {
+      "product-hunt": 4,
+      "twitter": 1,
+      "newsletter": 1
+    },
+    "conversion_rate_by_source": {
+      "product-hunt": 0.1,
+      "twitter": 0.04,
+      "newsletter": 0.067
+    },
+    "warm_network_bias_index": 0.3125,
+    "time_on_page_p50_seconds": 0,
+    "time_on_page_p90_seconds": 240,
+    "signups_by_day": [
+      2,
+      2,
+      1,
+      0,
+      1,
+      0,
+      0
+    ],
+    "views_by_day": [
+      15,
+      18,
+      12,
+      10,
+      9,
+      8,
+      8
+    ],
+    "drop_off_signals": {
+      "bimodal_engagement": "Engagement distribution is bimodal \u2014 half of visitors leave instantly, the other half spend significant time"
+    },
+    "data_quality_notes": []
+  },
+  "draft": {
+    "schema_version": 1,
+    "traffic_summary": {
+      "schema_version": 1,
+      "narrative": "The landing page attracted 80 views over 7 days with a bimodal engagement pattern: half of visitors leave instantly (median time-on-page of 0 seconds), while the top 10% engage deeply for up to 4 minutes. Traffic is predominantly from Product Hunt (50% of views, 10% conversion), with smaller contributions from Twitter (4% conversion) and newsletter (6.7% conversion). Daily view volume shows a gradual decay from 18 to 8, typical of a launch-week spike without sustained distribution.",
+      "headline_metric": "8.3% overall conversion (6 signups / 80 views) with 50% of traffic from Product Hunt converting at 10%",
+      "confidence": "medium",
+      "confidence_rationale": "Sample size is small (80 views, 6 signups) with only 7 days of data; conversion rate has wide confidence intervals. The bimodal engagement pattern is robust (p50=0s, p90=240s) but behavioral interpretation is speculative at this scale.",
+      "source_type": "BEHAVIORAL"
+    },
+    "conversion_by_source": {
+      "schema_version": 1,
+      "per_source": [
+        {
+          "schema_version": 1,
+          "source_name": "product-hunt",
+          "views": 40,
+          "signups": 4,
+          "conversion_rate": 0.1,
+          "commentary": "Product Hunt drives the highest volume (40 views, 50% of total) and strongest conversion at 10%. This audience skews toward early adopters and builders \u2014 not representative of the target $50k\u2013$2M GMV merchant demographic. Strong performance may not replicate in channels where merchants actually evaluate cart-recovery tools.",
+          "confidence": "medium"
+        },
+        {
+          "schema_version": 1,
+          "source_name": "twitter",
+          "views": 25,
+          "signups": 1,
+          "conversion_rate": 0.04,
+          "commentary": "Twitter contributed 25 views with a single signup (4% conversion). This is the weakest-performing source and may reflect founder-network amplification rather than organic merchant interest. Low conversion and small sample make it hard to distinguish channel-audience mismatch from creative issues.",
+          "confidence": "low"
+        },
+        {
+          "schema_version": 1,
+          "source_name": "newsletter",
+          "views": 15,
+          "signups": 1,
+          "conversion_rate": 0.067,
+          "commentary": "Newsletter traffic converted at 6.7% (1 signup from 15 views), landing between Product Hunt and Twitter. Without knowing the newsletter's audience composition, this is hard to interpret \u2014 it could indicate moderate interest from a commerce-adjacent list, or simply noise at small N.",
+          "confidence": "low"
+        }
+      ],
+      "warm_network_bias_commentary": "The warm-network bias index of 0.3125 indicates moderate founder-network contamination. Product Hunt traffic is typically a mix of organic discovery and founder-driven upvotes; the 50% share suggests significant launch-day promotion. Twitter's 25 views likely include founder followers. Only 6.25% of views came from newsletter (potentially the coldest source), making true cold-traffic assessment impossible. A bias index below 0.2 would be needed to treat these numbers as merchant-market signal.",
+      "confidence": "medium",
+      "confidence_rationale": "Warm-network bias index is a derived metric; interpretation depends on assumptions about source composition. Product Hunt and Twitter are known high-bias channels for founder launches, but exact warm/cold split is unobservable."
+    },
+    "research_takeaways": [
+      {
+        "schema_version": 1,
+        "claim": "Product Hunt's 10% conversion rate is anomalously high for B2B SaaS landing pages and likely reflects early-adopter curiosity rather than validated merchant demand. The target customer \u2014 $50k\u2013$2M GMV Shopify/WooCommerce operators \u2014 evaluates cart-recovery tools through the Shopify App Store, not product launch sites, per finding q7.f0.",
+        "cited_finding_ids": [
+          "q7.f0"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "The channel-mismatch claim requires both behavioral data (10% PH conversion) and cognitive evidence (App Store dominance per q7.f0). The synthesis is logical but unproven \u2014 we have no App Store landing page data to compare."
+      },
+      {
+        "schema_version": 1,
+        "claim": "The AI-generated copy differentiation claimed by the founder has no controlled experimental support. Finding q6.f0 shows AI-powered emails achieve 15% higher recovery, but this conflates broad AI personalization with LLM-written copy specifically. Finding q6.f2 identifies timing and multi-email sequences as the dominant recovery drivers, making copy a secondary variable at best.",
+        "cited_finding_ids": [
+          "q6.f0",
+          "q6.f2"
+        ],
+        "source_type": "COGNITIVE",
+        "confidence": "high",
+        "confidence_rationale": "The finding IDs directly address the copy-isolation gap and the primacy of timing/sequence variables. Confidence is high because the ValidationReport explicitly flags this evidence gap."
+      },
+      {
+        "schema_version": 1,
+        "claim": "Revenue-share pricing \u2014 a potential differentiator \u2014 faces strong headwinds from merchant cost-sensitivity and the complete absence of revenue-share models among incumbents (q4.f0). The behavioral data shows 6 signups but provides zero information on pricing model preference, since no price or model was tested on the landing page.",
+        "cited_finding_ids": [
+          "q4.f0",
+          "q4.f1"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "Combines the structural evidence from q4.f0 (no competitor uses revenue-share) with the behavioral void (no pricing test). The medium confidence reflects that we cannot observe merchant reaction to revenue-share without direct testing."
+      },
+      {
+        "schema_version": 1,
+        "claim": "WhatsApp as a channel carries meaningful friction \u2014 $100\u2013$500 setup, Meta approval delays of 1\u20137 days, and per-conversation fees (~$0.05/message) per q3.f0 and q3.f1. The landing page data shows no channel-specific messaging about WhatsApp, so we cannot assess whether merchants who signed up were attracted by or unaware of this proposed differentiator.",
+        "cited_finding_ids": [
+          "q3.f0",
+          "q3.f1"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "medium",
+        "confidence_rationale": "The friction claims are well-evidenced (high confidence on q3.f0, medium on q3.f1), but the synthesis with landing page behavior is weak because the page did not test WhatsApp messaging specifically."
+      },
+      {
+        "schema_version": 1,
+        "claim": "Shopify's native tool is demonstrably insufficient for the target GMV tier (q2.f0, q2.f2), creating genuine third-party demand. However, the competitive field is crowded with established incumbents (Klaviyo, Omnisend, Drip) at $16\u2013$700/month (q1.f0, q1.f2), and the landing page attracted only 80 views in 7 days with no cold-traffic validation.",
+        "cited_finding_ids": [
+          "q2.f0",
+          "q2.f2",
+          "q1.f0",
+          "q1.f2"
+        ],
+        "source_type": "SYNTHESIZED",
+        "confidence": "high",
+        "confidence_rationale": "The demand-side claim (native tool insufficiency) and supply-side claim (incumbent pricing) are both high-confidence findings. The synthesis with behavioral data (80 views, no cold traffic) is direct observation."
+      }
+    ],
+    "recommendation_type": "iterate",
+    "recommendation": "ITERATE. The landing page generated an 8.3% overall conversion rate (6 signups / 80 views) with Product Hunt converting at 10% \u2014 numbers that appear encouraging on the surface. However, this is a classic founder-launch false positive. The warm-network bias index of 0.3125 indicates significant founder-network contamination, with 50% of traffic from Product Hunt (an early-adopter discovery channel, not a merchant evaluation channel) and 31% from Twitter (likely founder followers). Only 15 views came from newsletter, the potentially coldest source. Critically, the ValidationReport establishes that mid-market merchants evaluate cart-recovery tools through the Shopify App Store (q7.f0), not Product Hunt \u2014 making the 10% PH conversion a misleading vanity metric for this market.\n\nThe cognitive research reveals three unresolved risks that the landing page did not test. First, the AI-generated copy differentiation lacks controlled experimental support: q6.f0 shows AI-powered emails achieve 15% higher recovery, but this conflates broad AI personalization with LLM-written copy specifically, and q6.f2 identifies timing and multi-email sequences as the dominant recovery drivers. Second, revenue-share pricing \u2014 a potential moat \u2014 has zero competitive precedent (q4.f0) and faces merchant cost-sensitivity headwinds (q4.f1), yet the landing page tested no pricing model at all. Third, WhatsApp as a channel carries real friction: $100\u2013$500 setup costs, 1\u20137 day Meta approval delays, and per-conversation fees (q3.f0, q3.f1), but the landing page did not surface WhatsApp messaging to assess merchant reaction.\n\nThe path forward is specific: redesign the landing page to test the two riskiest assumptions \u2014 (1) merchant willingness to adopt WhatsApp despite friction, and (2) preference for revenue-share vs. flat-fee pricing \u2014 then distribute through cold channels that mirror actual merchant behavior (Shopify App Store listing, niche e-commerce communities, paid search on 'abandoned cart app'). Product Hunt and founder Twitter are invalidation channels for this ICP.",
+    "recommendation_confidence": "high",
+    "recommendation_rationale": "The ITERATE verdict is strongly supported by converging evidence: (1) behavioral data shows launch-channel contamination with no cold-traffic validation, (2) cognitive research identifies three untested riskiest assumptions (AI-copy isolation, revenue-share acceptance, WhatsApp friction), and (3) the ValidationReport's own overall_recommendation is 'iterate'. The only path to PROCEED requires validating these specific assumptions in merchant-native channels.",
+    "what_would_change_this": "If cold-traffic signups from Shopify App Store or paid search exceed 5% conversion over 200+ views in 14 days, with explicit positive selection on WhatsApp messaging and revenue-share pricing, the verdict flips to PROCEED. Conversely, if cold-traffic conversion remains below 2% or merchant interviews reveal strong resistance to WhatsApp setup friction (q3.f0) or revenue-share pricing (q4.f0), the verdict shifts toward PIVOT or KILL."
+  },
+  "cost_usd": 0.058392,
+  "latency_seconds": 39.21537029999308,
+  "valid_finding_ids": [
+    "q1.f0",
+    "q1.f1",
+    "q1.f2",
+    "q2.f0",
+    "q2.f1",
+    "q2.f2",
+    "q3.f0",
+    "q3.f1",
+    "q3.f2",
+    "q4.f0",
+    "q4.f1",
+    "q5.f0",
+    "q5.f1",
+    "q6.f0",
+    "q6.f1",
+    "q6.f2",
+    "q7.f0",
+    "q7.f1"
+  ],
+  "invalid_finding_ids": [],
+  "missing_source_type_count": 0
+}
