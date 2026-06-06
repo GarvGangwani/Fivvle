@@ -32,8 +32,8 @@ from app.db.enums import DispatchTrigger, ExperimentStatus
 from app.db.models.experiment import Experiment
 from app.db.models.user import User
 from app.db.session import get_session
-from app.dispatchers.dependencies import get_dispatcher_dep
-from app.dispatchers.protocol import DispatchError, ResearchDispatcher
+from app.dispatchers.dependencies import get_dispatcher_dep, get_insight_dispatcher_dep
+from app.dispatchers.protocol import DispatchError, InsightDispatcher, ResearchDispatcher
 from app.logging_config import get_logger
 from app.reliability.rate_limit import AUTH_RATE_LIMIT, limiter, user_key
 from app.schemas.experiment import (
@@ -66,6 +66,22 @@ class ExperimentValidationReportSummary(BaseModel):
     overall_recommendation: str | None = None
     total_finding_count: int = Field(ge=0)
     total_citation_count: int = Field(ge=0)
+
+
+class GenerateInsightResponse(BaseModel):
+    """Response from POST /experiments/{id}/generate-insight.
+
+    Returned with HTTP 202. The actual InsightReport is built asynchronously;
+    the frontend polls GET /experiments/{id} for status transitions until
+    status reaches INSIGHT_READY or INSIGHT_FAILED.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    experiment_id: UUID
+    status: ExperimentStatus = Field(
+        description="Set to INSIGHT_GENERATING by this endpoint immediately on dispatch."
+    )
 
 
 class GetExperimentDetailResponse(BaseModel):
@@ -219,6 +235,146 @@ async def confirm_research(
         experiment_id=experiment_id,
         status=ExperimentStatus.RESEARCHING,
         status_url=status_url,
+    )
+
+
+async def _check_min_insight_data(
+    db: AsyncSession, experiment_id: UUID
+) -> tuple[int, int, int]:
+    """Compute (page_view_count, signup_count, days_live) for the experiment.
+
+    Returns the triple even when min-data is not met — the caller decides
+    whether to raise 409 based on these numbers.
+
+    days_live is 0 when LandingPage is missing or live_at is None — in that
+    case the (LANDING_LIVE status precondition) should have blocked the call
+    earlier, but we return 0 defensively.
+    """
+    from datetime import datetime, timezone  # noqa: PLC0415
+
+    from sqlalchemy import func  # noqa: PLC0415
+
+    from app.db.models.landing_page import LandingPage  # noqa: PLC0415
+    from app.db.models.page_view import PageView  # noqa: PLC0415
+    from app.db.models.waitlist_signup import WaitlistSignup  # noqa: PLC0415
+
+    views_stmt = select(func.count(PageView.id)).where(
+        PageView.experiment_id == experiment_id
+    )
+    signups_stmt = select(func.count(WaitlistSignup.id)).where(
+        WaitlistSignup.experiment_id == experiment_id
+    )
+    landing_stmt = select(LandingPage.live_at).where(
+        LandingPage.experiment_id == experiment_id
+    )
+
+    views_result = await db.execute(views_stmt)
+    signups_result = await db.execute(signups_stmt)
+    landing_result = await db.execute(landing_stmt)
+
+    page_view_count = int(views_result.scalar_one() or 0)
+    signup_count = int(signups_result.scalar_one() or 0)
+    live_at = landing_result.scalar_one_or_none()
+
+    if live_at is None:
+        days_live = 0
+    else:
+        days_live = max((datetime.now(timezone.utc) - live_at).days, 0)
+
+    return page_view_count, signup_count, days_live
+
+
+@router.post(
+    "/{experiment_id}/generate-insight",
+    response_model=GenerateInsightResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def generate_insight(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    insight_dispatcher: Annotated[InsightDispatcher, Depends(get_insight_dispatcher_dep)],
+) -> GenerateInsightResponse:
+    """User-triggered insight generation per b4-insight-generator.md.
+
+    Allowed source statuses: LANDING_LIVE (first generation), INSIGHT_READY (regen),
+    INSIGHT_FAILED (retry). Any other status returns 409.
+
+    Min-data guard: at least one of (≥10 page views, ≥1 signup, ≥7 days live).
+    Below the threshold → 409 with a guidance message.
+
+    On dispatch, transitions status to INSIGHT_GENERATING and commits before
+    awaiting the dispatcher. The dispatcher transitions to terminal state
+    (INSIGHT_READY or INSIGHT_FAILED) asynchronously. On DispatchError, rolls
+    back to INSIGHT_FAILED and returns 502.
+    """
+    result = await db.execute(
+        select(Experiment).where(Experiment.id == experiment_id)
+    )
+    experiment = result.scalar_one_or_none()
+
+    # 404 on missing OR not-owned — never reveal existence to a non-owner.
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
+        )
+
+    allowed_source_statuses = {
+        ExperimentStatus.LANDING_LIVE,
+        ExperimentStatus.INSIGHT_READY,
+        ExperimentStatus.INSIGHT_FAILED,
+    }
+    if experiment.status not in allowed_source_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Experiment must be in LANDING_LIVE, INSIGHT_READY, or INSIGHT_FAILED "
+                f"status to generate insight (current: {experiment.status.value})."
+            ),
+        )
+
+    page_view_count, signup_count, days_live = await _check_min_insight_data(
+        db, experiment_id
+    )
+    meets_threshold = (
+        page_view_count >= 10 or signup_count >= 1 or days_live >= 7
+    )
+    if not meets_threshold:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Insufficient data for insight generation. Need at least one of: "
+                "10 page views, 1 signup, or 7 days since landing page went live. "
+                f"Current: {page_view_count} views, {signup_count} signups, "
+                f"{days_live} day(s) live."
+            ),
+        )
+
+    experiment.status = ExperimentStatus.INSIGHT_GENERATING
+    await db.commit()
+
+    try:
+        await insight_dispatcher.dispatch(experiment_id)
+    except DispatchError as exc:
+        _logger.error(
+            "insight dispatch failed",
+            experiment_id=str(experiment_id),
+            error_type=type(exc).__name__,
+        )
+        # Roll back to FAILED so the user sees an actionable state.
+        experiment.status = ExperimentStatus.INSIGHT_FAILED
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to start insight generation, please try again",
+        ) from exc
+
+    return GenerateInsightResponse(
+        experiment_id=experiment_id,
+        status=ExperimentStatus.INSIGHT_GENERATING,
     )
 
 
