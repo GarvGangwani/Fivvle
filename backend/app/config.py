@@ -79,6 +79,8 @@ class Settings(BaseSettings):
     reflector_query_model: str = Field(default="claude-sonnet-4-6")
     synthesizer_provider: str = Field(default="anthropic")
     synthesizer_model: str = Field(default="claude-sonnet-4-6")
+    insight_provider: str = Field(default="kimi")
+    insight_model: str = Field(default="kimi-k2.6")
 
     # --- Research dispatcher (ADR 0009) ---
     # in_process: invokes the research engine directly via asyncio.create_task (dev/test).
