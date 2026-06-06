@@ -20,9 +20,14 @@ from __future__ import annotations
 
 from fastapi import Request
 
-from app.dispatchers.protocol import ResearchDispatcher
+from app.dispatchers.protocol import InsightDispatcher, ResearchDispatcher
 
 
 async def get_dispatcher_dep(request: Request) -> ResearchDispatcher:
     """Return the dispatcher stored on app.state by the lifespan handler."""
     return request.app.state.dispatcher  # type: ignore[no-any-return]
+
+
+async def get_insight_dispatcher_dep(request: Request) -> InsightDispatcher:
+    """Return the insight dispatcher stored on app.state by lifespan handler."""
+    return request.app.state.insight_dispatcher  # type: ignore[no-any-return]

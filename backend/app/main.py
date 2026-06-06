@@ -94,9 +94,10 @@ async def lifespan(app: FastAPI):  # type: ignore[type-arg]
 
     # 5. Research dispatcher (ADR 0009) — must run after init_engine so the
     #    InProcessDispatcher can import AsyncSessionLocal safely.
-    from app.dispatchers.factory import get_dispatcher  # noqa: PLC0415
+    from app.dispatchers.factory import get_dispatcher, get_insight_dispatcher  # noqa: PLC0415
 
     app.state.dispatcher = get_dispatcher(settings)
+    app.state.insight_dispatcher = get_insight_dispatcher(settings)
     logger.info(
         "research dispatcher initialised",
         dispatcher_mode=settings.dispatcher_mode,

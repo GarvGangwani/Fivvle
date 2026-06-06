@@ -17,7 +17,8 @@ from __future__ import annotations
 from app.config import Settings
 from app.dispatchers.http import HttpDispatcher
 from app.dispatchers.in_process import InProcessDispatcher
-from app.dispatchers.protocol import ResearchDispatcher
+from app.dispatchers.in_process_insight import InProcessInsightDispatcher
+from app.dispatchers.protocol import InsightDispatcher, ResearchDispatcher
 
 
 def get_dispatcher(settings: Settings) -> ResearchDispatcher:
@@ -54,6 +55,37 @@ def get_dispatcher(settings: Settings) -> ResearchDispatcher:
         )
 
     # Unreachable if Pydantic's Literal constraint is enforced — defensive guard.
+    raise ValueError(  # pragma: no cover
+        f"Unknown DISPATCHER_MODE: {settings.dispatcher_mode!r}. "
+        "Allowed values: 'in_process', 'http'."
+    )
+
+
+def get_insight_dispatcher(settings: Settings) -> InsightDispatcher:
+    """Construct and return the configured InsightDispatcher.
+
+    Args:
+        settings: The application settings singleton (from get_settings()).
+
+    Returns:
+        An InsightDispatcher implementation selected by settings.dispatcher_mode.
+
+    Raises:
+        NotImplementedError: If dispatcher_mode="http" (HttpInsightDispatcher
+            ships in Step 7 of the insight generator build).
+    """
+    if settings.dispatcher_mode == "in_process":
+        from app.db.session import get_sessionmaker  # noqa: PLC0415
+
+        return InProcessInsightDispatcher(get_sessionmaker=get_sessionmaker)
+
+    if settings.dispatcher_mode == "http":
+        raise NotImplementedError(
+            "HttpInsightDispatcher is not yet implemented. "
+            "Pending Step 7 of b4-insight-generator. "
+            "Set DISPATCHER_MODE=in_process or wait for the Cloud Function ship."
+        )
+
     raise ValueError(  # pragma: no cover
         f"Unknown DISPATCHER_MODE: {settings.dispatcher_mode!r}. "
         "Allowed values: 'in_process', 'http'."

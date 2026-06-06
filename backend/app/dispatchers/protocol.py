@@ -8,6 +8,7 @@ Structlog field contract (enforced by convention + code review — see README.md
     dispatcher: str   — "in_process" | "http"
     experiment_id: str
     phase: str        — "dispatched" | "completed" | "failed"
+    pipeline: str     — "research" | "insight"
 """
 
 from __future__ import annotations
@@ -34,6 +35,32 @@ class ResearchDispatcher(Protocol):
         Must not block.  Failures to schedule (e.g. HTTP 5xx from the Cloud
         Function) should raise DispatchError so the /confirm endpoint can
         return an appropriate error rather than silently dropping the job.
+        """
+        ...
+
+
+class InsightDispatcher(Protocol):
+    """Trigger the insight generation pipeline for a given experiment.
+
+    Implementations MUST return immediately (202 semantics). The actual work
+    runs asynchronously — either in a background asyncio task (InProcess) or
+    in a Cloud Function invoked over HTTP (Http — Step 7).
+
+    Both implementations call the same insight_service.generate_insight_report()
+    entry point with the same experiment_id, then transition Experiment.status
+    to INSIGHT_READY (success) or INSIGHT_FAILED (any exception).
+
+    Status transitions to INSIGHT_GENERATING are the responsibility of the
+    /experiments/{id}/generate-insight route handler (Step 6b) BEFORE
+    dispatch() is awaited. The dispatcher transitions to the terminal state.
+    """
+
+    async def dispatch(self, experiment_id: UUID) -> None:
+        """Schedule the insight pipeline for experiment_id.
+
+        Must not block. Failures to schedule (e.g. HTTP 5xx from the Cloud
+        Function) should raise DispatchError so the route handler can return
+        an appropriate error rather than silently dropping the job.
         """
         ...
 
