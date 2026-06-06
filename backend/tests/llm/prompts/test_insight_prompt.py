@@ -157,3 +157,164 @@ def test_build_insight_user_prompt_returns_string() -> None:
         _make_minimal_analytics(),
     )
     assert isinstance(result, str)
+
+
+def _make_finding(question_id: str, claim: str) -> Finding:
+    return Finding(
+        question_id=question_id,
+        claim=claim,
+        evidence_summary="Evidence summary citing one source.",
+        citations=[
+            Citation(
+                url="https://example.com/article",
+                title="Example Article",
+                source_domain="example.com",
+                accessed_at=_NOW,
+            )
+        ],
+        confidence="medium",
+        confidence_rationale="Single source; directional only.",
+    )
+
+
+def _make_two_question_validation_report() -> ValidationReport:
+    """ValidationReport with 2 questions, each with 2 findings, for directory tests."""
+    return ValidationReport(
+        executive_summary=(
+            "Research confirms moderate demand for the proposed Slack HR bot. "
+            "Competitors exist but differentiation is possible via handbook freshness. "
+            "Behavioral validation is still needed before a proceed verdict."
+        ),
+        questions_and_findings=[
+            QuestionFindings(
+                question_id="q1",
+                question="Research question 1 about market viability?",
+                findings=[
+                    _make_finding("q1", "First finding claim for question q1."),
+                    _make_finding("q1", "Second finding claim for question q1."),
+                ],
+            ),
+            QuestionFindings(
+                question_id="q2",
+                question="Research question 2 about competition?",
+                findings=[
+                    _make_finding("q2", "First finding claim for question q2."),
+                    _make_finding("q2", "Second finding claim for question q2."),
+                ],
+            ),
+            QuestionFindings(
+                question_id="q3",
+                question="Research question 3 about distribution?",
+                findings=[_make_finding("q3", "Finding claim for question q3.")],
+            ),
+            QuestionFindings(
+                question_id="q4",
+                question="Research question 4 about pricing?",
+                findings=[_make_finding("q4", "Finding claim for question q4.")],
+            ),
+            QuestionFindings(
+                question_id="q5",
+                question="Research question 5 about risks?",
+                findings=[_make_finding("q5", "Finding claim for question q5.")],
+            ),
+        ],
+        competitors=[],
+        market_signals="No reliable TAM data found in search results.",
+        distribution_signals=None,
+        regulatory_signals=None,
+        risks_assessment=(
+            "Competitor risk is confirmed by q2 findings. Handbook staleness risk "
+            "is partially confirmed. Procurement complexity remains unaddressed."
+        ),
+        overall_recommendation="iterate",
+        recommendation_rationale=(
+            "q2 confirms overlap with existing tools. Iterate on differentiation "
+            "before scaling distribution."
+        ),
+        research_limitations="Market size data was not found.",
+        rubric_version_used="v1",
+    )
+
+
+def _make_long_claim_validation_report() -> ValidationReport:
+    """ValidationReport with one finding whose claim exceeds 120 chars."""
+    long_claim = "A" * 200
+    return ValidationReport(
+        executive_summary=(
+            "Research confirms moderate demand for the proposed Slack HR bot. "
+            "Competitors exist but differentiation is possible via handbook freshness. "
+            "Behavioral validation is still needed before a proceed verdict."
+        ),
+        questions_and_findings=[
+            QuestionFindings(
+                question_id=f"q{i}",
+                question=f"Research question {i} about market viability?",
+                findings=[
+                    _make_finding(
+                        f"q{i}",
+                        long_claim if i == 1 else f"Finding claim for question q{i}.",
+                    )
+                ],
+            )
+            for i in range(1, 6)
+        ],
+        competitors=[],
+        market_signals="No reliable TAM data found in search results.",
+        distribution_signals=None,
+        regulatory_signals=None,
+        risks_assessment=(
+            "Competitor risk is confirmed by q2 findings. Handbook staleness risk "
+            "is partially confirmed. Procurement complexity remains unaddressed."
+        ),
+        overall_recommendation="iterate",
+        recommendation_rationale=(
+            "q2 confirms overlap with existing tools. Iterate on differentiation "
+            "before scaling distribution."
+        ),
+        research_limitations="Market size data was not found.",
+        rubric_version_used="v1",
+    )
+
+
+def _zone_b_from_prompt(validation_report: ValidationReport) -> str:
+    result = build_insight_user_prompt(validation_report, _make_minimal_analytics())
+    return result.split(USER_CACHE_ZONE_BOUNDARY)[1]
+
+
+def test_finding_id_directory_present_in_zone_b() -> None:
+    zone_b = _zone_b_from_prompt(_make_two_question_validation_report())
+    assert "<finding_id_directory>" in zone_b
+    assert "</finding_id_directory>" in zone_b
+
+
+def test_all_expected_finding_ids_present() -> None:
+    zone_b = _zone_b_from_prompt(_make_two_question_validation_report())
+    for fid in ("q1.f0", "q1.f1", "q2.f0", "q2.f1"):
+        assert fid in zone_b
+
+
+def test_claim_preview_truncation() -> None:
+    zone_b = _zone_b_from_prompt(_make_long_claim_validation_report())
+    directory_start = zone_b.index("<finding_id_directory>")
+    directory_end = zone_b.index("</finding_id_directory>")
+    directory = zone_b[directory_start:directory_end]
+    q1_line = next(line for line in directory.splitlines() if "q1.f0:" in line)
+    preview = q1_line.split("q1.f0: ", 1)[1]
+    assert preview.endswith("…")
+    assert len(preview) <= 125
+
+
+def test_finding_id_directory_before_validation_report_json() -> None:
+    zone_b = _zone_b_from_prompt(_make_two_question_validation_report())
+    assert zone_b.index("<finding_id_directory>") < zone_b.index(
+        "<validation_report_json>"
+    )
+
+
+def test_zone_a_citations_obligation_updated() -> None:
+    assert "finding_id_directory" in INSIGHT_ZONE_A_INSTRUCTIONS
+    assert "You may NOT cite IDs that are not in the directory" in INSIGHT_ZONE_A_INSTRUCTIONS
+
+
+def test_prompt_name_unchanged() -> None:
+    assert PROMPT_NAME == "insight_v1_cached"

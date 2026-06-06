@@ -48,6 +48,10 @@ class InsightReport(Base):
         ),
         nullable=True,
     )
+    # Full InsightReportOutput Pydantic payload. Mirrors ValidationReport.raw_report
+    # pattern: queryable scalar columns plus the full structured output for
+    # frontend rendering and future schema evolution. Per planning doc §4.2.
+    raw_output: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

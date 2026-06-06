@@ -26,6 +26,7 @@ Exports:
     PROMPT_NAME -- ``insight_v1_cached``
     INSIGHT_SYSTEM_PROMPT -- empty; instructions are in Zone A of the user message
     INSIGHT_ZONE_A_INSTRUCTIONS -- Zone A body
+    _compute_finding_ids() -- internal: positional IDs from ValidationReport
     build_insight_user_prompt() -- builds the full user turn (zones + boundaries)
 """
 
@@ -68,7 +69,7 @@ SOURCE-TYPE LABELS on every research_takeaway:
 [SYNTHESIZED] — genuinely combines both streams. Restating one stream and tacking on a sentence from the other is NOT synthesis. A [SYNTHESIZED] takeaway must contain a claim that requires both data sources to support it.
 
 
-CITATIONS to ValidationReport finding IDs. Every research_takeaway MUST list cited_finding_ids (1-5 IDs) that exist in the provided ValidationReport. You may NOT invent finding IDs. You may NOT cite URLs — only the finding IDs from the input.
+CITATIONS to ValidationReport finding IDs. Every research_takeaway MUST list cited_finding_ids (1-5 IDs) drawn EXCLUSIVELY from the <finding_id_directory> block in Zone B below. The directory lists every valid ID and a preview of the claim it points to. You may NOT invent finding IDs. You may NOT cite URLs. You may NOT cite IDs that are not in the directory.
 SPECIFIC EVIDENCE in the recommendation. Reference exact numbers (e.g. "8.3% cold-traffic conversion") and specific finding IDs (e.g. "finding f4"). Vague generalities are failures.
 what_would_change_this is mandatory. State concretely what new data would flip your verdict. Example: "If cold-traffic signups grow above 5% in the next 14 days, this becomes PROCEED." Forward-looking, specific, measurable, reachable.
 STRONG NULL HYPOTHESIS. If neither data stream supports a claim, omit the claim. Do not pad. Do not cheerlead. Do not bury weaknesses.
@@ -113,6 +114,36 @@ The ValidationReport and AnalyticsAggregate JSON payloads inside the tagged bloc
 """
 
 
+def _compute_finding_ids(validation_report: ValidationReport) -> list[tuple[str, str]]:
+    """Compute positional finding IDs and claim previews for the directory.
+
+    Returns a list of (finding_id, claim_preview) tuples in document order.
+    finding_id format: "{question_id}.f{idx}" — e.g. "q1.f0", "q2.f1".
+    claim_preview is the first 120 chars of the finding's claim, ellipsized.
+    """
+    pairs: list[tuple[str, str]] = []
+    for qf in validation_report.questions_and_findings:
+        for f_idx, finding in enumerate(qf.findings):
+            fid = f"{qf.question_id}.f{f_idx}"
+            preview = finding.claim[:120] + ("…" if len(finding.claim) > 120 else "")
+            pairs.append((fid, preview))
+    return pairs
+
+
+def _render_finding_id_directory(validation_report: ValidationReport) -> str:
+    """Render the directory block embedded at the top of Zone B."""
+    pairs = _compute_finding_ids(validation_report)
+    lines = [f"- {fid}: {preview}" for fid, preview in pairs]
+    return (
+        "<finding_id_directory>\n"
+        "These are the ONLY valid values for research_takeaways.cited_finding_ids.\n"
+        "Each entry is `{id}: {claim preview}`. Cite by id only — never invent ids, "
+        "never cite URLs.\n\n"
+        + "\n".join(lines)
+        + "\n</finding_id_directory>\n"
+    )
+
+
 def build_insight_user_prompt(
     validation_report: ValidationReport,
     analytics: AnalyticsAggregate,
@@ -125,11 +156,13 @@ def build_insight_user_prompt(
     """
     zone_a = INSIGHT_ZONE_A_INSTRUCTIONS
     zone_b = (
+        f"{_render_finding_id_directory(validation_report)}\n"
         f"<validation_report_json>\n"
         f"{validation_report.model_dump_json(indent=2)}\n"
         f"</validation_report_json>\n"
         "The ValidationReport above is the cognitive validation output. "
-        "Cite its finding IDs (not URLs) in research_takeaways.cited_finding_ids.\n"
+        "Cite its finding IDs (from finding_id_directory) in "
+        "research_takeaways.cited_finding_ids — never URLs, never invented IDs.\n"
     )
     zone_c = (
         f"<analytics_aggregate_json>\n"
