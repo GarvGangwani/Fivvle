@@ -499,8 +499,13 @@ stateDiagram-v2
     LANDING_LIVE --> LANDING_LIVE: Collecting traffic + signups
     LANDING_LIVE --> ANALYZING: Threshold or 7-day cap or manual
 
-    ANALYZING --> COMPLETED: Insight report generated
-    ANALYZING --> ANALYZING: Retry on failure
+    ANALYZING --> INSIGHT_GENERATING: Engine starts
+    INSIGHT_GENERATING --> INSIGHT_READY: Report generated
+    ANALYZING --> INSIGHT_FAILED: Any phase errors
+    INSIGHT_FAILED --> ANALYZING: Retry
+
+    INSIGHT_READY --> COMPLETED: User makes decision
+    INSIGHT_READY --> ANALYZING: User regenerates with more data
 
     COMPLETED --> ARCHIVED: User archives or auto-archive
     COMPLETED --> LANDING_LIVE: User reopens to collect more
@@ -765,6 +770,7 @@ sequenceDiagram
     actor F as Founder
 
     Trig->>CF: Trigger with experiment_id
+    CF->>DB: UPDATE status=INSIGHT_GENERATING
 
     CF->>DB: SELECT validation_report
     CF->>DB: SELECT page_views by source_tag
@@ -776,9 +782,14 @@ sequenceDiagram
     LLM->>Cost: log
     LLM-->>IS: insight report JSON
 
-    CF->>DB: INSERT insight_report
-    CF->>DB: UPDATE status=COMPLETED
-    CF-->>F: Notify
+    alt Success
+        CF->>DB: INSERT insight_report
+        CF->>DB: UPDATE status=INSIGHT_READY
+        CF-->>F: Notify
+    else Failure after retries
+        CF->>DB: UPDATE status=INSIGHT_FAILED
+        CF-->>F: Notify (retry available)
+    end
 ```
 
 ---
