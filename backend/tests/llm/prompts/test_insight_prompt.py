@@ -13,10 +13,18 @@ from app.llm.prompts.insight import (
     INSIGHT_SYSTEM_PROMPT,
     INSIGHT_ZONE_A_INSTRUCTIONS,
     PROMPT_NAME,
+    _build_compressed_vr_view,
+    _render_finding_id_directory,
     build_insight_user_prompt,
 )
 from app.schemas.insight import AnalyticsAggregate
-from app.schemas.validation_report import Citation, Finding, QuestionFindings, ValidationReport
+from app.schemas.validation_report import (
+    Citation,
+    CompetitorMention,
+    Finding,
+    QuestionFindings,
+    ValidationReport,
+)
 
 _NOW = datetime.now(tz=timezone.utc)
 
@@ -138,7 +146,7 @@ def test_build_insight_user_prompt_embeds_validation_report_in_zone_b() -> None:
     result = build_insight_user_prompt(report, _make_minimal_analytics())
     parts = result.split(USER_CACHE_ZONE_BOUNDARY)
     zone_b = parts[1]
-    assert "<validation_report_json>" in zone_b
+    assert "<validation_report_compact_json>" in zone_b
     assert report.executive_summary in zone_b
 
 
@@ -307,7 +315,7 @@ def test_claim_preview_truncation() -> None:
 def test_finding_id_directory_before_validation_report_json() -> None:
     zone_b = _zone_b_from_prompt(_make_two_question_validation_report())
     assert zone_b.index("<finding_id_directory>") < zone_b.index(
-        "<validation_report_json>"
+        "<validation_report_compact_json>"
     )
 
 
@@ -318,3 +326,185 @@ def test_zone_a_citations_obligation_updated() -> None:
 
 def test_prompt_name_unchanged() -> None:
     assert PROMPT_NAME == "insight_v1_cached"
+
+
+def test_build_compressed_vr_view_top_level_keys() -> None:
+    vr = _make_two_question_validation_report()
+    compressed = _build_compressed_vr_view(vr)
+    assert set(compressed.keys()) == {
+        "executive_summary",
+        "overall_recommendation",
+        "questions_and_findings",
+    }
+
+
+def test_build_compressed_vr_view_omits_stripped_fields() -> None:
+    vr = _make_minimal_validation_report()
+    serialized = str(_build_compressed_vr_view(vr))
+    for stripped in (
+        "citations",
+        "evidence_summary",
+        "competitors",
+        "market_signals",
+        "risks_assessment",
+        "recommendation_rationale",
+        "research_limitations",
+    ):
+        assert stripped not in serialized
+
+
+def test_build_compressed_vr_view_finding_ids_match_scheme() -> None:
+    vr = _make_two_question_validation_report()
+    compressed = _build_compressed_vr_view(vr)
+    expected_ids = {"q1.f0", "q1.f1", "q2.f0", "q2.f1"}
+    actual_ids = {
+        finding["id"]
+        for qf in compressed["questions_and_findings"]
+        for finding in qf["findings"]
+    }
+    assert expected_ids.issubset(actual_ids)
+
+
+def test_build_compressed_vr_view_preserves_claim_text() -> None:
+    vr = _make_two_question_validation_report()
+    compressed = _build_compressed_vr_view(vr)
+    for qf in vr.questions_and_findings:
+        compressed_qf = next(
+            q for q in compressed["questions_and_findings"] if q["question_id"] == qf.question_id
+        )
+        for f_idx, finding in enumerate(qf.findings):
+            assert compressed_qf["findings"][f_idx]["claim"] == finding.claim
+
+
+def test_build_compressed_vr_view_preserves_confidence_fields() -> None:
+    vr = _make_two_question_validation_report()
+    compressed = _build_compressed_vr_view(vr)
+    for qf in compressed["questions_and_findings"]:
+        for finding in qf["findings"]:
+            assert finding["confidence"] in ("high", "medium", "low")
+            assert finding["confidence_rationale"]
+
+
+def test_zone_b_uses_compact_json_tag() -> None:
+    result = build_insight_user_prompt(
+        _make_minimal_validation_report(),
+        _make_minimal_analytics(),
+    )
+    zone_b = result.split(USER_CACHE_ZONE_BOUNDARY)[1]
+    assert "<validation_report_compact_json>" in zone_b
+    assert "<validation_report_json>" not in zone_b
+
+
+def _make_bloated_validation_report() -> ValidationReport:
+    """VR with heavy fields stripped by compression — for size comparison tests."""
+    long_evidence = "E" * 500
+
+    def _bloated_finding(question_id: str, claim: str) -> Finding:
+        return Finding(
+            question_id=question_id,
+            claim=claim,
+            evidence_summary=long_evidence,
+            citations=[
+                Citation(
+                    url=f"https://example.com/{question_id}-a",
+                    title="Example Article A",
+                    source_domain="example.com",
+                    accessed_at=_NOW,
+                ),
+                Citation(
+                    url=f"https://example.com/{question_id}-b",
+                    title="Example Article B",
+                    source_domain="example.com",
+                    accessed_at=_NOW,
+                ),
+            ],
+            confidence="medium",
+            confidence_rationale="Two sources corroborate this claim directionally.",
+        )
+
+    return ValidationReport(
+        executive_summary=(
+            "Research confirms moderate demand for the proposed Slack HR bot. "
+            "Competitors exist but differentiation is possible via handbook freshness. "
+            "Behavioral validation is still needed before a proceed verdict."
+        ),
+        questions_and_findings=[
+            QuestionFindings(
+                question_id="q1",
+                question="Research question 1 about market viability?",
+                findings=[
+                    _bloated_finding("q1", "First finding claim for question q1."),
+                    _bloated_finding("q1", "Second finding claim for question q1."),
+                ],
+            ),
+            QuestionFindings(
+                question_id="q2",
+                question="Research question 2 about competition?",
+                findings=[
+                    _bloated_finding("q2", "First finding claim for question q2."),
+                    _bloated_finding("q2", "Second finding claim for question q2."),
+                ],
+            ),
+            QuestionFindings(
+                question_id="q3",
+                question="Research question 3 about distribution?",
+                findings=[_bloated_finding("q3", "Finding claim for question q3.")],
+            ),
+            QuestionFindings(
+                question_id="q4",
+                question="Research question 4 about pricing?",
+                findings=[_bloated_finding("q4", "Finding claim for question q4.")],
+            ),
+            QuestionFindings(
+                question_id="q5",
+                question="Research question 5 about risks?",
+                findings=[_bloated_finding("q5", "Finding claim for question q5.")],
+            ),
+        ],
+        competitors=[
+            CompetitorMention(
+                name="Competitor Alpha",
+                description="A direct competitor in the HR automation space.",
+                positioning_vs_idea=(
+                    "Overlaps on handbook Q&A but lacks Slack integration."
+                ),
+                citations=[
+                    Citation(
+                        url="https://example.com/competitor-alpha",
+                        title="Competitor Alpha",
+                        source_domain="example.com",
+                        accessed_at=_NOW,
+                    )
+                ],
+            )
+        ],
+        market_signals="M" * 1200,
+        distribution_signals="D" * 1200,
+        regulatory_signals="R" * 800,
+        risks_assessment="X" * 2000,
+        overall_recommendation="iterate",
+        recommendation_rationale="Y" * 1500,
+        research_limitations="Market size data was not found in search results.",
+        rubric_version_used="v1",
+    )
+
+
+def test_zone_b_compressed_prompt_is_shorter_than_full_dump() -> None:
+    vr = _make_bloated_validation_report()
+    analytics = _make_minimal_analytics()
+    compressed_prompt = build_insight_user_prompt(vr, analytics)
+    full_zone_b = (
+        f"{_render_finding_id_directory(vr)}\n"
+        f"<validation_report_json>\n"
+        f"{vr.model_dump_json(indent=2)}\n"
+        f"</validation_report_json>\n"
+        "The ValidationReport above is the cognitive validation output. "
+        "Cite its finding IDs (from finding_id_directory) in "
+        "research_takeaways.cited_finding_ids — never URLs, never invented IDs.\n"
+    )
+    full_prompt = (
+        f"{INSIGHT_ZONE_A_INSTRUCTIONS}{USER_CACHE_ZONE_BOUNDARY}"
+        f"{full_zone_b}{USER_CACHE_ZONE_BOUNDARY}"
+        f"{compressed_prompt.split(USER_CACHE_ZONE_BOUNDARY)[2]}"
+    )
+    assert len(compressed_prompt) <= len(full_prompt) * 0.7

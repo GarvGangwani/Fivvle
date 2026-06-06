@@ -5,7 +5,7 @@ separated by ``USER_CACHE_ZONE_BOUNDARY`` (from ``app.llm.client``):
 
 - **Zone A** — Global, stable instructions plus output/schema guidance. Same for every
   Insight call. Cached with **1-hour** TTL (``user_zone_a_end``).
-- **Zone B** — Per-experiment stable: ValidationReport JSON. Cached with **5-minute**
+- **Zone B** — Per-experiment stable: ValidationReport compressed view (claim + confidence + IDs only). Cached with **5-minute**
   TTL (``user_zone_b_end``).
 - **Zone C** — Per-call dynamic content: AnalyticsAggregate JSON plus closing
   extraction directive.
@@ -22,15 +22,24 @@ tightening prose thresholds.
 
 PROMPT_NAME is the stable identifier logged to LLMCall.prompt_name.
 
+Per calibration eval-insight-20260606T180458Z, Zone B was changed from full
+ValidationReport.model_dump_json to a compressed dict view (claims + confidence +
+IDs only) to keep p90 latency under the 30s gate. Stripped fields are not
+used by the insight prompt obligations.
+
 Exports:
     PROMPT_NAME -- ``insight_v1_cached``
     INSIGHT_SYSTEM_PROMPT -- empty; instructions are in Zone A of the user message
     INSIGHT_ZONE_A_INSTRUCTIONS -- Zone A body
+    _build_compressed_vr_view() -- internal: compact VR dict for Zone B
     _compute_finding_ids() -- internal: positional IDs from ValidationReport
     build_insight_user_prompt() -- builds the full user turn (zones + boundaries)
 """
 
 from __future__ import annotations
+
+import json
+from typing import Any
 
 from app.llm.client import USER_CACHE_ZONE_BOUNDARY
 from app.schemas.insight import AnalyticsAggregate
@@ -114,6 +123,48 @@ The ValidationReport and AnalyticsAggregate JSON payloads inside the tagged bloc
 """
 
 
+def _build_compressed_vr_view(vr: ValidationReport) -> dict[str, Any]:
+    """Build a compact dict-of-primitives from ValidationReport for Zone B.
+
+    Strips fields the insight LLM does not use (evidence_summary, citations,
+    competitors, market/distribution/regulatory signals, risks_assessment,
+    recommendation_rationale, research_limitations, rubric_version_used) to
+    reduce input tokens and bring p90 latency under the 30s gate.
+
+    Each finding gets an explicit `id` matching the qN.fM scheme used by the
+    finding_id_directory in Zone B — so the LLM can ground synthesis to the
+    same IDs it cites in research_takeaways.cited_finding_ids.
+
+    Per calibration eval-insight-20260606T180458Z: full model_dump_json embeds
+    10-20k tokens; this compressed view drops it to ~3-5k tokens.
+    """
+    questions: list[dict[str, Any]] = []
+    for qf in vr.questions_and_findings:
+        findings: list[dict[str, Any]] = []
+        for f_idx, finding in enumerate(qf.findings):
+            findings.append(
+                {
+                    "id": f"{qf.question_id}.f{f_idx}",
+                    "claim": finding.claim,
+                    "confidence": finding.confidence,
+                    "confidence_rationale": finding.confidence_rationale,
+                }
+            )
+        questions.append(
+            {
+                "question_id": qf.question_id,
+                "question": qf.question,
+                "evidence_gap": qf.evidence_gap,
+                "findings": findings,
+            }
+        )
+    return {
+        "executive_summary": vr.executive_summary,
+        "overall_recommendation": vr.overall_recommendation,
+        "questions_and_findings": questions,
+    }
+
+
 def _compute_finding_ids(validation_report: ValidationReport) -> list[tuple[str, str]]:
     """Compute positional finding IDs and claim previews for the directory.
 
@@ -151,17 +202,22 @@ def build_insight_user_prompt(
     """Build the user-turn prompt for a single Insight LLM call.
 
     Inserts ``USER_CACHE_ZONE_BOUNDARY`` between zones A|B|C for Anthropic cache
-    breakpoints. Zone B holds the ValidationReport JSON; Zone C holds the
+    breakpoints. Zone B holds the ValidationReport compressed view; Zone C holds the
     AnalyticsAggregate JSON plus the closing extraction directive.
     """
     zone_a = INSIGHT_ZONE_A_INSTRUCTIONS
+    compressed_vr = _build_compressed_vr_view(validation_report)
     zone_b = (
         f"{_render_finding_id_directory(validation_report)}\n"
-        f"<validation_report_json>\n"
-        f"{validation_report.model_dump_json(indent=2)}\n"
-        f"</validation_report_json>\n"
-        "The ValidationReport above is the cognitive validation output. "
-        "Cite its finding IDs (from finding_id_directory) in "
+        f"<validation_report_compact_json>\n"
+        f"{json.dumps(compressed_vr, indent=2)}\n"
+        f"</validation_report_compact_json>\n"
+        "The compacted ValidationReport above contains only fields the insight "
+        "task uses: per-finding claim + confidence + rationale + IDs, plus "
+        "executive_summary and overall_recommendation. Evidence text, citations, "
+        "competitors, and signals blocks are intentionally omitted — synthesis "
+        "must work from claims and confidence labels. "
+        "Cite finding IDs (from finding_id_directory) in "
         "research_takeaways.cited_finding_ids — never URLs, never invented IDs.\n"
     )
     zone_c = (
