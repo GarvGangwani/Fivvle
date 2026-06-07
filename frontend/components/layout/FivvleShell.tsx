@@ -35,7 +35,7 @@ function getExperimentIdFromPath(pathname: string): string | null {
 
 function tabActive(pathname: string, tab: "validate" | "host" | "distribute"): boolean {
   if (tab === "validate") {
-    return pathname === "/new" || pathname === "/dashboard" || pathname.startsWith("/dashboard");
+    return pathname === "/new" || pathname.startsWith("/new/");
   }
   if (tab === "host") {
     return pathname.includes("/landing-page");
