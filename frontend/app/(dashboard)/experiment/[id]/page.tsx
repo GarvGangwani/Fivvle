@@ -188,9 +188,10 @@ export default function ExperimentDetailPage() {
             href={`/experiment/${experimentId}/landing-page`}
             className="mt-6 inline-flex rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gray-700"
           >
-            Open landing page editor
+            {status === "LANDING_LIVE"
+              ? "Open landing page editor"
+              : "Review & customize landing page"}
           </Link>
-          <p className="mt-2 text-xs text-gray-400">(Coming in FE5)</p>
         </div>
       )}
 

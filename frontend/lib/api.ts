@@ -5,6 +5,8 @@ import type {
   ExperimentDetail,
   ExperimentSummary,
   GenerateLandingPageResponse,
+  LandingPage,
+  LandingPagePatch,
   ResearchStatus,
   ValidationReport,
 } from "./types";
@@ -183,6 +185,22 @@ export async function confirmExperiment(id: string): Promise<{
 
 export async function getResearchStatus(id: string): Promise<ResearchStatus> {
   return apiFetch<ResearchStatus>(`/experiments/${id}/research-status`);
+}
+
+export async function getLandingPage(
+  experimentId: string,
+): Promise<LandingPage> {
+  return apiFetch<LandingPage>(`/experiments/${experimentId}/landing-page`);
+}
+
+export async function patchLandingPage(
+  experimentId: string,
+  patch: LandingPagePatch,
+): Promise<LandingPage> {
+  return apiFetch<LandingPage>(`/experiments/${experimentId}/landing-page`, {
+    method: "PATCH",
+    body: patch,
+  });
 }
 
 export async function generateLandingPage(

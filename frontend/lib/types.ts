@@ -246,6 +246,26 @@ export interface LandingPageData {
   page_json: PageJson;
 }
 
+/** GET /experiments/{id}/landing-page response */
+export interface LandingPage {
+  id: string;
+  experiment_id: string;
+  slug: string;
+  template_id: string;
+  copy_json: CopyJson;
+  page_json: PageJson;
+  headline: string;
+  subheadline: string | null;
+  live_at: string | null;
+  output_version?: number;
+}
+
+export type LandingPagePatch = {
+  copy_json?: CopyJson;
+  page_json?: PageJson;
+  template_id?: string;
+};
+
 // --- Chat types (POST /chat/turn, ADR 0019) ---
 
 export type ChatRole = "user" | "assistant";
