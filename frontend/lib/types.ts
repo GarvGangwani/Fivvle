@@ -6,34 +6,6 @@ export type PageGoal =
   | "investor_teaser"
   | "paid_ads";
 
-export type WizardStep = "select" | "upload" | "goal" | "progress" | "preview";
-
-export interface CreateProjectResponse {
-  message: string;
-  project_id: string;
-  job_id: string;
-  status: string;
-}
-
-export interface JobStatus {
-  id: string;
-  project_id: string;
-  job_type: string;
-  status: string;
-  progress: number;
-  message: string | null;
-  error: string | null;
-  result_json?: Record<string, unknown> | null;
-}
-
-export interface LandingPageOutput {
-  id: string;
-  copy_json: CopyJson;
-  page_json: PageJson;
-  code_output?: string;
-  version: number;
-}
-
 export interface CopyJson {
   hero?: HeroCopy;
   problem?: { heading: string; body: string };
@@ -150,3 +122,51 @@ export const REGENERATABLE_SECTIONS = [
 ] as const;
 
 export type RegenerableSection = (typeof REGENERATABLE_SECTIONS)[number];
+
+// --- Backend-matching experiment types ---
+
+export interface RefinedIdea {
+  refined_one_liner: string;
+  target_audience: string;
+  value_proposition: string;
+  risks: string[];
+  headline: string;
+  subheadline: string;
+  cta_text: string;
+}
+
+export interface ExperimentSummary {
+  id: string;
+  slug: string | null;
+  raw_idea: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ExperimentDetail extends ExperimentSummary {
+  refined_idea: RefinedIdea | null;
+  landing_page: LandingPageData | null;
+  validation_report_id: string | null;
+  insight_report_id: string | null;
+}
+
+export interface GenerateLandingPageRequest {
+  page_goal?: string;
+  template_id?: string;
+}
+
+export interface GenerateLandingPageResponse {
+  experiment_id: string;
+  status: string;
+}
+
+export interface ResearchStatus {
+  status: string;
+  phase_display?: string;
+}
+
+export interface LandingPageData {
+  copy_json: CopyJson;
+  page_json: PageJson;
+}

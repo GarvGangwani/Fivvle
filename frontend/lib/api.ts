@@ -1,4 +1,10 @@
 import { getFirebaseAuth } from "./firebase";
+import type {
+  ExperimentDetail,
+  ExperimentSummary,
+  GenerateLandingPageResponse,
+  ResearchStatus,
+} from "./types";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -96,5 +102,100 @@ export async function syncUser(): Promise<UserSyncResponse> {
   return apiFetch<UserSyncResponse>("/users/sync", {
     method: "POST",
     body: {},
+  });
+}
+
+export async function createExperiment(
+  raw_idea: string,
+): Promise<ExperimentDetail> {
+  return apiFetch<ExperimentDetail>("/experiments", {
+    method: "POST",
+    body: { raw_idea },
+  });
+}
+
+export async function getExperiment(id: string): Promise<ExperimentDetail> {
+  return apiFetch<ExperimentDetail>(`/experiments/${id}`);
+}
+
+export async function listExperiments(): Promise<ExperimentSummary[]> {
+  return apiFetch<ExperimentSummary[]>("/experiments");
+}
+
+export async function refineExperiment(
+  id: string,
+  feedback?: string,
+): Promise<ExperimentDetail> {
+  return apiFetch<ExperimentDetail>(`/experiments/${id}/refine`, {
+    method: "POST",
+    body: feedback !== undefined ? { feedback } : {},
+  });
+}
+
+export async function confirmExperiment(id: string): Promise<{
+  experiment_id: string;
+  status: string;
+  status_url: string;
+}> {
+  return apiFetch(`/experiments/${id}/confirm`, {
+    method: "POST",
+    body: {},
+  });
+}
+
+export async function getResearchStatus(id: string): Promise<ResearchStatus> {
+  return apiFetch<ResearchStatus>(`/experiments/${id}/research-status`);
+}
+
+export async function generateLandingPage(
+  id: string,
+  page_goal?: string,
+  template_id?: string,
+): Promise<GenerateLandingPageResponse> {
+  const body: { page_goal?: string; template_id?: string } = {};
+  if (page_goal !== undefined) body.page_goal = page_goal;
+  if (template_id !== undefined) body.template_id = template_id;
+  return apiFetch<GenerateLandingPageResponse>(
+    `/experiments/${id}/generate-landing-page`,
+    {
+      method: "POST",
+      body,
+    },
+  );
+}
+
+export async function generateInsight(
+  id: string,
+): Promise<GenerateLandingPageResponse> {
+  return apiFetch<GenerateLandingPageResponse>(
+    `/experiments/${id}/generate-insight`,
+    {
+      method: "POST",
+      body: {},
+    },
+  );
+}
+
+export async function submitPageView(
+  slug: string,
+  source_tag?: string,
+): Promise<void> {
+  const body: { slug: string; source_tag?: string } = { slug };
+  if (source_tag !== undefined) body.source_tag = source_tag;
+  await apiFetch<void>("/analytics/page-view", {
+    method: "POST",
+    body,
+    authenticated: false,
+  });
+}
+
+export async function submitWaitlistSignup(
+  slug: string,
+  email: string,
+): Promise<void> {
+  await apiFetch<void>(`/experiments/${slug}/waitlist`, {
+    method: "POST",
+    body: { email },
+    authenticated: false,
   });
 }
