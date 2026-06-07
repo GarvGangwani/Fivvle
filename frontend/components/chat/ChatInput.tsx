@@ -39,7 +39,7 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
   }
 
   return (
-    <div className="flex items-end gap-2 border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+    <div className="flex items-end gap-2 border-t border-[var(--fv-border)] bg-[var(--fv-surface)] px-4 py-3 sm:px-6">
       <textarea
         ref={textareaRef}
         rows={1}
@@ -47,19 +47,19 @@ export function ChatInput({ onSend, disabled, placeholder }: ChatInputProps) {
         disabled={disabled}
         onChange={resizeTextarea}
         onKeyDown={handleKeyDown}
-        className="max-h-40 min-h-[44px] flex-1 resize-none rounded-xl border border-gray-300 px-4 py-2.5 text-sm leading-relaxed text-gray-900 placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500 disabled:cursor-not-allowed disabled:opacity-50"
+        className="fv-input max-h-40 min-h-[44px] flex-1 resize-none px-4 py-2.5 text-sm leading-relaxed placeholder:text-[var(--fv-text-muted)] disabled:cursor-not-allowed disabled:opacity-50"
       />
       <button
         type="button"
         onClick={handleSend}
         disabled={disabled}
         aria-label="Send message"
-        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gray-900 text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+        className="fv-send-btn shrink-0 disabled:cursor-not-allowed"
       >
         {disabled ? (
-          <Loader2 className="h-5 w-5 animate-spin" />
+          <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
-          <Send className="h-5 w-5" />
+          <Send className="h-4 w-4" />
         )}
       </button>
     </div>

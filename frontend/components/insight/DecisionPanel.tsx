@@ -10,6 +10,7 @@ const DECISIONS: {
   label: string;
   description: string;
   destructive?: boolean;
+  primary?: boolean;
 }[] = [
   {
     id: "iterate",
@@ -22,6 +23,7 @@ const DECISIONS: {
     label: "Move forward",
     description:
       "Validation looks promising — proceed to build the MVP or next experiment phase.",
+    primary: true,
   },
   {
     id: "pivot",
@@ -79,14 +81,14 @@ export function DecisionPanel({
   }
 
   return (
-    <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-      <h2 className="text-lg font-semibold text-gray-900">Your decision</h2>
-      <p className="mt-1 text-sm text-gray-500">
+    <section className="fv-card p-6">
+      <h2 className="text-lg font-semibold text-[var(--fv-text)]">Your decision</h2>
+      <p className="mt-1 text-sm text-[var(--fv-text-muted)]">
         What do you want to do next based on this insight?
       </p>
 
       {error && (
-        <p className="mt-4 text-sm text-red-600">{error}</p>
+        <p className="mt-4 text-sm text-red-300">{error}</p>
       )}
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -96,19 +98,27 @@ export function DecisionPanel({
             type="button"
             disabled={submitting !== null}
             onClick={() => handleDecision(option.id)}
-            className={`flex flex-col rounded-xl border p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-              option.destructive
-                ? "border-red-200 hover:border-red-300 hover:bg-red-50"
-                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+            className={`flex flex-col p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+              option.primary
+                ? "fv-btn-primary flex-col items-start rounded-xl"
+                : option.destructive
+                  ? "fv-btn-ghost rounded-xl border-[rgba(239,68,68,0.3)] hover:border-[rgba(239,68,68,0.5)] hover:text-red-300"
+                  : "fv-btn-ghost rounded-xl"
             }`}
           >
-            <span className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+            <span className="flex items-center gap-2 text-sm font-semibold">
               {submitting === option.id && (
                 <Loader2 className="h-4 w-4 animate-spin" />
               )}
               {option.label}
             </span>
-            <span className="mt-2 text-xs leading-relaxed text-gray-500">
+            <span
+              className={`mt-2 text-xs leading-relaxed ${
+                option.primary
+                  ? "text-[#080c14]/70"
+                  : "text-[var(--fv-text-muted)]"
+              }`}
+            >
               {option.description}
             </span>
           </button>

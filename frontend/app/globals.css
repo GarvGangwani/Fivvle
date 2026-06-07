@@ -3,6 +3,317 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #0a0a0a;
+  --fv-bg: #080c14;
+  --fv-surface: #0f1623;
+  --fv-surface-2: rgba(255, 255, 255, 0.03);
+  --fv-border: rgba(255, 255, 255, 0.07);
+  --fv-border-strong: rgba(255, 255, 255, 0.12);
+  --fv-text: #e2e8f0;
+  --fv-text-muted: #64748b;
+  --fv-text-soft: #94a3b8;
+  --fv-accent: #06b6d4;
+  --fv-accent-hover: #22d3ee;
+  --fv-accent-muted: rgba(6, 182, 212, 0.15);
+  --fv-success: #10b981;
+  --fv-warning: #f59e0b;
+  --fv-danger: #ef4444;
+  --background: var(--fv-bg);
+  --foreground: var(--fv-text);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  background: var(--fv-bg);
+  color: var(--fv-text);
+  font-family: var(--font-dm-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2d3748;
+  border-radius: 2px;
+}
+
+@keyframes fv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes fv-pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.fv-tab-pill {
+  padding: 6px 20px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  transition: all 0.2s;
+  background: transparent;
+  color: var(--fv-text-muted);
+  text-transform: capitalize;
+}
+
+.fv-tab-pill:hover {
+  color: var(--fv-text);
+}
+
+.fv-tab-pill-active {
+  background: var(--fv-accent-muted);
+  color: var(--fv-accent);
+}
+
+.fv-sidebar-item {
+  padding: 10px 12px;
+  border-radius: 8px;
+  margin-bottom: 2px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.fv-sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.fv-sidebar-item-active {
+  background: rgba(6, 182, 212, 0.1);
+  border-left-color: var(--fv-accent);
+}
+
+.fv-card {
+  background: var(--fv-surface-2);
+  border: 1px solid var(--fv-border);
+  border-radius: 14px;
+}
+
+.fv-card-hover {
+  transition: all 0.15s;
+}
+
+.fv-card-hover:hover {
+  border-color: rgba(6, 182, 212, 0.3);
+  background: rgba(6, 182, 212, 0.04);
+  cursor: pointer;
+}
+
+.fv-card-selected {
+  border-color: var(--fv-accent);
+  background: rgba(6, 182, 212, 0.08);
+}
+
+.fv-btn-primary {
+  background: var(--fv-accent);
+  border: none;
+  border-radius: 12px;
+  color: #080c14;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: inherit;
+}
+
+.fv-btn-primary:hover:not(:disabled) {
+  background: var(--fv-accent-hover);
+  transform: translateY(-1px);
+}
+
+.fv-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.fv-btn-ghost {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--fv-border-strong);
+  border-radius: 8px;
+  color: var(--fv-text-soft);
+  cursor: pointer;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+
+.fv-btn-ghost:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--fv-text);
+}
+
+.fv-input {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  color: var(--fv-text);
+  outline: none;
+  transition: border-color 0.2s;
+  font-family: inherit;
+}
+
+.fv-input:focus {
+  border-color: rgba(6, 182, 212, 0.4);
+}
+
+.fv-msg-user {
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  border-radius: 14px 14px 4px 14px;
+  padding: 12px 16px;
+  max-width: 72%;
+  font-size: 14px;
+  line-height: 1.6;
+  margin-left: auto;
+}
+
+.fv-msg-ai {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 14px 14px 14px 4px;
+  padding: 12px 16px;
+  max-width: 80%;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.fv-deep-toggle {
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  border-radius: 8px;
+  padding: 5px 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: inherit;
+  background: transparent;
+  color: var(--fv-text-muted);
+}
+
+.fv-deep-toggle-on {
+  background: var(--fv-accent-muted);
+  border-color: var(--fv-accent);
+  color: var(--fv-accent);
+}
+
+.fv-deep-toggle:hover {
+  border-color: var(--fv-accent);
+  color: var(--fv-accent);
+}
+
+.fv-icon-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: var(--fv-text-muted);
+}
+
+.fv-icon-btn:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--fv-text-soft);
+}
+
+.fv-send-btn {
+  background: var(--fv-accent);
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: #080c14;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fv-send-btn:hover:not(:disabled) {
+  background: var(--fv-accent-hover);
+  transform: scale(1.04);
+}
+
+.fv-send-btn:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  color: #475569;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.fv-q-option {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-size: 14px;
+}
+
+.fv-q-option:hover {
+  border-color: rgba(6, 182, 212, 0.4);
+  background: rgba(6, 182, 212, 0.06);
+}
+
+.fv-q-option-selected {
+  border-color: var(--fv-accent);
+  background: rgba(6, 182, 212, 0.12);
+  color: var(--fv-accent);
+}
+
+.fv-panel-label {
+  font-size: 11px;
+  color: var(--fv-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+}
+
+.fv-error {
+  border-radius: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  background: rgba(239, 68, 68, 0.1);
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #fca5a5;
+}
+
+.fv-accent-ring:focus-visible {
+  outline: 2px solid rgba(6, 182, 212, 0.5);
+  outline-offset: 2px;
 }

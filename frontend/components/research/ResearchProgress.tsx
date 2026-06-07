@@ -76,25 +76,25 @@ export function ResearchProgress({
   return (
     <div className="mx-auto max-w-lg">
       <div className="mb-8 text-center">
-        <h2 className="text-xl font-semibold text-gray-900">
+        <h2 className="text-xl font-semibold text-[var(--fv-text)]">
           Research in progress
         </h2>
-        <p className="mt-2 text-sm text-gray-500">
+        <p className="mt-2 text-sm text-[var(--fv-text-muted)]">
           This usually takes 2–4 minutes. You can leave this page — we&apos;ll
           email you when it&apos;s done.
         </p>
         {status?.phase_label && (
-          <p className="mt-3 text-sm font-medium text-blue-700">
+          <p className="mt-3 text-sm font-medium text-[var(--fv-accent)]">
             {status.phase_label}
           </p>
         )}
       </div>
 
       {error && (
-        <p className="mb-4 text-center text-sm text-amber-700">{error}</p>
+        <p className="mb-4 text-center text-sm text-[var(--fv-warning)]">{error}</p>
       )}
 
-      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <div className="fv-card p-6">
         <PhaseIndicator
           currentPhase={currentPhase}
           phases={[...RESEARCH_PHASE_IDS]}

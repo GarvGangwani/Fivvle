@@ -15,13 +15,13 @@ function recommendationBadgeClass(
 ): string {
   switch (type) {
     case "proceed":
-      return "bg-green-100 text-green-900 ring-green-300";
+      return "bg-[rgba(16,185,129,0.15)] text-[var(--fv-success)] ring-[rgba(16,185,129,0.3)]";
     case "iterate":
-      return "bg-blue-100 text-blue-900 ring-blue-300";
+      return "bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-[rgba(6,182,212,0.3)]";
     case "pivot":
-      return "bg-yellow-100 text-yellow-900 ring-yellow-300";
+      return "bg-[rgba(245,158,11,0.15)] text-[var(--fv-warning)] ring-[rgba(245,158,11,0.3)]";
     case "kill":
-      return "bg-red-100 text-red-900 ring-red-300";
+      return "bg-[rgba(239,68,68,0.15)] text-red-300 ring-[rgba(239,68,68,0.3)]";
   }
 }
 
@@ -32,28 +32,28 @@ function formatRecommendation(type: InsightRecommendationType): string {
 function sourceTypeBadgeClass(type: TakeawaySourceType): string {
   switch (type) {
     case "BEHAVIORAL":
-      return "bg-purple-100 text-purple-800 ring-purple-200";
+      return "bg-[rgba(168,85,247,0.15)] text-purple-300 ring-[rgba(168,85,247,0.3)]";
     case "COGNITIVE":
-      return "bg-sky-100 text-sky-800 ring-sky-200";
+      return "bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-[rgba(6,182,212,0.3)]";
     case "SYNTHESIZED":
-      return "bg-indigo-100 text-indigo-800 ring-indigo-200";
+      return "bg-[rgba(99,102,241,0.15)] text-indigo-300 ring-[rgba(99,102,241,0.3)]";
   }
 }
 
 function TakeawayCard({ takeaway }: { takeaway: ResearchTakeaway }) {
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
+    <div className="fv-card p-4">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span
           className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${sourceTypeBadgeClass(takeaway.source_type)}`}
         >
           {takeaway.source_type}
         </span>
-        <span className="text-xs text-gray-400">
+        <span className="text-xs text-[var(--fv-text-muted)]">
           {takeaway.confidence} confidence
         </span>
       </div>
-      <p className="text-sm leading-relaxed text-gray-900 whitespace-pre-wrap">
+      <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--fv-text)]">
         {takeaway.claim}
       </p>
       {takeaway.cited_finding_ids.length > 0 && (
@@ -61,7 +61,7 @@ function TakeawayCard({ takeaway }: { takeaway: ResearchTakeaway }) {
           {takeaway.cited_finding_ids.map((id) => (
             <span
               key={id}
-              className="rounded-md bg-white px-2 py-0.5 text-xs font-mono text-gray-500 ring-1 ring-gray-200"
+              className="rounded-md bg-white/5 px-2 py-0.5 font-mono text-xs text-[var(--fv-text-muted)] ring-1 ring-[var(--fv-border)]"
             >
               {id}
             </span>
@@ -111,15 +111,15 @@ export function InsightReportViewer({ experimentId }: InsightReportViewerProps) 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--fv-accent)]" />
       </div>
     );
   }
 
   if (error || !report) {
     return (
-      <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-8 text-center">
-        <p className="text-sm text-red-700">
+      <div className="fv-error px-6 py-8 text-center">
+        <p className="text-sm">
           {error ?? "Insight report not available."}
         </p>
       </div>
@@ -128,8 +128,8 @@ export function InsightReportViewer({ experimentId }: InsightReportViewerProps) 
 
   return (
     <div className="space-y-8">
-      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm text-center sm:text-left">
-        <p className="text-sm font-medium uppercase tracking-wide text-gray-500">
+      <section className="fv-card p-6 text-center sm:text-left">
+        <p className="text-sm font-medium uppercase tracking-wide text-[var(--fv-text-muted)]">
           AI recommendation
         </p>
         <span
@@ -137,30 +137,30 @@ export function InsightReportViewer({ experimentId }: InsightReportViewerProps) 
         >
           {formatRecommendation(report.recommendation_type)}
         </span>
-        <p className="mt-4 text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">
+        <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-[var(--fv-text-soft)]">
           {report.recommendation}
         </p>
-        <p className="mt-3 text-xs text-gray-400 whitespace-pre-wrap">
+        <p className="mt-3 whitespace-pre-wrap text-xs text-[var(--fv-text-muted)]">
           {report.recommendation_rationale}
         </p>
       </section>
 
       {report.traffic_summary && (
-        <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900">
+        <section className="fv-card p-6">
+          <h2 className="text-lg font-semibold text-[var(--fv-text)]">
             Traffic summary
           </h2>
-          <p className="mt-1 text-sm font-medium text-gray-600">
+          <p className="mt-1 text-sm font-medium text-[var(--fv-text-soft)]">
             {report.traffic_summary.headline_metric}
           </p>
-          <p className="mt-3 text-sm leading-relaxed text-gray-700 whitespace-pre-wrap">
+          <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--fv-text-soft)]">
             {report.traffic_summary.narrative}
           </p>
         </section>
       )}
 
-      <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-900">
+      <section className="fv-card p-6">
+        <h2 className="text-lg font-semibold text-[var(--fv-text)]">
           Research takeaways
         </h2>
         <div className="mt-4 space-y-3">
@@ -174,29 +174,29 @@ export function InsightReportViewer({ experimentId }: InsightReportViewerProps) 
       </section>
 
       {report.conversion_by_source?.per_source?.length > 0 && (
-        <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900">
+        <section className="fv-card p-6">
+          <h2 className="text-lg font-semibold text-[var(--fv-text)]">
             Conversion by source
           </h2>
-          <p className="mt-2 text-sm text-gray-600 whitespace-pre-wrap">
+          <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--fv-text-soft)]">
             {report.conversion_by_source.warm_network_bias_commentary}
           </p>
           <ul className="mt-4 space-y-3">
             {report.conversion_by_source.per_source.map((src) => (
               <li
                 key={src.source_name}
-                className="rounded-lg border border-gray-100 bg-gray-50 p-4"
+                className="fv-card p-4"
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-medium text-gray-900">
+                  <span className="font-medium text-[var(--fv-text)]">
                     {src.source_name}
                   </span>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs text-[var(--fv-text-muted)]">
                     {src.views} views · {src.signups} signups ·{" "}
                     {(src.conversion_rate * 100).toFixed(1)}%
                   </span>
                 </div>
-                <p className="mt-2 text-sm text-gray-600 whitespace-pre-wrap">
+                <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--fv-text-soft)]">
                   {src.commentary}
                 </p>
               </li>
@@ -205,11 +205,11 @@ export function InsightReportViewer({ experimentId }: InsightReportViewerProps) 
         </section>
       )}
 
-      <section className="rounded-xl border border-amber-200 bg-amber-50 p-6">
-        <h2 className="text-sm font-semibold text-amber-900">
+      <section className="fv-card border-[rgba(245,158,11,0.3)] bg-[rgba(245,158,11,0.08)] p-6">
+        <h2 className="text-sm font-semibold text-[var(--fv-warning)]">
           What would change this?
         </h2>
-        <p className="mt-2 text-sm leading-relaxed text-amber-800 whitespace-pre-wrap">
+        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--fv-text-soft)]">
           {report.what_would_change_this}
         </p>
       </section>

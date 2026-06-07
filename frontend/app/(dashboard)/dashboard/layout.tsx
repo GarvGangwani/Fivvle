@@ -19,8 +19,8 @@ function DashboardAuthGuard({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50">
-        <span className="text-sm text-gray-500">Loading…</span>
+      <div className="flex min-h-screen items-center justify-center bg-[var(--fv-bg)]">
+        <span className="text-sm text-[var(--fv-text-muted)]">Loading…</span>
       </div>
     );
   }
@@ -46,25 +46,25 @@ function DashboardNav() {
   }
 
   return (
-    <header className="border-b border-gray-200 bg-white">
+    <header className="border-b border-[var(--fv-border)] bg-[var(--fv-surface)]">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
         <Link
           href="/dashboard"
           className="flex items-center gap-2.5 no-underline"
         >
           <FivvleLogo size={28} className="rounded-lg" />
-          <span className="text-lg font-semibold text-gray-900">Fivvle</span>
+          <span className="text-lg font-semibold text-[var(--fv-text)]">Fivvle</span>
         </Link>
 
         <div className="flex items-center gap-3 sm:gap-4">
-          <span className="hidden max-w-[200px] truncate text-sm text-gray-500 sm:inline">
+          <span className="hidden max-w-[200px] truncate text-sm text-[var(--fv-text-muted)] sm:inline">
             {user?.email}
           </span>
           <button
             type="button"
             onClick={handleSignOut}
             disabled={signingOut}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium disabled:cursor-not-allowed disabled:opacity-50"
           >
             <LogOut className="h-4 w-4" />
             <span className="hidden sm:inline">
@@ -84,7 +84,7 @@ export default function DashboardShellLayout({
 }) {
   return (
     <DashboardAuthGuard>
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-[var(--fv-bg)]">
         <DashboardNav />
         {children}
       </div>

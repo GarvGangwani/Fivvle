@@ -116,7 +116,7 @@ export default function ExperimentDetailPage() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--fv-accent)]" />
       </div>
     );
   }
@@ -124,10 +124,10 @@ export default function ExperimentDetailPage() {
   if (error && !experiment) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-16 text-center">
-        <p className="text-sm text-red-700">{error}</p>
+        <p className="text-sm text-red-300">{error}</p>
         <Link
           href="/dashboard"
-          className="mt-4 inline-block text-sm font-medium text-gray-900 hover:underline"
+          className="mt-4 inline-block text-sm font-medium text-[var(--fv-accent)] hover:text-[var(--fv-accent-hover)] no-underline"
         >
           Back to dashboard
         </Link>
@@ -144,13 +144,13 @@ export default function ExperimentDetailPage() {
       <div className="mb-8">
         <Link
           href="/dashboard"
-          className="mb-4 inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900"
+          className="mb-4 inline-flex items-center gap-1.5 text-sm text-[var(--fv-text-muted)] hover:text-[var(--fv-text)] no-underline"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to dashboard
         </Link>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-bold text-gray-900 sm:text-2xl">
+          <h1 className="text-xl font-bold text-[var(--fv-text)] sm:text-2xl">
             Experiment
           </h1>
           <StatusBadge status={status} />
@@ -158,7 +158,7 @@ export default function ExperimentDetailPage() {
       </div>
 
       {error && (
-        <div className="mb-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        <div className="fv-error mb-6 px-4 py-3 text-sm">
           {error}
         </div>
       )}
@@ -179,11 +179,11 @@ export default function ExperimentDetailPage() {
       )}
 
       {status === "RESEARCH_FAILED" && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-8 text-center">
-          <h2 className="text-lg font-semibold text-red-900">
+        <div className="fv-error px-6 py-8 text-center">
+          <h2 className="text-lg font-semibold text-red-300">
             Research failed
           </h2>
-          <p className="mt-2 text-sm text-red-700">
+          <p className="mt-2 text-sm text-red-200/80">
             Something went wrong during market research. You can retry and
             we&apos;ll pick up where we left off.
           </p>
@@ -191,7 +191,7 @@ export default function ExperimentDetailPage() {
             type="button"
             onClick={handleRetryResearch}
             disabled={retrying}
-            className="mt-6 inline-flex items-center gap-2 rounded-lg bg-red-800 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-900 disabled:cursor-not-allowed disabled:opacity-50"
+            className="fv-btn-ghost mt-6 inline-flex items-center gap-2 border-[rgba(239,68,68,0.3)] px-5 py-2.5 text-sm font-semibold text-red-300 hover:border-[rgba(239,68,68,0.5)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {retrying ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -209,17 +209,17 @@ export default function ExperimentDetailPage() {
             experimentId={experimentId}
             onInsightStarted={loadExperiment}
           />
-          <div className="rounded-xl border border-gray-200 bg-white px-6 py-8 shadow-sm">
-            <h2 className="text-lg font-semibold text-gray-900">
+          <div className="fv-card px-6 py-8">
+            <h2 className="text-lg font-semibold text-[var(--fv-text)]">
               Landing page is live
             </h2>
-            <p className="mt-2 text-sm text-gray-600">
+            <p className="mt-2 text-sm text-[var(--fv-text-soft)]">
               Your landing page is published and collecting traffic. Drive
               distribution while metrics accumulate.
             </p>
             <Link
               href={`/experiment/${experimentId}/landing-page`}
-              className="mt-6 inline-flex rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gray-700"
+              className="fv-btn-primary mt-6 px-5 py-2.5 text-sm no-underline"
             >
               Open landing page editor
             </Link>
@@ -228,17 +228,17 @@ export default function ExperimentDetailPage() {
       )}
 
       {status === "LANDING_DRAFT" && (
-        <div className="rounded-xl border border-gray-200 bg-white px-6 py-8 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900">
+        <div className="fv-card px-6 py-8">
+          <h2 className="text-lg font-semibold text-[var(--fv-text)]">
             Landing page draft ready
           </h2>
-          <p className="mt-2 text-sm text-gray-600">
+          <p className="mt-2 text-sm text-[var(--fv-text-soft)]">
             Your landing page draft has been generated. Review and customize it
             before publishing.
           </p>
           <Link
             href={`/experiment/${experimentId}/landing-page`}
-            className="mt-6 inline-flex rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gray-700"
+            className="fv-btn-primary mt-6 px-5 py-2.5 text-sm no-underline"
           >
             Review & customize landing page
           </Link>
@@ -246,12 +246,12 @@ export default function ExperimentDetailPage() {
       )}
 
       {status === "INSIGHT_GENERATING" && (
-        <div className="flex flex-col items-center rounded-xl border border-gray-200 bg-white px-6 py-16 text-center shadow-sm">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-          <p className="mt-4 text-sm font-medium text-gray-900">
+        <div className="fv-card flex flex-col items-center px-6 py-16 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[var(--fv-accent)]" />
+          <p className="mt-4 text-sm font-medium text-[var(--fv-text)]">
             Generating insight report…
           </p>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-[var(--fv-text-muted)]">
             Synthesizing cognitive research with your landing page behavior.
             This usually takes under a minute.
           </p>
@@ -269,11 +269,11 @@ export default function ExperimentDetailPage() {
       )}
 
       {status === "INSIGHT_FAILED" && (
-        <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-8 text-center">
-          <h2 className="text-lg font-semibold text-red-900">
+        <div className="fv-error px-6 py-8 text-center">
+          <h2 className="text-lg font-semibold text-red-300">
             Insight generation failed
           </h2>
-          <p className="mt-2 text-sm text-red-700">
+          <p className="mt-2 text-sm text-red-200/80">
             Something went wrong while building your insight report. You can
             retry once you have enough traffic data.
           </p>
@@ -281,7 +281,7 @@ export default function ExperimentDetailPage() {
             type="button"
             onClick={handleRetryInsight}
             disabled={retryingInsight}
-            className="mt-6 inline-flex items-center gap-2 rounded-lg bg-red-800 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-900 disabled:cursor-not-allowed disabled:opacity-50"
+            className="fv-btn-ghost mt-6 inline-flex items-center gap-2 border-[rgba(239,68,68,0.3)] px-5 py-2.5 text-sm font-semibold text-red-300 hover:border-[rgba(239,68,68,0.5)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {retryingInsight ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -294,12 +294,12 @@ export default function ExperimentDetailPage() {
       )}
 
       {status === "LANDING_GENERATING" && (
-        <div className="flex flex-col items-center rounded-xl border border-gray-200 bg-white px-6 py-16 text-center shadow-sm">
-          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
-          <p className="mt-4 text-sm font-medium text-gray-900">
+        <div className="fv-card flex flex-col items-center px-6 py-16 text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-[var(--fv-accent)]" />
+          <p className="mt-4 text-sm font-medium text-[var(--fv-text)]">
             Generating your landing page…
           </p>
-          <p className="mt-1 text-sm text-gray-500">This usually takes a moment.</p>
+          <p className="mt-1 text-sm text-[var(--fv-text-muted)]">This usually takes a moment.</p>
         </div>
       )}
 
@@ -312,10 +312,10 @@ export default function ExperimentDetailPage() {
         status !== "INSIGHT_GENERATING" &&
         status !== "INSIGHT_READY" &&
         status !== "INSIGHT_FAILED" && (
-          <div className="rounded-xl border border-gray-200 bg-white px-6 py-8 text-center shadow-sm">
-            <p className="text-sm text-gray-600">
+          <div className="fv-card px-6 py-8 text-center">
+            <p className="text-sm text-[var(--fv-text-soft)]">
               This experiment is in{" "}
-              <span className="font-medium">{status.replace(/_/g, " ").toLowerCase()}</span>{" "}
+              <span className="font-medium text-[var(--fv-text)]">{status.replace(/_/g, " ").toLowerCase()}</span>{" "}
               status.
             </p>
             {(status === "DRAFT" ||
@@ -323,7 +323,7 @@ export default function ExperimentDetailPage() {
               status === "REFINED") && (
               <Link
                 href="/new"
-                className="mt-4 inline-block text-sm font-semibold text-gray-900 hover:underline"
+                className="mt-4 inline-block text-sm font-semibold text-[var(--fv-accent)] hover:text-[var(--fv-accent-hover)] no-underline"
               >
                 Continue in chat
               </Link>

@@ -125,15 +125,15 @@ export function ChatInterface() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 flex-1 flex-col bg-[var(--fv-bg)]">
       <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
         <div className="mx-auto flex max-w-3xl flex-col gap-4">
           {messages.length === 0 && !loading && (
             <div className="flex flex-col items-center py-12 text-center">
-              <h2 className="text-lg font-semibold text-gray-900">
+              <h2 className="text-lg font-semibold text-[var(--fv-text)]">
                 What&apos;s your idea?
               </h2>
-              <p className="mt-2 max-w-md text-sm text-gray-500">
+              <p className="mt-2 max-w-md text-sm text-[var(--fv-text-muted)]">
                 Describe the problem you want to solve, who it&apos;s for, and
                 your proposed solution. Fivvle will refine it through a short
                 conversation, then kick off market research.
@@ -152,25 +152,25 @@ export function ChatInterface() {
 
           {loading && (
             <div className="flex justify-start">
-              <div className="flex items-center gap-2 rounded-2xl rounded-bl-md bg-white px-4 py-3 shadow-sm ring-1 ring-gray-200">
-                <Loader2 className="h-4 w-4 animate-spin text-gray-400" />
-                <span className="text-sm text-gray-500">Thinking…</span>
+              <div className="fv-msg-ai flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin text-[var(--fv-accent)]" />
+                <span className="text-sm text-[var(--fv-text-muted)]">Thinking…</span>
               </div>
             </div>
           )}
 
           {researchStarted && experimentId && (
-            <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-4">
-              <p className="text-sm font-medium text-blue-900">
+            <div className="fv-card border-[rgba(6,182,212,0.3)] bg-[var(--fv-accent-muted)] px-4 py-4">
+              <p className="text-sm font-medium text-[var(--fv-accent)]">
                 Research has started
               </p>
-              <p className="mt-1 text-sm text-blue-700">
+              <p className="mt-1 text-sm text-[var(--fv-text-soft)]">
                 Your market research is running in the background. This
                 typically takes 2–4 minutes.
               </p>
               <Link
                 href={`/experiment/${experimentId}`}
-                className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-blue-800 hover:text-blue-900"
+                className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--fv-accent)] hover:text-[var(--fv-accent-hover)] no-underline"
               >
                 View research progress
                 <ArrowRight className="h-4 w-4" />

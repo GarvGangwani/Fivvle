@@ -81,16 +81,16 @@ export function MetricsWidget({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center rounded-xl border border-gray-200 bg-white py-12">
-        <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+      <div className="fv-card flex items-center justify-center py-12">
+        <Loader2 className="h-5 w-5 animate-spin text-[var(--fv-accent)]" />
       </div>
     );
   }
 
   if (!analytics) {
     return (
-      <div className="rounded-xl border border-gray-200 bg-white px-6 py-8 text-center">
-        <p className="text-sm text-gray-500">
+      <div className="fv-card px-6 py-8 text-center">
+        <p className="text-sm text-[var(--fv-text-muted)]">
           {error ?? "Metrics will appear once your landing page is live."}
         </p>
       </div>
@@ -103,14 +103,14 @@ export function MetricsWidget({
   );
 
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="fv-card p-6">
       <div className="mb-6 flex items-start justify-between gap-4">
         <div>
-          <h2 className="flex items-center gap-2 text-lg font-semibold text-gray-900">
-            <BarChart3 className="h-5 w-5 text-gray-500" />
+          <h2 className="flex items-center gap-2 text-lg font-semibold text-[var(--fv-text)]">
+            <BarChart3 className="h-5 w-5 text-[var(--fv-accent)]" />
             Live metrics
           </h2>
-          <p className="mt-1 text-sm text-gray-500">
+          <p className="mt-1 text-sm text-[var(--fv-text-muted)]">
             {analytics.days_live === 0
               ? "Published today"
               : `${analytics.days_live} day${analytics.days_live === 1 ? "" : "s"} live`}
@@ -121,29 +121,29 @@ export function MetricsWidget({
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-          <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-gray-500">
+        <div className="fv-card p-4">
+          <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-[var(--fv-text-muted)]">
             <MousePointerClick className="h-3.5 w-3.5" />
             Page views
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900">
+          <p className="mt-2 text-2xl font-bold text-[var(--fv-text)]">
             {analytics.total_page_views.toLocaleString()}
           </p>
         </div>
-        <div className="rounded-lg border border-gray-100 bg-gray-50 p-4">
-          <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-gray-500">
+        <div className="fv-card p-4">
+          <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-[var(--fv-text-muted)]">
             <Users className="h-3.5 w-3.5" />
             Signups
           </div>
-          <p className="mt-2 text-2xl font-bold text-gray-900">
+          <p className="mt-2 text-2xl font-bold text-[var(--fv-text)]">
             {analytics.total_signups.toLocaleString()}
           </p>
         </div>
-        <div className="col-span-2 rounded-lg border border-gray-100 bg-gray-50 p-4 sm:col-span-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+        <div className="fv-card col-span-2 p-4 sm:col-span-1">
+          <p className="text-xs font-medium uppercase tracking-wide text-[var(--fv-text-muted)]">
             Conversion rate
           </p>
-          <p className="mt-2 text-2xl font-bold text-gray-900">
+          <p className="mt-2 text-2xl font-bold text-[var(--fv-text)]">
             {formatPercent(analytics.conversion_rate)}
           </p>
         </div>
@@ -151,7 +151,7 @@ export function MetricsWidget({
 
       {sources.length > 0 && (
         <div className="mt-6">
-          <h3 className="mb-3 text-sm font-semibold text-gray-900">
+          <h3 className="mb-3 text-sm font-semibold text-[var(--fv-text)]">
             Source breakdown
           </h3>
           <div className="space-y-2">
@@ -162,10 +162,10 @@ export function MetricsWidget({
               return (
                 <div
                   key={source}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 px-3 py-2 text-sm"
+                  className="fv-card flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
                 >
-                  <span className="font-medium text-gray-700">{source}</span>
-                  <span className="text-gray-500">
+                  <span className="font-medium text-[var(--fv-text-soft)]">{source}</span>
+                  <span className="text-[var(--fv-text-muted)]">
                     {views} views · {signups} signups · {formatPercent(rate)}
                   </span>
                 </div>
@@ -176,15 +176,15 @@ export function MetricsWidget({
       )}
 
       {error && (
-        <p className="mt-4 text-sm text-red-600">{error}</p>
+        <p className="mt-4 text-sm text-red-300">{error}</p>
       )}
 
-      <div className="mt-6 border-t border-gray-100 pt-6">
+      <div className="mt-6 border-t border-[var(--fv-border)] pt-6">
         <button
           type="button"
           onClick={handleGenerateInsight}
           disabled={!thresholdMet || generating}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+          className="fv-btn-primary w-full justify-center px-5 py-2.5 text-sm sm:w-auto disabled:cursor-not-allowed"
         >
           {generating ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -194,7 +194,7 @@ export function MetricsWidget({
           {generating ? "Starting insight…" : "Generate insight"}
         </button>
         {!thresholdMet && (
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-[var(--fv-text-muted)]">
             Need at least 10 page views or 1 signup to generate an insight
             report.
           </p>

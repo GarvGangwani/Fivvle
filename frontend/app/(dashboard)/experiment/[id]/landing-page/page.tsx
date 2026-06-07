@@ -65,7 +65,7 @@ export default function LandingPageEditorPage() {
   if (loading) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--fv-accent)]" />
       </div>
     );
   }
@@ -73,11 +73,11 @@ export default function LandingPageEditorPage() {
   if (experiment?.status === "LANDING_GENERATING") {
     return (
       <div className="mx-auto max-w-lg px-4 py-20 text-center">
-        <Loader2 className="mx-auto h-8 w-8 animate-spin text-gray-400" />
-        <p className="mt-4 text-sm font-medium text-gray-900">
+        <Loader2 className="mx-auto h-8 w-8 animate-spin text-[var(--fv-accent)]" />
+        <p className="mt-4 text-sm font-medium text-[var(--fv-text)]">
           Generating your landing page…
         </p>
-        <p className="mt-1 text-sm text-gray-500">This usually takes a moment.</p>
+        <p className="mt-1 text-sm text-[var(--fv-text-muted)]">This usually takes a moment.</p>
       </div>
     );
   }
@@ -85,12 +85,12 @@ export default function LandingPageEditorPage() {
   if (error || !experiment || !landingPage) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <p className="text-sm text-red-700">
+        <p className="text-sm text-red-300">
           {error ?? "Landing page unavailable."}
         </p>
         <Link
           href={`/experiment/${experimentId}`}
-          className="mt-4 inline-block text-sm font-medium text-gray-900 hover:underline"
+          className="mt-4 inline-block text-sm font-medium text-[var(--fv-accent)] hover:text-[var(--fv-accent-hover)] no-underline"
         >
           Back to experiment
         </Link>
@@ -103,13 +103,13 @@ export default function LandingPageEditorPage() {
       <div className="mb-4 shrink-0">
         <Link
           href={`/experiment/${experimentId}`}
-          className="mb-3 inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900"
+          className="mb-3 inline-flex items-center gap-1.5 text-sm text-[var(--fv-text-muted)] hover:text-[var(--fv-text)] no-underline"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to experiment
         </Link>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-bold text-gray-900">Landing page editor</h1>
+          <h1 className="text-xl font-bold text-[var(--fv-text)]">Landing page editor</h1>
           <StatusBadge status={experiment.status} />
         </div>
       </div>

@@ -90,10 +90,10 @@ export function EditorLayout({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {isLive && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[rgba(16,185,129,0.3)] bg-[rgba(16,185,129,0.1)] px-4 py-3">
           <div>
-            <p className="text-sm font-semibold text-green-900">Published</p>
-            <p className="text-xs text-green-700">
+            <p className="text-sm font-semibold text-[var(--fv-success)]">Published</p>
+            <p className="text-xs text-[var(--fv-text-soft)]">
               Your landing page is live and collecting traffic.
             </p>
           </div>
@@ -101,7 +101,7 @@ export function EditorLayout({
             href={`/e/${publishedSlug}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-green-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-900"
+            className="fv-btn-primary px-3 py-1.5 text-sm no-underline"
           >
             View live page
             <ExternalLink className="h-4 w-4" />
@@ -115,8 +115,8 @@ export function EditorLayout({
           onClick={() => setMobilePanel("edit")}
           className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium ${
             mobilePanel === "edit"
-              ? "bg-gray-900 text-white"
-              : "bg-gray-100 text-gray-600"
+              ? "bg-[var(--fv-accent)] text-[#080c14]"
+              : "bg-white/5 text-[var(--fv-text-muted)]"
           }`}
         >
           <Pencil className="h-4 w-4" />
@@ -127,8 +127,8 @@ export function EditorLayout({
           onClick={() => setMobilePanel("preview")}
           className={`inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium ${
             mobilePanel === "preview"
-              ? "bg-gray-900 text-white"
-              : "bg-gray-100 text-gray-600"
+              ? "bg-[var(--fv-accent)] text-[#080c14]"
+              : "bg-white/5 text-[var(--fv-text-muted)]"
           }`}
         >
           <Eye className="h-4 w-4" />
@@ -138,7 +138,7 @@ export function EditorLayout({
 
       <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[minmax(280px,360px)_1fr]">
         <div
-          className={`lp-editor-panel space-y-6 overflow-y-auto rounded-xl border border-gray-800 bg-gray-950 p-4 sm:p-5 ${
+          className={`lp-editor-panel space-y-6 overflow-y-auto rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)] p-4 sm:p-5 ${
             mobilePanel === "edit" ? "block" : "hidden lg:block"
           }`}
         >
@@ -149,7 +149,7 @@ export function EditorLayout({
 
           <CopyFieldsEditor copy={copy} onChange={handleCopyChange} />
 
-          <div className="border-t border-white/10 pt-6">
+          <div className="border-t border-[var(--fv-border)] pt-6">
             <PublishPanel
               projectId={experimentId}
               projectName={projectName}
@@ -164,7 +164,7 @@ export function EditorLayout({
         </div>
 
         <div
-          className={`min-h-[480px] overflow-hidden rounded-xl border border-gray-200 bg-gray-100 lg:min-h-[calc(100vh-12rem)] ${
+          className={`min-h-[480px] overflow-hidden rounded-xl border border-[var(--fv-border)] bg-[var(--fv-bg)] lg:min-h-[calc(100vh-12rem)] ${
             mobilePanel === "preview" ? "block" : "hidden lg:block"
           }`}
         >

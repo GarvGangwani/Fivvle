@@ -67,20 +67,20 @@ export function ExperimentCard({ experiment }: ExperimentCardProps) {
   return (
     <Link
       href={`/experiment/${experiment.id}`}
-      className="group flex h-full flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-shadow hover:border-gray-300 hover:shadow-md"
+      className="fv-card fv-card-hover group flex h-full flex-col p-5 no-underline"
     >
       <div className="mb-3 flex items-start justify-between gap-3">
-        <h2 className="line-clamp-2 text-base font-semibold text-gray-900 group-hover:text-gray-700">
+        <h2 className="line-clamp-2 text-base font-semibold text-[var(--fv-text)] group-hover:text-[var(--fv-text-soft)]">
           {ideaName}
         </h2>
         <StatusBadge status={experiment.status} />
       </div>
 
       {experiment.slug && (
-        <p className="mb-4 text-sm text-gray-400">{experiment.slug}</p>
+        <p className="mb-4 text-sm text-[var(--fv-text-muted)]">{experiment.slug}</p>
       )}
 
-      <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-3 text-xs text-gray-400">
+      <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-3 text-xs text-[var(--fv-text-muted)]">
         <span>Created {formatDate(experiment.created_at)}</span>
         <span>Updated {formatRelativeTime(experiment.updated_at)}</span>
       </div>

@@ -60,11 +60,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-16">
+    <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--fv-bg)] px-4 py-16">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Welcome back</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-2xl font-bold text-[var(--fv-text)]">Welcome back</h1>
+          <p className="mt-1 text-sm text-[var(--fv-text-muted)]">
             Log in to your Fivvle account.
           </p>
         </div>
@@ -73,7 +73,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="email"
-              className="block text-sm font-medium text-gray-700"
+              className="block text-sm font-medium text-[var(--fv-text-soft)]"
             >
               Email
             </label>
@@ -85,7 +85,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500 disabled:opacity-50"
+              className="fv-input mt-1 block w-full px-3 py-2 text-sm placeholder:text-[var(--fv-text-muted)] disabled:opacity-50"
               placeholder="you@example.com"
             />
           </div>
@@ -93,7 +93,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="password"
-              className="block text-sm font-medium text-gray-700"
+              className="block text-sm font-medium text-[var(--fv-text-soft)]"
             >
               Password
             </label>
@@ -105,17 +105,13 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
-              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm placeholder:text-gray-400 focus:border-gray-500 focus:outline-none focus:ring-1 focus:ring-gray-500 disabled:opacity-50"
+              className="fv-input mt-1 block w-full px-3 py-2 text-sm placeholder:text-[var(--fv-text-muted)] disabled:opacity-50"
               placeholder="Your password"
             />
           </div>
 
           {error && (
-            <p
-              role="alert"
-              aria-live="polite"
-              className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600"
-            >
+            <p role="alert" aria-live="polite" className="fv-error">
               {error}
             </p>
           )}
@@ -123,11 +119,11 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="flex w-full items-center justify-center rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-60"
+            className="fv-btn-primary w-full justify-center px-4 py-2.5 text-sm disabled:cursor-not-allowed"
           >
             {loading ? (
               <span className="flex items-center gap-2">
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[#080c14] border-t-transparent" />
                 Logging in…
               </span>
             ) : (
@@ -136,11 +132,11 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-gray-500">
+        <p className="mt-6 text-center text-sm text-[var(--fv-text-muted)]">
           Don&apos;t have an account?{" "}
           <a
             href="/signup"
-            className="font-medium text-gray-900 hover:underline"
+            className="font-medium text-[var(--fv-accent)] hover:text-[var(--fv-accent-hover)] no-underline"
           >
             Sign up
           </a>
