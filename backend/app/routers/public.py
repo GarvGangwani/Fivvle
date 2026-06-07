@@ -1,0 +1,247 @@
+"""Public endpoints — landing page delivery, waitlist signups, page-view analytics.
+
+Per AGENTS.md «Public landing page security»:
+- No authentication on any route in this module.
+- Slug format validated before any database lookup.
+- 404 for non-existent, unpublished, or archived pages (no information leakage).
+- X-Robots-Tag: noindex, nofollow on GET /e/{slug} (default SEO opt-out).
+- Structlog: slug and aggregate counts only — never email, user_agent, or referrer.
+
+Per .cursorrules «Per-endpoint rate limits»:
+- All routes: 30 req/min/IP via PUBLIC_RATE_LIMIT + ip_key.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from slowapi.util import get_remote_address
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db.enums import ExperimentStatus, LandingCtaType
+from app.db.models.experiment import Experiment
+from app.db.models.landing_page import LandingPage
+from app.db.models.page_view import PageView
+from app.db.models.waitlist_signup import WaitlistSignup
+from app.db.session import get_session
+from app.logging_config import get_logger
+from app.reliability.rate_limit import PUBLIC_RATE_LIMIT, ip_key, limiter
+
+_logger = get_logger(__name__)
+
+_SLUG_RE = re.compile(r"^[a-z0-9-]{6,40}$")
+
+_CTA_TYPE_TO_MODE: dict[LandingCtaType, str] = {
+    LandingCtaType.WAITLIST: "waitlist",
+    LandingCtaType.INTEREST: "scroll",
+    LandingCtaType.CONTACT: "external",
+}
+
+router = APIRouter(tags=["Public"])
+
+
+def _validate_slug(slug: str) -> str:
+    """Return normalized slug or raise 404 before any DB access."""
+    normalized = slug.strip().lower()
+    if not _SLUG_RE.match(normalized):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    return normalized
+
+
+class PublicLandingPageResponse(BaseModel):
+    """Payload for GET /e/{slug} — consumed by the public landing page renderer."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str
+    copy_json: dict[str, Any] | None
+    page_json: dict[str, Any] | None
+    experiment_slug: str | None
+    cta_mode: str
+    cta_url: str | None
+    project_name: str
+    published_at: str
+
+
+class WaitlistSignupRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+    source_tag: str | None = Field(default=None, max_length=100)
+
+
+class WaitlistSignupResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    message: str
+
+
+class PageViewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slug: str
+    source_tag: str | None = Field(default=None, max_length=100)
+    referrer: str | None = Field(default=None, max_length=2048)
+    user_agent: str | None = Field(default=None, max_length=500)
+    time_on_page_sec: int | None = Field(default=None, ge=0)
+
+
+class PageViewResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+
+
+async def _fetch_live_landing_page(
+    db: AsyncSession,
+    slug: str,
+) -> tuple[LandingPage, Experiment] | None:
+    """Return (LandingPage, Experiment) when slug is published and LANDING_LIVE."""
+    stmt = (
+        select(LandingPage, Experiment)
+        .join(Experiment, LandingPage.experiment_id == Experiment.id)
+        .where(
+            LandingPage.slug == slug,
+            LandingPage.live_at.is_not(None),
+            Experiment.status == ExperimentStatus.LANDING_LIVE,
+        )
+    )
+    result = await db.execute(stmt)
+    row = result.first()
+    if row is None:
+        return None
+    landing_page, experiment = row
+    return landing_page, experiment
+
+
+def _landing_page_to_public_payload(
+    landing_page: LandingPage,
+    experiment: Experiment,
+) -> PublicLandingPageResponse:
+    live_at = landing_page.live_at
+    assert live_at is not None  # guarded by query precondition
+
+    page_json = landing_page.page_json if isinstance(landing_page.page_json, dict) else {}
+    publish_meta = page_json.get("publish") if isinstance(page_json.get("publish"), dict) else {}
+
+    cta_mode = publish_meta.get("cta_mode") or _CTA_TYPE_TO_MODE.get(
+        landing_page.cta_type,
+        "waitlist",
+    )
+    cta_url = publish_meta.get("cta_url")
+    project_name = publish_meta.get("project_name") or landing_page.headline
+
+    return PublicLandingPageResponse(
+        slug=landing_page.slug,
+        copy_json=landing_page.copy_json,
+        page_json=landing_page.page_json,
+        experiment_slug=experiment.slug,
+        cta_mode=str(cta_mode),
+        cta_url=str(cta_url) if cta_url else None,
+        project_name=str(project_name),
+        published_at=live_at.isoformat(),
+    )
+
+
+@router.get("/e/{slug}", response_model=PublicLandingPageResponse)
+@limiter.limit(PUBLIC_RATE_LIMIT, key_func=ip_key)
+async def get_public_landing_page(
+    request: Request,
+    response: Response,
+    slug: str,
+    db: Annotated[AsyncSession, Depends(get_session)],
+) -> PublicLandingPageResponse:
+    validated_slug = _validate_slug(slug)
+    row = await _fetch_live_landing_page(db, validated_slug)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    landing_page, experiment = row
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+
+    _logger.info(
+        "public landing page served",
+        slug=validated_slug,
+        experiment_id=str(experiment.id),
+    )
+    return _landing_page_to_public_payload(landing_page, experiment)
+
+
+@router.post(
+    "/e/{slug}/waitlist",
+    response_model=WaitlistSignupResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+@limiter.limit(PUBLIC_RATE_LIMIT, key_func=ip_key)
+async def submit_waitlist_signup(
+    request: Request,
+    response: Response,
+    slug: str,
+    body: WaitlistSignupRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+) -> WaitlistSignupResponse:
+    validated_slug = _validate_slug(slug)
+    row = await _fetch_live_landing_page(db, validated_slug)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    landing_page, experiment = row
+    signup = WaitlistSignup(
+        experiment_id=experiment.id,
+        email=str(body.email).strip().lower(),
+        source_tag=body.source_tag,
+    )
+    db.add(signup)
+    await db.commit()
+
+    _logger.info(
+        "waitlist signup recorded",
+        slug=validated_slug,
+        experiment_id=str(experiment.id),
+    )
+    return WaitlistSignupResponse(message="Signed up successfully")
+
+
+@router.post(
+    "/analytics/page-view",
+    response_model=PageViewResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@limiter.limit(PUBLIC_RATE_LIMIT, key_func=ip_key)
+async def record_page_view(
+    request: Request,
+    response: Response,
+    body: PageViewRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+) -> PageViewResponse:
+    # Invalid slug format — silently accept without DB lookup (no info leak).
+    normalized_slug = body.slug.strip().lower()
+    if not _SLUG_RE.match(normalized_slug):
+        return PageViewResponse(status="recorded")
+
+    row = await _fetch_live_landing_page(db, normalized_slug)
+    if row is None:
+        return PageViewResponse(status="recorded")
+
+    _landing_page, experiment = row
+    page_view = PageView(
+        experiment_id=experiment.id,
+        source_tag=body.source_tag,
+        time_on_page_sec=body.time_on_page_sec,
+        user_agent=body.user_agent,
+        ip_address=get_remote_address(request),
+        referrer=body.referrer,
+    )
+    db.add(page_view)
+    await db.commit()
+
+    _logger.info(
+        "page view recorded",
+        slug=normalized_slug,
+        experiment_id=str(experiment.id),
+    )
+    return PageViewResponse(status="recorded")
