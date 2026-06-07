@@ -161,6 +161,14 @@ export interface GenerateLandingPageResponse {
   status: string;
 }
 
+export interface JobStatus {
+  id: string;
+  status: string;
+  progress: number;
+  message: string | null;
+  error: string | null;
+}
+
 export interface ResearchStatus {
   status: string;
   phase_display?: string;

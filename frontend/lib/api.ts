@@ -199,3 +199,99 @@ export async function submitWaitlistSignup(
     authenticated: false,
   });
 }
+
+export type PublishProjectResponse = {
+  message: string;
+  slug: string;
+  public_url: string;
+};
+
+export type PublicationSummary = {
+  id: string;
+  slug: string;
+  public_url: string;
+  is_current: boolean;
+  output_version: number;
+  cta_mode: string;
+  published_at: string;
+};
+
+export async function publishProject(
+  experimentId: string,
+  payload: { slug?: string; cta_mode: string; cta_url?: string },
+): Promise<PublishProjectResponse> {
+  return apiFetch<PublishProjectResponse>(
+    `/experiments/${experimentId}/landing-page/publish`,
+    {
+      method: "POST",
+      body: payload,
+    },
+  );
+}
+
+export async function listPublications(
+  experimentId: string,
+): Promise<PublicationSummary[]> {
+  return apiFetch<PublicationSummary[]>(
+    `/experiments/${experimentId}/landing-page/publications`,
+  );
+}
+
+export async function uploadProjectLogo(
+  experimentId: string,
+  file: File,
+): Promise<{ logo_url: string; filename: string }> {
+  const auth = getFirebaseAuth();
+  const user = auth.currentUser;
+  if (!user) {
+    throw new ApiError(401, { error: "Not authenticated" }, null);
+  }
+  const token = await user.getIdToken();
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `${API_BASE}/experiments/${experimentId}/landing-page/logo`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
+      },
+    );
+  } catch (err) {
+    throw new ApiError(
+      0,
+      { error: err instanceof Error ? err.message : "Network error" },
+      null,
+    );
+  }
+
+  const requestId = response.headers.get("X-Request-ID");
+
+  let parsed: unknown;
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    parsed = await response.json();
+  } else {
+    parsed = await response.text();
+  }
+
+  if (!response.ok) {
+    let retryAfterSeconds: number | null = null;
+    if (response.status === 429) {
+      const retryAfter = response.headers.get("Retry-After");
+      if (retryAfter !== null) {
+        const retryParsed = parseInt(retryAfter, 10);
+        retryAfterSeconds = isNaN(retryParsed) ? null : retryParsed;
+      }
+    }
+    throw new ApiError(response.status, parsed, requestId, retryAfterSeconds);
+  }
+
+  return parsed as { logo_url: string; filename: string };
+}
