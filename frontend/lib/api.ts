@@ -1,10 +1,12 @@
 import { getFirebaseAuth } from "./firebase";
 import type {
   ChatTurnResponse,
+  Experiment,
   ExperimentDetail,
   ExperimentSummary,
   GenerateLandingPageResponse,
   ResearchStatus,
+  ValidationReport,
 } from "./types";
 
 const API_BASE =
@@ -115,8 +117,14 @@ export async function createExperiment(
   });
 }
 
-export async function getExperiment(id: string): Promise<ExperimentDetail> {
-  return apiFetch<ExperimentDetail>(`/experiments/${id}`);
+export async function getExperiment(id: string): Promise<Experiment> {
+  return apiFetch<Experiment>(`/experiments/${id}`);
+}
+
+export async function getValidationReport(
+  id: string,
+): Promise<ValidationReport> {
+  return apiFetch<ValidationReport>(`/experiments/${id}/validation-report`);
 }
 
 export async function listExperiments(): Promise<ExperimentSummary[]> {

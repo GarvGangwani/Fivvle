@@ -171,7 +171,74 @@ export interface JobStatus {
 
 export interface ResearchStatus {
   status: string;
-  phase_display?: string;
+  phase_label: string | null;
+  phases_completed: string[];
+  last_updated_at: string;
+  error_detail: string | null;
+}
+
+export interface ExperimentValidationReportSummary {
+  overall_recommendation: string | null;
+  total_finding_count: number;
+  total_citation_count: number;
+}
+
+/** GET /experiments/{id} response shape */
+export interface Experiment {
+  id: string;
+  status: string;
+  validation_report: ExperimentValidationReportSummary | null;
+}
+
+export interface Citation {
+  url: string;
+  title: string;
+  source_domain: string;
+  accessed_at: string;
+}
+
+export interface Finding {
+  question_id: string;
+  claim: string;
+  evidence_summary: string;
+  citations: Citation[];
+  confidence: "high" | "medium" | "low";
+  confidence_rationale: string;
+}
+
+export interface QuestionFindings {
+  question_id: string;
+  question: string;
+  findings: Finding[];
+  evidence_gap: string | null;
+}
+
+export interface CompetitorMention {
+  name: string;
+  description: string;
+  positioning_vs_idea: string;
+  citations: Citation[];
+}
+
+export type OverallRecommendation =
+  | "proceed"
+  | "iterate"
+  | "pivot"
+  | "kill"
+  | "too_vague_to_recommend";
+
+export interface ValidationReport {
+  executive_summary: string;
+  questions_and_findings: QuestionFindings[];
+  competitors: CompetitorMention[];
+  market_signals: string;
+  distribution_signals: string | null;
+  regulatory_signals: string | null;
+  risks_assessment: string;
+  overall_recommendation: OverallRecommendation;
+  recommendation_rationale: string;
+  research_limitations: string;
+  rubric_version_used: string;
 }
 
 export interface LandingPageData {
