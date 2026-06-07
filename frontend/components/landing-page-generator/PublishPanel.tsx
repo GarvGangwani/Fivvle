@@ -15,6 +15,7 @@ interface PublishPanelProps {
   projectName: string;
   outputVersion: number;
   disabled?: boolean;
+  onPublished?: (result: PublishProjectResponse) => void;
 }
 
 export function PublishPanel({
@@ -22,6 +23,7 @@ export function PublishPanel({
   projectName,
   outputVersion,
   disabled,
+  onPublished,
 }: PublishPanelProps) {
   const [slug, setSlug] = useState(() => slugifyProjectName(projectName));
   const [ctaMode, setCtaMode] = useState<CtaMode>("waitlist");
@@ -60,6 +62,7 @@ export function PublishPanel({
         cta_url: ctaMode === "external" ? ctaUrl.trim() : undefined,
       });
       setLastPublish(res);
+      onPublished?.(res);
       await loadHistory();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Publish failed.");
