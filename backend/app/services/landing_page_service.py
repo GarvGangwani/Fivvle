@@ -206,14 +206,8 @@ class StrategistOutput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    input_model: LandingPageInputModel = Field(
-        ...,
-        description="Marketing intelligence interpreted from research and refinement.",
-    )
-    strategy: LandingPageStrategy = Field(
-        ...,
-        description="Conversion strategy: section sequence, messaging angle, copy framework.",
-    )
+    input_model: LandingPageInputModel = Field(...)
+    strategy: LandingPageStrategy = Field(...)
 
 
 def resolve_template_id(template_id: str | None) -> str:

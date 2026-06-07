@@ -170,30 +170,12 @@ class LandingPageInputModel(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    offer_core: OfferCore = Field(
-        ...,
-        description="Core offer framing: pitch, promise, and product definition.",
-    )
-    problem_intelligence: ProblemIntelligence = Field(
-        ...,
-        description="Problem-space intelligence for pain-led messaging.",
-    )
-    customer_intelligence: CustomerIntelligence = Field(
-        ...,
-        description="ICP and buyer psychology for audience-targeted copy.",
-    )
-    positioning_intelligence: PositioningIntelligence = Field(
-        ...,
-        description="Competitive positioning for differentiation-led messaging.",
-    )
-    brand_direction: BrandDirection = Field(
-        ...,
-        description="Voice and visual direction for on-brand copy.",
-    )
-    proof_intelligence: ProofIntelligence = Field(
-        ...,
-        description="Evidence, objections, and rebuttals for proof sections.",
-    )
+    offer_core: OfferCore = Field(...)
+    problem_intelligence: ProblemIntelligence = Field(...)
+    customer_intelligence: CustomerIntelligence = Field(...)
+    positioning_intelligence: PositioningIntelligence = Field(...)
+    brand_direction: BrandDirection = Field(...)
+    proof_intelligence: ProofIntelligence = Field(...)
     page_goal: str = Field(
         ...,
         description=(
