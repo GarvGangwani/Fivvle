@@ -73,6 +73,8 @@ class LandingPage(Base):
     how_it_works: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     faq: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     founder_bio: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    copy_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    page_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Public URL slug — pattern ^[a-z0-9-]{6,40}$ enforced at Pydantic layer
     slug: Mapped[str] = mapped_column(
