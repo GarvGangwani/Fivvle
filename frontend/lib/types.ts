@@ -178,3 +178,36 @@ export interface LandingPageData {
   copy_json: CopyJson;
   page_json: PageJson;
 }
+
+// --- Chat types (POST /chat/turn, ADR 0019) ---
+
+export type ChatRole = "user" | "assistant";
+
+export type ChatTurnKind =
+  | "normal_chat"
+  | "refinement_clarify"
+  | "refinement_finalize"
+  | "dispatch_announce"
+  | "pipeline_progress"
+  | "pipeline_complete"
+  | "pipeline_failed";
+
+export interface ChatMessage {
+  id: string;
+  role: ChatRole;
+  content: string;
+  timestamp?: string;
+}
+
+export interface ChatTurnResponse {
+  thread_id: string;
+  message_id: string;
+  experiment_id: string | null;
+  assistant_message: string;
+  turn_kind: ChatTurnKind;
+  clarifying_dimension: string | null;
+  pipeline_dispatched: boolean;
+  dispatched_at: string | null;
+  experiment_status: string | null;
+  research_error_detail: string | null;
+}

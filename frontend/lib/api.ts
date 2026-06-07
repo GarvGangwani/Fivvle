@@ -1,5 +1,6 @@
 import { getFirebaseAuth } from "./firebase";
 import type {
+  ChatTurnResponse,
   ExperimentDetail,
   ExperimentSummary,
   GenerateLandingPageResponse,
@@ -120,6 +121,35 @@ export async function getExperiment(id: string): Promise<ExperimentDetail> {
 
 export async function listExperiments(): Promise<ExperimentSummary[]> {
   return apiFetch<ExperimentSummary[]>("/experiments");
+}
+
+export type ChatTurnParams = {
+  message: string;
+  deep_research: boolean;
+  thread_id?: string | null;
+  experiment_id?: string | null;
+  idempotency_key?: string;
+};
+
+export async function chatTurn(
+  params: ChatTurnParams,
+): Promise<ChatTurnResponse> {
+  const body: Record<string, unknown> = {
+    message: params.message,
+    deep_research: params.deep_research,
+    thread_id: params.thread_id ?? null,
+    experiment_id: params.experiment_id ?? null,
+  };
+
+  if (params.deep_research) {
+    body.idempotency_key =
+      params.idempotency_key ?? crypto.randomUUID();
+  }
+
+  return apiFetch<ChatTurnResponse>("/chat/turn", {
+    method: "POST",
+    body,
+  });
 }
 
 export async function refineExperiment(
