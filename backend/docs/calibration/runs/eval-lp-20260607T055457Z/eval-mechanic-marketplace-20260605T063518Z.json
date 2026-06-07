@@ -1,0 +1,229 @@
+{
+  "template_id": "dark-premium",
+  "copy_json": {
+    "cta": {
+      "button": "Join the Waitlist \u2014 Get Early Access",
+      "heading": "Stop gambling on Yelp. Stop overpaying at the dealership.",
+      "subheading": "Join the waitlist and get early access to verified independent mechanics with real availability and transparent pricing. Founding members get priority booking + exclusive rates."
+    },
+    "faq": [
+      {
+        "answer": "RepairPal certifies shops but sends you leads \u2014 you still call around and hope. Yelp gives you reviews with no booking guarantee. We let you see real availability, verified credentials, and mechanic-set pricing, then book directly without the back-and-forth.",
+        "question": "How is this different from RepairPal or Yelp?"
+      },
+      {
+        "answer": "No. We focus on brick-and-mortar independent shops, not mobile services. You get a real garage, real equipment, and a mechanic with a permanent shop \u2014 without the mobile repair premium.",
+        "question": "Is this mobile repair like YourMechanic or Wrench?"
+      },
+      {
+        "answer": "No. Mechanics set their own prices and you see them upfront. We don't inflate rates. Our revenue comes from booking fees paid by shops, not markups passed to you.",
+        "question": "Do I pay more to book through your platform?"
+      },
+      {
+        "answer": "We launch metros only after hitting minimum mechanic density so you actually have options. Join the waitlist and we'll notify you the moment we're live in your area \u2014 no spam, just a launch alert.",
+        "question": "When will you launch in my city?"
+      },
+      {
+        "answer": "You'll get early access when we launch in your city, plus founding member perks like priority booking and exclusive rates. No commitments until you actually book.",
+        "question": "What happens after I join the waitlist?"
+      }
+    ],
+    "hero": {
+      "cta": "Join the Waitlist \u2014 Get Early Access",
+      "headline": "Book a verified independent mechanic in 5 minutes \u2014 not 5 hours of Yelp-and-hope.",
+      "subheadline": "ASE-certified mechanics with real availability and prices they set themselves. No dealership markup, no cold-calling shops that don't answer."
+    },
+    "proof": {
+      "elements": [
+        "YourMechanic scaled to 350+ technicians across 30 states serving 290,000+ customers before strategic acquisition \u2014 proving strong marketplace demand for mechanic booking.",
+        "RepairPal crossed 3,000 certified locations and facilitated over $1 billion in automotive repairs through its verified shop network.",
+        "The U.S. auto repair industry spans ~82,500 shops generating $55 billion annually \u2014 a massive, fragmented market with real room for a booking-first alternative.",
+        "Auto repair shops already spend around $350 to acquire each new customer \u2014 they want new channels as much as you want better options.",
+        "Automotive repair achieves the highest Google Ads conversion rate of any industry at 12.96% \u2014 when people need a mechanic, they search with intent.",
+        "Join the waitlist and be first in line when verified independent mechanics launch in your city."
+      ],
+      "headline": "You're not the only one who wants a better way to book a mechanic."
+    },
+    "problem": {
+      "body": "You moved to a new city. Your old mechanic retired. Or you finally got fed up with the dealership charging $400 for a $200 job. So you do what everyone tells you to do \u2014 you open Yelp, pick the shop with the best reviews, and hope for the best. And half the time, you lose. The 'top-rated' shop turns out sloppy. The 'honest' quote balloons once they have your keys. You sit in a waiting room wondering if you're getting played \u2014 because you probably are. Meanwhile, the dealership smiles and charges you 40% more for the same repair, knowing you'll come back because at least you know what to expect. That's the trap. You're not choosing the best option. You're choosing the least uncertain one \u2014 and paying a premium for the privilege. It shouldn't take a referral from your cousin's neighbor to find a mechanic you can trust.",
+      "heading": "You're tired of getting burned every time your car needs work."
+    },
+    "features": [
+      {
+        "title": "See ASE credentials before you book \u2014 not after you're disappointed",
+        "description": "Every mechanic profile shows their exact ASE certifications, real shop photos, and customer reviews. You know who you're hiring before you hand over your keys."
+      },
+      {
+        "title": "Real availability, not a 'we'll call you back' black hole",
+        "description": "Open booking slots are displayed in real time. Pick a time that works, reserve it, and show up. No phone tag. No 'leave a message and pray.'"
+      },
+      {
+        "title": "Mechanic-set pricing with no platform markup",
+        "description": "Shops set their own rates and you see the cost upfront. Compare before you book. No surprise charges. No dealership-style invoice shock."
+      },
+      {
+        "title": "Book direct \u2014 no lead forms, no middleman delays",
+        "description": "Reserve your appointment straight through the platform. Your booking is confirmed, not 'submitted for review.' You get a time slot, not a maybe."
+      }
+    ],
+    "objections": {
+      "items": [
+        {
+          "answer": "ASE certification is the industry-standard credential \u2014 but we go further by showing you each mechanic's specific certifications, customer reviews, and real shop photos so you know exactly who you're booking, not just that they're 'certified.'",
+          "question": "How do I know ASE certification actually means I'll get a good repair? I've had bad experiences before."
+        },
+        {
+          "answer": "Dealerships are convenient \u2014 but you're paying 20-40% more for the same repair. Our mechanics set their own prices, and you see the cost upfront before you book. No markup, no surprises.",
+          "question": "Why wouldn't I just go to the dealership? It's familiar and I know what to expect."
+        },
+        {
+          "answer": "We build lasting value through verified booking protection, easy rebooking, and dispute resolution \u2014 but we're also exploring lead-fee and subscription models that align mechanic incentives with long-term platform participation.",
+          "question": "What if the mechanic takes me off-platform after the first job to avoid fees \u2014 will this service even last?"
+        },
+        {
+          "answer": "We launch metros only after hitting minimum mechanic density thresholds \u2014 and our real-time availability means you see open slots before you book, not after you call five shops.",
+          "question": "Will there actually be enough mechanics in my area with real availability, or will this be worse than calling around?"
+        }
+      ],
+      "heading": "You might be wondering\u2026"
+    }
+  },
+  "page_json": {
+    "theme": {
+      "style": "dark-premium",
+      "body_font": "'Manrope', sans-serif",
+      "text_color": "#ebe4d4",
+      "font_family": "'Instrument Serif', serif, 'Manrope', sans-serif",
+      "accent_color": "#c9a25f",
+      "heading_font": "'Instrument Serif', serif",
+      "primary_color": "#0a0908",
+      "secondary_color": "#100e0c",
+      "background_color": "#0a0908"
+    },
+    "branding": {
+      "icon_mode": "initials"
+    },
+    "sections": [
+      {
+        "type": "hero",
+        "content": {
+          "cta": "Join the Waitlist \u2014 Get Early Access",
+          "headline": "Book a verified independent mechanic in 5 minutes \u2014 not 5 hours of Yelp-and-hope.",
+          "subheadline": "ASE-certified mechanics with real availability and prices they set themselves. No dealership markup, no cold-calling shops that don't answer."
+        }
+      },
+      {
+        "type": "problem",
+        "content": {
+          "body": "You moved to a new city. Your old mechanic retired. Or you finally got fed up with the dealership charging $400 for a $200 job. So you do what everyone tells you to do \u2014 you open Yelp, pick the shop with the best reviews, and hope for the best. And half the time, you lose. The 'top-rated' shop turns out sloppy. The 'honest' quote balloons once they have your keys. You sit in a waiting room wondering if you're getting played \u2014 because you probably are. Meanwhile, the dealership smiles and charges you 40% more for the same repair, knowing you'll come back because at least you know what to expect. That's the trap. You're not choosing the best option. You're choosing the least uncertain one \u2014 and paying a premium for the privilege. It shouldn't take a referral from your cousin's neighbor to find a mechanic you can trust.",
+          "heading": "You're tired of getting burned every time your car needs work."
+        }
+      },
+      {
+        "type": "features",
+        "content": {
+          "items": [
+            {
+              "title": "See ASE credentials before you book \u2014 not after you're disappointed",
+              "description": "Every mechanic profile shows their exact ASE certifications, real shop photos, and customer reviews. You know who you're hiring before you hand over your keys."
+            },
+            {
+              "title": "Real availability, not a 'we'll call you back' black hole",
+              "description": "Open booking slots are displayed in real time. Pick a time that works, reserve it, and show up. No phone tag. No 'leave a message and pray.'"
+            },
+            {
+              "title": "Mechanic-set pricing with no platform markup",
+              "description": "Shops set their own rates and you see the cost upfront. Compare before you book. No surprise charges. No dealership-style invoice shock."
+            },
+            {
+              "title": "Book direct \u2014 no lead forms, no middleman delays",
+              "description": "Reserve your appointment straight through the platform. Your booking is confirmed, not 'submitted for review.' You get a time slot, not a maybe."
+            }
+          ]
+        }
+      },
+      {
+        "type": "objections",
+        "content": {
+          "items": [
+            {
+              "answer": "ASE certification is the industry-standard credential \u2014 but we go further by showing you each mechanic's specific certifications, customer reviews, and real shop photos so you know exactly who you're booking, not just that they're 'certified.'",
+              "question": "How do I know ASE certification actually means I'll get a good repair? I've had bad experiences before."
+            },
+            {
+              "answer": "Dealerships are convenient \u2014 but you're paying 20-40% more for the same repair. Our mechanics set their own prices, and you see the cost upfront before you book. No markup, no surprises.",
+              "question": "Why wouldn't I just go to the dealership? It's familiar and I know what to expect."
+            },
+            {
+              "answer": "We build lasting value through verified booking protection, easy rebooking, and dispute resolution \u2014 but we're also exploring lead-fee and subscription models that align mechanic incentives with long-term platform participation.",
+              "question": "What if the mechanic takes me off-platform after the first job to avoid fees \u2014 will this service even last?"
+            },
+            {
+              "answer": "We launch metros only after hitting minimum mechanic density thresholds \u2014 and our real-time availability means you see open slots before you book, not after you call five shops.",
+              "question": "Will there actually be enough mechanics in my area with real availability, or will this be worse than calling around?"
+            }
+          ],
+          "heading": "You might be wondering\u2026"
+        }
+      },
+      {
+        "type": "proof",
+        "content": {
+          "elements": [
+            "YourMechanic scaled to 350+ technicians across 30 states serving 290,000+ customers before strategic acquisition \u2014 proving strong marketplace demand for mechanic booking.",
+            "RepairPal crossed 3,000 certified locations and facilitated over $1 billion in automotive repairs through its verified shop network.",
+            "The U.S. auto repair industry spans ~82,500 shops generating $55 billion annually \u2014 a massive, fragmented market with real room for a booking-first alternative.",
+            "Auto repair shops already spend around $350 to acquire each new customer \u2014 they want new channels as much as you want better options.",
+            "Automotive repair achieves the highest Google Ads conversion rate of any industry at 12.96% \u2014 when people need a mechanic, they search with intent.",
+            "Join the waitlist and be first in line when verified independent mechanics launch in your city."
+          ],
+          "headline": "You're not the only one who wants a better way to book a mechanic."
+        }
+      },
+      {
+        "type": "faq",
+        "content": {
+          "items": [
+            {
+              "answer": "RepairPal certifies shops but sends you leads \u2014 you still call around and hope. Yelp gives you reviews with no booking guarantee. We let you see real availability, verified credentials, and mechanic-set pricing, then book directly without the back-and-forth.",
+              "question": "How is this different from RepairPal or Yelp?"
+            },
+            {
+              "answer": "No. We focus on brick-and-mortar independent shops, not mobile services. You get a real garage, real equipment, and a mechanic with a permanent shop \u2014 without the mobile repair premium.",
+              "question": "Is this mobile repair like YourMechanic or Wrench?"
+            },
+            {
+              "answer": "No. Mechanics set their own prices and you see them upfront. We don't inflate rates. Our revenue comes from booking fees paid by shops, not markups passed to you.",
+              "question": "Do I pay more to book through your platform?"
+            },
+            {
+              "answer": "We launch metros only after hitting minimum mechanic density so you actually have options. Join the waitlist and we'll notify you the moment we're live in your area \u2014 no spam, just a launch alert.",
+              "question": "When will you launch in my city?"
+            },
+            {
+              "answer": "You'll get early access when we launch in your city, plus founding member perks like priority booking and exclusive rates. No commitments until you actually book.",
+              "question": "What happens after I join the waitlist?"
+            }
+          ]
+        }
+      },
+      {
+        "type": "cta",
+        "content": {
+          "button": "Join the Waitlist \u2014 Get Early Access",
+          "heading": "Stop gambling on Yelp. Stop overpaying at the dealership.",
+          "subheading": "Join the waitlist and get early access to verified independent mechanics with real availability and transparent pricing. Founding members get priority booking + exclusive rates."
+        }
+      }
+    ],
+    "color_mode": "dark",
+    "template_id": "dark-premium",
+    "color_palette": {
+      "accent": "#c9a25f",
+      "preset": "dark-premium-default",
+      "background": "#0a0908",
+      "foreground": "#ebe4d4"
+    },
+    "template_name": "Dark Premium"
+  }
+}

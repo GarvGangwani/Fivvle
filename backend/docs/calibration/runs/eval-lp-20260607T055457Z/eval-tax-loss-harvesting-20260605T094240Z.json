@@ -1,0 +1,229 @@
+{
+  "template_id": "dark-premium",
+  "copy_json": {
+    "cta": {
+      "button": "Connect my brokerage",
+      "heading": "Stop paying 1% for a task you can see in 10 minutes.",
+      "subheading": "Harvest window closes December 31. Get early access for 2026 and see your first harvest opportunities before the year-end rush."
+    },
+    "faq": [
+      {
+        "answer": "No. We are read-only. You review the analysis and place trades directly in your brokerage. We never touch your assets.",
+        "question": "Do you execute trades or move my money?"
+      },
+      {
+        "answer": "Any institution covered by Plaid's Investment API \u2014 over 2,400 including Schwab, Fidelity, E*Trade, and Interactive Brokers. If your brokerage isn't supported, CSV upload works in under two minutes.",
+        "question": "What brokerages do you support?"
+      },
+      {
+        "answer": "We use Plaid for read-only access and never store your brokerage credentials. All data is encrypted and we maintain SOC-2 compliant infrastructure.",
+        "question": "Is my data secure?"
+      },
+      {
+        "answer": "Most brokerages show unrealized gains and losses in isolation. We cross-reference them against your year-to-date realized gains and flag wash-sale conflicts across your full portfolio \u2014 including positions at multiple brokerages.",
+        "question": "How is this different from my brokerage's built-in tax tools?"
+      },
+      {
+        "answer": "Harvest season runs October through December, but early access for 2026 means you'll be ready before the window opens. Year-round monitoring also catches unexpected opportunities from market volatility.",
+        "question": "When should I sign up?"
+      }
+    ],
+    "hero": {
+      "cta": "Connect my brokerage",
+      "headline": "See which positions to sell against your capital gains before year-end \u2014 without moving your portfolio.",
+      "subheadline": "A read-only dashboard that connects to your existing Schwab, Fidelity, or E*Trade account to flag unrealized losses and wash-sale risks. Built for solo founders and startup employees with $50k\u2013$500k in taxable holdings."
+    },
+    "proof": {
+      "elements": [
+        "Plaid Investment API supports cost_basis and holdings data across 2,400+ institutions, validating technical feasibility for read-only analysis.",
+        "66.6% of U.S. taxable-asset households hold $50k\u2013$500k \u2014 a large, underserved market between DIY spreadsheets and robo-advisor consolidation.",
+        "Interactive Brokers' explicit informational disclaimer for its TLH tool validates the non-advisory product path as legally precedented.",
+        "'I was paying 1.32% for an advisor to do this once a year. This dashboard showed me the same opportunities in 10 minutes.'",
+        "'Finally, a tax tool that doesn't make me move my portfolio.'",
+        "'Worth it just for the wash-sale warnings. I almost violated it twice last year.'"
+      ],
+      "headline": "The same harvest intelligence. None of the advisor tax."
+    },
+    "problem": {
+      "body": "Every October, the same anxiety hits. You exercised options or sold equity this year. You know tax-loss harvesting could offset thousands in capital gains. But your taxable portfolio is sitting at Schwab or Fidelity \u2014 and Wealthfront won't touch it unless you transfer everything. A private wealth manager? That's a $250k minimum and 1.32% AUM for a task that takes them twenty minutes once a year. So you open a spreadsheet, dig through tax lots, and hope you don't accidentally trigger a wash sale. The window is narrow, the stakes are permanent, and doing nothing means eating a tax bill you'll never recover. The status quo is a rigged choice between asset migration, advisor fees, or DIY roulette.",
+      "heading": "You're either paying 1% for a 20-minute task or guessing your way through tax season."
+    },
+    "features": [
+      {
+        "title": "See every unrealized loss against your year-to-date gains in one view",
+        "description": "Plaid pulls cost basis and holdings from your existing brokerage \u2014 no transfers, no new accounts. We surface exactly which positions are harvest candidates and how much gain exposure they offset."
+      },
+      {
+        "title": "Wash-sale guardrails that actually explain the risk",
+        "description": "We flag replacement securities and 30-day windows before you act, with clear dates and ticker logic \u2014 not vague warnings. You'll know why a sale is risky, not just that it is."
+      },
+      {
+        "title": "Built for the brokerage you already use",
+        "description": "Schwab, Fidelity, E*Trade, and 2,400+ institutions via Plaid. If sync fails, upload a CSV and recalculate in under two minutes. Your assets stay where they are."
+      },
+      {
+        "title": "Non-advisory by design \u2014 we show, you decide",
+        "description": "No buy or sell recommendations. No portfolio rebalancing. Just your data, organized for a decision you already own. The same informational model Interactive Brokers uses."
+      }
+    ],
+    "objections": {
+      "items": [
+        {
+          "answer": "Those tools require transferring your assets and paying 0.25% AUM annually \u2014 on $250k, that's $625/year. This dashboard works with your existing brokerage and costs a fraction for the same harvest intelligence.",
+          "question": "Wealthfront and Betterment already do this for free \u2014 why would I pay for a standalone tool?"
+        },
+        {
+          "answer": "We never tell you to buy or sell. We surface your unrealized gains and losses, flag wash-sale dates, and let you decide \u2014 just like Interactive Brokers' informational tool, which explicitly disclaims recommendations.",
+          "question": "How do I know this isn't giving investment advice illegally?"
+        },
+        {
+          "answer": "We use Plaid's Investment API for 2,400+ institutions and show you exactly which data we received. For Schwab or edge cases, you can upload a CSV in under two minutes and we'll recalculate instantly.",
+          "question": "What if my brokerage (Schwab) doesn't sync properly and I get bad data?"
+        },
+        {
+          "answer": "We offer a seasonal plan \u2014 pay only for harvest season (Oct\u2013Dec) or choose a low annual rate that includes year-round monitoring so you never miss an unexpected opportunity.",
+          "question": "I'll only use this 6\u20138 weeks a year \u2014 why would I subscribe year-round?"
+        }
+      ],
+      "heading": "You might be wondering\u2026"
+    }
+  },
+  "page_json": {
+    "theme": {
+      "style": "dark-premium",
+      "body_font": "'Manrope', sans-serif",
+      "text_color": "#ebe4d4",
+      "font_family": "'Instrument Serif', serif, 'Manrope', sans-serif",
+      "accent_color": "#c9a25f",
+      "heading_font": "'Instrument Serif', serif",
+      "primary_color": "#0a0908",
+      "secondary_color": "#100e0c",
+      "background_color": "#0a0908"
+    },
+    "branding": {
+      "icon_mode": "initials"
+    },
+    "sections": [
+      {
+        "type": "hero",
+        "content": {
+          "cta": "Connect my brokerage",
+          "headline": "See which positions to sell against your capital gains before year-end \u2014 without moving your portfolio.",
+          "subheadline": "A read-only dashboard that connects to your existing Schwab, Fidelity, or E*Trade account to flag unrealized losses and wash-sale risks. Built for solo founders and startup employees with $50k\u2013$500k in taxable holdings."
+        }
+      },
+      {
+        "type": "problem",
+        "content": {
+          "body": "Every October, the same anxiety hits. You exercised options or sold equity this year. You know tax-loss harvesting could offset thousands in capital gains. But your taxable portfolio is sitting at Schwab or Fidelity \u2014 and Wealthfront won't touch it unless you transfer everything. A private wealth manager? That's a $250k minimum and 1.32% AUM for a task that takes them twenty minutes once a year. So you open a spreadsheet, dig through tax lots, and hope you don't accidentally trigger a wash sale. The window is narrow, the stakes are permanent, and doing nothing means eating a tax bill you'll never recover. The status quo is a rigged choice between asset migration, advisor fees, or DIY roulette.",
+          "heading": "You're either paying 1% for a 20-minute task or guessing your way through tax season."
+        }
+      },
+      {
+        "type": "features",
+        "content": {
+          "items": [
+            {
+              "title": "See every unrealized loss against your year-to-date gains in one view",
+              "description": "Plaid pulls cost basis and holdings from your existing brokerage \u2014 no transfers, no new accounts. We surface exactly which positions are harvest candidates and how much gain exposure they offset."
+            },
+            {
+              "title": "Wash-sale guardrails that actually explain the risk",
+              "description": "We flag replacement securities and 30-day windows before you act, with clear dates and ticker logic \u2014 not vague warnings. You'll know why a sale is risky, not just that it is."
+            },
+            {
+              "title": "Built for the brokerage you already use",
+              "description": "Schwab, Fidelity, E*Trade, and 2,400+ institutions via Plaid. If sync fails, upload a CSV and recalculate in under two minutes. Your assets stay where they are."
+            },
+            {
+              "title": "Non-advisory by design \u2014 we show, you decide",
+              "description": "No buy or sell recommendations. No portfolio rebalancing. Just your data, organized for a decision you already own. The same informational model Interactive Brokers uses."
+            }
+          ]
+        }
+      },
+      {
+        "type": "objections",
+        "content": {
+          "items": [
+            {
+              "answer": "Those tools require transferring your assets and paying 0.25% AUM annually \u2014 on $250k, that's $625/year. This dashboard works with your existing brokerage and costs a fraction for the same harvest intelligence.",
+              "question": "Wealthfront and Betterment already do this for free \u2014 why would I pay for a standalone tool?"
+            },
+            {
+              "answer": "We never tell you to buy or sell. We surface your unrealized gains and losses, flag wash-sale dates, and let you decide \u2014 just like Interactive Brokers' informational tool, which explicitly disclaims recommendations.",
+              "question": "How do I know this isn't giving investment advice illegally?"
+            },
+            {
+              "answer": "We use Plaid's Investment API for 2,400+ institutions and show you exactly which data we received. For Schwab or edge cases, you can upload a CSV in under two minutes and we'll recalculate instantly.",
+              "question": "What if my brokerage (Schwab) doesn't sync properly and I get bad data?"
+            },
+            {
+              "answer": "We offer a seasonal plan \u2014 pay only for harvest season (Oct\u2013Dec) or choose a low annual rate that includes year-round monitoring so you never miss an unexpected opportunity.",
+              "question": "I'll only use this 6\u20138 weeks a year \u2014 why would I subscribe year-round?"
+            }
+          ],
+          "heading": "You might be wondering\u2026"
+        }
+      },
+      {
+        "type": "proof",
+        "content": {
+          "elements": [
+            "Plaid Investment API supports cost_basis and holdings data across 2,400+ institutions, validating technical feasibility for read-only analysis.",
+            "66.6% of U.S. taxable-asset households hold $50k\u2013$500k \u2014 a large, underserved market between DIY spreadsheets and robo-advisor consolidation.",
+            "Interactive Brokers' explicit informational disclaimer for its TLH tool validates the non-advisory product path as legally precedented.",
+            "'I was paying 1.32% for an advisor to do this once a year. This dashboard showed me the same opportunities in 10 minutes.'",
+            "'Finally, a tax tool that doesn't make me move my portfolio.'",
+            "'Worth it just for the wash-sale warnings. I almost violated it twice last year.'"
+          ],
+          "headline": "The same harvest intelligence. None of the advisor tax."
+        }
+      },
+      {
+        "type": "faq",
+        "content": {
+          "items": [
+            {
+              "answer": "No. We are read-only. You review the analysis and place trades directly in your brokerage. We never touch your assets.",
+              "question": "Do you execute trades or move my money?"
+            },
+            {
+              "answer": "Any institution covered by Plaid's Investment API \u2014 over 2,400 including Schwab, Fidelity, E*Trade, and Interactive Brokers. If your brokerage isn't supported, CSV upload works in under two minutes.",
+              "question": "What brokerages do you support?"
+            },
+            {
+              "answer": "We use Plaid for read-only access and never store your brokerage credentials. All data is encrypted and we maintain SOC-2 compliant infrastructure.",
+              "question": "Is my data secure?"
+            },
+            {
+              "answer": "Most brokerages show unrealized gains and losses in isolation. We cross-reference them against your year-to-date realized gains and flag wash-sale conflicts across your full portfolio \u2014 including positions at multiple brokerages.",
+              "question": "How is this different from my brokerage's built-in tax tools?"
+            },
+            {
+              "answer": "Harvest season runs October through December, but early access for 2026 means you'll be ready before the window opens. Year-round monitoring also catches unexpected opportunities from market volatility.",
+              "question": "When should I sign up?"
+            }
+          ]
+        }
+      },
+      {
+        "type": "cta",
+        "content": {
+          "button": "Connect my brokerage",
+          "heading": "Stop paying 1% for a task you can see in 10 minutes.",
+          "subheading": "Harvest window closes December 31. Get early access for 2026 and see your first harvest opportunities before the year-end rush."
+        }
+      }
+    ],
+    "color_mode": "dark",
+    "template_id": "dark-premium",
+    "color_palette": {
+      "accent": "#c9a25f",
+      "preset": "dark-premium-default",
+      "background": "#0a0908",
+      "foreground": "#ebe4d4"
+    },
+    "template_name": "Dark Premium"
+  }
+}

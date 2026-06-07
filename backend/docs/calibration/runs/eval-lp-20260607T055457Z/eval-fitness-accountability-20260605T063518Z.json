@@ -1,0 +1,233 @@
+{
+  "template_id": "dark-premium",
+  "copy_json": {
+    "cta": {
+      "button": "Find my partner",
+      "heading": "Your next app doesn't have to become another icon you hide in a folder",
+      "subheading": "One habit. One partner. A real reason to show up. Cancel in two taps if it's not for you \u2014 but this time, someone else might notice if you do."
+    },
+    "faq": [
+      {
+        "answer": "Any single fitness or wellness habit you can prove with a photo \u2014 gym session, run, yoga, meal prep, steps goal. One habit per week. No multitasking.",
+        "question": "What habit can I choose?"
+      },
+      {
+        "answer": "It goes to charity. You and your partner both pay $5 only if you both miss the same day. Otherwise, no charge.",
+        "question": "Who gets the $5 when I miss?"
+      },
+      {
+        "answer": "Yes \u2014 pause or cancel with the same number of taps it took to start. We built this for people burned by apps that trap you.",
+        "question": "Can I cancel if it's not working?"
+      },
+      {
+        "answer": "We ask about your goal, schedule, and how you like to communicate. You get one match at a time. If they go dark for 48 hours, we rematch you automatically.",
+        "question": "How does partner matching work?"
+      },
+      {
+        "answer": "Start at $5. If you need more fire, your stake escalates by $5 each consecutive missed week up to $25. The system adapts to your motivation gap.",
+        "question": "What if I want higher stakes than $5?"
+      }
+    ],
+    "hero": {
+      "cta": "Find my partner",
+      "headline": "Stop quitting fitness apps in silence. Make someone else count on you.",
+      "subheadline": "One habit. One partner. $5 to charity if you skip. Built for people who have deleted 3+ apps and need a reason to stay."
+    },
+    "proof": {
+      "elements": [
+        "Global habit tracker app market valued at $1.16\u2013$1.7 billion in 2024 \u2014 yet 77% of users churn after Day 1, proving the demand is massive but current tools fail",
+        "Reddit and Discord communities are actively begging for structured accountability partner matching \u2014 users building their own apps because nothing exists with real stakes",
+        "Purpose-built platforms like Cohorty, Focusmate, and GoalsWon are emerging to solve partner-matching friction \u2014 validating this exact problem space",
+        "Pact's tens of thousands of complaints and FTC settlement prove massive latent demand for financial-stakes fitness accountability \u2014 the execution failed, not the desire"
+      ],
+      "headline": "You're not the only one building a better way to not quit"
+    },
+    "problem": {
+      "body": "You download the app. Set the goal. Streak hits 4 days \u2014 then 5 \u2014 then you miss a Tuesday. The notification sits there. You mute it. Two weeks later you delete it, and nothing happens. No one asks. No one knows. Solo apps bank on you disappointing yourself, and you've proven that doesn't work. Meanwhile, the Reddit partner you found ghosts you by Thursday, and the $100 you pledged on StickK feels like a tax on optimism, not a tool for change. The status quo is a graveyard of abandoned streaks and random strangers who vanish. You don't need another motivational quote. You need a system that makes quitting cost something real.",
+      "heading": "You already know the guilt-free quit cycle."
+    },
+    "features": [
+      {
+        "title": "One partner, one habit \u2014 no overwhelm",
+        "description": "Pick a single habit for the week. We match you with one person chasing the same goal, so you're not juggling six habits or managing a group chat."
+      },
+      {
+        "title": "Daily photo check-in your partner actually sees",
+        "description": "Snap a photo proving you did the work. Your partner sees it. You see theirs. No algorithmic streaks. Just two humans showing up for each other."
+      },
+      {
+        "title": "$5 to charity when both of you miss \u2014 never one-sided",
+        "description": "You only pay if you AND your partner skip the same day. No asymmetrical traps. No surprise charges because your partner bailed and you didn't."
+      },
+      {
+        "title": "Auto-rematch if your partner goes dark",
+        "description": "If your partner ghosts for 48 hours, we find you a new one at no cost. No awkward Reddit DMs. No starting from zero."
+      },
+      {
+        "title": "Stake escalates as your habit forms",
+        "description": "Miss a week and your penalty climbs by $5, up to $25. The cost of quitting grows right when your habit needs it most."
+      }
+    ],
+    "objections": {
+      "items": [
+        {
+          "answer": "We learned from Pact's fatal mistake: you only pay when both you and your partner miss the same day, and you can pause or cancel your commitment with the same number of taps it took to start \u2014 no asymmetrical traps.",
+          "question": "How do I know I won't get charged unfairly like what happened with Pact?"
+        },
+        {
+          "answer": "We match on shared goals, schedule overlap, and communication style \u2014 and if your partner goes dark for 48 hours, we rematch you automatically at no cost.",
+          "question": "What if my partner ghosts me or we aren't compatible?"
+        },
+        {
+          "answer": "$5 is the floor, not the ceiling \u2014 your stake escalates by $5 each consecutive missed week up to $25, so the cost of quitting grows as your habit forms.",
+          "question": "Is $5 even enough to motivate me, or will I just pay and still quit?"
+        },
+        {
+          "answer": "Solo apps rely on you disappointing yourself \u2014 and you've proven that doesn't work. This adds a real person counting on you, with mutual stakes so neither of you can quietly fade out.",
+          "question": "How is this different from just using Beeminder or Forfeit by myself?"
+        }
+      ],
+      "heading": "You might be wondering\u2026"
+    }
+  },
+  "page_json": {
+    "theme": {
+      "style": "dark-premium",
+      "body_font": "'Manrope', sans-serif",
+      "text_color": "#ebe4d4",
+      "font_family": "'Instrument Serif', serif, 'Manrope', sans-serif",
+      "accent_color": "#c9a25f",
+      "heading_font": "'Instrument Serif', serif",
+      "primary_color": "#0a0908",
+      "secondary_color": "#100e0c",
+      "background_color": "#0a0908"
+    },
+    "branding": {
+      "icon_mode": "initials"
+    },
+    "sections": [
+      {
+        "type": "hero",
+        "content": {
+          "cta": "Find my partner",
+          "headline": "Stop quitting fitness apps in silence. Make someone else count on you.",
+          "subheadline": "One habit. One partner. $5 to charity if you skip. Built for people who have deleted 3+ apps and need a reason to stay."
+        }
+      },
+      {
+        "type": "problem",
+        "content": {
+          "body": "You download the app. Set the goal. Streak hits 4 days \u2014 then 5 \u2014 then you miss a Tuesday. The notification sits there. You mute it. Two weeks later you delete it, and nothing happens. No one asks. No one knows. Solo apps bank on you disappointing yourself, and you've proven that doesn't work. Meanwhile, the Reddit partner you found ghosts you by Thursday, and the $100 you pledged on StickK feels like a tax on optimism, not a tool for change. The status quo is a graveyard of abandoned streaks and random strangers who vanish. You don't need another motivational quote. You need a system that makes quitting cost something real.",
+          "heading": "You already know the guilt-free quit cycle."
+        }
+      },
+      {
+        "type": "features",
+        "content": {
+          "items": [
+            {
+              "title": "One partner, one habit \u2014 no overwhelm",
+              "description": "Pick a single habit for the week. We match you with one person chasing the same goal, so you're not juggling six habits or managing a group chat."
+            },
+            {
+              "title": "Daily photo check-in your partner actually sees",
+              "description": "Snap a photo proving you did the work. Your partner sees it. You see theirs. No algorithmic streaks. Just two humans showing up for each other."
+            },
+            {
+              "title": "$5 to charity when both of you miss \u2014 never one-sided",
+              "description": "You only pay if you AND your partner skip the same day. No asymmetrical traps. No surprise charges because your partner bailed and you didn't."
+            },
+            {
+              "title": "Auto-rematch if your partner goes dark",
+              "description": "If your partner ghosts for 48 hours, we find you a new one at no cost. No awkward Reddit DMs. No starting from zero."
+            },
+            {
+              "title": "Stake escalates as your habit forms",
+              "description": "Miss a week and your penalty climbs by $5, up to $25. The cost of quitting grows right when your habit needs it most."
+            }
+          ]
+        }
+      },
+      {
+        "type": "objections",
+        "content": {
+          "items": [
+            {
+              "answer": "We learned from Pact's fatal mistake: you only pay when both you and your partner miss the same day, and you can pause or cancel your commitment with the same number of taps it took to start \u2014 no asymmetrical traps.",
+              "question": "How do I know I won't get charged unfairly like what happened with Pact?"
+            },
+            {
+              "answer": "We match on shared goals, schedule overlap, and communication style \u2014 and if your partner goes dark for 48 hours, we rematch you automatically at no cost.",
+              "question": "What if my partner ghosts me or we aren't compatible?"
+            },
+            {
+              "answer": "$5 is the floor, not the ceiling \u2014 your stake escalates by $5 each consecutive missed week up to $25, so the cost of quitting grows as your habit forms.",
+              "question": "Is $5 even enough to motivate me, or will I just pay and still quit?"
+            },
+            {
+              "answer": "Solo apps rely on you disappointing yourself \u2014 and you've proven that doesn't work. This adds a real person counting on you, with mutual stakes so neither of you can quietly fade out.",
+              "question": "How is this different from just using Beeminder or Forfeit by myself?"
+            }
+          ],
+          "heading": "You might be wondering\u2026"
+        }
+      },
+      {
+        "type": "proof",
+        "content": {
+          "elements": [
+            "Global habit tracker app market valued at $1.16\u2013$1.7 billion in 2024 \u2014 yet 77% of users churn after Day 1, proving the demand is massive but current tools fail",
+            "Reddit and Discord communities are actively begging for structured accountability partner matching \u2014 users building their own apps because nothing exists with real stakes",
+            "Purpose-built platforms like Cohorty, Focusmate, and GoalsWon are emerging to solve partner-matching friction \u2014 validating this exact problem space",
+            "Pact's tens of thousands of complaints and FTC settlement prove massive latent demand for financial-stakes fitness accountability \u2014 the execution failed, not the desire"
+          ],
+          "headline": "You're not the only one building a better way to not quit"
+        }
+      },
+      {
+        "type": "faq",
+        "content": {
+          "items": [
+            {
+              "answer": "Any single fitness or wellness habit you can prove with a photo \u2014 gym session, run, yoga, meal prep, steps goal. One habit per week. No multitasking.",
+              "question": "What habit can I choose?"
+            },
+            {
+              "answer": "It goes to charity. You and your partner both pay $5 only if you both miss the same day. Otherwise, no charge.",
+              "question": "Who gets the $5 when I miss?"
+            },
+            {
+              "answer": "Yes \u2014 pause or cancel with the same number of taps it took to start. We built this for people burned by apps that trap you.",
+              "question": "Can I cancel if it's not working?"
+            },
+            {
+              "answer": "We ask about your goal, schedule, and how you like to communicate. You get one match at a time. If they go dark for 48 hours, we rematch you automatically.",
+              "question": "How does partner matching work?"
+            },
+            {
+              "answer": "Start at $5. If you need more fire, your stake escalates by $5 each consecutive missed week up to $25. The system adapts to your motivation gap.",
+              "question": "What if I want higher stakes than $5?"
+            }
+          ]
+        }
+      },
+      {
+        "type": "cta",
+        "content": {
+          "button": "Find my partner",
+          "heading": "Your next app doesn't have to become another icon you hide in a folder",
+          "subheading": "One habit. One partner. A real reason to show up. Cancel in two taps if it's not for you \u2014 but this time, someone else might notice if you do."
+        }
+      }
+    ],
+    "color_mode": "dark",
+    "template_id": "dark-premium",
+    "color_palette": {
+      "accent": "#c9a25f",
+      "preset": "dark-premium-default",
+      "background": "#0a0908",
+      "foreground": "#ebe4d4"
+    },
+    "template_name": "Dark Premium"
+  }
+}

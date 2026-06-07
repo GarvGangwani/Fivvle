@@ -1,0 +1,65 @@
+[
+  {
+    "slug": "eval-tax-loss-harvesting-20260605T094240Z",
+    "status": "OK",
+    "template": "dark-premium",
+    "sections": [
+      "cta",
+      "faq",
+      "hero",
+      "proof",
+      "problem",
+      "features",
+      "objections"
+    ],
+    "latency_s": 105.9
+  },
+  {
+    "slug": "eval-mechanic-marketplace-20260605T063518Z",
+    "status": "OK",
+    "template": "dark-premium",
+    "sections": [
+      "cta",
+      "faq",
+      "hero",
+      "proof",
+      "problem",
+      "features",
+      "objections"
+    ],
+    "latency_s": 166.2
+  },
+  {
+    "slug": "eval-fitness-accountability-20260605T063518Z",
+    "status": "OK",
+    "template": "dark-premium",
+    "sections": [
+      "cta",
+      "faq",
+      "hero",
+      "proof",
+      "problem",
+      "features",
+      "objections"
+    ],
+    "latency_s": 95.4
+  },
+  {
+    "slug": "eval-slack-hr-bot-20260605T063518Z",
+    "status": "FAILED",
+    "error": "Landing page LLM call failed for experiment a182d3db-7800-4656-84e2-606b7cacb823",
+    "latency_s": 151.8
+  },
+  {
+    "slug": "eval-vague-ai-productivity-20260604T175622Z",
+    "status": "OK",
+    "template": "dark-premium",
+    "sections": [
+      "cta",
+      "hero",
+      "problem",
+      "objections"
+    ],
+    "latency_s": 76.5
+  }
+]

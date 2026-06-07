@@ -1,0 +1,114 @@
+{
+  "template_id": "dark-premium",
+  "copy_json": {
+    "cta": {
+      "button": "Join the Waitlist \u2014 Get the Framework",
+      "heading": "Help us find the one workflow worth solving first",
+      "subheading": "Limited early access spots. Join the waitlist to get the AI Productivity Use-Case Framework and priority onboarding for the workflow you need most."
+    },
+    "hero": {
+      "cta": "Join the Waitlist \u2014 Shape What We Build",
+      "headline": "Most AI productivity apps fail before they ship \u2014 here's how to beat the odds",
+      "subheadline": "Join a waitlist built around research, not hype. Help define the one workflow worth solving first."
+    },
+    "problem": {
+      "body": "Research is unambiguous: 'lack of a well-defined use case' tops every survey of why AI projects derail. Not funding. Not talent. Not the model. The use case. Right now, the productivity space is consolidating around Microsoft Copilot, Notion AI, and Google Workspace AI \u2014 each with deep enterprise integration and billions in distribution. A vague 'AI for knowledge workers' concept has no procurement path, no differentiated value, and no defense against immediate substitutability. The status quo is not a strategy. It is a countdown to churn.",
+      "heading": "You have an AI idea. But you don't have a use case. And that is the #1 reason AI startups die."
+    },
+    "objections": {
+      "items": [
+        {
+          "answer": "This landing page is designed to test and refine the use case with real users before building \u2014 the waitlist itself becomes the research instrument to discover which workflow resonates.",
+          "question": "How can this succeed when research shows AI startups consistently fail without a defined use case?"
+        },
+        {
+          "answer": "We are not competing as another broad tool \u2014 we are starting narrow and will specialize based on waitlist feedback, avoiding the 'generic horizontal agent' trap that research shows leads to churn.",
+          "question": "What distinguishes this from Microsoft Copilot, Notion AI, and Google Workspace AI?"
+        },
+        {
+          "answer": "Join the waitlist to help define the specific workflow and measurable outcomes \u2014 early access members will shape the product's direction and receive priority onboarding for the use case they need most.",
+          "question": "The value proposition is unverifiable \u2014 no specific tasks or measurable time savings are defined."
+        },
+        {
+          "answer": "We are explicitly avoiding the wrapper trap by validating a specific workflow and building proprietary integration depth before scaling \u2014 the waitlist phase ensures we master one use case before expanding.",
+          "question": "Is this just another 'LLM wrapper' with a slick interface but no defensible IP?"
+        }
+      ],
+      "heading": "You might be wondering\u2026"
+    }
+  },
+  "page_json": {
+    "theme": {
+      "style": "dark-premium",
+      "body_font": "'Manrope', sans-serif",
+      "text_color": "#ebe4d4",
+      "font_family": "'Instrument Serif', serif, 'Manrope', sans-serif",
+      "accent_color": "#c9a25f",
+      "heading_font": "'Instrument Serif', serif",
+      "primary_color": "#0a0908",
+      "secondary_color": "#100e0c",
+      "background_color": "#0a0908"
+    },
+    "branding": {
+      "icon_mode": "initials"
+    },
+    "sections": [
+      {
+        "type": "hero",
+        "content": {
+          "cta": "Join the Waitlist \u2014 Shape What We Build",
+          "headline": "Most AI productivity apps fail before they ship \u2014 here's how to beat the odds",
+          "subheadline": "Join a waitlist built around research, not hype. Help define the one workflow worth solving first."
+        }
+      },
+      {
+        "type": "problem",
+        "content": {
+          "body": "Research is unambiguous: 'lack of a well-defined use case' tops every survey of why AI projects derail. Not funding. Not talent. Not the model. The use case. Right now, the productivity space is consolidating around Microsoft Copilot, Notion AI, and Google Workspace AI \u2014 each with deep enterprise integration and billions in distribution. A vague 'AI for knowledge workers' concept has no procurement path, no differentiated value, and no defense against immediate substitutability. The status quo is not a strategy. It is a countdown to churn.",
+          "heading": "You have an AI idea. But you don't have a use case. And that is the #1 reason AI startups die."
+        }
+      },
+      {
+        "type": "objections",
+        "content": {
+          "items": [
+            {
+              "answer": "This landing page is designed to test and refine the use case with real users before building \u2014 the waitlist itself becomes the research instrument to discover which workflow resonates.",
+              "question": "How can this succeed when research shows AI startups consistently fail without a defined use case?"
+            },
+            {
+              "answer": "We are not competing as another broad tool \u2014 we are starting narrow and will specialize based on waitlist feedback, avoiding the 'generic horizontal agent' trap that research shows leads to churn.",
+              "question": "What distinguishes this from Microsoft Copilot, Notion AI, and Google Workspace AI?"
+            },
+            {
+              "answer": "Join the waitlist to help define the specific workflow and measurable outcomes \u2014 early access members will shape the product's direction and receive priority onboarding for the use case they need most.",
+              "question": "The value proposition is unverifiable \u2014 no specific tasks or measurable time savings are defined."
+            },
+            {
+              "answer": "We are explicitly avoiding the wrapper trap by validating a specific workflow and building proprietary integration depth before scaling \u2014 the waitlist phase ensures we master one use case before expanding.",
+              "question": "Is this just another 'LLM wrapper' with a slick interface but no defensible IP?"
+            }
+          ],
+          "heading": "You might be wondering\u2026"
+        }
+      },
+      {
+        "type": "cta",
+        "content": {
+          "button": "Join the Waitlist \u2014 Get the Framework",
+          "heading": "Help us find the one workflow worth solving first",
+          "subheading": "Limited early access spots. Join the waitlist to get the AI Productivity Use-Case Framework and priority onboarding for the workflow you need most."
+        }
+      }
+    ],
+    "color_mode": "dark",
+    "template_id": "dark-premium",
+    "color_palette": {
+      "accent": "#c9a25f",
+      "preset": "dark-premium-default",
+      "background": "#0a0908",
+      "foreground": "#ebe4d4"
+    },
+    "template_name": "Dark Premium"
+  }
+}
