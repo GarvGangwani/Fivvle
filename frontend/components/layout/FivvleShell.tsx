@@ -3,71 +3,123 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { useAuth } from "@/lib/auth-context";
 import { FivvleLogo } from "./FivvleLogo";
 
-const TABS = [
-  { id: "validate", href: "/", label: "Validate" },
-  { id: "host", href: "/landing-page-generator", label: "Host" },
-  { id: "distribute", href: "/distribute", label: "Distribute" },
-] as const;
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning,";
+  if (hour < 17) return "Good afternoon,";
+  return "Good evening,";
+}
 
-function tabActive(pathname: string, href: string): boolean {
-  if (href === "/") return pathname === "/";
-  return pathname.startsWith(href);
+function getFirstName(
+  displayName: string | null | undefined,
+  email: string | null | undefined,
+): string {
+  if (displayName) {
+    const first = displayName.trim().split(/\s+/)[0];
+    if (first) return first;
+  }
+  if (email) {
+    const local = email.split("@")[0];
+    if (local) return local.charAt(0).toUpperCase() + local.slice(1);
+  }
+  return "Founder";
+}
+
+function getExperimentIdFromPath(pathname: string): string | null {
+  const match = pathname.match(/^\/experiment\/([^/]+)/);
+  return match ? match[1] : null;
+}
+
+function tabActive(pathname: string, tab: "validate" | "host" | "distribute"): boolean {
+  if (tab === "validate") {
+    return pathname === "/new" || pathname === "/dashboard" || pathname.startsWith("/dashboard");
+  }
+  if (tab === "host") {
+    return pathname.includes("/landing-page");
+  }
+  if (tab === "distribute") {
+    const expMatch = pathname.match(/^\/experiment\/([^/]+)$/);
+    return expMatch !== null;
+  }
+  return false;
 }
 
 interface FivvleShellProps {
   children: ReactNode;
-  /** Full-height body below header (validate chat layout). */
   fullHeight?: boolean;
 }
 
 export function FivvleShell({ children, fullHeight = false }: FivvleShellProps) {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const experimentId = getExperimentIdFromPath(pathname);
+
+  const validateHref = "/new";
+  const hostHref = experimentId
+    ? `/experiment/${experimentId}/landing-page`
+    : "/dashboard";
+  const distributeHref = experimentId
+    ? `/experiment/${experimentId}`
+    : "/dashboard";
+
+  const firstName = getFirstName(user?.displayName, user?.email);
 
   return (
-    <div
-      className="min-h-screen text-[var(--fv-text)]"
-      style={{ background: "var(--fv-bg)", fontFamily: "var(--font-sans)" }}
-    >
+    <div className="min-h-screen bg-[var(--fv-bg)] text-[var(--fv-text)]">
       <header
-        className="sticky top-0 z-50 flex h-[58px] items-center justify-between border-b px-6"
+        className="sticky top-0 z-50 flex h-[58px] items-center justify-between border-b px-4 sm:px-6"
         style={{
           borderColor: "rgba(255,255,255,0.06)",
           background: "rgba(8,12,20,0.9)",
           backdropFilter: "blur(12px)",
         }}
       >
-        <Link href="/" className="flex items-center gap-2.5 no-underline">
-          <FivvleLogo size={30} className="rounded-lg" />
-          <span className="text-[15px] font-semibold tracking-tight text-[var(--fv-text)]">
+        <Link href="/dashboard" className="flex items-center gap-2.5 no-underline">
+          <FivvleLogo size={30} />
+          <span className="text-[15px] font-semibold text-[var(--fv-text)]">
             Fivvle
           </span>
         </Link>
 
         <nav
-          className="flex rounded-xl border p-1"
+          className="hidden rounded-xl border p-1 sm:flex"
           style={{
             background: "rgba(255,255,255,0.04)",
             borderColor: "rgba(255,255,255,0.08)",
           }}
         >
-          {TABS.map((tab) => (
-            <Link
-              key={tab.id}
-              href={tab.href}
-              className={`fv-tab-pill no-underline ${
-                tabActive(pathname, tab.href) ? "fv-tab-pill-active" : ""
-              }`}
-            >
-              {tab.label}
-            </Link>
-          ))}
+          <Link
+            href={validateHref}
+            className={`fv-tab-pill no-underline ${
+              tabActive(pathname, "validate") ? "fv-tab-pill-active" : ""
+            }`}
+          >
+            Validate
+          </Link>
+          <Link
+            href={hostHref}
+            className={`fv-tab-pill no-underline ${
+              tabActive(pathname, "host") ? "fv-tab-pill-active" : ""
+            }`}
+          >
+            Host
+          </Link>
+          <Link
+            href={distributeHref}
+            className={`fv-tab-pill no-underline ${
+              tabActive(pathname, "distribute") ? "fv-tab-pill-active" : ""
+            }`}
+          >
+            Distribute
+          </Link>
         </nav>
 
-        <p className="text-[13px] text-[var(--fv-text-muted)]">
-          <span className="text-[var(--fv-text-soft)]">Good evening,</span>{" "}
-          <span className="font-medium text-[var(--fv-accent)]">Founder</span>
+        <p className="hidden text-[13px] sm:block">
+          <span className="text-[var(--fv-text-soft)]">{getGreeting()}</span>{" "}
+          <span className="font-medium text-[var(--fv-accent)]">{firstName}</span>
         </p>
       </header>
 

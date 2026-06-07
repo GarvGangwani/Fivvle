@@ -121,29 +121,29 @@ export function MetricsWidget({
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-        <div className="fv-card p-4">
+        <div className="analytics-card">
           <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-[var(--fv-text-muted)]">
             <MousePointerClick className="h-3.5 w-3.5" />
             Page views
           </div>
-          <p className="mt-2 text-2xl font-bold text-[var(--fv-text)]">
+          <p className="mt-2 text-2xl font-bold text-[var(--fv-accent)]">
             {analytics.total_page_views.toLocaleString()}
           </p>
         </div>
-        <div className="fv-card p-4">
+        <div className="analytics-card">
           <div className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-[var(--fv-text-muted)]">
             <Users className="h-3.5 w-3.5" />
             Signups
           </div>
-          <p className="mt-2 text-2xl font-bold text-[var(--fv-text)]">
+          <p className="mt-2 text-2xl font-bold text-[var(--fv-accent)]">
             {analytics.total_signups.toLocaleString()}
           </p>
         </div>
-        <div className="fv-card col-span-2 p-4 sm:col-span-1">
+        <div className="analytics-card col-span-2 sm:col-span-1">
           <p className="text-xs font-medium uppercase tracking-wide text-[var(--fv-text-muted)]">
             Conversion rate
           </p>
-          <p className="mt-2 text-2xl font-bold text-[var(--fv-text)]">
+          <p className="mt-2 text-2xl font-bold text-[var(--fv-accent)]">
             {formatPercent(analytics.conversion_rate)}
           </p>
         </div>

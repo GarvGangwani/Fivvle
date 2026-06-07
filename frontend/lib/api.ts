@@ -16,8 +16,13 @@ import type {
   ValidationReport,
 } from "./types";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+const API_BASE = (
+  process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
+).replace(/\/+$/, "");
+
+function apiUrl(path: string): string {
+  return `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+}
 
 export class ApiError extends Error {
   public retryAfterSeconds: number | null;
@@ -63,7 +68,7 @@ export async function apiFetch<T>(
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE}${path}`, {
+    response = await fetch(apiUrl(path), {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -210,17 +215,15 @@ export async function patchLandingPage(
 
 export async function generateLandingPage(
   id: string,
-  page_goal?: string,
-  template_id?: string,
+  options: { template_id: string; page_goal?: string } = {
+    template_id: "dark-premium",
+  },
 ): Promise<GenerateLandingPageResponse> {
-  const body: { page_goal?: string; template_id?: string } = {};
-  if (page_goal !== undefined) body.page_goal = page_goal;
-  if (template_id !== undefined) body.template_id = template_id;
   return apiFetch<GenerateLandingPageResponse>(
     `/experiments/${id}/generate-landing-page`,
     {
       method: "POST",
-      body,
+      body: options,
     },
   );
 }
@@ -276,7 +279,7 @@ export async function submitWaitlistSignup(
   slug: string,
   email: string,
 ): Promise<void> {
-  await apiFetch<void>(`/experiments/${slug}/waitlist`, {
+  await apiFetch<void>(`/e/${slug}/waitlist`, {
     method: "POST",
     body: { email },
     authenticated: false,
@@ -337,7 +340,7 @@ export async function uploadProjectLogo(
   let response: Response;
   try {
     response = await fetch(
-      `${API_BASE}/experiments/${experimentId}/landing-page/logo`,
+      apiUrl(`/experiments/${experimentId}/landing-page/logo`),
       {
         method: "POST",
         headers: {

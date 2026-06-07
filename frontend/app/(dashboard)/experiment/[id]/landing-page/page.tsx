@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { getExperiment, getLandingPage, ApiError } from "@/lib/api";
 import type { Experiment, LandingPage } from "@/lib/types";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { EditorLayout } from "@/components/landing-page-editor/EditorLayout";
+import { LandingGenerationProgress } from "@/components/research/LandingGenerationProgress";
 
 const LP_EDITOR_STATUSES = new Set(["LANDING_DRAFT", "LANDING_LIVE"]);
 
@@ -23,20 +24,21 @@ export default function LandingPageEditorPage() {
 
   const loadData = useCallback(async () => {
     try {
-      const [exp, lp] = await Promise.all([
-        getExperiment(experimentId),
-        getLandingPage(experimentId),
-      ]);
+      const exp = await getExperiment(experimentId);
       setExperiment(exp);
-      setLandingPage(lp);
       setError(null);
 
       if (exp.status === "LANDING_GENERATING") {
         return;
       }
+
       if (!LP_EDITOR_STATUSES.has(exp.status)) {
         router.replace(`/experiment/${experimentId}`);
+        return;
       }
+
+      const lp = await getLandingPage(experimentId);
+      setLandingPage(lp);
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setError("Landing page not found. It may still be generating.");
@@ -49,18 +51,8 @@ export default function LandingPageEditorPage() {
   }, [experimentId, router]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
-
-  useEffect(() => {
-    if (experiment?.status !== "LANDING_GENERATING") return;
-
-    const intervalId = setInterval(() => {
-      void loadData();
-    }, 3000);
-
-    return () => clearInterval(intervalId);
-  }, [experiment?.status, loadData]);
 
   if (loading) {
     return (
@@ -72,12 +64,13 @@ export default function LandingPageEditorPage() {
 
   if (experiment?.status === "LANDING_GENERATING") {
     return (
-      <div className="mx-auto max-w-lg px-4 py-20 text-center">
-        <Loader2 className="mx-auto h-8 w-8 animate-spin text-[var(--fv-accent)]" />
-        <p className="mt-4 text-sm font-medium text-[var(--fv-text)]">
-          Generating your landing page…
-        </p>
-        <p className="mt-1 text-sm text-[var(--fv-text-muted)]">This usually takes a moment.</p>
+      <div className="mx-auto max-w-lg px-4 py-10">
+        <LandingGenerationProgress
+          experimentId={experimentId}
+          onComplete={() => {
+            void loadData();
+          }}
+        />
       </div>
     );
   }
@@ -90,7 +83,7 @@ export default function LandingPageEditorPage() {
         </p>
         <Link
           href={`/experiment/${experimentId}`}
-          className="mt-4 inline-block text-sm font-medium text-[var(--fv-accent)] hover:text-[var(--fv-accent-hover)] no-underline"
+          className="mt-4 inline-block text-sm font-medium text-[var(--fv-accent)] no-underline hover:text-[var(--fv-accent-hover)]"
         >
           Back to experiment
         </Link>
@@ -99,17 +92,12 @@ export default function LandingPageEditorPage() {
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-4rem)] flex-col px-4 py-4 sm:px-6 sm:py-6">
+    <div className="flex min-h-[calc(100dvh-58px)] flex-col px-4 py-4 sm:px-6 sm:py-6">
       <div className="mb-4 shrink-0">
-        <Link
-          href={`/experiment/${experimentId}`}
-          className="mb-3 inline-flex items-center gap-1.5 text-sm text-[var(--fv-text-muted)] hover:text-[var(--fv-text)] no-underline"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back to experiment
-        </Link>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-bold text-[var(--fv-text)]">Landing page editor</h1>
+          <h1 className="text-xl font-bold text-[var(--fv-text)]">
+            Landing page editor
+          </h1>
           <StatusBadge status={experiment.status} />
         </div>
       </div>

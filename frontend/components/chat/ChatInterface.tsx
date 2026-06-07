@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { chatTurn, ApiError } from "@/lib/api";
 import type { ChatMessage as ChatMessageType } from "@/lib/types";
+import { InlineResearchProgress } from "@/components/research/InlineResearchProgress";
+import { ValidationReportPanel } from "@/components/research/ValidationReportPanel";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 
@@ -39,6 +40,9 @@ function apiErrorMessage(err: ApiError): string {
     return "This experiment is no longer in refinement. Start a new idea from the dashboard.";
   }
   if (err.status === 404) {
+    if (process.env.NODE_ENV === "development") {
+      return "Chat is not available. Set AUTO_FIRE_CHAT_ENABLED=on in backend/.env and restart the API.";
+    }
     return "Chat is not available right now. Please try again later.";
   }
   return "Something went wrong. Please try again.";
@@ -50,6 +54,7 @@ export function ChatInterface() {
   const [experimentId, setExperimentId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [researchStarted, setResearchStarted] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const messageIdCounter = useRef(0);
 
@@ -60,9 +65,9 @@ export function ChatInterface() {
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, loading, researchStarted]);
 
-  async function handleSend(text: string) {
+  async function handleSend(text: string, deepResearch: boolean) {
     const userMessage: ChatMessageType = {
       id: nextMessageId(),
       role: "user",
@@ -76,7 +81,7 @@ export function ChatInterface() {
     try {
       const response = await chatTurn({
         message: text,
-        deep_research: true,
+        deep_research: deepResearch,
         thread_id: threadId,
         experiment_id: experimentId,
         idempotency_key: crypto.randomUUID(),
@@ -124,75 +129,100 @@ export function ChatInterface() {
     }
   }
 
+  const chatDisabled = loading || researchStarted;
+
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col bg-[var(--fv-bg)]">
-      <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-        <div className="mx-auto flex max-w-3xl flex-col gap-4">
-          {messages.length === 0 && !loading && (
-            <div className="flex flex-col items-center py-12 text-center">
-              <h2 className="text-lg font-semibold text-[var(--fv-text)]">
-                What&apos;s your idea?
-              </h2>
-              <p className="mt-2 max-w-md text-sm text-[var(--fv-text-muted)]">
-                Describe the problem you want to solve, who it&apos;s for, and
-                your proposed solution. Fivvle will refine it through a short
-                conversation, then kick off market research.
-              </p>
-            </div>
-          )}
-
-          {messages.map((msg) => (
-            <ChatMessage
-              key={msg.id}
-              role={msg.role}
-              content={msg.content}
-              timestamp={msg.timestamp}
-            />
-          ))}
-
-          {loading && (
-            <div className="flex justify-start">
-              <div className="fv-msg-ai flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin text-[var(--fv-accent)]" />
-                <span className="text-sm text-[var(--fv-text-muted)]">Thinking…</span>
+    <>
+      <div className="flex h-full min-h-0 flex-1 flex-col bg-[var(--fv-bg)]">
+        <div className="flex-1 overflow-y-auto px-6 py-8 sm:px-12">
+          <div className="mx-auto flex max-w-3xl flex-col gap-5">
+            {messages.length === 0 && !loading && (
+              <div className="flex flex-col items-center py-16 text-center">
+                <div
+                  className="fv-f-logo mb-4"
+                  style={{ width: 40, height: 40, fontSize: 20 }}
+                >
+                  F
+                </div>
+                <h2 className="text-lg font-semibold text-[var(--fv-text)]">
+                  What&apos;s your idea?
+                </h2>
+                <p className="mt-2 max-w-md text-sm text-[var(--fv-text-muted)]">
+                  Describe the problem you want to solve, who it&apos;s for, and
+                  your proposed solution. Fivvle will refine it through a short
+                  conversation, then kick off market research.
+                </p>
               </div>
-            </div>
-          )}
+            )}
 
-          {researchStarted && experimentId && (
-            <div className="fv-card border-[rgba(6,182,212,0.3)] bg-[var(--fv-accent-muted)] px-4 py-4">
-              <p className="text-sm font-medium text-[var(--fv-accent)]">
-                Research has started
-              </p>
-              <p className="mt-1 text-sm text-[var(--fv-text-soft)]">
-                Your market research is running in the background. This
-                typically takes 2–4 minutes.
-              </p>
-              <Link
-                href={`/experiment/${experimentId}`}
-                className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-[var(--fv-accent)] hover:text-[var(--fv-accent-hover)] no-underline"
-              >
-                View research progress
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
-          )}
+            {messages.map((msg, index) => (
+              <ChatMessage
+                key={msg.id}
+                role={msg.role}
+                content={msg.content}
+                showRefining={
+                  msg.role === "assistant" &&
+                  !researchStarted &&
+                  index === messages.length - 1 &&
+                  !loading
+                }
+              />
+            ))}
 
-          <div ref={scrollAnchorRef} />
+            {loading && (
+              <div className="flex justify-start">
+                <div className="w-full max-w-[80%]">
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <div
+                      className="fv-f-logo"
+                      style={{ width: 22, height: 22, fontSize: 11 }}
+                    >
+                      F
+                    </div>
+                    <span className="text-[12px] font-medium text-[#475569]">
+                      Fivvle
+                    </span>
+                  </div>
+                  <div className="fv-msg-ai flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin text-[var(--fv-accent)]" />
+                    <span className="text-sm text-[var(--fv-text-muted)]">
+                      Thinking…
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {researchStarted && experimentId && (
+              <InlineResearchProgress
+                experimentId={experimentId}
+                onViewReport={() => setReportOpen(true)}
+              />
+            )}
+
+            <div ref={scrollAnchorRef} />
+          </div>
         </div>
-      </div>
 
-      <div className="mx-auto w-full max-w-3xl">
         <ChatInput
           onSend={handleSend}
-          disabled={loading || researchStarted}
+          disabled={chatDisabled}
+          deepResearchLocked={researchStarted}
           placeholder={
             messages.length === 0
-              ? "Describe your startup idea…"
+              ? "Describe your idea..."
               : "Continue the conversation…"
           }
         />
       </div>
-    </div>
+
+      {experimentId && (
+        <ValidationReportPanel
+          experimentId={experimentId}
+          open={reportOpen}
+          onClose={() => setReportOpen(false)}
+        />
+      )}
+    </>
   );
 }

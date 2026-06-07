@@ -1,19 +1,17 @@
-import Image from "next/image";
-
 interface FivvleLogoProps {
   size?: number;
   className?: string;
 }
 
 export function FivvleLogo({ size = 30, className = "" }: FivvleLogoProps) {
+  const fontSize = size <= 22 ? 11 : 16;
   return (
-    <Image
-      src="/fivvle-logo.png"
-      alt="Fivvle"
-      width={size}
-      height={size}
-      className={className}
-      priority
-    />
+    <div
+      className={`fv-f-logo ${className}`}
+      style={{ width: size, height: size, fontSize }}
+      aria-hidden
+    >
+      F
+    </div>
   );
 }

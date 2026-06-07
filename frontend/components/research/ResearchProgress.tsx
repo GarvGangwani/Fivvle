@@ -75,11 +75,11 @@ export function ResearchProgress({
 
   return (
     <div className="mx-auto max-w-lg">
-      <div className="mb-8 text-center">
-        <h2 className="text-xl font-semibold text-[var(--fv-text)]">
+      <div className="mb-6">
+        <h2 className="text-[16px] font-bold text-[var(--fv-text)]">
           Research in progress
         </h2>
-        <p className="mt-2 text-sm text-[var(--fv-text-muted)]">
+        <p className="mt-1 text-[14px] text-[var(--fv-text-muted)]">
           This usually takes 2–4 minutes. You can leave this page — we&apos;ll
           email you when it&apos;s done.
         </p>

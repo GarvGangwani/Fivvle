@@ -12,11 +12,11 @@ export const RESEARCH_PHASE_LABELS: Record<
   (typeof RESEARCH_PHASE_IDS)[number],
   string
 > = {
-  RESEARCH_PLANNING: "Planning",
-  RESEARCH_SEARCHING: "Searching",
-  RESEARCH_READING: "Reading",
-  RESEARCH_REFLECTING: "Reflecting",
-  RESEARCH_SYNTHESIZING: "Synthesizing",
+  RESEARCH_PLANNING: "Planning research strategy",
+  RESEARCH_SEARCHING: "Searching market signals",
+  RESEARCH_READING: "Reading sources & competitors",
+  RESEARCH_REFLECTING: "Reflecting on findings",
+  RESEARCH_SYNTHESIZING: "Synthesizing validation report",
 };
 
 type PhaseState = "completed" | "active" | "pending";
@@ -42,9 +42,66 @@ function resolvePhaseState(
 interface PhaseIndicatorProps {
   currentPhase: string;
   phases: string[];
+  variant?: "default" | "inline";
 }
 
-export function PhaseIndicator({ currentPhase, phases }: PhaseIndicatorProps) {
+export function PhaseIndicator({
+  currentPhase,
+  phases,
+  variant = "default",
+}: PhaseIndicatorProps) {
+  if (variant === "inline") {
+    return (
+      <div>
+        {phases.map((phaseId, index) => {
+          const state = resolvePhaseState(phaseId, currentPhase, phases);
+          const label =
+            RESEARCH_PHASE_LABELS[
+              phaseId as (typeof RESEARCH_PHASE_IDS)[number]
+            ] ?? phaseId;
+          const isLast = index === phases.length - 1;
+
+          return (
+            <div key={phaseId}>
+              <div className="flex items-center gap-3 py-2.5">
+                <span
+                  className={`stage-dot ${
+                    state === "completed"
+                      ? "done"
+                      : state === "active"
+                        ? "active"
+                        : "pending"
+                  }`}
+                />
+                <span
+                  className={`flex-1 text-[13px] ${
+                    state === "completed"
+                      ? "text-[#34D399]"
+                      : state === "active"
+                        ? "text-[var(--fv-text)]"
+                        : "text-[#475569]"
+                  }`}
+                >
+                  {label}
+                </span>
+                {state === "completed" && (
+                  <Check className="h-[13px] w-[13px] shrink-0 text-[#10B981]" />
+                )}
+                {state === "active" && <span className="fv-stage-spinner" />}
+              </div>
+              {!isLast && (
+                <div
+                  className="ml-[3px] h-px"
+                  style={{ background: "rgba(255,255,255,0.04)" }}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <ol className="space-y-0">
       {phases.map((phaseId, index) => {
@@ -99,7 +156,9 @@ export function PhaseIndicator({ currentPhase, phases }: PhaseIndicatorProps) {
                 {label}
               </p>
               {state === "active" && (
-                <p className="mt-0.5 text-xs text-[var(--fv-accent)]">In progress…</p>
+                <p className="mt-0.5 text-xs text-[var(--fv-accent)]">
+                  In progress…
+                </p>
               )}
             </div>
           </li>

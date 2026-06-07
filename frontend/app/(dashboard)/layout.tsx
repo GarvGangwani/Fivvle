@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { DashboardShell } from "@/components/layout/DashboardShell";
 
 function DashboardGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -16,8 +17,8 @@ function DashboardGuard({ children }: { children: React.ReactNode }) {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <span className="text-sm text-gray-500">Loading…</span>
+      <div className="flex min-h-screen items-center justify-center bg-[var(--fv-bg)]">
+        <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-[var(--fv-border)] border-t-[var(--fv-accent)]" />
       </div>
     );
   }
@@ -36,7 +37,9 @@ export default function DashboardLayout({
 }) {
   return (
     <AuthProvider>
-      <DashboardGuard>{children}</DashboardGuard>
+      <DashboardGuard>
+        <DashboardShell>{children}</DashboardShell>
+      </DashboardGuard>
     </AuthProvider>
   );
 }
