@@ -15,6 +15,7 @@ interface PublishPanelProps {
   projectName: string;
   outputVersion: number;
   disabled?: boolean;
+  fullWidth?: boolean;
   onPublished?: (result: PublishProjectResponse) => void;
 }
 
@@ -23,6 +24,7 @@ export function PublishPanel({
   projectName,
   outputVersion,
   disabled,
+  fullWidth = false,
   onPublished,
 }: PublishPanelProps) {
   const [slug, setSlug] = useState(() => slugifyProjectName(projectName));
@@ -185,7 +187,9 @@ export function PublishPanel({
         type="button"
         disabled={disabled || isPublishing}
         onClick={() => void handlePublish()}
-        className="fv-btn-primary w-full px-4 py-2.5 text-sm sm:w-auto disabled:opacity-50"
+        className={`fv-btn-primary px-4 py-2.5 text-sm disabled:opacity-50 ${
+          fullWidth ? "w-full justify-center" : "w-full sm:w-auto"
+        }`}
       >
         {isPublishing ? "Publishing…" : "Publish to Fivvle"}
       </button>

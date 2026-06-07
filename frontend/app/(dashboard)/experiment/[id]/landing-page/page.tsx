@@ -3,11 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
 import { getExperiment, getLandingPage, ApiError } from "@/lib/api";
 import type { Experiment, LandingPage } from "@/lib/types";
-import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { EditorLayout } from "@/components/landing-page-editor/EditorLayout";
+import { EditorLoadingSkeleton } from "@/components/landing-page-editor/EditorLoadingSkeleton";
 import { LandingGenerationProgress } from "@/components/research/LandingGenerationProgress";
 
 const LP_EDITOR_STATUSES = new Set(["LANDING_DRAFT", "LANDING_LIVE"]);
@@ -55,11 +54,7 @@ export default function LandingPageEditorPage() {
   }, [loadData]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-[var(--fv-accent)]" />
-      </div>
-    );
+    return <EditorLoadingSkeleton />;
   }
 
   if (experiment?.status === "LANDING_GENERATING") {
@@ -68,6 +63,7 @@ export default function LandingPageEditorPage() {
         <LandingGenerationProgress
           experimentId={experimentId}
           onComplete={() => {
+            setLoading(true);
             void loadData();
           }}
         />
@@ -91,19 +87,16 @@ export default function LandingPageEditorPage() {
     );
   }
 
+  const experimentName =
+    landingPage.headline ||
+    landingPage.copy_json?.hero?.headline ||
+    "Landing page";
+
   return (
     <div className="flex min-h-[calc(100dvh-58px)] flex-col px-4 py-4 sm:px-6 sm:py-6">
-      <div className="mb-4 shrink-0">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-xl font-bold text-[var(--fv-text)]">
-            Landing page editor
-          </h1>
-          <StatusBadge status={experiment.status} />
-        </div>
-      </div>
-
       <EditorLayout
         experimentId={experimentId}
+        experimentName={experimentName}
         experimentStatus={experiment.status}
         landingPage={landingPage}
         onPublished={loadData}

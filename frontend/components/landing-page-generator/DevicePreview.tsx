@@ -24,7 +24,15 @@ interface DevicePreviewProps {
   children: ReactNode;
   /** When true, preview fills available width with no device chrome. */
   defaultDeviceId?: string;
+  /** Simplified Desktop / Tablet / Mobile toolbar for the editor. */
+  variant?: "full" | "editor";
 }
+
+const EDITOR_DEVICES = [
+  { id: "desktop-1440", label: "Desktop" },
+  { id: "ipad-air", label: "Tablet" },
+  { id: "iphone-15-pro", label: "Mobile" },
+] as const;
 
 function DeviceFrameShell({
   frame,
@@ -269,8 +277,11 @@ function ScaledPreview({
 export function DevicePreview({
   children,
   defaultDeviceId = "fluid",
+  variant = "full",
 }: DevicePreviewProps) {
-  const initial = getDeviceById(defaultDeviceId);
+  const isEditor = variant === "editor";
+  const initialId = isEditor ? "desktop-1440" : defaultDeviceId;
+  const initial = getDeviceById(initialId);
   const [category, setCategory] = useState<DeviceCategory>(initial.category);
   const [deviceId, setDeviceId] = useState(initial.id);
   const [landscape, setLandscape] = useState(false);
@@ -317,7 +328,38 @@ export function DevicePreview({
     };
   }, [isFullscreen]);
 
-  const toolbar = (
+  const editorToolbar = isEditor ? (
+    <div
+      className="flex items-center justify-center gap-1 border-b px-4 py-3"
+      style={{
+        borderColor: "rgba(255,255,255,0.07)",
+        background: "rgba(0,0,0,0.25)",
+      }}
+    >
+      <div
+        className="inline-flex rounded-xl border p-1"
+        style={{
+          background: "rgba(255,255,255,0.04)",
+          borderColor: "rgba(255,255,255,0.08)",
+        }}
+      >
+        {EDITOR_DEVICES.map((preset) => (
+          <button
+            key={preset.id}
+            type="button"
+            onClick={() => handleDeviceChange(preset.id)}
+            className={`fv-tab-pill ${
+              deviceId === preset.id ? "fv-tab-pill-active" : ""
+            }`}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  ) : null;
+
+  const toolbar = isEditor ? null : (
     <PreviewToolbar
       category={category}
       onCategoryChange={handleCategoryChange}
@@ -343,7 +385,7 @@ export function DevicePreview({
     </ScaledPreview>
   );
 
-  if (isFullscreen) {
+  if (isFullscreen && !isEditor) {
     return (
       <div className={`${styles.stage} ${styles.stageFullscreen}`}>
         {toolbar}
@@ -354,6 +396,7 @@ export function DevicePreview({
 
   return (
     <div className={styles.stage}>
+      {editorToolbar}
       {toolbar}
       {preview}
     </div>

@@ -45,28 +45,32 @@ export class PreviewErrorBoundary extends Component<
         className={
           isPublished
             ? "flex min-h-[60vh] flex-col items-center justify-center bg-[#0a0908] px-6 py-16 text-center text-[#ebe4d4]"
-            : "flex min-h-[320px] flex-col items-center justify-center rounded-xl border border-amber-500/25 bg-amber-500/5 px-6 py-12 text-center"
+            : "fv-card mx-4 my-8 flex min-h-[320px] flex-col items-center justify-center px-6 py-12 text-center"
         }
       >
-        <p className="text-xs font-semibold uppercase tracking-widest text-amber-400/90">
+        <p className="fv-panel-label text-[var(--fv-text-muted)]">
           Preview unavailable
         </p>
         <h3
-          className={`mt-3 font-semibold ${isPublished ? "text-2xl" : "text-lg text-white"}`}
+          className={`mt-3 font-semibold ${
+            isPublished ? "text-2xl" : "text-lg text-[var(--fv-text)]"
+          }`}
         >
           We couldn&apos;t display this page
         </h3>
         <p
-          className={`mt-2 max-w-md text-sm ${isPublished ? "opacity-70" : "text-zinc-400"}`}
+          className={`mt-2 max-w-md text-sm ${
+            isPublished ? "opacity-70" : "text-[var(--fv-text-muted)]"
+          }`}
         >
           Something in the generated content couldn&apos;t be rendered. Try
-          regenerating copy from the editor, or switch design template.
+          editing copy fields or switching design template.
         </p>
         {!isPublished && (
           <button
             type="button"
             onClick={this.handleRetry}
-            className="mt-6 rounded-xl border border-white/15 px-4 py-2 text-sm text-zinc-300 hover:bg-white/5"
+            className="fv-btn-ghost mt-6 px-4 py-2 text-sm"
           >
             Try again
           </button>

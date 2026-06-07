@@ -1,6 +1,7 @@
 "use client";
 
 import type { PublishedPagePayload } from "@/lib/published-page";
+import { resolveLandingPageCopy } from "@/lib/landing-page-data";
 import { resolveTemplateId } from "@/lib/templates";
 import type { CtaConfig } from "@/lib/cta-config";
 import { TemplateRenderer } from "@/components/landing-templates/TemplateRenderer";
@@ -11,7 +12,12 @@ interface PublishedLandingPageProps {
 }
 
 export function PublishedLandingPage({ data }: PublishedLandingPageProps) {
-  const templateId = resolveTemplateId(data.template_id ?? data.page_json.template_id);
+  const page = {
+    ...(data.page_json ?? {}),
+    template_id: data.template_id ?? data.page_json?.template_id,
+  };
+  const copy = resolveLandingPageCopy(data.copy_json, page);
+  const templateId = resolveTemplateId(page.template_id);
   const ctaConfig: CtaConfig = {
     mode: data.cta_mode,
     url: data.cta_url,
@@ -20,8 +26,8 @@ export function PublishedLandingPage({ data }: PublishedLandingPageProps) {
   return (
     <PreviewErrorBoundary variant="published">
       <TemplateRenderer
-        copy={data.copy_json}
-        page={data.page_json}
+        copy={copy}
+        page={page}
         projectName={data.project_name}
         templateId={templateId}
         isPublished

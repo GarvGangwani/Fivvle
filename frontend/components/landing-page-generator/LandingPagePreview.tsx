@@ -21,7 +21,7 @@ export function LandingPagePreview({
 }: LandingPagePreviewProps) {
   return (
     <PreviewErrorBoundary variant="preview">
-      <DevicePreview defaultDeviceId="fluid">
+      <DevicePreview variant="editor">
         <TemplateRenderer
           copy={copy}
           page={page}

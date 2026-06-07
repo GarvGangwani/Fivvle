@@ -35,6 +35,16 @@ function normalizeStringList(items: unknown): string[] {
   return items.map(asDisplayText).filter((s) => s.length > 0);
 }
 
+function unwrapSectionItems(value: unknown): unknown {
+  if (value == null) return value;
+  if (Array.isArray(value)) return value;
+  if (typeof value === "object") {
+    const o = value as Record<string, unknown>;
+    if (Array.isArray(o.items)) return o.items;
+  }
+  return value;
+}
+
 function normalizeFeature(item: unknown): FeatureCopy | null {
   if (!item || typeof item !== "object") return null;
   const o = item as Record<string, unknown>;
@@ -83,7 +93,8 @@ export function normalizeCopyJson(copy: CopyJson): CopyJson {
   }
 
   if (copy.features != null) {
-    next.features = (Array.isArray(copy.features) ? copy.features : [])
+    const rawFeatures = unwrapSectionItems(copy.features);
+    next.features = (Array.isArray(rawFeatures) ? rawFeatures : [])
       .map(normalizeFeature)
       .filter((f): f is FeatureCopy => f != null);
   }
@@ -109,7 +120,8 @@ export function normalizeCopyJson(copy: CopyJson): CopyJson {
   }
 
   if (copy.faq != null) {
-    next.faq = (Array.isArray(copy.faq) ? copy.faq : [])
+    const rawFaq = unwrapSectionItems(copy.faq);
+    next.faq = (Array.isArray(rawFaq) ? rawFaq : [])
       .map(normalizeFaqItem)
       .filter((f): f is FaqItem => f != null);
   }
