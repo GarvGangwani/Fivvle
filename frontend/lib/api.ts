@@ -1,10 +1,15 @@
 import { getFirebaseAuth } from "./firebase";
 import type {
+  ArchiveExperimentResponse,
   ChatTurnResponse,
   Experiment,
+  ExperimentAnalytics,
   ExperimentDetail,
   ExperimentSummary,
+  FounderDecision,
+  GenerateInsightResponse,
   GenerateLandingPageResponse,
+  InsightReport,
   LandingPage,
   LandingPagePatch,
   ResearchStatus,
@@ -220,16 +225,38 @@ export async function generateLandingPage(
   );
 }
 
+export async function getExperimentAnalytics(
+  id: string,
+): Promise<ExperimentAnalytics> {
+  return apiFetch<ExperimentAnalytics>(`/experiments/${id}/analytics`);
+}
+
+export async function getInsightReport(
+  id: string,
+): Promise<InsightReport> {
+  return apiFetch<InsightReport>(`/experiments/${id}/insight-report`);
+}
+
 export async function generateInsight(
   id: string,
-): Promise<GenerateLandingPageResponse> {
-  return apiFetch<GenerateLandingPageResponse>(
+): Promise<GenerateInsightResponse> {
+  return apiFetch<GenerateInsightResponse>(
     `/experiments/${id}/generate-insight`,
     {
       method: "POST",
       body: {},
     },
   );
+}
+
+export async function archiveExperiment(
+  id: string,
+  outcome: FounderDecision,
+): Promise<ArchiveExperimentResponse> {
+  return apiFetch<ArchiveExperimentResponse>(`/experiments/${id}/archive`, {
+    method: "POST",
+    body: { outcome },
+  });
 }
 
 export async function submitPageView(

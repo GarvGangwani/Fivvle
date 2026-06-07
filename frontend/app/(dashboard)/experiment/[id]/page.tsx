@@ -6,12 +6,16 @@ import { useParams } from "next/navigation";
 import { ArrowLeft, Loader2, RefreshCw } from "lucide-react";
 import {
   confirmExperiment,
+  generateInsight,
   generateLandingPage,
   getExperiment,
   ApiError,
 } from "@/lib/api";
-import type { Experiment } from "@/lib/types";
+import type { Experiment, FounderDecision } from "@/lib/types";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
+import { DecisionPanel } from "@/components/insight/DecisionPanel";
+import { InsightReportViewer } from "@/components/insight/InsightReportViewer";
+import { MetricsWidget } from "@/components/insight/MetricsWidget";
 import { ResearchProgress } from "@/components/research/ResearchProgress";
 import { ValidationReportViewer } from "@/components/research/ValidationReportViewer";
 
@@ -33,6 +37,7 @@ export default function ExperimentDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [generatingLp, setGeneratingLp] = useState(false);
+  const [retryingInsight, setRetryingInsight] = useState(false);
 
   const loadExperiment = useCallback(async () => {
     try {
@@ -53,6 +58,16 @@ export default function ExperimentDetailPage() {
   useEffect(() => {
     loadExperiment();
   }, [loadExperiment]);
+
+  useEffect(() => {
+    if (experiment?.status !== "INSIGHT_GENERATING") return;
+
+    const intervalId = setInterval(() => {
+      void loadExperiment();
+    }, 3000);
+
+    return () => clearInterval(intervalId);
+  }, [experiment?.status, loadExperiment]);
 
   const handleResearchComplete = useCallback(() => {
     loadExperiment();
@@ -80,6 +95,22 @@ export default function ExperimentDetailPage() {
     } finally {
       setGeneratingLp(false);
     }
+  }
+
+  async function handleRetryInsight() {
+    setRetryingInsight(true);
+    try {
+      await generateInsight(experimentId);
+      await loadExperiment();
+    } catch {
+      setError("Could not restart insight generation. Please try again.");
+    } finally {
+      setRetryingInsight(false);
+    }
+  }
+
+  function handleDecision(_decision: FounderDecision) {
+    void loadExperiment();
   }
 
   if (loading) {
@@ -172,26 +203,93 @@ export default function ExperimentDetailPage() {
         </div>
       )}
 
-      {(status === "LANDING_DRAFT" || status === "LANDING_LIVE") && (
+      {status === "LANDING_LIVE" && (
+        <div className="space-y-6">
+          <MetricsWidget
+            experimentId={experimentId}
+            onInsightStarted={loadExperiment}
+          />
+          <div className="rounded-xl border border-gray-200 bg-white px-6 py-8 shadow-sm">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Landing page is live
+            </h2>
+            <p className="mt-2 text-sm text-gray-600">
+              Your landing page is published and collecting traffic. Drive
+              distribution while metrics accumulate.
+            </p>
+            <Link
+              href={`/experiment/${experimentId}/landing-page`}
+              className="mt-6 inline-flex rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gray-700"
+            >
+              Open landing page editor
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {status === "LANDING_DRAFT" && (
         <div className="rounded-xl border border-gray-200 bg-white px-6 py-8 shadow-sm">
           <h2 className="text-lg font-semibold text-gray-900">
-            {status === "LANDING_LIVE"
-              ? "Landing page is live"
-              : "Landing page draft ready"}
+            Landing page draft ready
           </h2>
           <p className="mt-2 text-sm text-gray-600">
-            {status === "LANDING_LIVE"
-              ? "Your landing page is published and collecting traffic."
-              : "Your landing page draft has been generated. Review and customize it before publishing."}
+            Your landing page draft has been generated. Review and customize it
+            before publishing.
           </p>
           <Link
             href={`/experiment/${experimentId}/landing-page`}
             className="mt-6 inline-flex rounded-lg bg-gray-900 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-gray-700"
           >
-            {status === "LANDING_LIVE"
-              ? "Open landing page editor"
-              : "Review & customize landing page"}
+            Review & customize landing page
           </Link>
+        </div>
+      )}
+
+      {status === "INSIGHT_GENERATING" && (
+        <div className="flex flex-col items-center rounded-xl border border-gray-200 bg-white px-6 py-16 text-center shadow-sm">
+          <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+          <p className="mt-4 text-sm font-medium text-gray-900">
+            Generating insight report…
+          </p>
+          <p className="mt-1 text-sm text-gray-500">
+            Synthesizing cognitive research with your landing page behavior.
+            This usually takes under a minute.
+          </p>
+        </div>
+      )}
+
+      {status === "INSIGHT_READY" && (
+        <div className="space-y-8">
+          <InsightReportViewer experimentId={experimentId} />
+          <DecisionPanel
+            experimentId={experimentId}
+            onDecision={handleDecision}
+          />
+        </div>
+      )}
+
+      {status === "INSIGHT_FAILED" && (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-8 text-center">
+          <h2 className="text-lg font-semibold text-red-900">
+            Insight generation failed
+          </h2>
+          <p className="mt-2 text-sm text-red-700">
+            Something went wrong while building your insight report. You can
+            retry once you have enough traffic data.
+          </p>
+          <button
+            type="button"
+            onClick={handleRetryInsight}
+            disabled={retryingInsight}
+            className="mt-6 inline-flex items-center gap-2 rounded-lg bg-red-800 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-red-900 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {retryingInsight ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
+            Retry insight generation
+          </button>
         </div>
       )}
 
@@ -210,7 +308,10 @@ export default function ExperimentDetailPage() {
         status !== "RESEARCH_FAILED" &&
         status !== "LANDING_DRAFT" &&
         status !== "LANDING_LIVE" &&
-        status !== "LANDING_GENERATING" && (
+        status !== "LANDING_GENERATING" &&
+        status !== "INSIGHT_GENERATING" &&
+        status !== "INSIGHT_READY" &&
+        status !== "INSIGHT_FAILED" && (
           <div className="rounded-xl border border-gray-200 bg-white px-6 py-8 text-center shadow-sm">
             <p className="text-sm text-gray-600">
               This experiment is in{" "}

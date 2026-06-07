@@ -298,3 +298,76 @@ export interface ChatTurnResponse {
   experiment_status: string | null;
   research_error_detail: string | null;
 }
+
+// --- Insight & analytics types (ADR 0021) ---
+
+export type InsightRecommendationType = "proceed" | "iterate" | "pivot" | "kill";
+
+export type TakeawaySourceType = "BEHAVIORAL" | "COGNITIVE" | "SYNTHESIZED";
+
+export type FounderDecision = InsightRecommendationType;
+
+export interface ExperimentAnalytics {
+  total_page_views: number;
+  total_signups: number;
+  unique_visitors: number;
+  conversion_rate: number;
+  views_by_source: Record<string, number>;
+  signups_by_source: Record<string, number>;
+  conversion_rate_by_source: Record<string, number>;
+  days_live: number;
+  warm_network_bias_index?: number;
+}
+
+export interface ResearchTakeaway {
+  claim: string;
+  cited_finding_ids: string[];
+  source_type: TakeawaySourceType;
+  confidence: "high" | "medium" | "low";
+  confidence_rationale: string;
+}
+
+export interface TrafficSummary {
+  narrative: string;
+  headline_metric: string;
+  confidence: "high" | "medium" | "low";
+  confidence_rationale: string;
+  source_type: TakeawaySourceType;
+}
+
+export interface ConversionSourceCommentary {
+  source_name: string;
+  views: number;
+  signups: number;
+  conversion_rate: number;
+  commentary: string;
+  confidence: "high" | "medium" | "low";
+}
+
+export interface ConversionBySource {
+  per_source: ConversionSourceCommentary[];
+  warm_network_bias_commentary: string;
+  confidence: "high" | "medium" | "low";
+  confidence_rationale: string;
+}
+
+export interface InsightReport {
+  traffic_summary: TrafficSummary;
+  conversion_by_source: ConversionBySource;
+  research_takeaways: ResearchTakeaway[];
+  recommendation_type: InsightRecommendationType;
+  recommendation: string;
+  recommendation_confidence: "high" | "medium" | "low";
+  recommendation_rationale: string;
+  what_would_change_this: string;
+}
+
+export interface GenerateInsightResponse {
+  experiment_id: string;
+  status: string;
+}
+
+export interface ArchiveExperimentResponse {
+  experiment_id: string;
+  status: string;
+}
