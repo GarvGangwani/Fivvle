@@ -33,7 +33,13 @@ from app.db.models.experiment import Experiment
 from app.db.models.user import User
 from app.db.session import get_session
 from app.dispatchers.dependencies import get_dispatcher_dep, get_insight_dispatcher_dep
-from app.dispatchers.protocol import DispatchError, InsightDispatcher, ResearchDispatcher
+from app.dispatchers.factory import get_landing_page_dispatcher_dep
+from app.dispatchers.protocol import (
+    DispatchError,
+    InsightDispatcher,
+    LandingPageDispatcher,
+    ResearchDispatcher,
+)
 from app.logging_config import get_logger
 from app.reliability.rate_limit import AUTH_RATE_LIMIT, limiter, user_key
 from app.schemas.experiment import (
@@ -81,6 +87,37 @@ class GenerateInsightResponse(BaseModel):
     experiment_id: UUID
     status: ExperimentStatus = Field(
         description="Set to INSIGHT_GENERATING by this endpoint immediately on dispatch."
+    )
+
+
+class GenerateLandingPageRequest(BaseModel):
+    """Optional body for POST /experiments/{id}/generate-landing-page."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    page_goal: str = Field(
+        default="waitlist",
+        description="Primary conversion goal (waitlist, interest, or contact).",
+    )
+    template_id: str = Field(
+        default="dark-premium",
+        description="Designer template ID to apply (e.g. dark-premium, bold-v1).",
+    )
+
+
+class GenerateLandingPageResponse(BaseModel):
+    """Response from POST /experiments/{id}/generate-landing-page.
+
+    Returned with HTTP 202. Landing page copy and layout are built asynchronously;
+    the frontend polls GET /experiments/{id} for status transitions until
+    status reaches LANDING_DRAFT or returns to RESEARCH_READY on failure.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    experiment_id: UUID
+    status: ExperimentStatus = Field(
+        description="Set to LANDING_GENERATING by this endpoint immediately on dispatch."
     )
 
 
@@ -375,6 +412,84 @@ async def generate_insight(
     return GenerateInsightResponse(
         experiment_id=experiment_id,
         status=ExperimentStatus.INSIGHT_GENERATING,
+    )
+
+
+@router.post(
+    "/{experiment_id}/generate-landing-page",
+    response_model=GenerateLandingPageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def generate_landing_page(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: GenerateLandingPageRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    landing_page_dispatcher: Annotated[
+        LandingPageDispatcher, Depends(get_landing_page_dispatcher_dep)
+    ],
+) -> GenerateLandingPageResponse:
+    """User-triggered landing page generation per ADR 0022.
+
+    Allowed source statuses: RESEARCH_READY (first generation), LANDING_DRAFT
+    (regen). Any other status returns 409.
+
+    On dispatch, transitions status to LANDING_GENERATING and commits before
+    awaiting the dispatcher. The dispatcher transitions to terminal state
+    (LANDING_DRAFT or RESEARCH_READY on failure) asynchronously. On
+    DispatchError, rolls back to RESEARCH_READY and returns 502.
+    """
+    result = await db.execute(
+        select(Experiment).where(Experiment.id == experiment_id)
+    )
+    experiment = result.scalar_one_or_none()
+
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
+        )
+
+    allowed_source_statuses = {
+        ExperimentStatus.RESEARCH_READY,
+        ExperimentStatus.LANDING_DRAFT,
+    }
+    if experiment.status not in allowed_source_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Experiment must be in RESEARCH_READY or LANDING_DRAFT status "
+                f"to generate landing page (current: {experiment.status.value})."
+            ),
+        )
+
+    experiment.status = ExperimentStatus.LANDING_GENERATING
+    await db.commit()
+
+    try:
+        await landing_page_dispatcher.dispatch(
+            experiment_id,
+            body.page_goal,
+            body.template_id,
+        )
+    except DispatchError as exc:
+        _logger.error(
+            "landing page dispatch failed",
+            experiment_id=str(experiment_id),
+            error_type=type(exc).__name__,
+        )
+        experiment.status = ExperimentStatus.RESEARCH_READY
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to start landing page generation, please try again",
+        ) from exc
+
+    return GenerateLandingPageResponse(
+        experiment_id=experiment_id,
+        status=ExperimentStatus.LANDING_GENERATING,
     )
 
 
