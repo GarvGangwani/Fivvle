@@ -14,11 +14,18 @@ rather than falling back silently.  Explicit over implicit — per ADR 0009.
 
 from __future__ import annotations
 
+from fastapi import Request
+
 from app.config import Settings
 from app.dispatchers.http import HttpDispatcher
 from app.dispatchers.in_process import InProcessDispatcher
 from app.dispatchers.in_process_insight import InProcessInsightDispatcher
-from app.dispatchers.protocol import InsightDispatcher, ResearchDispatcher
+from app.dispatchers.in_process_landing_page import InProcessLandingPageDispatcher
+from app.dispatchers.protocol import (
+    InsightDispatcher,
+    LandingPageDispatcher,
+    ResearchDispatcher,
+)
 
 
 def get_dispatcher(settings: Settings) -> ResearchDispatcher:
@@ -90,3 +97,39 @@ def get_insight_dispatcher(settings: Settings) -> InsightDispatcher:
         f"Unknown DISPATCHER_MODE: {settings.dispatcher_mode!r}. "
         "Allowed values: 'in_process', 'http'."
     )
+
+
+def get_landing_page_dispatcher(settings: Settings) -> LandingPageDispatcher:
+    """Construct and return the configured LandingPageDispatcher.
+
+    Args:
+        settings: The application settings singleton (from get_settings()).
+
+    Returns:
+        A LandingPageDispatcher implementation selected by settings.dispatcher_mode.
+
+    Raises:
+        NotImplementedError: If dispatcher_mode="http" (HttpLandingPageDispatcher
+            deferred per ADR 0022).
+    """
+    if settings.dispatcher_mode == "in_process":
+        from app.db.session import get_sessionmaker  # noqa: PLC0415
+
+        return InProcessLandingPageDispatcher(get_sessionmaker=get_sessionmaker)
+
+    if settings.dispatcher_mode == "http":
+        raise NotImplementedError(
+            "HttpLandingPageDispatcher is not yet implemented. "
+            "Deferred per ADR 0022. "
+            "Set DISPATCHER_MODE=in_process until the Cloud Function ships."
+        )
+
+    raise ValueError(  # pragma: no cover
+        f"Unknown DISPATCHER_MODE: {settings.dispatcher_mode!r}. "
+        "Allowed values: 'in_process', 'http'."
+    )
+
+
+async def get_landing_page_dispatcher_dep(request: Request) -> LandingPageDispatcher:
+    """Return the landing page dispatcher stored on app.state by the lifespan handler."""
+    return request.app.state.landing_page_dispatcher  # type: ignore[no-any-return]

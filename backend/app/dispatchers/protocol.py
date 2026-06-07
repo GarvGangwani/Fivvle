@@ -8,7 +8,7 @@ Structlog field contract (enforced by convention + code review — see README.md
     dispatcher: str   — "in_process" | "http"
     experiment_id: str
     phase: str        — "dispatched" | "completed" | "failed"
-    pipeline: str     — "research" | "insight"
+    pipeline: str     — "research" | "insight" | "landing_page"
 """
 
 from __future__ import annotations
@@ -57,6 +57,38 @@ class InsightDispatcher(Protocol):
 
     async def dispatch(self, experiment_id: UUID) -> None:
         """Schedule the insight pipeline for experiment_id.
+
+        Must not block. Failures to schedule (e.g. HTTP 5xx from the Cloud
+        Function) should raise DispatchError so the route handler can return
+        an appropriate error rather than silently dropping the job.
+        """
+        ...
+
+
+class LandingPageDispatcher(Protocol):
+    """Trigger the landing page generation pipeline for a given experiment.
+
+    Implementations MUST return immediately (202 semantics). The actual work
+    runs asynchronously — either in a background asyncio task (InProcess) or
+    in a Cloud Function invoked over HTTP (deferred per ADR 0022).
+
+    Both implementations call the same landing_page_service.generate_landing_page()
+    entry point with the same experiment_id, page_goal, and template_id, then
+    transition Experiment.status to LANDING_DRAFT (success) or RESEARCH_READY
+    (any failure — rollback per ADR 0022).
+
+    Status transitions to LANDING_GENERATING are the responsibility of the
+    route handler or research-completion trigger BEFORE dispatch() is awaited.
+    The dispatcher transitions to the terminal state.
+    """
+
+    async def dispatch(
+        self,
+        experiment_id: UUID,
+        page_goal: str,
+        template_id: str,
+    ) -> None:
+        """Schedule the landing page pipeline for experiment_id.
 
         Must not block. Failures to schedule (e.g. HTTP 5xx from the Cloud
         Function) should raise DispatchError so the route handler can return
