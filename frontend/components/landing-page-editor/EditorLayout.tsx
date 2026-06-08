@@ -158,6 +158,43 @@ export function EditorLayout({
         </div>
       )}
 
+      {isLive && publishedSlug && (
+        <div className="mb-4 rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)] p-4">
+          <p className="fv-panel-label mb-3">Share with tracking</p>
+          <p className="mb-3 text-[12px] text-[var(--fv-text-muted)]">
+            Each link tracks which channel drives traffic. Use these when sharing.
+          </p>
+          <div className="space-y-2">
+            {[
+              { label: "Twitter / X", tag: "twitter" },
+              { label: "LinkedIn", tag: "linkedin" },
+              { label: "Reddit", tag: "reddit" },
+              { label: "Email", tag: "email" },
+              { label: "Friends & family", tag: "warm" },
+            ].map(({ label, tag }) => {
+              const url = `${window.location.origin}/e/${publishedSlug}?ref=${tag}`;
+              return (
+                <div key={tag} className="flex items-center gap-2">
+                  <span className="w-28 shrink-0 text-[12px] text-[var(--fv-text-soft)]">
+                    {label}
+                  </span>
+                  <code className="min-w-0 flex-1 truncate rounded bg-black/30 px-2 py-1.5 text-[11px] text-[var(--fv-text-muted)]">
+                    {url}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => void navigator.clipboard.writeText(url)}
+                    className="shrink-0 text-[12px] text-[var(--fv-accent)] hover:text-[var(--fv-accent-hover)]"
+                  >
+                    Copy
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="mb-4 flex gap-2 transition-opacity duration-200 lg:hidden">
         <button
           type="button"
