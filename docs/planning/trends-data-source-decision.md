@@ -78,3 +78,33 @@ This memo does not pick one. It logs the trigger as an explicit open decision so
 
 - Optional dev diagnostic: confirm whether `retry_async` retries *into* the throttle window (refines best-effort behavior; does not change direction).
 - §5 must carry an honest "demand data unavailable" state when Trends is absent (ties to the still-open Synthesizer trends-disclosure compliance bug).
+
+---
+
+## Update: 2026-06-08 — Keyword extraction fix + scaling assessment
+
+### What changed this session
+
+1. **Root cause of zero-data returns identified and fixed.** `_extract_trends_keywords()` was feeding full headlines (40-80 chars) and `refined_one_liner` (up to 200 chars) as the first keywords. Google Trends returns 0 rows for long phrases. Fix: extract 2-3 word market terms from `search_queries` instead, skip headline/one_liner entirely. (`max_words=3`, trailing stop words stripped.)
+
+2. **Confirmed pytrends works from dev machine.** "startup validation" → 53 rows. "employee scheduling" → 53 rows with non-zero values. "shift handoff" → 53 rows. 4-word niche phrases return zeros.
+
+3. **Pipeline wiring confirmed end-to-end.** Searcher → `MergedSearchResults.trends` → orchestrator → `SynthesizerInput.trends_signals` → Synthesizer. Also fixed `research_engine.py` which was calling `.values()` on `MergedSearchResults` instead of `.tavily`.
+
+4. **Calibration run: `trends_present=True` on first call, `TooManyRequestsError` on second** (rate-limited from rapid diagnostic calls in same session). Graceful-skip worked correctly — report generated with 35 citations, $0.62 cost.
+
+### Scaling concern confirmed
+
+pytrends rate limiting is **per-IP, not per-API-key** (there is no API key). In production on Cloud Run, all pipeline runs share the same IP. At ~10+ concurrent users, Trends calls will collide and trigger 429s. The graceful-skip design means reports still generate, but Trends data becomes unreliable at volume — exactly the liability described in the original assessment above.
+
+### Additional bridge option: SerpAPI
+
+The original document lists Trends MCP (free tier) and Glimpse ($500+/mo) as upgrade paths. A middle option:
+
+- **SerpAPI Google Trends endpoint** (~$50-250/month depending on volume) — paid proxy API that handles rate limiting and IP rotation transparently. Returns the same data pytrends scrapes, via a proper REST API with quotas. Drop-in replacement: only `backend/app/integrations/trends.py` changes. No schema, pipeline, or ADR changes needed beyond the integration swap (which itself requires an ADR per `.cursorrules`).
+
+### Updated recommendation
+
+- **MVP / friends-and-circle:** pytrends with keyword fix is sufficient. One Trends call per run, low volume, graceful-skip on failure.
+- **Pre-paid-users:** evaluate SerpAPI or Trends MCP as bridge. SerpAPI is the safer bet (~$50/mo floor, proper quotas).
+- **At scale:** SerpAPI or equivalent paid API is required. pytrends cannot serve concurrent production users reliably.
