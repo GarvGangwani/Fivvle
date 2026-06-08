@@ -88,7 +88,7 @@ _STOP_WORDS = {
 }
 
 
-def _shorten_to_trends_keyword(phrase: str, max_words: int = 4) -> str:
+def _shorten_to_trends_keyword(phrase: str, max_words: int = 3) -> str:
     """Extract a short, Trends-friendly keyword from a longer search phrase."""
     words = phrase.strip().split()
     trimmed = words[:max_words]

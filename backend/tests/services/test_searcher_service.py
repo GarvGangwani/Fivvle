@@ -598,7 +598,7 @@ async def test_execute_search_plan_trends_keyword_extraction() -> None:
     )
     expected_keywords = [
         "hospital handoff software",
-        "nurse shift notes app",
+        "nurse shift notes",
         "clinical handoff tools",
         "q3 query 1",
         "q4 query 1",
