@@ -130,7 +130,7 @@ async def run_research_engine(
     # Phase 2: Searcher
     # -------------------------------------------------------------------------
     try:
-        search_results = await execute_search_plan(
+        merged = await execute_search_plan(
             db=db,
             research_plan=research_plan,
             experiment_id=experiment_id,
@@ -139,6 +139,9 @@ async def run_research_engine(
         raise ResearchEngineFailure(phase="searcher", cause=exc) from exc
     except Exception as exc:
         raise ResearchEngineFailure(phase="searcher", cause=exc) from exc
+
+    search_results = merged.tavily
+    trends_signals = merged.trends
 
     total_tavily_results = sum(len(v) for v in search_results.values())
     _logger.info(
@@ -195,6 +198,7 @@ async def run_research_engine(
         research_plan=research_plan,
         reader_outputs=reader_outputs,
         rubric_version=rubric_version,
+        trends_signals=trends_signals,
     )
     citation_hydration_index = build_citation_hydration_index(search_results)
 

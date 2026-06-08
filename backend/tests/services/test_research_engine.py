@@ -20,6 +20,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.schemas.planner import ResearchPlan, ResearchQuestion
+from app.schemas.search import MergedSearchResults
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.schemas.refinement import RefinedIdea
 from app.schemas.validation_report import (
@@ -176,7 +177,10 @@ async def test_run_research_engine_happy_path() -> None:
     db = AsyncMock(spec=AsyncSession)
     refined_idea = _make_refined_idea()
     mock_plan = _make_plan()
-    mock_search_results = {f"q{i}": [] for i in range(1, 6)}
+    mock_search_results = MergedSearchResults(
+        tavily={f"q{i}": [] for i in range(1, 6)},
+        trends=None,
+    )
     mock_report = _make_valid_report()
 
     with (
@@ -232,7 +236,7 @@ async def test_run_research_engine_default_rubric_version() -> None:
         ),
         patch(
             "app.services.research_engine.execute_search_plan",
-            AsyncMock(return_value={}),
+            AsyncMock(return_value=MergedSearchResults(tavily={}, trends=None)),
         ),
         patch(
             "app.services.research_engine.execute_reader",
@@ -372,7 +376,7 @@ async def test_run_research_engine_synthesizer_failure() -> None:
         ),
         patch(
             "app.services.research_engine.execute_search_plan",
-            AsyncMock(return_value={}),
+            AsyncMock(return_value=MergedSearchResults(tavily={}, trends=None)),
         ),
         patch(
             "app.services.research_engine.execute_reader",
@@ -417,7 +421,7 @@ async def test_run_research_engine_forwards_experiment_id_to_all_phases() -> Non
 
     async def _mock_search(db, research_plan, experiment_id=None):
         captured["searcher_exp_id"] = experiment_id
-        return {}
+        return MergedSearchResults(tavily={}, trends=None)
 
     async def _mock_reader(*, experiment_id, **kwargs):
         captured["reader_exp_id"] = experiment_id
@@ -468,7 +472,7 @@ async def test_run_research_engine_forwards_rubric_version() -> None:
         ),
         patch(
             "app.services.research_engine.execute_search_plan",
-            AsyncMock(return_value={}),
+            AsyncMock(return_value=MergedSearchResults(tavily={}, trends=None)),
         ),
         patch(
             "app.services.research_engine.execute_reader",
