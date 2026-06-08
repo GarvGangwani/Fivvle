@@ -488,7 +488,7 @@ async def test_admin_per_phase_without_user_id_is_global(
     await db_session.refresh(exp2)
 
     # One call per user under a unique phase name that won't collide with dev data
-    unique_phase = "test-global-phase-marker"
+    unique_phase = f"test-global-phase-{uuid4().hex[:8]}"
     for exp in [exp1, exp2]:
         db_session.add(LLMCall(
             experiment_id=exp.id,
