@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.llm.client as llm_client
@@ -267,6 +267,11 @@ async def generate_insight_report(
             valid_ids=valid_ids,
             experiment_id=experiment_id,
         )
+
+    # Delete existing insight report if regenerating
+    await db.execute(
+        delete(InsightReport).where(InsightReport.experiment_id == experiment_id)
+    )
 
     row = _persist_insight_row(db, experiment_id=experiment_id, draft=draft)
     await db.flush()  # surface IntegrityError early; caller commits.
