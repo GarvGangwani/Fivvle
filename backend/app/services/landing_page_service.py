@@ -26,9 +26,10 @@ content, RefinedIdea content, or PII. Log only aggregate counts and flags
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal
 from typing import Any, Literal, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
@@ -285,11 +286,42 @@ def _page_goal_to_cta_type(page_goal: str) -> LandingCtaType:
     return mapping.get(page_goal, LandingCtaType.WAITLIST)
 
 
-def _derive_slug(experiment: Experiment) -> str:
-    """Derive a landing page slug from the experiment or a stable fallback."""
-    if experiment.slug and len(experiment.slug) >= 6:
-        return experiment.slug
-    return f"lp-{experiment.id.hex[:12]}"
+_SLUG_PATTERN = re.compile(r"^[a-z0-9-]{6,40}$")
+
+
+def _slugify(text: str, max_len: int = 35) -> str:
+    """Convert text to a URL-safe slug: lowercase, alphanumeric + hyphens only."""
+    s = text.lower().strip()
+    s = re.sub(r"[^a-z0-9\s-]", "", s)
+    s = re.sub(r"[\s-]+", "-", s)
+    s = s.strip("-")
+    s = s[:max_len].rstrip("-")
+    return s
+
+
+async def _generate_unique_slug(db: AsyncSession, experiment: Experiment) -> str:
+    """Derive a human-readable slug from refined_idea headline, with collision handling."""
+    base_slug = ""
+
+    if experiment.refined_idea and isinstance(experiment.refined_idea, dict):
+        headline = experiment.refined_idea.get("headline", "")
+        if headline:
+            base_slug = _slugify(headline)
+
+    if len(base_slug) < 6:
+        base_slug = f"lp-{experiment.id.hex[:12]}"
+
+    candidate = base_slug
+    for attempt in range(5):
+        existing = await db.execute(
+            select(LandingPage).where(LandingPage.slug == candidate)
+        )
+        if existing.scalar_one_or_none() is None:
+            return candidate
+        suffix = uuid4().hex[:4]
+        candidate = f"{base_slug[:35]}-{suffix}"
+
+    return f"lp-{uuid4().hex[:12]}"
 
 
 async def _fetch_validation_report(
@@ -410,7 +442,7 @@ async def _persist_landing_page_row(
             palette_id="default",
             font_pair_id="default",
             density=LandingDensity.ROOMY,
-            slug=_derive_slug(experiment),
+            slug=await _generate_unique_slug(db, experiment),
             copy_json=copy_json,
             page_json=page_json,
             **scalars,
