@@ -65,6 +65,37 @@ _TOP_RESULTS_PER_QUESTION = 10
 # pytrends hard limit (ADR 0015 / planning doc §4).
 _MAX_TRENDS_KEYWORDS = 5
 
+_STOP_WORDS = {
+    "the",
+    "a",
+    "an",
+    "for",
+    "and",
+    "or",
+    "in",
+    "on",
+    "of",
+    "to",
+    "with",
+    "is",
+    "are",
+    "how",
+    "what",
+    "why",
+    "does",
+    "do",
+    "can",
+}
+
+
+def _shorten_to_trends_keyword(phrase: str, max_words: int = 4) -> str:
+    """Extract a short, Trends-friendly keyword from a longer search phrase."""
+    words = phrase.strip().split()
+    trimmed = words[:max_words]
+    while trimmed and trimmed[-1].lower().rstrip("?,.:") in _STOP_WORDS:
+        trimmed.pop()
+    return " ".join(trimmed)
+
 
 class SearcherFailure(Exception):
     """Raised when ALL Tavily searches fail for a given plan.
@@ -88,28 +119,30 @@ def _extract_trends_keywords(
     research_plan: ResearchPlan,
     refined_idea: RefinedIdea | None,
 ) -> list[str]:
-    """Build a 1–5 keyword bag for Google Trends (planning doc §4, ADR 0015).
-
-    Order: RefinedIdea headline and refined_one_liner (when provided), then all
-    ResearchQuestion.search_queries in plan order. Case-insensitive dedupe, cap 5.
-    """
+    """Build 1-5 short keyword phrases for Google Trends."""
     candidates: list[str] = []
-    if refined_idea is not None:
-        candidates.append(refined_idea.headline.strip())
-        candidates.append(refined_idea.refined_one_liner.strip())
+
     for question in research_plan.questions:
         candidates.extend(question.search_queries)
+
+    if refined_idea is not None and hasattr(refined_idea, "target_audience"):
+        audience = getattr(refined_idea, "target_audience", "")
+        if audience:
+            candidates.append(audience)
 
     seen: set[str] = set()
     keywords: list[str] = []
     for phrase in candidates:
         if not phrase:
             continue
-        key = phrase.casefold()
+        short = _shorten_to_trends_keyword(phrase)
+        if len(short.split()) < 2 or len(short) > 40:
+            continue
+        key = short.casefold()
         if key in seen:
             continue
         seen.add(key)
-        keywords.append(phrase)
+        keywords.append(short)
         if len(keywords) >= _MAX_TRENDS_KEYWORDS:
             break
     return keywords

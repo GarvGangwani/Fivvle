@@ -571,7 +571,7 @@ async def test_execute_search_plan_trends_called_once_per_pipeline() -> None:
 
 @pytest.mark.asyncio
 async def test_execute_search_plan_trends_keyword_extraction() -> None:
-    """Keywords: RefinedIdea headline + one_liner, then plan search_queries (deduped, ≤5)."""
+    """Keywords: plan search_queries shortened to ≤4 words, deduped, ≤5. Headline/one_liner skipped."""
     db = AsyncMock(spec=AsyncSession)
     refined = _make_refined_idea_for_trends(
         headline="Nurse handoff AI",
@@ -597,11 +597,11 @@ async def test_execute_search_plan_trends_keyword_extraction() -> None:
         ]
     )
     expected_keywords = [
-        "Nurse handoff AI",
-        "AI shift handoff notes for nurses",
         "hospital handoff software",
         "nurse shift notes app",
         "clinical handoff tools",
+        "q3 query 1",
+        "q4 query 1",
     ]
 
     with _patch_searcher_integrations(_minimal_tavily_mock(), trends_return=None) as trends_mock:
