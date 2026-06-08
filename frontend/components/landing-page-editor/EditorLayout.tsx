@@ -18,6 +18,7 @@ import {
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { LandingPagePreview } from "@/components/landing-page-generator/LandingPagePreview";
 import { PublishPanel } from "@/components/landing-page-generator/PublishPanel";
+import { useToast } from "@/components/ui/ToastProvider";
 import { CopyFieldsEditor } from "./CopyFieldsEditor";
 import "./editor-panel.css";
 
@@ -47,6 +48,7 @@ export function EditorLayout({
   const [publishedSlug, setPublishedSlug] = useState(landingPage.slug);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { toast } = useToast();
 
   const projectName = resolved.projectName;
   const templateMeta = PAGE_TEMPLATES.find((t) => t.id === templateId);
@@ -68,12 +70,16 @@ export function EditorLayout({
           copy_json: nextCopy,
           page_json: nextPage,
           template_id: nextTemplateId,
-        }).catch(() => {
-          /* PATCH may fail — local preview still works */
-        });
+        })
+          .then(() => {
+            toast("Changes saved", "success");
+          })
+          .catch(() => {
+            toast("Could not save changes", "error");
+          });
       }, 500);
     },
-    [experimentId],
+    [experimentId, toast],
   );
 
   useEffect(() => {

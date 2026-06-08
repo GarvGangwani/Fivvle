@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { DashboardShell } from "@/components/layout/DashboardShell";
+import { ToastProvider } from "@/components/ui/ToastProvider";
 
 function DashboardGuard({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -38,7 +39,9 @@ export default function DashboardLayout({
   return (
     <AuthProvider>
       <DashboardGuard>
-        <DashboardShell>{children}</DashboardShell>
+        <ToastProvider>
+          <DashboardShell>{children}</DashboardShell>
+        </ToastProvider>
       </DashboardGuard>
     </AuthProvider>
   );

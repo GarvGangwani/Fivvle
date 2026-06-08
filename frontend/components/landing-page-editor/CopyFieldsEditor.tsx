@@ -32,6 +32,12 @@ export function CopyFieldsEditor({
   const hero = copy.hero ?? { headline: "", subheadline: "", cta: "" };
   const problem = copy.problem ?? { heading: "", body: "" };
   const features = copy.features ?? [];
+  const comparison = copy.comparison ?? {
+    metric_label: "",
+    competitor_name: "",
+    our_features: [],
+    competitor_features: [],
+  };
   const proof = copy.proof ?? { headline: "", elements: [] };
   const faq = copy.faq ?? [];
   const objections = (copy.objections ?? {
@@ -107,6 +113,10 @@ export function CopyFieldsEditor({
     });
   }
 
+  const ourFeaturesText = (comparison.our_features ?? []).join("\n");
+  const competitorFeaturesText = (comparison.competitor_features ?? []).join(
+    "\n",
+  );
   const proofElementsText = (proof.elements ?? []).join("\n");
 
   return (
@@ -227,6 +237,80 @@ export function CopyFieldsEditor({
         ))}
       </div>
 
+      <SectionHeader>Comparison</SectionHeader>
+      <label className="block space-y-1.5">
+        <FieldLabel>Metric label</FieldLabel>
+        <input
+          type="text"
+          disabled={disabled}
+          value={comparison.metric_label}
+          onChange={(e) =>
+            onChange({
+              ...copy,
+              comparison: { ...comparison, metric_label: e.target.value },
+            })
+          }
+          className="fv-input px-3 py-2 text-sm"
+        />
+      </label>
+      <label className="block space-y-1.5">
+        <FieldLabel>Competitor name</FieldLabel>
+        <input
+          type="text"
+          disabled={disabled}
+          value={comparison.competitor_name}
+          onChange={(e) =>
+            onChange({
+              ...copy,
+              comparison: { ...comparison, competitor_name: e.target.value },
+            })
+          }
+          className="fv-input px-3 py-2 text-sm"
+        />
+      </label>
+      <label className="block space-y-1.5">
+        <FieldLabel>Our features (one per line)</FieldLabel>
+        <textarea
+          disabled={disabled}
+          rows={4}
+          value={ourFeaturesText}
+          onChange={(e) =>
+            onChange({
+              ...copy,
+              comparison: {
+                ...comparison,
+                our_features: e.target.value
+                  .split("\n")
+                  .map((line) => line.trim())
+                  .filter(Boolean),
+              },
+            })
+          }
+          className="fv-input resize-none px-3 py-2 text-sm leading-relaxed"
+        />
+      </label>
+      <label className="block space-y-1.5">
+        <FieldLabel>Competitor features (one per line)</FieldLabel>
+        <textarea
+          disabled={disabled}
+          rows={4}
+          value={competitorFeaturesText}
+          onChange={(e) =>
+            onChange({
+              ...copy,
+              comparison: {
+                ...comparison,
+                competitor_features: e.target.value
+                  .split("\n")
+                  .map((line) => line.trim())
+                  .filter(Boolean),
+              },
+            })
+          }
+          className="fv-input resize-none px-3 py-2 text-sm leading-relaxed"
+        />
+      </label>
+
       <SectionHeader>Proof</SectionHeader>
       <label className="block space-y-1.5">
         <FieldLabel>Headline</FieldLabel>
@@ -334,7 +418,7 @@ export function CopyFieldsEditor({
 
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <SectionHeader>Faq</SectionHeader>
+          <SectionHeader>FAQ</SectionHeader>
           <button
             type="button"
             disabled={disabled}
@@ -382,7 +466,7 @@ export function CopyFieldsEditor({
         ))}
       </div>
 
-      <SectionHeader>Cta</SectionHeader>
+      <SectionHeader>CTA</SectionHeader>
       <label className="block space-y-1.5">
         <FieldLabel>Heading</FieldLabel>
         <input
