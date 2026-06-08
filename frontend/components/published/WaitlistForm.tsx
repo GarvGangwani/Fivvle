@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent, type ReactNode } from "react";
+import { useSearchParams } from "next/navigation";
 import { submitWaitlistLead } from "@/lib/published-page";
 
 interface WaitlistFormProps {
@@ -22,6 +23,9 @@ export function WaitlistForm({
   metaClassName,
   children,
 }: WaitlistFormProps) {
+  const searchParams = useSearchParams();
+  const sourceTag = searchParams.get("ref");
+
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">(
     "idle",
@@ -33,7 +37,7 @@ export function WaitlistForm({
     setStatus("loading");
     setMessage("");
     try {
-      const res = await submitWaitlistLead(slug, email);
+      const res = await submitWaitlistLead(slug, email, sourceTag);
       setStatus("done");
       setMessage(res.message);
       setEmail("");

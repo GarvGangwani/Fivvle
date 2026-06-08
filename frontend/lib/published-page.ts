@@ -39,13 +39,14 @@ export async function fetchPublishedPage(
 export async function submitWaitlistLead(
   slug: string,
   email: string,
+  sourceTag?: string | null,
 ): Promise<{ message: string; already_registered?: boolean }> {
   const res = await fetch(
     `${API_BASE}/e/${encodeURIComponent(slug)}/waitlist`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, ...(sourceTag ? { source_tag: sourceTag } : {}) }),
     },
   );
   if (!res.ok) {
