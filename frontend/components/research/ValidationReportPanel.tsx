@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
+  ChevronDown,
+  ChevronRight,
   ExternalLink,
   Loader2,
   X,
@@ -10,12 +12,14 @@ import {
 import { getValidationReport, ApiError } from "@/lib/api";
 import type {
   Citation,
+  Finding,
   OverallRecommendation,
   ValidationReport,
 } from "@/lib/types";
 
 const REPORT_TABS = [
   "Summary",
+  "Findings",
   "Competitors",
   "Signals",
   "Risks",
@@ -48,6 +52,17 @@ function formatRecommendation(rec: OverallRecommendation): string {
   return rec.toUpperCase();
 }
 
+function confidenceClass(confidence: Finding["confidence"]): string {
+  switch (confidence) {
+    case "high":
+      return "bg-[rgba(16,185,129,0.15)] text-[var(--fv-success)] ring-[rgba(16,185,129,0.3)]";
+    case "medium":
+      return "bg-[rgba(245,158,11,0.15)] text-[var(--fv-warning)] ring-[rgba(245,158,11,0.3)]";
+    case "low":
+      return "bg-white/10 text-[var(--fv-text-soft)] ring-white/10";
+  }
+}
+
 function SafeCitationLink({ citation }: { citation: Citation }) {
   if (!isSafeHttpUrl(citation.url)) {
     return (
@@ -67,6 +82,77 @@ function SafeCitationLink({ citation }: { citation: Citation }) {
       {citation.title}
       <ExternalLink className="h-3.5 w-3.5 shrink-0" />
     </a>
+  );
+}
+
+function FindingCard({ finding }: { finding: Finding }) {
+  return (
+    <div className="fv-card p-4">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span
+          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${confidenceClass(finding.confidence)}`}
+        >
+          {finding.confidence} confidence
+        </span>
+      </div>
+      <p className="whitespace-pre-wrap text-[13px] font-medium text-[var(--fv-text)]">
+        {finding.claim}
+      </p>
+      <p className="mt-2 whitespace-pre-wrap text-[13px] text-[var(--fv-text-soft)]">
+        {finding.evidence_summary}
+      </p>
+      <p className="mt-2 whitespace-pre-wrap text-[12px] text-[var(--fv-text-muted)]">
+        {finding.confidence_rationale}
+      </p>
+      {finding.citations.length > 0 && (
+        <div className="mt-3 space-y-1 border-t border-[var(--fv-border)] pt-2">
+          {finding.citations.map((c) => (
+            <SafeCitationLink key={c.url} citation={c} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function QuestionSection({
+  question,
+  defaultOpen,
+}: {
+  question: ValidationReport["questions_and_findings"][number];
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <div className="border-b border-[var(--fv-border)] last:border-b-0">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-start gap-2 py-4 text-left"
+      >
+        {open ? (
+          <ChevronDown className="mt-0.5 h-5 w-5 shrink-0 text-[var(--fv-text-muted)]" />
+        ) : (
+          <ChevronRight className="mt-0.5 h-5 w-5 shrink-0 text-[var(--fv-text-muted)]" />
+        )}
+        <span className="text-[13px] font-semibold text-[var(--fv-text)]">
+          {question.question}
+        </span>
+      </button>
+      {open && (
+        <div className="space-y-3 pb-4 pl-7">
+          {question.findings.map((finding) => (
+            <FindingCard key={`${finding.question_id}-${finding.claim}`} finding={finding} />
+          ))}
+          {question.evidence_gap && (
+            <p className="whitespace-pre-wrap text-[12px] text-[var(--fv-warning)]">
+              Evidence gap: {question.evidence_gap}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -95,24 +181,6 @@ function collectAllCitations(report: ValidationReport): Citation[] {
     }
   }
   return citations;
-}
-
-function parseSignalLines(text: string | null): { label: string; value: string }[] {
-  if (!text?.trim()) return [];
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const colonIdx = line.indexOf(":");
-      if (colonIdx > 0) {
-        return {
-          label: line.slice(0, colonIdx).trim(),
-          value: line.slice(colonIdx + 1).trim(),
-        };
-      }
-      return { label: line, value: "" };
-    });
 }
 
 interface ValidationReportPanelProps {
@@ -262,24 +330,38 @@ export function ValidationReportPanel({
                 </p>
               </div>
 
-              {report.market_signals && (
+              <div>
+                <h3 className="fv-panel-label mb-3">Market Signals</h3>
+                {report.market_signals ? (
+                  <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--fv-text-soft)]">
+                    {report.market_signals}
+                  </p>
+                ) : (
+                  <span className="unavailable-badge">Data unavailable</span>
+                )}
+              </div>
+
+              {report.research_limitations && (
                 <div>
-                  <h3 className="fv-panel-label mb-3">Market Signals</h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    {parseSignalLines(report.market_signals)
-                      .slice(0, 4)
-                      .map((signal) => (
-                        <div key={signal.label} className="analytics-card">
-                          <p className="text-2xl font-bold text-[var(--fv-accent)]">
-                            {signal.value || "—"}
-                          </p>
-                          <p className="mt-1 text-[12px] text-[var(--fv-text-muted)]">
-                            {signal.label}
-                          </p>
-                        </div>
-                      ))}
-                  </div>
+                  <h3 className="fv-panel-label mb-3">Research Limitations</h3>
+                  <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--fv-text-muted)]">
+                    {report.research_limitations}
+                  </p>
                 </div>
+              )}
+            </div>
+          )}
+
+          {report && !loading && activeTab === "Findings" && (
+            <div>
+              {report.questions_and_findings.length === 0 ? (
+                <p className="text-sm text-[var(--fv-text-muted)]">
+                  No research findings available.
+                </p>
+              ) : (
+                report.questions_and_findings.map((qf, i) => (
+                  <QuestionSection key={qf.question_id} question={qf} defaultOpen={i === 0} />
+                ))
               )}
             </div>
           )}
@@ -305,6 +387,13 @@ export function ValidationReportPanel({
                     <p className="mt-2 text-[12px] text-[var(--fv-text-muted)]">
                       Gap: {comp.positioning_vs_idea}
                     </p>
+                    {comp.citations.length > 0 && (
+                      <div className="mt-3 space-y-1 border-t border-[var(--fv-border)] pt-2">
+                        {comp.citations.map((c) => (
+                          <SafeCitationLink key={c.url} citation={c} />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -319,34 +408,18 @@ export function ValidationReportPanel({
                   ["Distribution", report.distribution_signals],
                   ["Regulatory", report.regulatory_signals],
                 ] as const
-              ).map(([group, text]) => {
-                const lines = parseSignalLines(text);
-                return (
-                  <div key={group}>
-                    <h3 className="fv-panel-label mb-3">{group}</h3>
-                    {lines.length === 0 ? (
-                      <span className="unavailable-badge">Data unavailable</span>
-                    ) : (
-                      <div className="space-y-2">
-                        {lines.map((line) => (
-                          <div
-                            key={`${group}-${line.label}`}
-                            className="flex items-start justify-between gap-3 rounded-lg px-3 py-2"
-                            style={{ background: "rgba(255,255,255,0.02)" }}
-                          >
-                            <span className="text-[13px] text-[var(--fv-text-soft)]">
-                              {line.label}
-                            </span>
-                            <span className="text-[13px] font-medium text-[var(--fv-text)]">
-                              {line.value || "—"}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              ).map(([group, text]) => (
+                <div key={group}>
+                  <h3 className="fv-panel-label mb-3">{group}</h3>
+                  {text ? (
+                    <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--fv-text-soft)]">
+                      {text}
+                    </p>
+                  ) : (
+                    <span className="unavailable-badge">Data unavailable</span>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 
