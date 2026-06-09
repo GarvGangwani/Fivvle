@@ -135,8 +135,13 @@ export function ExperimentDetailPanel({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-[var(--fv-accent)]" />
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-6 flex flex-wrap items-center gap-3">
+          <div className="fv-skeleton h-8 w-36 rounded" />
+          <div className="fv-skeleton h-6 w-24 rounded-full" />
+        </div>
+        <div className="fv-skeleton mb-4 h-48 rounded-xl" />
+        <div className="fv-skeleton h-32 rounded-xl" />
       </div>
     );
   }

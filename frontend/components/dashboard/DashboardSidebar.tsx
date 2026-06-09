@@ -78,26 +78,26 @@ export function DashboardSidebar({
 
   return (
     <aside
-      className="hidden w-[240px] shrink-0 flex-col border-r md:flex"
+      className="hidden w-[260px] shrink-0 flex-col border-r md:flex"
       style={{
         borderColor: "rgba(255,255,255,0.06)",
-        height: "calc(100vh - 58px)",
+        height: "calc(100vh - 4rem)",
       }}
     >
-      <div className="flex flex-1 flex-col overflow-y-auto p-3">
+      <div className="flex flex-1 flex-col overflow-y-auto p-4">
         <Link href="/new" className="fv-new-idea-btn">
           <Plus className="h-[14px] w-[14px]" />
           New Idea
         </Link>
 
         <p
-          className="mb-2 mt-5 px-1 text-[10px] font-semibold uppercase tracking-[0.08em]"
+          className="mb-3 mt-5 px-1 text-[11px] font-semibold uppercase tracking-[0.1em]"
           style={{ color: "var(--fv-text-dim)" }}
         >
           Recent
         </p>
 
-        <div className="space-y-0.5">
+        <div className="space-y-1">
           {experiments.map((experiment) => {
             const isActive =
               selectedId === experiment.id ||
@@ -108,7 +108,7 @@ export function DashboardSidebar({
               <Link
                 key={experiment.id}
                 href={`/dashboard?e=${experiment.id}`}
-                className={`fv-sidebar-item block no-underline ${
+                className={`fv-sidebar-item block px-3 py-3 no-underline ${
                   isActive ? "fv-sidebar-item-active" : ""
                 }`}
               >

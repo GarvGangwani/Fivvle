@@ -3,16 +3,48 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Lightbulb, Loader2 } from "lucide-react";
+import { ChevronDown, Lightbulb } from "lucide-react";
 import { listExperiments, ApiError } from "@/lib/api";
 import type { ExperimentSummary } from "@/lib/types";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { ExperimentDetailPanel } from "./ExperimentDetailPanel";
 
+const EMPTY_STATE_SUGGESTIONS = [
+  { label: "SaaS idea", href: "/new" },
+  { label: "Consumer app", href: "/new" },
+  { label: "Marketplace", href: "/new" },
+] as const;
+
 type LoadState =
   | { status: "loading" }
   | { status: "success"; experiments: ExperimentSummary[] }
   | { status: "error"; message: string };
+
+function DashboardLoadingSkeleton() {
+  return (
+    <div className="flex h-[calc(100vh-4rem)]">
+      <aside
+        className="hidden w-[260px] shrink-0 border-r p-4 md:block"
+        style={{ borderColor: "rgba(255,255,255,0.06)" }}
+      >
+        <div className="fv-skeleton h-10 rounded-xl" />
+        <div className="mb-3 mt-5 px-1">
+          <div className="fv-skeleton h-3 w-16 rounded" />
+        </div>
+        <div className="space-y-1">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="fv-skeleton h-14 rounded-lg" />
+          ))}
+        </div>
+      </aside>
+
+      <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
+        <div className="fv-skeleton mb-4 h-8 w-48 rounded" />
+        <div className="fv-skeleton h-64 rounded-xl" />
+      </main>
+    </div>
+  );
+}
 
 export function DashboardContent() {
   const searchParams = useSearchParams();
@@ -46,16 +78,12 @@ export function DashboardContent() {
   }, [fetchExperiments]);
 
   if (loadState.status === "loading") {
-    return (
-      <div className="flex h-[calc(100vh-58px)] items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-[var(--fv-accent)]" />
-      </div>
-    );
+    return <DashboardLoadingSkeleton />;
   }
 
   if (loadState.status === "error") {
     return (
-      <div className="flex h-[calc(100vh-58px)] items-center justify-center px-6">
+      <div className="flex h-[calc(100vh-4rem)] items-center justify-center px-6">
         <div className="fv-error max-w-md text-center text-sm">
           {loadState.message}
         </div>
@@ -68,7 +96,7 @@ export function DashboardContent() {
     selectedId ?? (experiments.length > 0 ? experiments[0].id : null);
 
   return (
-    <div className="flex h-[calc(100vh-58px)]">
+    <div className="flex h-[calc(100vh-4rem)]">
       <DashboardSidebar
         experiments={experiments}
         selectedId={effectiveSelectedId}
@@ -76,7 +104,7 @@ export function DashboardContent() {
 
       <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
         {experiments.length > 1 && (
-          <div className="mb-4 md:hidden">
+          <div className="relative mb-4 md:hidden">
             <label htmlFor="experiment-select" className="sr-only">
               Select experiment
             </label>
@@ -86,7 +114,7 @@ export function DashboardContent() {
               onChange={(e) => {
                 window.location.href = `/dashboard?e=${e.target.value}`;
               }}
-              className="fv-input w-full px-3 py-2 text-sm"
+              className="w-full appearance-none rounded-xl border border-white/[0.08] bg-[var(--fv-surface-2)] px-4 py-3 pr-10 text-sm text-[var(--fv-text)] outline-none"
             >
               {experiments.map((exp) => (
                 <option key={exp.id} value={exp.id}>
@@ -94,10 +122,11 @@ export function DashboardContent() {
                 </option>
               ))}
             </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--fv-text-muted)]" />
           </div>
         )}
         {experiments.length === 0 ? (
-          <div className="mx-auto flex max-w-md flex-col items-center py-16 text-center">
+          <div className="fv-fade-up mx-auto flex max-w-md flex-col items-center py-16 text-center">
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[var(--fv-accent-muted)]">
               <Lightbulb className="h-6 w-6 text-[var(--fv-accent)]" />
             </div>
@@ -114,6 +143,17 @@ export function DashboardContent() {
             >
               Submit your first idea
             </Link>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {EMPTY_STATE_SUGGESTIONS.map((suggestion) => (
+                <Link
+                  key={suggestion.label}
+                  href={suggestion.href}
+                  className="rounded-full border border-white/[0.1] bg-white/[0.03] px-4 py-2 text-[13px] text-[var(--fv-text-soft)] transition-all duration-200 hover:border-[var(--fv-accent)]/40 hover:bg-[var(--fv-accent)]/5 no-underline"
+                >
+                  {suggestion.label}
+                </Link>
+              ))}
+            </div>
           </div>
         ) : effectiveSelectedId ? (
           <ExperimentDetailPanel experimentId={effectiveSelectedId} />
