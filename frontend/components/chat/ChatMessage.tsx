@@ -32,7 +32,7 @@ export function ChatMessage({
           >
             F
           </div>
-          <span className="text-[12px] font-medium text-[#475569]">Fivvle</span>
+          <span className="text-[12px] font-medium text-fv-text-dim">Fivvle</span>
           {showRefining && (
             <span className="fv-refining-badge">Refining</span>
           )}

@@ -13,7 +13,7 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
     <span
       className="text-[12px] font-semibold uppercase tracking-[0.06em]"
-      style={{ color: "#475569" }}
+      style={{ color: "var(--fv-text-dim)" }}
     >
       {children}
     </span>

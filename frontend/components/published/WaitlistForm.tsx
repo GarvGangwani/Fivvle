@@ -71,7 +71,7 @@ export function WaitlistForm({
         {status === "loading" ? "Sending…" : buttonLabel}
       </button>
       {status === "error" && (
-        <p className={metaClassName} style={{ color: "#ef4444" }}>
+        <p className={metaClassName} style={{ color: "var(--fv-danger)" }}>
           {message}
         </p>
       )}

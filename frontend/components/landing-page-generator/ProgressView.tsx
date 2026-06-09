@@ -58,7 +58,8 @@ export function ProgressView({ job, error, onRetry }: ProgressViewProps) {
                 className="h-full rounded-full transition-all duration-500"
                 style={{
                   width: `${Math.min(progress, 100)}%`,
-                  background: "linear-gradient(90deg, #06b6d4, #3b82f6)",
+                  background:
+                    "linear-gradient(90deg, var(--fv-accent), var(--fv-accent-gradient-end))",
                 }}
               />
             </div>

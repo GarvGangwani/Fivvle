@@ -97,16 +97,16 @@ export function LandingGenerationProgress({
                 <span
                   className={`flex-1 text-[13px] ${
                     state === "completed"
-                      ? "text-[#34D399]"
+                      ? "text-fv-success"
                       : state === "active"
                         ? "text-[var(--fv-text)]"
-                        : "text-[#475569]"
+                        : "text-fv-text-dim"
                   }`}
                 >
                   {label}
                 </span>
                 {state === "completed" && (
-                  <Check className="h-[13px] w-[13px] shrink-0 text-[#10B981]" />
+                  <Check className="h-[13px] w-[13px] shrink-0 text-fv-success" />
                 )}
                 {state === "active" && <span className="fv-stage-spinner" />}
               </div>

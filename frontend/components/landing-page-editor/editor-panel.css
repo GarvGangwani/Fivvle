@@ -8,9 +8,9 @@
   --fv-text: #e2e8f0;
   --fv-text-muted: #94a3b8;
   --fv-text-soft: #cbd5e1;
-  --fv-accent: #06b6d4;
-  --fv-accent-hover: #22d3ee;
-  --fv-accent-muted: rgba(6, 182, 212, 0.15);
+  --fv-accent: #3d59fe;
+  --fv-accent-hover: #5571fe;
+  --fv-accent-muted: color-mix(in srgb, var(--fv-accent) 15%, transparent);
   color: var(--fv-text);
 }
 
@@ -32,7 +32,7 @@
   background: var(--fv-accent);
   border: none;
   border-radius: 12px;
-  color: #080c14;
+  color: var(--fv-on-accent);
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
@@ -60,5 +60,5 @@
 }
 
 .lp-editor-panel .fv-input:focus {
-  border-color: rgba(6, 182, 212, 0.4);
+  border-color: color-mix(in srgb, var(--fv-accent) 40%, transparent);
 }

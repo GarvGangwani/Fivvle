@@ -80,7 +80,7 @@ export function TemplatePicker({
               style={{ background: template.accent }}
             />
             <div className="p-4">
-              <p className="text-[14px] font-semibold text-[#CBD5E1]">
+              <p className="text-[14px] font-semibold text-fv-text">
                 {template.name}
               </p>
               <p className="mt-1 text-[12px] text-[var(--fv-text-muted)]">

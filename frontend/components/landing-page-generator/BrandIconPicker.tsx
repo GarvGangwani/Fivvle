@@ -158,7 +158,7 @@ export function BrandIconPicker({
               type="file"
               accept={ACCEPTED_LOGO_TYPES}
               disabled={disabled || uploading}
-              className="mt-3 block w-full text-xs text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--fv-accent)] file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-[#080c14] hover:file:bg-[var(--fv-accent-hover)] disabled:opacity-50"
+              className="mt-3 block w-full text-xs text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--fv-accent)] file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-fv-bg hover:file:bg-[var(--fv-accent-hover)] disabled:opacity-50"
               onChange={(e) => void handleFileSelect(e.target.files?.[0] ?? null)}
             />
             {uploading && (

@@ -58,7 +58,7 @@ function recommendationClass(rec: OverallRecommendation): string {
     case "proceed":
       return "bg-[rgba(16,185,129,0.15)] text-[var(--fv-success)] ring-[rgba(16,185,129,0.3)]";
     case "iterate":
-      return "bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-[rgba(6,182,212,0.3)]";
+      return "bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-[color-mix(in_srgb,var(--fv-accent)_30%,transparent)]";
     case "pivot":
       return "bg-[rgba(245,158,11,0.15)] text-[var(--fv-warning)] ring-[rgba(245,158,11,0.3)]";
     case "kill":

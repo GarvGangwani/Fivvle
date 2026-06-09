@@ -179,7 +179,7 @@ export function ChatInterface() {
                     >
                       F
                     </div>
-                    <span className="text-[12px] font-medium text-[#475569]">
+                    <span className="text-[12px] font-medium text-fv-text-dim">
                       Fivvle
                     </span>
                   </div>

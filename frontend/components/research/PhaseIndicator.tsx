@@ -76,16 +76,16 @@ export function PhaseIndicator({
                 <span
                   className={`flex-1 text-[13px] ${
                     state === "completed"
-                      ? "text-[#34D399]"
+                      ? "text-fv-success"
                       : state === "active"
                         ? "text-[var(--fv-text)]"
-                        : "text-[#475569]"
+                        : "text-fv-text-dim"
                   }`}
                 >
                   {label}
                 </span>
                 {state === "completed" && (
-                  <Check className="h-[13px] w-[13px] shrink-0 text-[#10B981]" />
+                  <Check className="h-[13px] w-[13px] shrink-0 text-fv-success" />
                 )}
                 {state === "active" && <span className="fv-stage-spinner" />}
               </div>
@@ -127,7 +127,7 @@ export function PhaseIndicator({
 
             <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
               {state === "completed" && (
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-2 ring-[rgba(6,182,212,0.3)]">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-2 ring-[color-mix(in_srgb,var(--fv-accent)_30%,transparent)]">
                   <Check className="h-4 w-4" strokeWidth={2.5} />
                 </span>
               )}

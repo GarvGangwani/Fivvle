@@ -23,7 +23,7 @@ function statusColorClass(status: string): string {
     return "bg-white/10 text-[var(--fv-text-soft)] ring-white/10";
   }
   if (BLUE_STATUSES.has(status)) {
-    return "bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-[rgba(6,182,212,0.3)]";
+    return "bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-[color-mix(in_srgb,var(--fv-accent)_30%,transparent)]";
   }
   if (YELLOW_STATUSES.has(status)) {
     return "bg-[rgba(245,158,11,0.15)] text-[var(--fv-warning)] ring-[rgba(245,158,11,0.3)]";

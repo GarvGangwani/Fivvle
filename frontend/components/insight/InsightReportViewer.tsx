@@ -17,7 +17,7 @@ function recommendationBadgeClass(
     case "proceed":
       return "bg-[rgba(16,185,129,0.15)] text-[var(--fv-success)] ring-[rgba(16,185,129,0.3)]";
     case "iterate":
-      return "bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-[rgba(6,182,212,0.3)]";
+      return "bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-[color-mix(in_srgb,var(--fv-accent)_30%,transparent)]";
     case "pivot":
       return "bg-[rgba(245,158,11,0.15)] text-[var(--fv-warning)] ring-[rgba(245,158,11,0.3)]";
     case "kill":
@@ -34,7 +34,7 @@ function sourceTypeBadgeClass(type: TakeawaySourceType): string {
     case "BEHAVIORAL":
       return "bg-[rgba(168,85,247,0.15)] text-purple-300 ring-[rgba(168,85,247,0.3)]";
     case "COGNITIVE":
-      return "bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-[rgba(6,182,212,0.3)]";
+      return "bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-[color-mix(in_srgb,var(--fv-accent)_30%,transparent)]";
     case "SYNTHESIZED":
       return "bg-[rgba(99,102,241,0.15)] text-indigo-300 ring-[rgba(99,102,241,0.3)]";
   }

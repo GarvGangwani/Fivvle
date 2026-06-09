@@ -57,14 +57,17 @@ function getStatusLine(experiment: ExperimentWithRefinement): {
   if (VALIDATED_STATUSES.has(experiment.status)) {
     const score = experiment.validation_report?.total_finding_count;
     return {
-      dotColor: "#10B981",
+      dotColor: "var(--fv-success)",
       label: score != null ? `Score: ${Math.min(100, score * 10)}` : "Validated",
     };
   }
   if (IN_PROGRESS_STATUSES.has(experiment.status)) {
-    return { dotColor: "#F59E0B", label: "In progress" };
+    return { dotColor: "var(--fv-warning)", label: "In progress" };
   }
-  return { dotColor: "#475569", label: experiment.status.replace(/_/g, " ").toLowerCase() };
+  return {
+    dotColor: "var(--fv-text-dim)",
+    label: experiment.status.replace(/_/g, " ").toLowerCase(),
+  };
 }
 
 export function DashboardSidebar({
@@ -89,7 +92,7 @@ export function DashboardSidebar({
 
         <p
           className="mb-2 mt-5 px-1 text-[10px] font-semibold uppercase tracking-[0.08em]"
-          style={{ color: "#475569" }}
+          style={{ color: "var(--fv-text-dim)" }}
         >
           Recent
         </p>
@@ -109,7 +112,7 @@ export function DashboardSidebar({
                   isActive ? "fv-sidebar-item-active" : ""
                 }`}
               >
-                <p className="text-[13px] font-medium text-[#CBD5E1]">
+                <p className="text-[13px] font-medium text-fv-text">
                   {getIdeaTitle(experiment)}
                 </p>
                 <div className="mt-1 flex items-center gap-1.5">
@@ -117,7 +120,10 @@ export function DashboardSidebar({
                     className="h-1.5 w-1.5 shrink-0 rounded-full"
                     style={{ background: dotColor }}
                   />
-                  <span className="text-[11px]" style={{ color: "#475569" }}>
+                  <span
+                    className="text-[11px]"
+                    style={{ color: "var(--fv-text-dim)" }}
+                  >
                     {label}
                   </span>
                 </div>

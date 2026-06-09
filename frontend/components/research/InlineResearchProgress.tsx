@@ -84,7 +84,7 @@ export function InlineResearchProgress({
           <div className="fv-f-logo" style={{ width: 22, height: 22, fontSize: 11 }}>
             F
           </div>
-          <span className="text-[12px] font-medium text-[#475569]">Fivvle</span>
+          <span className="text-[12px] font-medium text-fv-text-dim">Fivvle</span>
         </div>
         <div className="fv-msg-ai max-w-full">
           <div className="mb-3 flex items-center gap-2">

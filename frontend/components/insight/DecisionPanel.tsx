@@ -115,7 +115,7 @@ export function DecisionPanel({
             <span
               className={`mt-2 text-xs leading-relaxed ${
                 option.primary
-                  ? "text-[#080c14]/70"
+                  ? "text-fv-bg/70"
                   : "text-[var(--fv-text-muted)]"
               }`}
             >

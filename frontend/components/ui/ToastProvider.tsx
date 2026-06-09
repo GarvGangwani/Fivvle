@@ -43,7 +43,7 @@ const variantStyles: Record<
   info: {
     bg: "var(--fv-accent-muted)",
     text: "var(--fv-accent)",
-    border: "rgba(6, 182, 212, 0.3)",
+    border: "color-mix(in srgb, var(--fv-accent) 30%, transparent)",
   },
 };
 

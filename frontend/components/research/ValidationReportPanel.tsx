@@ -322,7 +322,7 @@ export function ValidationReportPanel({
                   border: "1px solid rgba(16,185,129,0.2)",
                 }}
               >
-                <p className="text-[13px] font-semibold text-[#34D399]">
+                <p className="text-[13px] font-semibold text-fv-success">
                   Recommendation: {formatRecommendation(report.overall_recommendation)}
                 </p>
                 <p className="mt-2 whitespace-pre-wrap text-[13px] leading-relaxed text-[var(--fv-text-soft)]">
@@ -459,7 +459,7 @@ export function ValidationReportPanel({
                 citations.map((citation, i) => (
                   <div key={`${citation.url}-${i}`} className="flex items-start gap-3">
                     <span
-                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-[#080C14]"
+                      className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold text-fv-bg"
                       style={{ background: "var(--fv-accent)" }}
                     >
                       {i + 1}

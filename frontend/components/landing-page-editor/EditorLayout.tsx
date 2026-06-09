@@ -259,7 +259,7 @@ export function EditorLayout({
                       style={{ background: tpl.preview.accent }}
                     />
                     <div className="p-3">
-                      <p className="text-[13px] font-semibold text-[#CBD5E1]">
+                      <p className="text-[13px] font-semibold text-fv-text">
                         {tpl.name}
                       </p>
                       <p className="mt-0.5 text-[11px] text-[var(--fv-text-muted)]">
