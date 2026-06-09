@@ -51,19 +51,12 @@ export function DecisionPanel({
   onDecision,
 }: DecisionPanelProps) {
   const [submitting, setSubmitting] = useState<FounderDecision | null>(null);
+  const [confirmingAction, setConfirmingAction] = useState<"pivot" | "kill" | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
 
-  async function handleDecision(decision: FounderDecision) {
-    const option = DECISIONS.find((d) => d.id === decision);
-    if (option?.destructive) {
-      const confirmed = window.confirm(
-        decision === "kill"
-          ? "Are you sure you want to kill this experiment? This cannot be undone."
-          : "Are you sure you want to pivot? This will archive the current experiment.",
-      );
-      if (!confirmed) return;
-    }
-
+  async function executeDecision(decision: FounderDecision) {
     setSubmitting(decision);
     setError(null);
     try {
@@ -77,7 +70,17 @@ export function DecisionPanel({
       );
     } finally {
       setSubmitting(null);
+      setConfirmingAction(null);
     }
+  }
+
+  function handleDecisionClick(decision: FounderDecision) {
+    const option = DECISIONS.find((d) => d.id === decision);
+    if (option?.destructive) {
+      setConfirmingAction(decision as "pivot" | "kill");
+      return;
+    }
+    void executeDecision(decision);
   }
 
   return (
@@ -91,39 +94,73 @@ export function DecisionPanel({
         <p className="mt-4 text-sm text-red-300">{error}</p>
       )}
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-        {DECISIONS.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            disabled={submitting !== null}
-            onClick={() => handleDecision(option.id)}
-            className={`flex flex-col p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-              option.primary
-                ? "fv-btn-primary flex-col items-start rounded-xl"
-                : option.destructive
-                  ? "fv-btn-ghost rounded-xl border-[rgba(239,68,68,0.3)] hover:border-[rgba(239,68,68,0.5)] hover:text-red-300"
-                  : "fv-btn-ghost rounded-xl"
-            }`}
-          >
-            <span className="flex items-center gap-2 text-sm font-semibold">
-              {submitting === option.id && (
-                <Loader2 className="h-4 w-4 animate-spin" />
+      {confirmingAction ? (
+        <div className="fv-msg-enter mt-6 space-y-4 rounded-2xl border border-[var(--fv-danger)]/30 bg-[var(--fv-danger)]/5 p-6">
+          <p className="text-[15px] text-[var(--fv-text)]">
+            Are you sure you want to <strong>{confirmingAction}</strong> this
+            experiment?
+          </p>
+          <div className="flex gap-3">
+            <button
+              type="button"
+              disabled={submitting !== null}
+              onClick={() => void executeDecision(confirmingAction)}
+              className="fv-btn-primary bg-[var(--fv-danger)] px-5 py-2.5 text-sm hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting === confirmingAction ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Confirming…
+                </span>
+              ) : (
+                "Confirm"
               )}
-              {option.label}
-            </span>
-            <span
-              className={`mt-2 text-xs leading-relaxed ${
+            </button>
+            <button
+              type="button"
+              disabled={submitting !== null}
+              onClick={() => setConfirmingAction(null)}
+              className="fv-btn-ghost px-5 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-6 grid gap-3 sm:grid-cols-2">
+          {DECISIONS.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              disabled={submitting !== null}
+              onClick={() => handleDecisionClick(option.id)}
+              className={`flex flex-col p-4 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 option.primary
-                  ? "text-fv-bg/70"
-                  : "text-[var(--fv-text-muted)]"
+                  ? "fv-btn-primary flex-col items-start rounded-xl"
+                  : option.destructive
+                    ? "fv-btn-ghost rounded-xl border-[rgba(239,68,68,0.3)] hover:border-[rgba(239,68,68,0.5)] hover:text-red-300"
+                    : "fv-btn-ghost rounded-xl"
               }`}
             >
-              {option.description}
-            </span>
-          </button>
-        ))}
-      </div>
+              <span className="flex items-center gap-2 text-sm font-semibold">
+                {submitting === option.id && (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                )}
+                {option.label}
+              </span>
+              <span
+                className={`mt-2 text-xs leading-relaxed ${
+                  option.primary
+                    ? "text-fv-bg/70"
+                    : "text-[var(--fv-text-muted)]"
+                }`}
+              >
+                {option.description}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }

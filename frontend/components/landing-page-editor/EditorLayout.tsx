@@ -175,16 +175,16 @@ export function EditorLayout({
               const url = `${window.location.origin}/e/${publishedSlug}?ref=${tag}`;
               return (
                 <div key={tag} className="flex items-center gap-2">
-                  <span className="w-28 shrink-0 text-[12px] text-[var(--fv-text-soft)]">
+                  <span className="w-28 shrink-0 text-[13px] text-[var(--fv-text-soft)]">
                     {label}
                   </span>
-                  <code className="min-w-0 flex-1 truncate rounded bg-black/30 px-2 py-1.5 text-[11px] text-[var(--fv-text-muted)]">
+                  <code className="min-w-0 flex-1 truncate rounded bg-white/[0.03] px-3 py-2 font-mono text-[12px] text-[var(--fv-text-muted)]">
                     {url}
                   </code>
                   <button
                     type="button"
                     onClick={() => void navigator.clipboard.writeText(url)}
-                    className="shrink-0 text-[12px] text-[var(--fv-accent)] hover:text-[var(--fv-accent-hover)]"
+                    className="fv-btn-ghost shrink-0 px-3 py-1.5 text-[12px]"
                   >
                     Copy
                   </button>

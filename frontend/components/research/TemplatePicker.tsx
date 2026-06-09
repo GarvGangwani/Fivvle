@@ -71,13 +71,17 @@ export function TemplatePicker({
             key={template.id}
             type="button"
             onClick={() => onSelect(template.id)}
-            className={`host-card fv-card-hover text-left ${
-              selectedId === template.id ? "host-card selected fv-card-selected" : ""
+            className={`host-card fv-card-hover overflow-hidden text-left transition-transform duration-200 ${
+              selectedId === template.id
+                ? "host-card selected fv-card-selected scale-[1.02] ring-2 ring-[var(--fv-accent)]"
+                : ""
             }`}
           >
             <div
-              className="h-1 w-full"
-              style={{ background: template.accent }}
+              className="aspect-[4/3] rounded-t-xl"
+              style={{
+                background: `linear-gradient(135deg, color-mix(in srgb, ${template.accent} 35%, transparent), color-mix(in srgb, ${template.accent} 8%, transparent))`,
+              }}
             />
             <div className="p-4">
               <p className="text-[14px] font-semibold text-fv-text">

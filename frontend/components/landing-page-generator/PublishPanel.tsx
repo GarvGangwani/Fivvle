@@ -100,9 +100,9 @@ export function PublishPanel({
 
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5 sm:col-span-2">
-          <span className="text-xs text-zinc-500">URL slug</span>
-          <div className="flex items-center gap-0 overflow-hidden rounded-lg border border-white/10 bg-black/40">
-            <span className="shrink-0 px-3 py-2 text-xs text-zinc-500">
+          <span className="text-xs text-[var(--fv-text-muted)]">URL slug</span>
+          <div className="flex items-center gap-0 overflow-hidden rounded-lg border border-[var(--fv-border)] bg-white/[0.04]">
+            <span className="shrink-0 px-3 py-2 text-xs text-[var(--fv-text-muted)]">
               /p/
             </span>
             <input
@@ -117,13 +117,13 @@ export function PublishPanel({
                     .replace(/-+/g, "-"),
                 )
               }
-              className="flex-1 bg-transparent py-2 pr-3 font-mono text-sm text-zinc-200 outline-none"
+              className="flex-1 bg-transparent py-2 pr-3 font-mono text-sm text-[var(--fv-text)] outline-none"
             />
           </div>
         </label>
 
-        <fieldset className="sm:col-span-2 space-y-2">
-          <span className="text-xs text-zinc-500">CTA behavior</span>
+        <fieldset className="space-y-2 sm:col-span-2">
+          <span className="text-xs text-[var(--fv-text-muted)]">CTA behavior</span>
           <div className="grid gap-2 sm:grid-cols-3">
             {CTA_MODE_OPTIONS.map((opt) => (
               <label
@@ -131,7 +131,7 @@ export function PublishPanel({
                 className={`cursor-pointer rounded-lg border p-3 text-left transition-colors ${
                   ctaMode === opt.id
                     ? "border-[var(--fv-accent)]/50 bg-[var(--fv-accent-muted)]"
-                    : "border-white/10 hover:border-white/20"
+                    : "border-[var(--fv-border)] hover:border-[var(--fv-border-strong)]"
                 }`}
               >
                 <input
@@ -143,8 +143,8 @@ export function PublishPanel({
                   onChange={() => setCtaMode(opt.id)}
                   className="sr-only"
                 />
-                <p className="text-sm font-medium text-zinc-200">{opt.label}</p>
-                <p className="mt-1 text-xs text-zinc-500">{opt.description}</p>
+                <p className="text-sm font-medium text-[var(--fv-text)]">{opt.label}</p>
+                <p className="mt-1 text-xs text-[var(--fv-text-muted)]">{opt.description}</p>
               </label>
             ))}
           </div>
@@ -152,7 +152,7 @@ export function PublishPanel({
 
         {ctaMode === "external" && (
           <label className="flex flex-col gap-1.5 sm:col-span-2">
-            <span className="text-xs text-zinc-500">Destination URL</span>
+            <span className="text-xs text-[var(--fv-text-muted)]">Destination URL</span>
             <input
               type="url"
               value={ctaUrl}
@@ -170,8 +170,8 @@ export function PublishPanel({
       )}
 
       {lastPublish && (
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
-          <span className="text-xs text-zinc-500">Live URL:</span>
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-[var(--fv-border)] bg-white/[0.03] px-3 py-2">
+          <span className="text-xs text-[var(--fv-text-muted)]">Live URL:</span>
           <code className="text-xs text-[var(--fv-accent)]">{lastPublish.public_url}</code>
           <button
             type="button"
@@ -195,8 +195,8 @@ export function PublishPanel({
       </button>
 
       {history.length > 0 && (
-        <details className="text-xs text-zinc-500">
-          <summary className="cursor-pointer hover:text-zinc-400">
+        <details className="text-xs text-[var(--fv-text-muted)]">
+          <summary className="cursor-pointer hover:text-[var(--fv-text-soft)]">
             Publication history ({history.length})
           </summary>
           <ul className="mt-2 space-y-1">

@@ -1,16 +1,5 @@
-/* Scoped tokens for copied landing-page-generator components */
+/* Scoped component styles — uses global design tokens from globals.css */
 .lp-editor-panel {
-  --fv-bg: #0f1419;
-  --fv-surface: #151b23;
-  --fv-surface-2: rgba(255, 255, 255, 0.03);
-  --fv-border: rgba(255, 255, 255, 0.08);
-  --fv-border-strong: rgba(255, 255, 255, 0.14);
-  --fv-text: #e2e8f0;
-  --fv-text-muted: #94a3b8;
-  --fv-text-soft: #cbd5e1;
-  --fv-accent: #3d59fe;
-  --fv-accent-hover: #5571fe;
-  --fv-accent-muted: color-mix(in srgb, var(--fv-accent) 15%, transparent);
   color: var(--fv-text);
 }
 

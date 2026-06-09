@@ -21,8 +21,30 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 function SectionHeader({ children }: { children: React.ReactNode }) {
-  return <p className="fv-panel-label pt-2">{children}</p>;
+  return <p className="fv-panel-label">{children}</p>;
 }
+
+function EditorSection({
+  children,
+  first = false,
+}: {
+  children: React.ReactNode;
+  first?: boolean;
+}) {
+  return (
+    <div
+      className={
+        first ? "space-y-5" : "space-y-5 border-t border-white/[0.06] pt-8"
+      }
+    >
+      {children}
+    </div>
+  );
+}
+
+const INPUT_CLASS = "fv-input px-3.5 py-2.5 text-sm";
+const TEXTAREA_CLASS = "fv-input resize-none px-3.5 py-2.5 text-sm leading-relaxed";
+const NESTED_GROUP_CLASS = "space-y-2 rounded-xl bg-white/[0.02] p-4";
 
 export function CopyFieldsEditor({
   copy,
@@ -120,7 +142,8 @@ export function CopyFieldsEditor({
   const proofElementsText = (proof.elements ?? []).join("\n");
 
   return (
-    <div className="space-y-5">
+    <div>
+      <EditorSection first>
       <SectionHeader>Hero</SectionHeader>
       <label className="block space-y-1.5">
         <FieldLabel>Headline</FieldLabel>
@@ -129,7 +152,7 @@ export function CopyFieldsEditor({
           disabled={disabled}
           value={hero.headline}
           onChange={(e) => updateHero("headline", e.target.value)}
-          className="fv-input px-3 py-2 text-sm"
+          className={INPUT_CLASS}
         />
       </label>
       <label className="block space-y-1.5">
@@ -139,7 +162,7 @@ export function CopyFieldsEditor({
           rows={3}
           value={hero.subheadline}
           onChange={(e) => updateHero("subheadline", e.target.value)}
-          className="fv-input resize-none px-3 py-2 text-sm leading-relaxed"
+          className={TEXTAREA_CLASS}
         />
       </label>
       <label className="block space-y-1.5">
@@ -149,10 +172,12 @@ export function CopyFieldsEditor({
           disabled={disabled}
           value={hero.cta}
           onChange={(e) => updateHero("cta", e.target.value)}
-          className="fv-input px-3 py-2 text-sm"
+          className={INPUT_CLASS}
         />
       </label>
+      </EditorSection>
 
+      <EditorSection>
       <SectionHeader>Problem</SectionHeader>
       <label className="block space-y-1.5">
         <FieldLabel>Heading</FieldLabel>
@@ -166,7 +191,7 @@ export function CopyFieldsEditor({
               problem: { ...problem, heading: e.target.value },
             })
           }
-          className="fv-input px-3 py-2 text-sm"
+          className={INPUT_CLASS}
         />
       </label>
       <label className="block space-y-1.5">
@@ -181,10 +206,12 @@ export function CopyFieldsEditor({
               problem: { ...problem, body: e.target.value },
             })
           }
-          className="fv-input resize-none px-3 py-2 text-sm leading-relaxed"
+          className={TEXTAREA_CLASS}
         />
       </label>
+      </EditorSection>
 
+      <EditorSection>
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <SectionHeader>Features</SectionHeader>
@@ -201,7 +228,7 @@ export function CopyFieldsEditor({
         {features.map((feature, index) => (
           <div
             key={index}
-            className="space-y-2 rounded-xl border border-[var(--fv-border)] p-3"
+            className={NESTED_GROUP_CLASS}
           >
             <div className="flex items-center justify-between gap-2">
               <FieldLabel>Feature {index + 1}</FieldLabel>
@@ -221,7 +248,7 @@ export function CopyFieldsEditor({
               value={feature.title}
               onChange={(e) => updateFeature(index, "title", e.target.value)}
               placeholder="Title"
-              className="fv-input px-3 py-2 text-sm"
+              className={INPUT_CLASS}
             />
             <textarea
               disabled={disabled}
@@ -231,12 +258,14 @@ export function CopyFieldsEditor({
                 updateFeature(index, "description", e.target.value)
               }
               placeholder="Description"
-              className="fv-input resize-none px-3 py-2 text-sm leading-relaxed"
+              className={TEXTAREA_CLASS}
             />
           </div>
         ))}
       </div>
+      </EditorSection>
 
+      <EditorSection>
       <SectionHeader>Comparison</SectionHeader>
       <label className="block space-y-1.5">
         <FieldLabel>Metric label</FieldLabel>
@@ -250,7 +279,7 @@ export function CopyFieldsEditor({
               comparison: { ...comparison, metric_label: e.target.value },
             })
           }
-          className="fv-input px-3 py-2 text-sm"
+          className={INPUT_CLASS}
         />
       </label>
       <label className="block space-y-1.5">
@@ -265,7 +294,7 @@ export function CopyFieldsEditor({
               comparison: { ...comparison, competitor_name: e.target.value },
             })
           }
-          className="fv-input px-3 py-2 text-sm"
+          className={INPUT_CLASS}
         />
       </label>
       <label className="block space-y-1.5">
@@ -286,7 +315,7 @@ export function CopyFieldsEditor({
               },
             })
           }
-          className="fv-input resize-none px-3 py-2 text-sm leading-relaxed"
+          className={TEXTAREA_CLASS}
         />
       </label>
       <label className="block space-y-1.5">
@@ -307,10 +336,12 @@ export function CopyFieldsEditor({
               },
             })
           }
-          className="fv-input resize-none px-3 py-2 text-sm leading-relaxed"
+          className={TEXTAREA_CLASS}
         />
       </label>
+      </EditorSection>
 
+      <EditorSection>
       <SectionHeader>Proof</SectionHeader>
       <label className="block space-y-1.5">
         <FieldLabel>Headline</FieldLabel>
@@ -324,7 +355,7 @@ export function CopyFieldsEditor({
               proof: { ...proof, headline: e.target.value },
             })
           }
-          className="fv-input px-3 py-2 text-sm"
+          className={INPUT_CLASS}
         />
       </label>
       <label className="block space-y-1.5">
@@ -345,10 +376,12 @@ export function CopyFieldsEditor({
               },
             })
           }
-          className="fv-input resize-none px-3 py-2 text-sm leading-relaxed"
+          className={TEXTAREA_CLASS}
         />
       </label>
+      </EditorSection>
 
+      <EditorSection>
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <SectionHeader>Objections</SectionHeader>
@@ -374,13 +407,13 @@ export function CopyFieldsEditor({
                 objections: { ...objections, heading: e.target.value },
               })
             }
-            className="fv-input px-3 py-2 text-sm"
+            className={INPUT_CLASS}
           />
         </label>
         {objections.items.map((item, index) => (
           <div
             key={index}
-            className="space-y-2 rounded-xl border border-[var(--fv-border)] p-3"
+            className={NESTED_GROUP_CLASS}
           >
             <div className="flex items-center justify-between gap-2">
               <FieldLabel>Objection {index + 1}</FieldLabel>
@@ -402,7 +435,7 @@ export function CopyFieldsEditor({
                 updateObjection(index, "question", e.target.value)
               }
               placeholder="Question"
-              className="fv-input px-3 py-2 text-sm"
+              className={INPUT_CLASS}
             />
             <textarea
               disabled={disabled}
@@ -410,12 +443,14 @@ export function CopyFieldsEditor({
               value={item.answer}
               onChange={(e) => updateObjection(index, "answer", e.target.value)}
               placeholder="Answer"
-              className="fv-input resize-none px-3 py-2 text-sm leading-relaxed"
+              className={TEXTAREA_CLASS}
             />
           </div>
         ))}
       </div>
+      </EditorSection>
 
+      <EditorSection>
       <div className="space-y-3">
         <div className="flex items-center justify-between gap-2">
           <SectionHeader>FAQ</SectionHeader>
@@ -432,7 +467,7 @@ export function CopyFieldsEditor({
         {faq.map((item, index) => (
           <div
             key={index}
-            className="space-y-2 rounded-xl border border-[var(--fv-border)] p-3"
+            className={NESTED_GROUP_CLASS}
           >
             <div className="flex items-center justify-between gap-2">
               <FieldLabel>Question {index + 1}</FieldLabel>
@@ -452,7 +487,7 @@ export function CopyFieldsEditor({
               value={item.question}
               onChange={(e) => updateFaq(index, "question", e.target.value)}
               placeholder="Question"
-              className="fv-input px-3 py-2 text-sm"
+              className={INPUT_CLASS}
             />
             <textarea
               disabled={disabled}
@@ -460,12 +495,14 @@ export function CopyFieldsEditor({
               value={item.answer}
               onChange={(e) => updateFaq(index, "answer", e.target.value)}
               placeholder="Answer"
-              className="fv-input resize-none px-3 py-2 text-sm leading-relaxed"
+              className={TEXTAREA_CLASS}
             />
           </div>
         ))}
       </div>
+      </EditorSection>
 
+      <EditorSection>
       <SectionHeader>CTA</SectionHeader>
       <label className="block space-y-1.5">
         <FieldLabel>Heading</FieldLabel>
@@ -479,7 +516,7 @@ export function CopyFieldsEditor({
               cta: { ...cta, heading: e.target.value },
             })
           }
-          className="fv-input px-3 py-2 text-sm"
+          className={INPUT_CLASS}
         />
       </label>
       <label className="block space-y-1.5">
@@ -494,7 +531,7 @@ export function CopyFieldsEditor({
               cta: { ...cta, subheading: e.target.value },
             })
           }
-          className="fv-input resize-none px-3 py-2 text-sm leading-relaxed"
+          className={TEXTAREA_CLASS}
         />
       </label>
       <label className="block space-y-1.5">
@@ -509,9 +546,10 @@ export function CopyFieldsEditor({
               cta: { ...cta, button: e.target.value },
             })
           }
-          className="fv-input px-3 py-2 text-sm"
+          className={INPUT_CLASS}
         />
       </label>
+      </EditorSection>
     </div>
   );
 }
