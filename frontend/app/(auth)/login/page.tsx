@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { FirebaseError } from "firebase/app";
+import { FivvleLogo } from "@/components/layout/FivvleLogo";
 import { useAuth } from "@/lib/auth-context";
 
 const FIREBASE_ERROR_MESSAGES: Record<string, string> = {
@@ -60,8 +61,12 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-[var(--fv-bg)] px-4 py-16">
-      <div className="w-full max-w-sm">
+    <div className="relative flex min-h-screen items-center justify-center bg-[var(--fv-bg)] px-4">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(61,89,254,0.15),transparent)]" />
+
+      <div className="fv-fade-up w-full max-w-[400px] rounded-2xl border border-white/[0.08] bg-white/[0.02] p-8 shadow-[0_24px_48px_rgba(0,0,0,0.4)] backdrop-blur-sm">
+        <FivvleLogo size={40} className="mx-auto mb-6" />
+
         <div className="mb-8 text-center">
           <h1 className="text-2xl font-bold text-[var(--fv-text)]">Welcome back</h1>
           <p className="mt-1 text-sm text-[var(--fv-text-muted)]">
@@ -69,11 +74,11 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} noValidate className="space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="space-y-5">
           <div>
             <label
               htmlFor="email"
-              className="block text-sm font-medium text-[var(--fv-text-soft)]"
+              className="mb-1.5 block text-[13px] font-medium tracking-wide text-[var(--fv-text-soft)]"
             >
               Email
             </label>
@@ -85,7 +90,7 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
-              className="fv-input mt-1 block w-full px-3 py-2 text-sm placeholder:text-[var(--fv-text-muted)] disabled:opacity-50"
+              className="fv-input block w-full px-4 py-3 text-[15px] placeholder:text-[var(--fv-text-muted)] disabled:opacity-50"
               placeholder="you@example.com"
             />
           </div>
@@ -93,7 +98,7 @@ export default function LoginPage() {
           <div>
             <label
               htmlFor="password"
-              className="block text-sm font-medium text-[var(--fv-text-soft)]"
+              className="mb-1.5 block text-[13px] font-medium tracking-wide text-[var(--fv-text-soft)]"
             >
               Password
             </label>
@@ -105,7 +110,7 @@ export default function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
-              className="fv-input mt-1 block w-full px-3 py-2 text-sm placeholder:text-[var(--fv-text-muted)] disabled:opacity-50"
+              className="fv-input block w-full px-4 py-3 text-[15px] placeholder:text-[var(--fv-text-muted)] disabled:opacity-50"
               placeholder="Your password"
             />
           </div>

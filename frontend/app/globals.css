@@ -88,6 +88,25 @@ body {
   animation: fv-msg-enter 300ms ease-out both;
 }
 
+@keyframes fv-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fv-fade-up {
+  animation: fv-fade-up 600ms ease-out both;
+}
+
+.fv-fade-up-delay {
+  animation: fv-fade-up 600ms ease-out 150ms both;
+}
+
 .fv-tab-pill {
   padding: 6px 20px;
   border-radius: 8px;

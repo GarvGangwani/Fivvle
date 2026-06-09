@@ -2,8 +2,10 @@ import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-8 px-4 py-16">
-      <div className="flex flex-col items-center text-center">
+    <main className="relative flex min-h-screen flex-col items-center justify-center gap-8 px-4 py-24 sm:py-32">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,rgba(61,89,254,0.15),transparent)]" />
+
+      <div className="relative flex flex-col items-center text-center">
         <div
           className="fv-f-logo mb-6"
           style={{ width: 48, height: 48, fontSize: 24 }}
@@ -11,22 +13,22 @@ export default function HomePage() {
         >
           F
         </div>
-        <h1 className="text-5xl font-bold tracking-tight text-[var(--fv-text)]">
+        <h1 className="fv-fade-up text-5xl font-bold tracking-[-0.03em] text-[var(--fv-text)]">
           Fivvle
         </h1>
-        <p className="mt-3 text-xl text-[var(--fv-text-muted)]">
+        <p className="fv-fade-up-delay mt-3 text-xl text-[var(--fv-text-muted)]">
           Validate your startup idea with real signal.
         </p>
-        <p className="mt-3 max-w-md text-sm leading-relaxed text-[var(--fv-text-soft)]">
+        <p className="fv-fade-up-delay mt-3 max-w-md text-sm leading-relaxed text-[var(--fv-text-soft)]">
           Research demand, publish a landing page, and measure real interest —
           before you invest months building.
         </p>
       </div>
 
-      <div className="flex flex-col items-center gap-3 sm:flex-row">
+      <div className="fv-fade-up-delay relative flex flex-col items-center gap-3 sm:flex-row">
         <Link
           href="/signup"
-          className="fv-btn-primary w-full justify-center px-8 py-3 text-sm no-underline sm:w-auto"
+          className="fv-btn-primary w-full justify-center px-8 py-3 text-sm no-underline shadow-[0_1px_2px_rgba(0,0,0,0.4),0_8px_20px_rgba(61,89,254,0.25)] sm:w-auto"
         >
           Get started
         </Link>
