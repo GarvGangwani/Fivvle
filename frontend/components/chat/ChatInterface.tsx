@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
 import { chatTurn, ApiError } from "@/lib/api";
 import type { ChatMessage as ChatMessageType } from "@/lib/types";
 import { InlineResearchProgress } from "@/components/research/InlineResearchProgress";
@@ -29,6 +28,15 @@ function isResearchUnderway(
   );
 }
 
+const STARTER_PROMPTS = [
+  "A tool that helps remote teams run async standups",
+  "An app that matches dog owners for local group walks",
+  "A marketplace for freelance CFOs serving startups",
+  "A browser extension that summarizes Slack threads",
+] as const;
+
+const SCROLL_NEAR_BOTTOM_THRESHOLD_PX = 100;
+
 function apiErrorMessage(err: ApiError): string {
   if (err.status === 429) {
     const retry = err.retryAfterSeconds;
@@ -55,7 +63,12 @@ export function ChatInterface() {
   const [loading, setLoading] = useState(false);
   const [researchStarted, setResearchStarted] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [prefillText, setPrefillText] = useState<string | null>(null);
+  const [prefillNonce, setPrefillNonce] = useState(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
+  const forceScrollRef = useRef(false);
   const messageIdCounter = useRef(0);
 
   const nextMessageId = useCallback(() => {
@@ -63,11 +76,36 @@ export function ChatInterface() {
     return `local-${messageIdCounter.current}`;
   }, []);
 
+  const updateNearBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) {
+      isNearBottomRef.current = true;
+      return;
+    }
+    const distanceFromBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight;
+    isNearBottomRef.current =
+      distanceFromBottom <= SCROLL_NEAR_BOTTOM_THRESHOLD_PX;
+  }, []);
+
+  const handleScroll = useCallback(() => {
+    updateNearBottom();
+  }, [updateNearBottom]);
+
   useEffect(() => {
-    scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (forceScrollRef.current || isNearBottomRef.current) {
+      scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
+      forceScrollRef.current = false;
+    }
   }, [messages, loading, researchStarted]);
 
+  function handleStarterChipClick(text: string) {
+    setPrefillText(text);
+    setPrefillNonce((n) => n + 1);
+  }
+
   async function handleSend(text: string, deepResearch: boolean) {
+    forceScrollRef.current = true;
     const userMessage: ChatMessageType = {
       id: nextMessageId(),
       role: "user",
@@ -134,7 +172,11 @@ export function ChatInterface() {
   return (
     <>
       <div className="flex h-full min-h-0 flex-1 flex-col bg-[var(--fv-bg)]">
-        <div className="flex-1 overflow-y-auto px-6 py-8 sm:px-12">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto px-6 py-8 sm:px-12"
+        >
           <div className="mx-auto flex max-w-3xl flex-col gap-5">
             {messages.length === 0 && !loading && (
               <div className="flex flex-col items-center py-16 text-center">
@@ -152,6 +194,18 @@ export function ChatInterface() {
                   your proposed solution. Fivvle will refine it through a short
                   conversation, then kick off market research.
                 </p>
+                <div className="mt-6 flex max-w-lg flex-wrap justify-center gap-2">
+                  {STARTER_PROMPTS.map((prompt) => (
+                    <button
+                      key={prompt}
+                      type="button"
+                      onClick={() => handleStarterChipClick(prompt)}
+                      className="cursor-pointer rounded-full border border-white/[0.1] bg-white/[0.03] px-4 py-2 text-[13px] text-fv-text-soft transition-all duration-200 hover:border-[var(--fv-accent)]/40 hover:bg-[var(--fv-accent)]/5"
+                    >
+                      {prompt}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -183,11 +237,14 @@ export function ChatInterface() {
                       Fivvle
                     </span>
                   </div>
-                  <div className="fv-msg-ai flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin text-[var(--fv-accent)]" />
-                    <span className="text-sm text-[var(--fv-text-muted)]">
-                      Thinking…
-                    </span>
+                  <div className="fv-msg-ai flex items-center gap-1.5 px-2 py-3">
+                    {[0, 150, 300].map((delay) => (
+                      <span
+                        key={delay}
+                        className="h-2 w-2 animate-pulse rounded-full bg-[var(--fv-text-dim)]"
+                        style={{ animationDelay: `${delay}ms` }}
+                      />
+                    ))}
                   </div>
                 </div>
               </div>
@@ -208,6 +265,8 @@ export function ChatInterface() {
           onSend={handleSend}
           disabled={chatDisabled}
           deepResearchLocked={researchStarted}
+          prefillText={prefillText}
+          prefillNonce={prefillNonce}
           placeholder={
             messages.length === 0
               ? "Describe your idea..."

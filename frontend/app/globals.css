@@ -73,6 +73,21 @@ body {
   }
 }
 
+@keyframes fv-msg-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fv-msg-enter {
+  animation: fv-msg-enter 300ms ease-out both;
+}
+
 .fv-tab-pill {
   padding: 6px 20px;
   border-radius: 8px;

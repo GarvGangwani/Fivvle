@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { Loader2, Paperclip, Send, Zap } from "lucide-react";
 
 interface ChatInputProps {
@@ -8,6 +14,8 @@ interface ChatInputProps {
   disabled: boolean;
   placeholder: string;
   deepResearchLocked?: boolean;
+  prefillText?: string | null;
+  prefillNonce?: number;
 }
 
 const MAX_HEIGHT_PX = 120;
@@ -17,6 +25,8 @@ export function ChatInput({
   disabled,
   placeholder,
   deepResearchLocked = false,
+  prefillText = null,
+  prefillNonce = 0,
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [deepResearch, setDeepResearch] = useState(true);
@@ -27,6 +37,15 @@ export function ChatInput({
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
   }, []);
+
+  useEffect(() => {
+    if (!prefillText || prefillNonce === 0) return;
+    const el = textareaRef.current;
+    if (!el) return;
+    el.value = prefillText;
+    resizeTextarea();
+    el.focus();
+  }, [prefillText, prefillNonce, resizeTextarea]);
 
   function handleSend() {
     const el = textareaRef.current;
@@ -48,17 +67,8 @@ export function ChatInput({
   const effectiveDeepResearch = deepResearchLocked ? true : deepResearch;
 
   return (
-    <div
-      className="px-6 py-4 sm:px-12 sm:pb-6"
-      style={{ borderTop: "1px solid rgba(255,255,255,0.05)" }}
-    >
-      <div
-        className="mx-auto flex max-w-3xl flex-col gap-2.5 rounded-2xl p-3 sm:p-3.5"
-        style={{
-          background: "rgba(255,255,255,0.03)",
-          border: "1px solid rgba(255,255,255,0.08)",
-        }}
-      >
+    <div className="sticky bottom-0 z-10 bg-gradient-to-t from-[var(--fv-bg)] via-[var(--fv-bg)]/95 to-transparent px-6 pb-4 pt-6 backdrop-blur-md sm:px-12">
+      <div className="mx-auto flex max-w-3xl flex-col gap-2.5 rounded-2xl border border-[var(--fv-border)] bg-[var(--fv-surface)]/80 p-2 shadow-[0_-4px_24px_rgba(0,0,0,0.3)] backdrop-blur-xl">
         <textarea
           ref={textareaRef}
           rows={1}
@@ -73,9 +83,10 @@ export function ChatInput({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            className="fv-icon-btn"
+            className="fv-icon-btn cursor-not-allowed opacity-40"
+            title="Coming soon"
             aria-label="Attach file"
-            disabled={disabled}
+            disabled
           >
             <Paperclip className="h-4 w-4" />
           </button>

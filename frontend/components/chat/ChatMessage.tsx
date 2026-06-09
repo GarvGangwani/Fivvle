@@ -16,14 +16,14 @@ export function ChatMessage({
 
   if (isUser) {
     return (
-      <div className="flex justify-end">
+      <div className="fv-msg-enter flex justify-end">
         <div className="fv-msg-user whitespace-pre-wrap break-words">{content}</div>
       </div>
     );
   }
 
   return (
-    <div className="flex justify-start">
+    <div className="fv-msg-enter flex justify-start">
       <div className="w-full max-w-[80%]">
         <div className="mb-1.5 flex items-center gap-2">
           <div
