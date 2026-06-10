@@ -90,7 +90,7 @@ export function FivvleShell({ children, fullHeight = false }: FivvleShellProps) 
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <header
-          className="sticky top-0 z-50 flex h-16 shrink-0 items-center justify-between border-b border-[var(--fv-border)] px-4 sm:px-6 lg:pl-6"
+          className="sticky top-0 z-50 flex h-16 min-w-0 shrink-0 items-center justify-between gap-2 border-b border-[var(--fv-border)] px-4 sm:px-6 lg:pl-6"
           style={{
             background: "rgba(8,12,20,0.9)",
             backdropFilter: "blur(12px)",
@@ -98,24 +98,24 @@ export function FivvleShell({ children, fullHeight = false }: FivvleShellProps) 
         >
           <Link
             href="/"
-            className="flex items-center gap-2.5 no-underline lg:hidden"
+            className="flex min-w-0 shrink items-center gap-2 no-underline lg:hidden"
           >
             <div
-              className="fv-f-logo"
+              className="fv-f-logo shrink-0"
               style={{ width: 30, height: 30, fontSize: 15 }}
               aria-hidden
             >
               F
             </div>
-            <span className="text-base font-semibold tracking-[-0.02em] text-[var(--fv-text)]">
+            <span className="truncate text-base font-semibold tracking-[-0.02em] text-[var(--fv-text)]">
               Fivvle
             </span>
           </Link>
 
-          <div className="hidden lg:block" aria-hidden />
+          <div className="hidden min-w-0 flex-1 lg:block" aria-hidden />
 
-          <div className="flex items-center gap-3">
-            <p className="hidden text-[13px] sm:block">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <p className="hidden max-w-[140px] truncate text-[13px] sm:block md:max-w-none">
               <span className="text-[var(--fv-text-soft)]">{getGreeting()}</span>{" "}
               <span className="font-medium text-[var(--fv-accent)]">
                 {firstName}
@@ -132,10 +132,13 @@ export function FivvleShell({ children, fullHeight = false }: FivvleShellProps) 
 
         <div className={`${contentClass} pb-16 lg:pb-0`}>{children}</div>
 
-        <nav className="fixed bottom-0 left-0 right-0 z-50 flex border-t border-[var(--fv-border)] bg-[var(--fv-bg)]/95 backdrop-blur-md lg:hidden">
+        <nav
+          className="fixed bottom-0 left-0 right-0 z-50 flex border-t border-[var(--fv-border)] bg-[var(--fv-bg)]/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-md lg:hidden"
+          aria-label="Mobile navigation"
+        >
           <Link
             href="/"
-            className={`flex flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] no-underline ${
+            className={`flex min-h-[48px] flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] no-underline ${
               mobileTabActive(pathname, "projects", experimentId)
                 ? "text-[var(--fv-accent)]"
                 : "text-[var(--fv-text-muted)]"
@@ -146,7 +149,7 @@ export function FivvleShell({ children, fullHeight = false }: FivvleShellProps) 
           </Link>
           <Link
             href="/new"
-            className={`flex flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] no-underline ${
+            className={`flex min-h-[48px] flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] no-underline ${
               mobileTabActive(pathname, "new", experimentId)
                 ? "text-[var(--fv-accent)]"
                 : "text-[var(--fv-text-muted)]"
@@ -157,7 +160,7 @@ export function FivvleShell({ children, fullHeight = false }: FivvleShellProps) 
           </Link>
           <Link
             href={experimentHref}
-            className={`flex flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] no-underline ${
+            className={`flex min-h-[48px] flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] no-underline ${
               mobileTabActive(pathname, "experiment", experimentId)
                 ? "text-[var(--fv-accent)]"
                 : "text-[var(--fv-text-muted)]"

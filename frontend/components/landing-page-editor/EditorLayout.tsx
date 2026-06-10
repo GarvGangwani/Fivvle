@@ -166,8 +166,8 @@ export function EditorLayout({
             ].map(({ label, tag }) => {
               const url = `${window.location.origin}/e/${publishedSlug}?ref=${tag}`;
               return (
-                <div key={tag} className="flex items-center gap-2">
-                  <span className="w-28 shrink-0 text-[13px] text-[var(--fv-text-soft)]">
+                <div key={tag} className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <span className="shrink-0 text-[13px] text-[var(--fv-text-soft)] sm:w-28">
                     {label}
                   </span>
                   <code className="min-w-0 flex-1 truncate rounded-lg bg-white/[0.03] px-3 py-2 font-mono text-[12px] text-[var(--fv-text-muted)]">
@@ -176,7 +176,7 @@ export function EditorLayout({
                   <button
                     type="button"
                     onClick={() => void navigator.clipboard.writeText(url)}
-                    className="fv-btn-ghost shrink-0 px-3 py-1.5 text-[12px] transition-all duration-200"
+                    className="fv-btn-ghost min-h-[44px] shrink-0 px-3 py-1.5 text-[12px] transition-all duration-200 sm:min-h-0"
                   >
                     Copy
                   </button>
@@ -191,7 +191,7 @@ export function EditorLayout({
         <button
           type="button"
           onClick={() => setMobilePanel("edit")}
-          className={`fv-tab-pill inline-flex flex-1 items-center justify-center gap-1.5 transition-all duration-200 ${
+          className={`fv-tab-pill inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 transition-all duration-200 ${
             mobilePanel === "edit" ? "fv-tab-pill-active" : ""
           }`}
         >
@@ -201,7 +201,7 @@ export function EditorLayout({
         <button
           type="button"
           onClick={() => setMobilePanel("preview")}
-          className={`fv-tab-pill inline-flex flex-1 items-center justify-center gap-1.5 transition-all duration-200 ${
+          className={`fv-tab-pill inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 transition-all duration-200 ${
             mobilePanel === "preview" ? "fv-tab-pill-active" : ""
           }`}
         >
@@ -210,13 +210,15 @@ export function EditorLayout({
         </button>
       </div>
 
-      <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[minmax(300px,380px)_1fr]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-[minmax(300px,380px)_1fr]">
         <div
           className={`lp-editor-panel flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)] ${
-            mobilePanel === "edit" ? "flex" : "hidden lg:flex"
+            mobilePanel === "edit"
+              ? "flex max-h-[calc(100dvh-11rem)] lg:max-h-none"
+              : "hidden lg:flex"
           }`}
         >
-          <div className="shrink-0 border-b border-[var(--fv-border)] p-6 pb-4">
+          <div className="shrink-0 border-b border-[var(--fv-border)] p-4 pb-4 sm:p-6">
             <h2 className="text-lg font-semibold text-[var(--fv-text)]">
               Edit Landing Page
             </h2>
@@ -260,11 +262,11 @@ export function EditorLayout({
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-6 pt-4">
+          <div className="min-h-0 flex-1 overflow-y-auto p-4 pt-4 sm:p-6">
             <CopyFieldsEditor copy={copy} onChange={handleCopyChange} />
           </div>
 
-          <div className="shrink-0 border-t border-[var(--fv-border)] bg-[var(--fv-surface)] p-6">
+          <div className="shrink-0 border-t border-[var(--fv-border)] bg-[var(--fv-surface)] p-4 sm:p-6">
             {isLive ? (
               <div className="space-y-2 text-center">
                 <span className="badge-proceed">Published</span>
@@ -297,8 +299,10 @@ export function EditorLayout({
         </div>
 
         <div
-          className={`min-h-[480px] overflow-hidden rounded-xl border border-[var(--fv-border)] bg-[var(--fv-bg)] transition-opacity duration-200 lg:min-h-[calc(100vh-14rem)] ${
-            mobilePanel === "preview" ? "block" : "hidden lg:block"
+          className={`min-h-0 w-full min-w-0 max-w-full overflow-x-hidden rounded-xl border border-[var(--fv-border)] bg-[var(--fv-bg)] transition-opacity duration-200 lg:min-h-[calc(100vh-14rem)] ${
+            mobilePanel === "preview"
+              ? "block min-h-[calc(100dvh-11rem)]"
+              : "hidden lg:block"
           }`}
         >
           <LandingPagePreview
@@ -306,6 +310,7 @@ export function EditorLayout({
             page={{ ...page, template_id: templateId }}
             projectName={projectName}
             templateId={templateId}
+            mobileFluid={mobilePanel === "preview"}
           />
         </div>
       </div>

@@ -30,7 +30,7 @@ type LoadState =
 
 function ProjectGridSkeleton() {
   return (
-    <div className="grid grid-cols-1 gap-4 p-6 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3">
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className="fv-skeleton h-40 rounded-xl" />
       ))}
@@ -116,7 +116,7 @@ export function DashboardContent() {
   }
 
   return (
-    <div className="grid grid-cols-1 gap-4 p-6 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 sm:p-6 lg:grid-cols-3">
       {experiments.map((experiment) => {
         const name = getExperimentDisplayName(experiment);
         const hasReport = hasReportReady(experiment.status);
@@ -127,7 +127,7 @@ export function DashboardContent() {
             key={experiment.id}
             type="button"
             onClick={() => router.push(`/experiment/${experiment.id}`)}
-            className="fv-card fv-card-hover space-y-3 p-5 text-left"
+            className="fv-card fv-card-hover space-y-3 p-4 text-left sm:p-5"
           >
             <div className="flex items-center justify-between gap-2">
               <h3 className="truncate text-[15px] font-semibold text-[var(--fv-text)]">
@@ -149,7 +149,7 @@ export function DashboardContent() {
 
       <Link
         href="/new"
-        className="fv-card flex cursor-pointer items-center justify-center border-dashed p-8 no-underline transition-colors hover:border-[var(--fv-accent)]/40"
+        className="fv-card flex cursor-pointer items-center justify-center border-dashed p-6 no-underline transition-colors hover:border-[var(--fv-accent)]/40 sm:p-8"
       >
         <Plus className="h-6 w-6 text-[var(--fv-text-muted)]" />
       </Link>

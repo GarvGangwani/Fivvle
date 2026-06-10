@@ -66,7 +66,7 @@ export function ChatMessage({
 
   return (
     <div className="fv-msg-enter group border-b border-[var(--fv-border)] py-6">
-      <div className="relative mx-auto max-w-[680px]">
+      <div className="relative mx-auto w-full max-w-full lg:max-w-[680px]">
         {isUser && canEdit && !isEditing && (
           <button
             type="button"

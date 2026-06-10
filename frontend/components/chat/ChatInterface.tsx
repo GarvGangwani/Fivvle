@@ -418,7 +418,7 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto px-6 py-8 sm:px-12"
+          className="flex-1 overflow-y-auto px-4 py-6 lg:px-12 lg:py-8"
         >
           <div className="mx-auto w-full">
             {showEmptyState && (
@@ -485,7 +485,7 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
 
             {loading && (
               <div className="fv-msg-enter border-b border-[var(--fv-border)] py-6">
-                <div className="mx-auto max-w-[680px]">
+                <div className="mx-auto w-full max-w-full lg:max-w-[680px]">
                   <div className="flex items-start gap-3">
                     <div
                       className="fv-f-logo"
@@ -518,7 +518,7 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
             )}
 
             {hasValidationReport && resolvedExperimentId && (
-              <div className="mx-auto my-4 w-full max-w-[680px]">
+              <div className="mx-auto my-4 w-full max-w-full lg:max-w-[680px]">
                 <div
                   role="button"
                   tabIndex={0}
@@ -579,7 +579,7 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
       </div>
 
       {canvasOpen && resolvedExperimentId && (
-        <div className="fixed inset-0 z-40 min-h-0 overflow-y-auto border-l border-[var(--fv-border)] bg-[var(--fv-bg)] fv-msg-enter lg:relative lg:z-auto lg:flex lg:w-[60%] lg:flex-col">
+        <div className="fixed inset-0 z-[60] min-h-0 overflow-y-auto border-l border-[var(--fv-border)] bg-[var(--fv-bg)] fv-msg-enter lg:relative lg:z-auto lg:flex lg:w-[60%] lg:flex-col">
           <ReportCanvas
             experimentId={resolvedExperimentId}
             onClose={() => setCanvasOpen(false)}

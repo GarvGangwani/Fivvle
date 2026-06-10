@@ -533,6 +533,16 @@
     }
     @media (max-width: 768px) {
       .cta-layout { grid-template-columns: 1fr; }
+      .cta-form {
+        flex-direction: column;
+      }
+      .cta-form input,
+      .cta-form button {
+        width: 100%;
+      }
+      .cta-form button {
+        white-space: normal;
+      }
     }
     .cta-text .root h2 { margin-bottom: 1rem; }
     .cta-text p {

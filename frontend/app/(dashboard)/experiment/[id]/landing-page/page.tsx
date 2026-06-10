@@ -93,7 +93,7 @@ export default function LandingPageEditorPage() {
     "Landing page";
 
   return (
-    <div className="flex min-h-[calc(100dvh-58px)] flex-col px-4 py-4 sm:px-6 sm:py-6">
+    <div className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6 sm:py-6">
       <EditorLayout
         experimentId={experimentId}
         experimentName={experimentName}

@@ -27,6 +27,8 @@ interface DevicePreviewProps {
   defaultDeviceId?: string;
   /** Simplified Desktop / Tablet / Mobile toolbar for the editor. */
   variant?: "full" | "editor";
+  /** Use fluid full-width preview (mobile editor preview tab). */
+  mobileFluid?: boolean;
 }
 
 const EDITOR_DEVICES = [
@@ -283,14 +285,36 @@ export function DevicePreview({
   children,
   defaultDeviceId = "fluid",
   variant = "full",
+  mobileFluid = false,
 }: DevicePreviewProps) {
   const isEditor = variant === "editor";
-  const initialId = isEditor ? "desktop-1440" : defaultDeviceId;
+  const initialId = mobileFluid ? "fluid" : isEditor ? "desktop-1440" : defaultDeviceId;
   const initial = getDeviceById(initialId);
   const [category, setCategory] = useState<DeviceCategory>(initial.category);
   const [deviceId, setDeviceId] = useState(initial.id);
   const [landscape, setLandscape] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    if (!mobileFluid) return;
+
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const syncDevice = () => {
+      if (mq.matches) {
+        setDeviceId("fluid");
+        setLandscape(false);
+        setCategory(getDeviceById("fluid").category);
+      } else if (isEditor) {
+        setDeviceId("desktop-1440");
+        setLandscape(false);
+        setCategory(getDeviceById("desktop-1440").category);
+      }
+    };
+
+    syncDevice();
+    mq.addEventListener("change", syncDevice);
+    return () => mq.removeEventListener("change", syncDevice);
+  }, [mobileFluid, isEditor]);
 
   const device = getDeviceById(deviceId);
   const { width, height } = resolveViewport(device, landscape);
@@ -333,7 +357,7 @@ export function DevicePreview({
     };
   }, [isFullscreen]);
 
-  const editorToolbar = isEditor && !isFullscreen ? (
+  const editorToolbar = isEditor && !isFullscreen && !mobileFluid ? (
     <div
       className="flex items-center justify-between gap-3 border-b px-4 py-3"
       style={{

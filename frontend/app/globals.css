@@ -33,10 +33,13 @@
 
 html {
   height: 100%;
+  overflow-x: hidden;
 }
 
 body {
   min-height: 100%;
+  min-width: 0;
+  overflow-x: hidden;
   background: var(--fv-bg);
   color: var(--fv-text);
   font-family: var(--font-inter), system-ui, sans-serif;
@@ -154,6 +157,7 @@ body {
   border-radius: 14px;
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset,
     0 8px 24px rgba(0, 0, 0, 0.35);
+  min-width: 0;
 }
 
 .fv-card-hover {
@@ -189,6 +193,7 @@ body {
   align-items: center;
   gap: 8px;
   font-family: inherit;
+  min-width: 0;
 }
 
 .fv-btn-primary:hover:not(:disabled) {
@@ -225,6 +230,7 @@ body {
   outline: none;
   transition: border-color 0.2s;
   font-family: inherit;
+  min-width: 0;
 }
 
 .fv-input:focus {

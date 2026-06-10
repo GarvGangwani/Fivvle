@@ -605,4 +605,10 @@
     flex-direction: column;
     align-items: stretch;
   }
+
+  .ctaInput,
+  .ctaSubmit {
+    width: 100%;
+    flex: 1 1 auto;
+  }
 }

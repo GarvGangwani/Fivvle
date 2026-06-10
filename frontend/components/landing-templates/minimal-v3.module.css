@@ -490,4 +490,13 @@
   .featDesc {
     padding-left: 0;
   }
+
+  .heroTitle {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+
+  .outer {
+    --pad: 16px;
+  }
 }

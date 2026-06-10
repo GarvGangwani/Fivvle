@@ -20,6 +20,15 @@ interface ChatInputProps {
 
 const MAX_HEIGHT_PX = 120;
 
+function getMaxTextareaHeightPx(): number {
+  if (typeof window === "undefined") return MAX_HEIGHT_PX;
+  const mobileCap = Math.floor(window.innerHeight * 0.4);
+  if (window.matchMedia("(max-width: 1023px)").matches) {
+    return Math.min(MAX_HEIGHT_PX, mobileCap);
+  }
+  return MAX_HEIGHT_PX;
+}
+
 export function ChatInput({
   onSend,
   disabled,
@@ -35,8 +44,14 @@ export function ChatInput({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT_PX)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, getMaxTextareaHeightPx())}px`;
   }, []);
+
+  useEffect(() => {
+    const onResize = () => resizeTextarea();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [resizeTextarea]);
 
   useEffect(() => {
     if (!prefillText || prefillNonce === 0) return;
@@ -65,7 +80,7 @@ export function ChatInput({
   }
 
   return (
-    <div className="sticky bottom-0 z-10 bg-gradient-to-t from-[var(--fv-bg)] via-[var(--fv-bg)]/95 to-transparent px-6 pb-4 pt-6 backdrop-blur-md sm:px-12">
+    <div className="sticky bottom-0 z-10 bg-gradient-to-t from-[var(--fv-bg)] via-[var(--fv-bg)]/95 to-transparent px-4 pb-4 pt-6 backdrop-blur-md lg:px-12">
       <div className="mx-auto flex max-w-3xl flex-col gap-2.5 rounded-2xl border border-[var(--fv-border)] bg-[var(--fv-surface)]/80 p-2 shadow-[0_-4px_24px_rgba(0,0,0,0.3)] backdrop-blur-xl">
         <textarea
           ref={textareaRef}
@@ -74,7 +89,7 @@ export function ChatInput({
           disabled={disabled}
           onChange={resizeTextarea}
           onKeyDown={handleKeyDown}
-          className="min-h-[50px] max-h-[120px] w-full resize-none border-none bg-transparent text-[14px] leading-normal text-[var(--fv-text)] outline-none placeholder:text-[var(--fv-text-muted)] disabled:cursor-not-allowed disabled:opacity-50"
+          className="min-h-[50px] max-h-[40vh] w-full resize-none border-none bg-transparent text-[14px] leading-normal text-[var(--fv-text)] outline-none placeholder:text-[var(--fv-text-muted)] disabled:cursor-not-allowed disabled:opacity-50 lg:max-h-[120px]"
           style={{ lineHeight: 1.5 }}
         />
 

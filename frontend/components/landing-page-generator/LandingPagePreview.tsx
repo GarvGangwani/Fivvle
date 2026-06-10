@@ -11,6 +11,8 @@ interface LandingPagePreviewProps {
   page: PageJson;
   projectName: string;
   templateId: TemplateId;
+  /** On mobile editor, fill container width without device chrome scaling. */
+  mobileFluid?: boolean;
 }
 
 export function LandingPagePreview({
@@ -18,10 +20,11 @@ export function LandingPagePreview({
   page,
   projectName,
   templateId,
+  mobileFluid = false,
 }: LandingPagePreviewProps) {
   return (
     <PreviewErrorBoundary variant="preview">
-      <DevicePreview variant="editor">
+      <DevicePreview variant="editor" mobileFluid={mobileFluid}>
         <TemplateRenderer
           copy={copy}
           page={page}
