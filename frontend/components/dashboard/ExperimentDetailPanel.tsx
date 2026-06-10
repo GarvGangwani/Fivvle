@@ -31,7 +31,7 @@ import {
   TemplatePicker,
   type TemplateId,
 } from "@/components/research/TemplatePicker";
-import { ValidationReportPanel } from "@/components/research/ValidationReportPanel";
+import { ReportCanvas } from "@/components/research/ReportCanvas";
 
 const WAITLIST_VISIBLE_STATUSES = new Set([
   "LANDING_LIVE",
@@ -448,11 +448,15 @@ export function ExperimentDetailPanel({
         <ChatInterface experimentId={experimentId} />
       </div>
 
-      <ValidationReportPanel
-        experimentId={experimentId}
-        open={reportOpen}
-        onClose={() => setReportOpen(false)}
-      />
+      {reportOpen && (
+        <div className="fixed inset-0 z-50 bg-[var(--fv-bg)]">
+          <ReportCanvas
+            experimentId={experimentId}
+            onClose={() => setReportOpen(false)}
+            mobile
+          />
+        </div>
+      )}
     </div>
   );
 }

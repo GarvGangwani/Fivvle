@@ -14,9 +14,9 @@ import {
   ApiError,
 } from "@/lib/api";
 import type { ChatMessage as ChatMessageType } from "@/lib/types";
-import { Eye } from "lucide-react";
+import { FileText } from "lucide-react";
 import { InlineResearchProgress } from "@/components/research/InlineResearchProgress";
-import { ValidationReportPanel } from "@/components/research/ValidationReportPanel";
+import { ReportCanvas } from "@/components/research/ReportCanvas";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 
@@ -93,6 +93,14 @@ function isPersistedMessageId(id: string): boolean {
   return !id.startsWith("local-");
 }
 
+function formatReportDate(iso: string): string {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(iso));
+}
+
 function apiErrorMessage(err: ApiError): string {
   if (err.status === 429) {
     const retry = err.retryAfterSeconds;
@@ -126,8 +134,9 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(Boolean(experimentId));
   const [researchStarted, setResearchStarted] = useState(false);
-  const [reportOpen, setReportOpen] = useState(false);
+  const [canvasOpen, setCanvasOpen] = useState(false);
   const [hasValidationReport, setHasValidationReport] = useState(false);
+  const [reportReadyAt, setReportReadyAt] = useState<string | null>(null);
   const [prefillText, setPrefillText] = useState<string | null>(null);
   const [prefillNonce, setPrefillNonce] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -184,7 +193,14 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
 
         setResolvedExperimentId(experimentId!);
         setExperimentStatus(experiment.status);
-        setHasValidationReport(experiment.validation_report != null);
+        const reportAvailable = experiment.validation_report != null;
+        setHasValidationReport(reportAvailable);
+        if (reportAvailable) {
+          const lastMessage = chatData.messages.at(-1);
+          setReportReadyAt(
+            lastMessage?.created_at ?? new Date().toISOString(),
+          );
+        }
 
         if (isResearchTriggeredStatus(experiment.status)) {
           setResearchStarted(true);
@@ -230,7 +246,13 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
         const data = await getExperiment(activeExperimentId);
         if (!cancelled) {
           setExperimentStatus(data.status);
-          setHasValidationReport(data.validation_report != null);
+          const reportAvailable = data.validation_report != null;
+          if (reportAvailable) {
+            setHasValidationReport(true);
+            setReportReadyAt((prev) => prev ?? new Date().toISOString());
+          } else {
+            setHasValidationReport(false);
+          }
         }
       } catch {
         // Ignore — progress polling handles transient errors elsewhere
@@ -381,9 +403,18 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
   const showEmptyState =
     messages.length === 0 && !loading && !historyLoading && !experimentId;
 
+  const openCanvas = useCallback(() => {
+    setCanvasOpen(true);
+  }, []);
+
   return (
-    <>
-      <div className="flex h-full min-h-0 flex-1 flex-col bg-[var(--fv-bg)]">
+    <div className="flex h-full min-h-0 flex-1">
+      <div
+        className={`flex min-h-0 flex-col bg-[var(--fv-bg)] ${
+          canvasOpen ? "hidden w-full lg:flex lg:w-[40%] lg:min-w-[320px]" : "w-full flex-1"
+        }`}
+        style={{ transition: "width 350ms cubic-bezier(0.16, 1, 0.3, 1)" }}
+      >
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
@@ -487,16 +518,44 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
             )}
 
             {hasValidationReport && resolvedExperimentId && (
-              <div className="border-b border-[var(--fv-border)] py-6">
-                <div className="mx-auto max-w-[680px]">
-                  <button
-                    type="button"
-                    onClick={() => setReportOpen(true)}
-                    className="view-report-btn"
-                  >
-                    <Eye className="h-4 w-4" />
-                    View Validation Report
-                  </button>
+              <div className="mx-auto my-4 w-full max-w-[680px]">
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={openCanvas}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openCanvas();
+                    }
+                  }}
+                  className="cursor-pointer rounded-xl border border-[var(--fv-border-strong)] bg-[var(--fv-surface)] p-4 transition-all duration-200 hover:border-[var(--fv-accent)]/40"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--fv-accent-muted)]">
+                      <FileText className="h-5 w-5 text-[var(--fv-accent)]" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[15px] font-medium text-[var(--fv-text)]">
+                        Validation Report
+                      </p>
+                      <p className="text-[13px] text-[var(--fv-text-muted)]">
+                        {reportReadyAt
+                          ? formatReportDate(reportReadyAt)
+                          : "Research complete"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openCanvas();
+                      }}
+                      className="fv-btn-primary px-4 py-2 text-sm"
+                    >
+                      Open
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -519,13 +578,15 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
         />
       </div>
 
-      {resolvedExperimentId && (
-        <ValidationReportPanel
-          experimentId={resolvedExperimentId}
-          open={reportOpen}
-          onClose={() => setReportOpen(false)}
-        />
+      {canvasOpen && resolvedExperimentId && (
+        <div className="fixed inset-0 z-40 min-h-0 overflow-y-auto border-l border-[var(--fv-border)] bg-[var(--fv-bg)] fv-msg-enter lg:relative lg:z-auto lg:flex lg:w-[60%] lg:flex-col">
+          <ReportCanvas
+            experimentId={resolvedExperimentId}
+            onClose={() => setCanvasOpen(false)}
+            mobile
+          />
+        </div>
       )}
-    </>
+    </div>
   );
 }

@@ -394,66 +394,6 @@ body {
   color: var(--fv-text);
 }
 
-.view-report-btn {
-  background: linear-gradient(
-    135deg,
-    var(--fv-accent),
-    var(--fv-accent-gradient-end)
-  );
-  border: none;
-  border-radius: 10px;
-  color: white;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 10px 20px;
-  transition: all 0.2s;
-}
-
-.view-report-btn:hover {
-  opacity: 0.92;
-  transform: translateY(-1px);
-}
-
-.report-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  height: 100vh;
-  width: 520px;
-  max-width: 100vw;
-  background: var(--fv-surface);
-  border-left: 1px solid rgba(255, 255, 255, 0.07);
-  z-index: 100;
-  overflow-y: auto;
-  transform: translateX(100%);
-  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.report-panel.open {
-  transform: translateX(0);
-}
-
-.report-panel-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 99;
-  backdrop-filter: blur(2px);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.report-panel-backdrop.open {
-  opacity: 1;
-  pointer-events: auto;
-}
-
 .report-tab {
   padding: 8px 14px;
   border-radius: 8px;

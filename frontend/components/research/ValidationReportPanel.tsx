@@ -239,20 +239,14 @@ export function ValidationReportPanel({
 
   const citations = report ? collectAllCitations(report) : [];
 
-  return (
-    <>
-      <div
-        className={`report-panel-backdrop ${open ? "open" : ""}`}
-        onClick={onClose}
-        aria-hidden={!open}
-      />
+  if (!open) return null;
 
-      <aside
-        className={`report-panel ${open ? "open" : ""}`}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Validation Report"
-      >
+  return (
+    <div
+      className="flex h-full min-h-0 flex-col bg-[var(--fv-surface)]"
+      role="region"
+      aria-label="Validation Report"
+    >
         <div
           className="flex items-center justify-between border-b px-5 py-4"
           style={{ borderColor: "rgba(255,255,255,0.07)" }}
@@ -476,7 +470,6 @@ export function ValidationReportPanel({
             </div>
           )}
         </div>
-      </aside>
-    </>
+    </div>
   );
 }
