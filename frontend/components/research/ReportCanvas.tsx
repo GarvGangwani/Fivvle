@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ExternalLink,
-  Loader2,
+  FileText,
   X,
 } from "lucide-react";
 import { getValidationReport, ApiError } from "@/lib/api";
@@ -22,15 +22,20 @@ function isSafeHttpUrl(url: string): boolean {
 function SafeCitationLink({
   citation,
   index,
+  compact = false,
 }: {
   citation: Citation;
   index?: number;
+  compact?: boolean;
 }) {
   const label = index != null ? `[${index}] ` : "";
+  const className = compact
+    ? "inline-flex items-center gap-1 text-[13px] text-[var(--fv-accent)] no-underline hover:underline"
+    : "inline-flex items-center gap-1 text-[var(--fv-accent)] no-underline hover:text-[var(--fv-accent-hover)]";
 
   if (!isSafeHttpUrl(citation.url)) {
     return (
-      <span className="text-[var(--fv-text-muted)]">
+      <span className={compact ? "text-[13px] text-[var(--fv-text-muted)]" : "text-[var(--fv-text-muted)]"}>
         {label}
         {citation.title}
       </span>
@@ -42,11 +47,11 @@ function SafeCitationLink({
       href={citation.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-[var(--fv-accent)] no-underline hover:text-[var(--fv-accent-hover)]"
+      className={className}
     >
       {label}
       {citation.title}
-      <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+      {!compact && <ExternalLink className="h-3.5 w-3.5 shrink-0" />}
     </a>
   );
 }
@@ -67,12 +72,19 @@ function recommendationBadgeClass(rec: OverallRecommendation): string {
 }
 
 function formatRecommendation(rec: OverallRecommendation): string {
-  if (rec === "too_vague_to_recommend") return "Unclear";
-  return rec.charAt(0).toUpperCase() + rec.slice(1);
+  if (rec === "too_vague_to_recommend") return "UNCLEAR";
+  return rec.toUpperCase();
 }
 
-function confidenceLabel(confidence: Finding["confidence"]): string {
-  return `${confidence.charAt(0).toUpperCase()}${confidence.slice(1)} confidence`;
+function confidenceClass(confidence: Finding["confidence"]): string {
+  switch (confidence) {
+    case "high":
+      return "bg-[rgba(16,185,129,0.15)] text-[var(--fv-success)] ring-[rgba(16,185,129,0.3)]";
+    case "medium":
+      return "bg-[rgba(245,158,11,0.15)] text-[var(--fv-warning)] ring-[rgba(245,158,11,0.3)]";
+    case "low":
+      return "bg-white/10 text-[var(--fv-text-soft)] ring-white/10";
+  }
 }
 
 function inferRiskSeverity(
@@ -93,6 +105,17 @@ function inferRiskSeverity(
   return "high";
 }
 
+function riskCardClass(severity: "high" | "medium" | "low"): string {
+  switch (severity) {
+    case "high":
+      return "border-l-4 border-[var(--fv-danger)] bg-[var(--fv-danger)]/5";
+    case "medium":
+      return "border-l-4 border-[var(--fv-warning)] bg-[var(--fv-warning)]/5";
+    case "low":
+      return "border-l-4 border-[var(--fv-success)] bg-[var(--fv-success)]/5";
+  }
+}
+
 function severityBadgeClass(severity: "high" | "medium" | "low"): string {
   switch (severity) {
     case "high":
@@ -101,6 +124,36 @@ function severityBadgeClass(severity: "high" | "medium" | "low"): string {
       return "severity-medium";
     case "low":
       return "severity-low";
+  }
+}
+
+function inferSignalStrength(text: string): "positive" | "neutral" | "negative" {
+  const lower = text.toLowerCase();
+  if (
+    /declin|risk|crowded|saturat|barrier|restrict|uncertain|weak|challeng|difficult|limited/.test(
+      lower,
+    )
+  ) {
+    return "negative";
+  }
+  if (
+    /grow|strong|demand|opportun|momentum|increas|expand|favorable|positive|emerging/.test(
+      lower,
+    )
+  ) {
+    return "positive";
+  }
+  return "neutral";
+}
+
+function signalDotClass(strength: "positive" | "neutral" | "negative"): string {
+  switch (strength) {
+    case "positive":
+      return "bg-[var(--fv-success)]";
+    case "negative":
+      return "bg-[var(--fv-danger)]";
+    case "neutral":
+      return "bg-[var(--fv-warning)]";
   }
 }
 
@@ -131,11 +184,62 @@ function collectAllCitations(report: ValidationReport): Citation[] {
   return citations;
 }
 
-function parseRiskLines(risksAssessment: string): string[] {
-  return risksAssessment
+function parseBulletLines(text: string): string[] {
+  return text
     .split("\n")
     .map((line) => line.replace(/^[-*•]\s*/, "").trim())
     .filter(Boolean);
+}
+
+function ReportSectionHeader({
+  number,
+  title,
+}: {
+  number: string;
+  title: string;
+}) {
+  return (
+    <header>
+      <p className="mb-2 text-[12px] font-semibold uppercase tracking-[0.1em] text-[var(--fv-accent)]">
+        Section {number}
+      </p>
+      <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--fv-text)]">
+        {title}
+      </h2>
+      <div className="mb-8 mt-4 h-px bg-[var(--fv-border)]" />
+    </header>
+  );
+}
+
+function ReportLoadingSkeleton() {
+  return (
+    <div className="mx-auto max-w-[800px] space-y-16 rounded-2xl border border-[var(--fv-border)] bg-[var(--fv-surface)] px-10 py-12 shadow-[0_1px_2px_rgba(0,0,0,0.12)]">
+      <div className="space-y-4">
+        <div className="fv-skeleton h-3 w-24 rounded" />
+        <div className="fv-skeleton h-8 w-64 rounded-lg" />
+        <div className="fv-skeleton h-px w-full rounded" />
+        <div className="fv-skeleton h-28 w-full rounded-xl" />
+        <div className="space-y-2 pt-2">
+          <div className="fv-skeleton h-4 w-full rounded" />
+          <div className="fv-skeleton h-4 w-full rounded" />
+          <div className="fv-skeleton h-4 w-5/6 rounded" />
+        </div>
+      </div>
+      <div className="space-y-4">
+        <div className="fv-skeleton h-3 w-24 rounded" />
+        <div className="fv-skeleton h-8 w-72 rounded-lg" />
+        <div className="fv-skeleton h-px w-full rounded" />
+        <div className="fv-skeleton h-48 w-full rounded-xl" />
+        <div className="fv-skeleton h-48 w-full rounded-xl" />
+      </div>
+      <div className="space-y-4">
+        <div className="fv-skeleton h-3 w-24 rounded" />
+        <div className="fv-skeleton h-8 w-56 rounded-lg" />
+        <div className="fv-skeleton h-px w-full rounded" />
+        <div className="fv-skeleton h-40 w-full rounded-xl" />
+      </div>
+    </div>
+  );
 }
 
 export interface ReportCanvasProps {
@@ -153,6 +257,8 @@ export function ReportCanvas({
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [headerScrolled, setHeaderScrolled] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -189,12 +295,25 @@ export function ReportCanvas({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  function handleScroll() {
+    const el = scrollRef.current;
+    if (!el) return;
+    setHeaderScrolled(el.scrollTop > 4);
+  }
+
   const citations = report ? collectAllCitations(report) : [];
-  const risks = report ? parseRiskLines(report.risks_assessment) : [];
+  const risks = report ? parseBulletLines(report.risks_assessment) : [];
+  const showRecommendation =
+    report &&
+    report.overall_recommendation !== "too_vague_to_recommend";
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-[var(--fv-border)] bg-[var(--fv-bg)] px-8 py-4">
+      <header
+        className={`sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-[var(--fv-border)] bg-[var(--fv-bg)] px-8 py-4 transition-shadow ${
+          headerScrolled ? "shadow-[0_1px_3px_rgba(0,0,0,0.3)]" : ""
+        }`}
+      >
         <div className="flex min-w-0 items-center gap-3">
           {mobile && (
             <button
@@ -206,268 +325,345 @@ export function ReportCanvas({
               <ArrowLeft className="h-4 w-4" />
             </button>
           )}
-          <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--fv-border)] bg-[var(--fv-surface)] text-[var(--fv-accent)]">
+              <FileText className="h-4 w-4" />
+            </div>
             <h1 className="truncate text-[17px] font-semibold text-[var(--fv-text)]">
               Validation Report
             </h1>
-            {report && (
-              <div className="mt-1 flex flex-wrap items-center gap-2">
-                <span
-                  className={recommendationBadgeClass(
-                    report.overall_recommendation,
-                  )}
-                >
-                  {formatRecommendation(report.overall_recommendation)}
-                </span>
-              </div>
-            )}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="icon-btn shrink-0"
-          aria-label="Close report"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex shrink-0 items-center gap-3">
+          {report && showRecommendation && (
+            <span
+              className={`hidden sm:inline-flex ${recommendationBadgeClass(
+                report.overall_recommendation,
+              )}`}
+            >
+              {formatRecommendation(report.overall_recommendation)}
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="icon-btn shrink-0"
+            aria-label="Close report"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="space-y-12 px-8 py-6">
-          {loading && (
-            <div className="flex items-center justify-center py-24">
-              <Loader2 className="h-6 w-6 animate-spin text-[var(--fv-accent)]" />
-            </div>
-          )}
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="min-h-0 flex-1 overflow-y-auto bg-[var(--fv-bg)]"
+      >
+        <div className="px-8 py-8">
+          {loading && <ReportLoadingSkeleton />}
 
           {error && !loading && (
-            <div className="fv-error text-sm">{error}</div>
+            <div className="fv-error mx-auto max-w-[800px] text-sm">{error}</div>
           )}
 
           {report && !loading && (
-            <article className="mx-auto max-w-3xl space-y-12 text-[16px] leading-[1.75] text-[var(--fv-text-soft)]">
-            <section>
-              <h2 className="mb-4 text-[22px] font-semibold leading-tight text-[var(--fv-text)]">
-                Executive Summary
-              </h2>
-              <p className="whitespace-pre-wrap">{report.executive_summary}</p>
-              {report.recommendation_rationale && (
-                <div className="mt-6 rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)] p-5">
-                  <p className="text-[15px] font-medium text-[var(--fv-text)]">
-                    Recommendation rationale
-                  </p>
-                  <p className="mt-2 whitespace-pre-wrap text-[15px] leading-[1.75]">
-                    {report.recommendation_rationale}
-                  </p>
-                </div>
-              )}
-            </section>
-
-            <section>
-              <h2 className="mb-6 text-[22px] font-semibold leading-tight text-[var(--fv-text)]">
-                Research Questions &amp; Findings
-              </h2>
-              {report.questions_and_findings.length === 0 ? (
-                <p className="text-[var(--fv-text-muted)]">
-                  No research findings available.
-                </p>
-              ) : (
-                <div className="space-y-10">
-                  {report.questions_and_findings.map((qf) => (
-                    <div key={qf.question_id}>
-                      <h3 className="mb-4 text-[18px] font-semibold leading-snug text-[var(--fv-text)]">
-                        {qf.question}
-                      </h3>
-                      <div className="space-y-6">
-                        {qf.findings.map((finding) => (
-                          <div
-                            key={`${finding.question_id}-${finding.claim}`}
-                            className="border-l-2 border-[var(--fv-accent)]/30 pl-5"
-                          >
-                            <p className="font-medium text-[var(--fv-text)]">
-                              {finding.claim}
-                            </p>
-                            <p className="mt-2 whitespace-pre-wrap">
-                              {finding.evidence_summary}
-                            </p>
-                            <p className="mt-2 text-[14px] text-[var(--fv-text-muted)]">
-                              {confidenceLabel(finding.confidence)} —{" "}
-                              {finding.confidence_rationale}
-                            </p>
-                            {finding.citations.length > 0 && (
-                              <ul className="mt-3 space-y-1 text-[14px]">
-                                {finding.citations.map((citation) => (
-                                  <li key={citation.url || citation.title}>
-                                    <SafeCitationLink citation={citation} />
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
-                        ))}
-                        {qf.evidence_gap && (
-                          <p className="text-[14px] text-[var(--fv-warning)]">
-                            Evidence gap: {qf.evidence_gap}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section>
-              <h2 className="mb-4 text-[22px] font-semibold leading-tight text-[var(--fv-text)]">
-                Competitor Landscape
-              </h2>
-              {report.competitors.length === 0 ? (
-                <p className="text-[var(--fv-text-muted)]">
-                  No competitors identified.
-                </p>
-              ) : (
-                <div className="overflow-hidden rounded-xl border border-[var(--fv-border)]">
-                  <table className="w-full border-collapse text-left text-[15px]">
-                    <thead>
-                      <tr className="border-b border-[var(--fv-border)] bg-[var(--fv-surface)]">
-                        <th className="px-4 py-3 font-semibold text-[var(--fv-text)]">
-                          Competitor
-                        </th>
-                        <th className="px-4 py-3 font-semibold text-[var(--fv-text)]">
-                          Description
-                        </th>
-                        <th className="hidden px-4 py-3 font-semibold text-[var(--fv-text)] sm:table-cell">
-                          Gap vs. your idea
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {report.competitors.map((comp) => (
-                        <tr
-                          key={comp.name}
-                          className="border-b border-[var(--fv-border)] last:border-b-0"
-                        >
-                          <td className="align-top px-4 py-4 font-medium text-[var(--fv-text)]">
-                            {comp.name}
-                          </td>
-                          <td className="align-top px-4 py-4 whitespace-pre-wrap">
-                            {comp.description}
-                          </td>
-                          <td className="hidden align-top px-4 py-4 whitespace-pre-wrap sm:table-cell">
-                            {comp.positioning_vs_idea}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </section>
-
-            <section>
-              <h2 className="mb-4 text-[22px] font-semibold leading-tight text-[var(--fv-text)]">
-                Market Signals
-              </h2>
-              <div className="space-y-6">
-                {(
-                  [
-                    ["Market overview", report.market_signals],
-                    ["Distribution", report.distribution_signals],
-                    ["Regulatory", report.regulatory_signals],
-                  ] as const
-                ).map(([label, text]) =>
-                  text ? (
-                    <div key={label}>
-                      <h3 className="mb-2 text-[17px] font-medium text-[var(--fv-text)]">
-                        {label}
-                      </h3>
-                      <p className="whitespace-pre-wrap">{text}</p>
-                    </div>
-                  ) : null,
-                )}
-                {!report.market_signals &&
-                  !report.distribution_signals &&
-                  !report.regulatory_signals && (
-                    <p className="text-[var(--fv-text-muted)]">
-                      No market signals available.
-                    </p>
-                  )}
-              </div>
-            </section>
-
-            <section>
-              <h2 className="mb-4 text-[22px] font-semibold leading-tight text-[var(--fv-text)]">
-                Risks
-              </h2>
-              {risks.length === 0 ? (
-                <p className="text-[var(--fv-text-muted)]">
-                  No significant risks identified.
-                </p>
-              ) : (
-                <ul className="space-y-4">
-                  {risks.map((risk, index) => {
-                    const severity = inferRiskSeverity(risk, index);
-                    return (
-                      <li
-                        key={`${index}-${risk.slice(0, 32)}`}
-                        className="flex items-start gap-3"
-                      >
-                        <span
-                          className={`mt-1 shrink-0 ${severityBadgeClass(severity)}`}
-                        >
-                          {severity}
-                        </span>
-                        <p className="whitespace-pre-wrap">{risk}</p>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </section>
-
-            <section>
-              <h2 className="mb-4 text-[22px] font-semibold leading-tight text-[var(--fv-text)]">
-                Citations
-              </h2>
-              {citations.length === 0 ? (
-                <p className="text-[var(--fv-text-muted)]">
-                  No citations available.
-                </p>
-              ) : (
-                <ol className="space-y-3">
-                  {citations.map((citation, index) => (
-                    <li
-                      key={`${citation.url}-${index}`}
-                      className="flex items-start gap-3 text-[15px]"
-                    >
-                      <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--fv-accent)] text-[11px] font-bold text-[var(--fv-on-accent)]">
-                        {index + 1}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <SafeCitationLink citation={citation} />
-                        {citation.source_domain && (
-                          <p className="mt-0.5 text-[13px] text-[var(--fv-text-muted)]">
-                            {citation.source_domain}
-                          </p>
-                        )}
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </section>
-
-            {report.research_limitations && (
+            <article className="mx-auto max-w-[800px] space-y-16 rounded-2xl border border-[var(--fv-border)] bg-[var(--fv-surface)] px-10 py-12 shadow-[0_1px_2px_rgba(0,0,0,0.12)]">
               <section>
-                <h2 className="mb-4 text-[22px] font-semibold leading-tight text-[var(--fv-text)]">
-                  Research Limitations
-                </h2>
-                <p className="whitespace-pre-wrap text-[15px] text-[var(--fv-text-muted)]">
-                  {report.research_limitations}
+                <ReportSectionHeader number="01" title="Executive Summary" />
+                {showRecommendation && (
+                  <div className="mb-8 rounded-xl border border-[var(--fv-border-strong)] bg-[var(--fv-surface)] p-6">
+                    <span
+                      className={recommendationBadgeClass(
+                        report.overall_recommendation,
+                      )}
+                    >
+                      {formatRecommendation(report.overall_recommendation)}
+                    </span>
+                    {report.recommendation_rationale && (
+                      <p className="mt-3 text-[15px] leading-[1.7] text-[var(--fv-text)]">
+                        {report.recommendation_rationale}
+                      </p>
+                    )}
+                  </div>
+                )}
+                {!showRecommendation && report.recommendation_rationale && (
+                  <div className="mb-8 rounded-xl border border-[var(--fv-border-strong)] bg-[var(--fv-surface)] p-6">
+                    <p className="text-[15px] leading-[1.7] text-[var(--fv-text)]">
+                      {report.recommendation_rationale}
+                    </p>
+                  </div>
+                )}
+                <p className="whitespace-pre-wrap text-[16px] leading-[1.8] text-[var(--fv-text-soft)]">
+                  {report.executive_summary}
                 </p>
               </section>
-            )}
+
+              <section>
+                <ReportSectionHeader
+                  number="02"
+                  title="Research Questions & Findings"
+                />
+                {report.questions_and_findings.length === 0 ? (
+                  <p className="text-[var(--fv-text-muted)]">
+                    No research findings available.
+                  </p>
+                ) : (
+                  <div className="space-y-6">
+                    {report.questions_and_findings.map((qf) => (
+                      <div
+                        key={qf.question_id}
+                        className="space-y-4 rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface-2)] p-6"
+                      >
+                        <h3 className="text-[16px] font-semibold text-[var(--fv-text)]">
+                          {qf.question}
+                        </h3>
+                        <div className="space-y-5">
+                          {qf.findings.map((finding) => (
+                            <div
+                              key={`${finding.question_id}-${finding.claim}`}
+                              className="space-y-2 border-l-2 border-[var(--fv-accent)]/30 pl-4"
+                            >
+                              <p className="text-[15px] leading-[1.7] text-[var(--fv-text)]">
+                                {finding.claim}
+                              </p>
+                              <div>
+                                <span
+                                  className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ring-1 ring-inset ${confidenceClass(finding.confidence)}`}
+                                >
+                                  {finding.confidence}
+                                </span>
+                              </div>
+                              <p className="text-[14px] italic leading-[1.6] text-[var(--fv-text-muted)]">
+                                {finding.evidence_summary}
+                              </p>
+                              {finding.confidence_rationale && (
+                                <p className="text-[13px] text-[var(--fv-text-muted)]">
+                                  {finding.confidence_rationale}
+                                </p>
+                              )}
+                              {finding.citations.length > 0 && (
+                                <ul className="space-y-1 pt-1">
+                                  {finding.citations.map((citation) => (
+                                    <li key={citation.url || citation.title}>
+                                      <SafeCitationLink
+                                        citation={citation}
+                                        compact
+                                      />
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          ))}
+                          {qf.evidence_gap && (
+                            <p className="rounded-lg border border-[var(--fv-warning)]/20 bg-[var(--fv-warning)]/5 px-4 py-3 text-[14px] text-[var(--fv-warning)]">
+                              Evidence gap: {qf.evidence_gap}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section>
+                <ReportSectionHeader number="03" title="Competitor Landscape" />
+                {report.competitors.length === 0 ? (
+                  <p className="text-[var(--fv-text-muted)]">
+                    No competitors identified.
+                  </p>
+                ) : (
+                  <>
+                    <div className="hidden overflow-hidden rounded-xl border border-[var(--fv-border)] lg:block">
+                      <table className="w-full border-collapse text-left text-[15px]">
+                        <thead>
+                          <tr className="border-b border-[var(--fv-border)] bg-[var(--fv-surface)]">
+                            <th className="px-5 py-3.5 text-[13px] font-semibold uppercase tracking-wide text-[var(--fv-text-muted)]">
+                              Competitor
+                            </th>
+                            <th className="px-5 py-3.5 text-[13px] font-semibold uppercase tracking-wide text-[var(--fv-text-muted)]">
+                              Description
+                            </th>
+                            <th className="px-5 py-3.5 text-[13px] font-semibold uppercase tracking-wide text-[var(--fv-text-muted)]">
+                              Gap vs. your idea
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {report.competitors.map((comp, index) => (
+                            <tr
+                              key={comp.name}
+                              className={`border-b border-[var(--fv-border)] last:border-b-0 ${
+                                index % 2 === 1
+                                  ? "bg-[var(--fv-surface-2)]/40"
+                                  : "bg-transparent"
+                              }`}
+                            >
+                              <td className="align-top px-5 py-4 font-semibold text-[var(--fv-text)]">
+                                {comp.name}
+                              </td>
+                              <td className="align-top px-5 py-4 leading-[1.6] text-[var(--fv-text-soft)] whitespace-pre-wrap">
+                                {comp.description}
+                              </td>
+                              <td className="align-top px-5 py-4 leading-[1.6] text-[var(--fv-text-soft)] whitespace-pre-wrap">
+                                {comp.positioning_vs_idea}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="grid grid-cols-1 gap-4 lg:hidden">
+                      {report.competitors.map((comp) => (
+                        <div
+                          key={comp.name}
+                          className="rounded-xl border border-[var(--fv-border)] p-5"
+                        >
+                          <p className="font-semibold text-[var(--fv-text)]">
+                            {comp.name}
+                          </p>
+                          <p className="mt-2 text-[14px] leading-[1.6] text-[var(--fv-text-soft)] whitespace-pre-wrap">
+                            {comp.description}
+                          </p>
+                          <p className="mt-3 text-[12px] font-semibold uppercase tracking-wide text-[var(--fv-text-muted)]">
+                            Gap vs. your idea
+                          </p>
+                          <p className="mt-1 text-[14px] leading-[1.6] text-[var(--fv-text-soft)] whitespace-pre-wrap">
+                            {comp.positioning_vs_idea}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </section>
+
+              <section>
+                <ReportSectionHeader number="04" title="Market Signals" />
+                <div className="space-y-8">
+                  {(
+                    [
+                      ["Market overview", report.market_signals],
+                      ["Distribution", report.distribution_signals],
+                      ["Regulatory", report.regulatory_signals],
+                    ] as const
+                  ).map(([label, text]) => {
+                    if (!text) return null;
+                    const lines = parseBulletLines(text);
+                    const items = lines.length > 1 ? lines : [text];
+
+                    return (
+                      <div key={label}>
+                        <h3 className="mb-4 text-[15px] font-semibold text-[var(--fv-text)]">
+                          {label}
+                        </h3>
+                        <ul className="space-y-3">
+                          {items.map((item, index) => {
+                            const strength = inferSignalStrength(item);
+                            return (
+                              <li
+                                key={`${label}-${index}`}
+                                className="flex items-start gap-3"
+                              >
+                                <span
+                                  className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${signalDotClass(strength)}`}
+                                  aria-hidden
+                                />
+                                <p className="text-[15px] leading-[1.7] text-[var(--fv-text-soft)] whitespace-pre-wrap">
+                                  {item}
+                                </p>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                  {!report.market_signals &&
+                    !report.distribution_signals &&
+                    !report.regulatory_signals && (
+                      <p className="text-[var(--fv-text-muted)]">
+                        No market signals available.
+                      </p>
+                    )}
+                </div>
+              </section>
+
+              <section>
+                <ReportSectionHeader number="05" title="Risks" />
+                {risks.length === 0 ? (
+                  <p className="text-[var(--fv-text-muted)]">
+                    No significant risks identified.
+                  </p>
+                ) : (
+                  <ul className="space-y-4">
+                    {risks.map((risk, index) => {
+                      const severity = inferRiskSeverity(risk, index);
+                      return (
+                        <li
+                          key={`${index}-${risk.slice(0, 32)}`}
+                          className={`rounded-r-xl py-4 pl-5 pr-5 ${riskCardClass(severity)}`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <span
+                              className={`mt-0.5 shrink-0 ${severityBadgeClass(severity)}`}
+                            >
+                              {severity}
+                            </span>
+                            <p className="text-[15px] leading-[1.7] text-[var(--fv-text-soft)] whitespace-pre-wrap">
+                              {risk}
+                            </p>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
+
+              <section>
+                <ReportSectionHeader number="06" title="Citations" />
+                {citations.length === 0 ? (
+                  <p className="text-[var(--fv-text-muted)]">
+                    No citations available.
+                  </p>
+                ) : (
+                  <ol className="space-y-4">
+                    {citations.map((citation, index) => (
+                      <li
+                        key={`${citation.url}-${index}`}
+                        className="flex items-start gap-3"
+                      >
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--fv-surface-2)] text-center text-[12px] font-medium text-[var(--fv-text-muted)] ring-1 ring-[var(--fv-border)]">
+                          {index + 1}
+                        </span>
+                        <div className="min-w-0 flex-1 pt-0.5">
+                          <SafeCitationLink citation={citation} />
+                          {citation.source_domain && (
+                            <p className="mt-0.5 text-[13px] text-[var(--fv-text-muted)]">
+                              {citation.source_domain}
+                            </p>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
+
+              {report.research_limitations && (
+                <section>
+                  <ReportSectionHeader
+                    number="07"
+                    title="Research Limitations"
+                  />
+                  <p className="whitespace-pre-wrap text-[15px] leading-[1.7] text-[var(--fv-text-muted)]">
+                    {report.research_limitations}
+                  </p>
+                </section>
+              )}
             </article>
           )}
         </div>
