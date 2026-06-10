@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 export default function ExperimentDetailPage() {
   const params = useParams<{ id: string }>();
   return (
-    <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
+    <main className="flex h-[calc(100vh-4rem)] flex-col px-4 py-4 sm:px-6">
       <ExperimentDetailPanel experimentId={params.id} />
     </main>
   );

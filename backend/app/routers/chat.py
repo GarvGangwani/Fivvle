@@ -6,6 +6,7 @@ Thin HTTP layer over chat_service.handle_turn. Domain logic stays in services.
 from __future__ import annotations
 
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,8 +19,13 @@ from app.dispatchers.dependencies import get_dispatcher_dep
 from app.dispatchers.protocol import ResearchDispatcher
 from app.logging_config import get_logger
 from app.reliability.rate_limit import AUTH_RATE_LIMIT, limiter, user_key
-from app.schemas.chat import ChatTurnRequest, ChatTurnResponse
-from app.services.chat_service import ChatAuthorizationError, handle_turn
+from app.schemas.chat import (
+    ChatMessageItem,
+    ChatTurnRequest,
+    ChatTurnResponse,
+    ExperimentChatMessagesResponse,
+)
+from app.services.chat_service import ChatAuthorizationError, handle_turn, list_experiment_chat_messages
 from app.services.experiment_service import InvalidExperimentState
 
 _logger = get_logger(__name__)
@@ -84,3 +90,36 @@ async def chat_turn(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "Internal error", "request_id": request_id},
         ) from exc
+
+
+@router.get(
+    "/experiments/{experiment_id}/messages",
+    response_model=ExperimentChatMessagesResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def get_experiment_chat_messages(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ExperimentChatMessagesResponse:
+    if get_settings().auto_fire_chat_enabled == "off":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    try:
+        thread_id, messages = await list_experiment_chat_messages(
+            db, current_user, experiment_id
+        )
+    except ChatAuthorizationError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden",
+        ) from None
+
+    return ExperimentChatMessagesResponse(
+        thread_id=thread_id,
+        experiment_id=experiment_id,
+        messages=[ChatMessageItem.model_validate(m) for m in messages],
+    )

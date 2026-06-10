@@ -752,3 +752,44 @@ async def test_plain_chat_excludes_pipeline_system_messages_from_history(
 
     history_arg = mock_reply_plain.await_args.args[1]
     assert all("Research is ready" not in content for _, content in history_arg)
+
+
+@pytest.mark.asyncio
+@patch("app.services.chat_service.reply_discussion", new_callable=AsyncMock)
+async def test_post_refinement_plain_chat_uses_discuss_turn(
+    mock_reply_discussion: AsyncMock,
+    db_session: AsyncSession,
+) -> None:
+    mock_reply_discussion.return_value = "Your report suggests iterating on distribution."
+    user = await _persist_user(db_session)
+    thread = await _persist_thread(db_session, user)
+    experiment = Experiment(
+        user_id=user.id,
+        thread_id=thread.id,
+        raw_idea=_DR_MESSAGE,
+        status=ExperimentStatus.RESEARCH_READY,
+        refinement_count=1,
+        refined_idea=_make_refined_idea().model_dump(mode="json"),
+    )
+    db_session.add(experiment)
+    await db_session.commit()
+
+    result = await handle_turn(
+        db_session,
+        user,
+        "What should I focus on next?",
+        deep_research=False,
+        thread_id=thread.id,
+        experiment_id=experiment.id,
+        idempotency_key=None,
+        dispatcher=_RecordingDispatcher(),
+    )
+
+    assert result.turn_kind == ChatTurnKind.DISCUSS
+    assert result.experiment_id == experiment.id
+    assert result.experiment_status == ExperimentStatus.RESEARCH_READY
+    mock_reply_discussion.assert_awaited_once()
+
+    assistant_row = await db_session.get(ChatMessage, result.message_id)
+    assert assistant_row is not None
+    assert assistant_row.turn_kind == ChatTurnKind.DISCUSS

@@ -25,6 +25,11 @@ from app.db.models.experiment import Experiment
 from app.db.models.refinement_idempotency import RefinementIdempotency
 from app.db.models.user import User
 from app.dispatchers.protocol import DispatchError, ResearchDispatcher
+from app.llm.prompts.chat_discussion import (
+    CHAT_DISCUSSION_SYSTEM_PROMPT,
+    PROMPT_NAME_CHAT_DISCUSSION,
+    build_chat_discussion_user_prompt,
+)
 from app.llm.prompts.chat_normal import (
     CHAT_NORMAL_SYSTEM_PROMPT,
     PROMPT_NAME_CHAT_NORMAL,
@@ -32,6 +37,7 @@ from app.llm.prompts.chat_normal import (
 )
 from app.logging_config import get_logger
 from app.schemas.refinement import RefinementTurnDecision
+from app.services.chat_discussion_context import build_experiment_discussion_context
 from app.services import dispatch_service, rollout
 from app.services.error_translation import UserFacingError, translate_engineer_error
 from app.services.experiment_service import InvalidExperimentState
@@ -54,12 +60,14 @@ _SYSTEM_TURN_KINDS_EXCLUDED_FROM_DR_HISTORY = frozenset(
 _PLAIN_CHAT_HISTORY_TURN_KINDS = frozenset(
     {
         ChatTurnKind.NORMAL_CHAT,
+        ChatTurnKind.DISCUSS,
         ChatTurnKind.REFINEMENT_CLARIFY,
         ChatTurnKind.REFINEMENT_FINALIZE,
     }
 )
 
 _PLAIN_CHAT_MAX_TOKENS = 1024
+_DISCUSSION_CHAT_MAX_TOKENS = 1536
 
 
 class ChatAuthorizationError(Exception):
@@ -228,6 +236,91 @@ async def _load_plain_chat_history(
     return history
 
 
+async def _resolve_experiment_for_plain_chat(
+    db: AsyncSession,
+    user: User,
+    thread: ChatThread,
+    experiment_id: UUID | None,
+) -> Experiment | None:
+    experiment: Experiment | None = None
+
+    if experiment_id is not None:
+        result = await db.execute(
+            select(Experiment).where(Experiment.id == experiment_id)
+        )
+        experiment = result.scalar_one_or_none()
+        if experiment is None or experiment.user_id != user.id:
+            raise ChatAuthorizationError("Experiment not found or not owned by user")
+        if experiment.thread_id is not None and experiment.thread_id != thread.id:
+            raise InvalidExperimentState(
+                "Experiment does not belong to this chat thread"
+            )
+        if experiment.status == ExperimentStatus.ARCHIVED:
+            raise InvalidExperimentState(
+                "Chat is not available for archived experiments"
+            )
+        return experiment
+
+    result = await db.execute(
+        select(Experiment)
+        .where(Experiment.thread_id == thread.id)
+        .order_by(Experiment.created_at.desc())
+        .limit(1)
+    )
+    experiment = result.scalar_one_or_none()
+    if experiment is not None and experiment.status == ExperimentStatus.ARCHIVED:
+        raise InvalidExperimentState(
+            "Chat is not available for archived experiments"
+        )
+    return experiment
+
+
+def _uses_discussion_mode(experiment: Experiment | None) -> bool:
+    return (
+        experiment is not None
+        and experiment.status != ExperimentStatus.REFINING
+    )
+
+
+async def list_thread_messages(
+    db: AsyncSession,
+    user: User,
+    thread_id: UUID,
+) -> list[ChatMessage]:
+    """Return thread messages in chronological order (ownership enforced)."""
+    thread = await _resolve_thread(db, user, thread_id)
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.thread_id == thread.id)
+        .order_by(ChatMessage.created_at.asc())
+    )
+    messages: list[ChatMessage] = []
+    for row in result.scalars().all():
+        if row.turn_kind in _SYSTEM_TURN_KINDS_EXCLUDED_FROM_DR_HISTORY:
+            continue
+        messages.append(row)
+    return messages
+
+
+async def list_experiment_chat_messages(
+    db: AsyncSession,
+    user: User,
+    experiment_id: UUID,
+) -> tuple[UUID | None, list[ChatMessage]]:
+    """Load chat history for an experiment's linked thread."""
+    result = await db.execute(
+        select(Experiment).where(Experiment.id == experiment_id)
+    )
+    experiment = result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != user.id:
+        raise ChatAuthorizationError("Experiment not found or not owned by user")
+    if experiment.thread_id is None:
+        return None, []
+
+    messages = await list_thread_messages(db, user, experiment.thread_id)
+    return experiment.thread_id, messages
+
+
 async def _find_in_flight_refinement_experiment(
     db: AsyncSession,
     thread_id: UUID,
@@ -352,6 +445,35 @@ async def reply_plain(
     return result.text
 
 
+async def reply_discussion(
+    db: AsyncSession,
+    experiment: Experiment,
+    chat_history: list[tuple[str, str]],
+    latest_message: str,
+) -> str:
+    """Run post-research discussion turn. Returns assistant text."""
+    experiment_context = await build_experiment_discussion_context(db, experiment)
+    user_prompt = build_chat_discussion_user_prompt(
+        experiment_context=experiment_context,
+        chat_history=chat_history,
+        latest_message=latest_message,
+    )
+    settings = get_settings()
+    result = await llm_client.complete(
+        db,
+        provider=settings.refinement_provider,
+        model=settings.refinement_model,
+        prompt_name=PROMPT_NAME_CHAT_DISCUSSION,
+        system=CHAT_DISCUSSION_SYSTEM_PROMPT,
+        user=user_prompt,
+        max_tokens=_DISCUSSION_CHAT_MAX_TOKENS,
+        temperature=0.7,
+        experiment_id=experiment.id,
+        phase="chat_discussion",
+    )
+    return result.text
+
+
 async def handle_turn(
     db: AsyncSession,
     user: User,
@@ -379,6 +501,7 @@ async def handle_turn(
         user=user,
         message=message,
         thread_id=thread_id,
+        experiment_id=experiment_id,
     )
 
 
@@ -388,6 +511,7 @@ async def _handle_plain_chat_turn(
     user: User,
     message: str,
     thread_id: UUID | None,
+    experiment_id: UUID | None,
 ) -> ChatTurnResult:
     thread = await _resolve_thread(
         db,
@@ -396,25 +520,42 @@ async def _handle_plain_chat_turn(
         first_message_for_title=message if thread_id is None else None,
     )
 
+    experiment = await _resolve_experiment_for_plain_chat(
+        db, user, thread, experiment_id
+    )
+    if _uses_discussion_mode(experiment):
+        assert experiment is not None
+        return await _handle_discussion_turn(
+            db,
+            message=message,
+            thread=thread,
+            experiment=experiment,
+        )
+
     chat_history = await _load_plain_chat_history(db, thread.id)
 
     user_msg = ChatMessage(
         thread_id=thread.id,
         role=ChatRole.USER,
         content=message,
-        experiment_id=None,
+        experiment_id=experiment.id if experiment is not None else None,
         turn_kind=None,
     )
     db.add(user_msg)
     await db.flush()
 
-    assistant_text = await reply_plain(db, chat_history, message)
+    assistant_text = await reply_plain(
+        db,
+        chat_history,
+        message,
+        experiment_id=experiment.id if experiment is not None else None,
+    )
 
     assistant_msg = ChatMessage(
         thread_id=thread.id,
         role=ChatRole.ASSISTANT,
         content=assistant_text,
-        experiment_id=None,
+        experiment_id=experiment.id if experiment is not None else None,
         turn_kind=ChatTurnKind.NORMAL_CHAT,
     )
     db.add(assistant_msg)
@@ -423,14 +564,62 @@ async def _handle_plain_chat_turn(
     return ChatTurnResult(
         thread_id=thread.id,
         message_id=assistant_msg.id,
-        experiment_id=None,
+        experiment_id=experiment.id if experiment is not None else None,
         assistant_message=assistant_text,
         turn_kind=ChatTurnKind.NORMAL_CHAT,
         clarifying_dimension=None,
         pipeline_dispatched=False,
         dispatched_at=None,
-        experiment_status=None,
-        research_error_detail=None,
+        experiment_status=experiment.status if experiment is not None else None,
+        research_error_detail=(
+            experiment.research_error_detail if experiment is not None else None
+        ),
+        user_facing_error=None,
+    )
+
+
+async def _handle_discussion_turn(
+    db: AsyncSession,
+    *,
+    message: str,
+    thread: ChatThread,
+    experiment: Experiment,
+) -> ChatTurnResult:
+    chat_history = await _load_dr_chat_history(db, thread.id)
+
+    user_msg = ChatMessage(
+        thread_id=thread.id,
+        role=ChatRole.USER,
+        content=message,
+        experiment_id=experiment.id,
+        turn_kind=None,
+    )
+    db.add(user_msg)
+    await db.flush()
+
+    assistant_text = await reply_discussion(db, experiment, chat_history, message)
+
+    assistant_msg = ChatMessage(
+        thread_id=thread.id,
+        role=ChatRole.ASSISTANT,
+        content=assistant_text,
+        experiment_id=experiment.id,
+        turn_kind=ChatTurnKind.DISCUSS,
+    )
+    db.add(assistant_msg)
+    await db.commit()
+
+    return ChatTurnResult(
+        thread_id=thread.id,
+        message_id=assistant_msg.id,
+        experiment_id=experiment.id,
+        assistant_message=assistant_text,
+        turn_kind=ChatTurnKind.DISCUSS,
+        clarifying_dimension=None,
+        pipeline_dispatched=False,
+        dispatched_at=None,
+        experiment_status=experiment.status,
+        research_error_detail=experiment.research_error_detail,
         user_facing_error=None,
     )
 

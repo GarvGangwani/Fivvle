@@ -189,7 +189,22 @@ export interface Experiment {
   id: string;
   name?: string | null;
   status: string;
+  thread_id?: string | null;
   validation_report: ExperimentValidationReportSummary | null;
+}
+
+export interface ChatHistoryMessage {
+  id: string;
+  role: ChatRole;
+  content: string;
+  turn_kind: ChatTurnKind | null;
+  created_at: string;
+}
+
+export interface ExperimentChatMessagesResponse {
+  thread_id: string | null;
+  experiment_id: string;
+  messages: ChatHistoryMessage[];
 }
 
 export interface Citation {
@@ -274,6 +289,7 @@ export type ChatRole = "user" | "assistant";
 
 export type ChatTurnKind =
   | "normal_chat"
+  | "discuss"
   | "refinement_clarify"
   | "refinement_finalize"
   | "dispatch_announce"

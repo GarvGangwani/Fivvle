@@ -209,7 +209,7 @@ export function DashboardContent() {
         selectedId={effectiveSelectedId}
       />
 
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-4 sm:p-6 md:p-8">
         {experiments.length > 1 && (
           <div className="relative mb-4 md:hidden">
             <label htmlFor="experiment-select" className="sr-only">
@@ -263,7 +263,7 @@ export function DashboardContent() {
             </div>
           </div>
         ) : effectiveSelectedId && selectedExperiment ? (
-          <>
+          <div className="flex min-h-0 flex-1 flex-col">
             <ExperimentNameHeader
               experiment={selectedExperiment}
               onRenamed={() => {
@@ -276,7 +276,7 @@ export function DashboardContent() {
               rawIdea={selectedExperiment.raw_idea}
               nameRefreshKey={nameRefreshKey}
             />
-          </>
+          </div>
         ) : (
           <div className="mx-auto max-w-md py-16 text-center">
             <p className="text-sm text-[var(--fv-text-muted)]">

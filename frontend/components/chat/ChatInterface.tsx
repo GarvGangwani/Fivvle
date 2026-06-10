@@ -1,7 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { chatTurn, getExperiment, ApiError } from "@/lib/api";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import {
+  chatTurn,
+  getExperiment,
+  getExperimentChatMessages,
+  ApiError,
+} from "@/lib/api";
 import type { ChatMessage as ChatMessageType } from "@/lib/types";
 import { Eye } from "lucide-react";
 import { InlineResearchProgress } from "@/components/research/InlineResearchProgress";
@@ -18,6 +28,26 @@ const RESEARCH_ACTIVE_STATUSES = new Set([
   "RESEARCH_SYNTHESIZING",
 ]);
 
+const DEEP_RESEARCH_LOCKED_STATUSES = new Set([
+  "RESEARCHING",
+  "RESEARCH_PLANNING",
+  "RESEARCH_SEARCHING",
+  "RESEARCH_READING",
+  "RESEARCH_REFLECTING",
+  "RESEARCH_SYNTHESIZING",
+  "RESEARCH_READY",
+  "RESEARCH_FAILED",
+  "LANDING_GENERATING",
+  "LANDING_DRAFT",
+  "LANDING_LIVE",
+  "INSIGHT_GENERATING",
+  "INSIGHT_READY",
+  "INSIGHT_FAILED",
+  "ANALYZING",
+  "COMPLETED",
+  "ARCHIVED",
+]);
+
 function isResearchUnderway(
   pipelineDispatched: boolean,
   experimentStatus: string | null,
@@ -27,6 +57,15 @@ function isResearchUnderway(
     experimentStatus !== null &&
     RESEARCH_ACTIVE_STATUSES.has(experimentStatus)
   );
+}
+
+function isDeepResearchLocked(status: string | null): boolean {
+  return status !== null && DEEP_RESEARCH_LOCKED_STATUSES.has(status);
+}
+
+function isResearchTriggeredStatus(status: string | null): boolean {
+  if (status === null) return false;
+  return isDeepResearchLocked(status);
 }
 
 const STARTER_PROMPTS = [
@@ -46,7 +85,7 @@ function apiErrorMessage(err: ApiError): string {
       : "Too many requests. Please wait a moment and try again.";
   }
   if (err.status === 409) {
-    return "This experiment is no longer in refinement. Start a new idea from the dashboard.";
+    return "This experiment is archived or unavailable for chat.";
   }
   if (err.status === 404) {
     if (process.env.NODE_ENV === "development") {
@@ -57,11 +96,19 @@ function apiErrorMessage(err: ApiError): string {
   return "Something went wrong. Please try again.";
 }
 
-export function ChatInterface() {
+export interface ChatInterfaceProps {
+  experimentId?: string;
+}
+
+export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
-  const [experimentId, setExperimentId] = useState<string | null>(null);
+  const [resolvedExperimentId, setResolvedExperimentId] = useState<string | null>(
+    experimentId ?? null,
+  );
+  const [experimentStatus, setExperimentStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(Boolean(experimentId));
   const [researchStarted, setResearchStarted] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [hasValidationReport, setHasValidationReport] = useState(false);
@@ -102,18 +149,78 @@ export function ChatInterface() {
   }, [messages, loading, researchStarted, hasValidationReport]);
 
   useEffect(() => {
-    if (!experimentId || !researchStarted) {
-      setHasValidationReport(false);
+    if (!experimentId) {
+      setHistoryLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadExperimentChat() {
+      setHistoryLoading(true);
+      try {
+        const [experiment, chatData] = await Promise.all([
+          getExperiment(experimentId!),
+          getExperimentChatMessages(experimentId!),
+        ]);
+
+        if (cancelled) return;
+
+        setResolvedExperimentId(experimentId!);
+        setExperimentStatus(experiment.status);
+        setHasValidationReport(experiment.validation_report != null);
+
+        if (isResearchTriggeredStatus(experiment.status)) {
+          setResearchStarted(true);
+        }
+
+        if (chatData.thread_id) {
+          setThreadId(chatData.thread_id);
+        }
+
+        setMessages(
+          chatData.messages.map((msg) => ({
+            id: msg.id,
+            role: msg.role,
+            content: msg.content,
+            timestamp: msg.created_at,
+          })),
+        );
+      } catch {
+        if (!cancelled) {
+          setMessages([]);
+        }
+      } finally {
+        if (!cancelled) {
+          setHistoryLoading(false);
+        }
+      }
+    }
+
+    void loadExperimentChat();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [experimentId]);
+
+  useEffect(() => {
+    const activeExperimentId = resolvedExperimentId;
+    if (!activeExperimentId || !researchStarted) {
+      if (!experimentId) {
+        setHasValidationReport(false);
+      }
       return;
     }
 
     let cancelled = false;
 
     async function loadExperiment() {
-      if (!experimentId) return;
+      if (!activeExperimentId) return;
       try {
-        const data = await getExperiment(experimentId);
+        const data = await getExperiment(activeExperimentId);
         if (!cancelled) {
+          setExperimentStatus(data.status);
           setHasValidationReport(data.validation_report != null);
         }
       } catch {
@@ -128,7 +235,7 @@ export function ChatInterface() {
       cancelled = true;
       clearInterval(intervalId);
     };
-  }, [experimentId, researchStarted]);
+  }, [resolvedExperimentId, researchStarted, experimentId]);
 
   function handleStarterChipClick(text: string) {
     setPrefillText(text);
@@ -152,13 +259,16 @@ export function ChatInterface() {
         message: text,
         deep_research: deepResearch,
         thread_id: threadId,
-        experiment_id: experimentId,
+        experiment_id: resolvedExperimentId,
         idempotency_key: crypto.randomUUID(),
       });
 
       setThreadId(response.thread_id);
       if (response.experiment_id) {
-        setExperimentId(response.experiment_id);
+        setResolvedExperimentId(response.experiment_id);
+      }
+      if (response.experiment_status) {
+        setExperimentStatus(response.experiment_status);
       }
 
       const assistantMessage: ChatMessageType = {
@@ -198,7 +308,12 @@ export function ChatInterface() {
     }
   }
 
-  const chatDisabled = loading || researchStarted;
+  const chatDisabled =
+    loading || historyLoading || experimentStatus === "ARCHIVED";
+  const deepResearchLocked =
+    researchStarted || isDeepResearchLocked(experimentStatus);
+  const showEmptyState =
+    messages.length === 0 && !loading && !historyLoading && !experimentId;
 
   return (
     <>
@@ -209,7 +324,7 @@ export function ChatInterface() {
           className="flex-1 overflow-y-auto px-6 py-8 sm:px-12"
         >
           <div className="mx-auto w-full">
-            {messages.length === 0 && !loading && (
+            {showEmptyState && (
               <div className="flex flex-col items-center py-16 text-center">
                 <div
                   className="fv-f-logo mb-4"
@@ -240,6 +355,14 @@ export function ChatInterface() {
               </div>
             )}
 
+            {historyLoading && messages.length === 0 && (
+              <div className="flex justify-center py-16">
+                <p className="text-sm text-[var(--fv-text-muted)]">
+                  Loading conversation…
+                </p>
+              </div>
+            )}
+
             {messages.map((msg, index) => (
               <ChatMessage
                 key={msg.id}
@@ -248,6 +371,7 @@ export function ChatInterface() {
                 showRefining={
                   msg.role === "assistant" &&
                   !researchStarted &&
+                  !deepResearchLocked &&
                   index === messages.length - 1 &&
                   !loading
                 }
@@ -284,11 +408,11 @@ export function ChatInterface() {
               </div>
             )}
 
-            {researchStarted && experimentId && (
-              <InlineResearchProgress experimentId={experimentId} />
+            {researchStarted && resolvedExperimentId && (
+              <InlineResearchProgress experimentId={resolvedExperimentId} />
             )}
 
-            {hasValidationReport && experimentId && (
+            {hasValidationReport && resolvedExperimentId && (
               <div className="border-b border-[var(--fv-border)] py-6">
                 <div className="mx-auto max-w-[680px]">
                   <button
@@ -310,20 +434,20 @@ export function ChatInterface() {
         <ChatInput
           onSend={handleSend}
           disabled={chatDisabled}
-          deepResearchLocked={researchStarted}
+          deepResearchLocked={deepResearchLocked}
           prefillText={prefillText}
           prefillNonce={prefillNonce}
           placeholder={
-            messages.length === 0
-              ? "Describe your idea..."
-              : "Continue the conversation…"
+            experimentId || messages.length > 0
+              ? "Continue the conversation…"
+              : "Describe your idea..."
           }
         />
       </div>
 
-      {experimentId && (
+      {resolvedExperimentId && (
         <ValidationReportPanel
-          experimentId={experimentId}
+          experimentId={resolvedExperimentId}
           open={reportOpen}
           onClose={() => setReportOpen(false)}
         />

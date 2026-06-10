@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, RefreshCw, ArchiveRestore, Download } from "lucide-react";
+import {
+  Loader2,
+  RefreshCw,
+  ArchiveRestore,
+  Download,
+  Eye,
+  ExternalLink,
+} from "lucide-react";
 import {
   confirmExperiment,
   exportWaitlistCsv,
@@ -15,26 +22,16 @@ import {
 } from "@/lib/api";
 import type { Experiment, FounderDecision, WaitlistSignupsResponse } from "@/lib/types";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
+import { ChatInterface } from "@/components/chat/ChatInterface";
 import { DecisionPanel } from "@/components/insight/DecisionPanel";
 import { InsightReportViewer } from "@/components/insight/InsightReportViewer";
 import { MetricsWidget } from "@/components/insight/MetricsWidget";
 import { LandingGenerationProgress } from "@/components/research/LandingGenerationProgress";
-import { ResearchProgress } from "@/components/research/ResearchProgress";
 import {
   TemplatePicker,
   type TemplateId,
 } from "@/components/research/TemplatePicker";
 import { ValidationReportPanel } from "@/components/research/ValidationReportPanel";
-import { getExperimentDisplayName } from "@/lib/experiment-name";
-
-const RESEARCH_IN_PROGRESS = new Set([
-  "RESEARCHING",
-  "RESEARCH_PLANNING",
-  "RESEARCH_SEARCHING",
-  "RESEARCH_READING",
-  "RESEARCH_REFLECTING",
-  "RESEARCH_SYNTHESIZING",
-]);
 
 const WAITLIST_VISIBLE_STATUSES = new Set([
   "LANDING_LIVE",
@@ -108,11 +105,11 @@ function WaitlistSection({ experimentId }: WaitlistSectionProps) {
   }
 
   return (
-    <section className="fv-card p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold text-[var(--fv-text)]">
-          Waitlist ({waitlist.total} signup{waitlist.total === 1 ? "" : "s"})
-        </h2>
+    <details className="fv-card mb-4 p-4">
+      <summary className="cursor-pointer text-sm font-semibold text-[var(--fv-text)]">
+        Waitlist ({waitlist.total} signup{waitlist.total === 1 ? "" : "s"})
+      </summary>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <button
           type="button"
           onClick={() => void handleExport()}
@@ -127,9 +124,7 @@ function WaitlistSection({ experimentId }: WaitlistSectionProps) {
           Export CSV
         </button>
       </div>
-
-      {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
-
+      {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
       <div className="mt-4 overflow-x-auto">
         <table className="min-w-full text-left text-sm">
           <thead>
@@ -153,7 +148,7 @@ function WaitlistSection({ experimentId }: WaitlistSectionProps) {
           </tbody>
         </table>
       </div>
-    </section>
+    </details>
   );
 }
 
@@ -165,7 +160,6 @@ interface ExperimentDetailPanelProps {
 
 export function ExperimentDetailPanel({
   experimentId,
-  rawIdea = "",
   nameRefreshKey = 0,
 }: ExperimentDetailPanelProps) {
   const [experiment, setExperiment] = useState<Experiment | null>(null);
@@ -175,10 +169,11 @@ export function ExperimentDetailPanel({
   const [generatingLp, setGeneratingLp] = useState(false);
   const [retryingInsight, setRetryingInsight] = useState(false);
   const [unarchiving, setUnarchiving] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<TemplateId | null>(
-    null,
-  );
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateId | null>(null);
   const [reportOpen, setReportOpen] = useState(false);
+  const [showInsight, setShowInsight] = useState(false);
+  const [showMetrics, setShowMetrics] = useState(false);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
 
   const loadExperiment = useCallback(async () => {
     try {
@@ -218,10 +213,6 @@ export function ExperimentDetailPanel({
     return () => clearInterval(intervalId);
   }, [experiment?.status, loadExperiment]);
 
-  const handleResearchComplete = useCallback(() => {
-    void loadExperiment();
-  }, [loadExperiment]);
-
   async function handleRetryResearch() {
     setRetrying(true);
     try {
@@ -239,6 +230,7 @@ export function ExperimentDetailPanel({
     setGeneratingLp(true);
     try {
       await generateLandingPage(experimentId, { template_id: selectedTemplate });
+      setShowTemplatePicker(false);
       await loadExperiment();
     } catch {
       setError("Could not start landing page generation. Please try again.");
@@ -277,13 +269,11 @@ export function ExperimentDetailPanel({
 
   if (loading) {
     return (
-      <div className="mx-auto max-w-3xl">
-        <div className="mb-6 flex flex-wrap items-center gap-3">
-          <div className="fv-skeleton h-8 w-36 rounded" />
+      <div className="flex h-full min-h-[400px] flex-col">
+        <div className="mb-4 flex flex-wrap items-center gap-3">
           <div className="fv-skeleton h-6 w-24 rounded-full" />
         </div>
-        <div className="fv-skeleton mb-4 h-48 rounded-xl" />
-        <div className="fv-skeleton h-32 rounded-xl" />
+        <div className="fv-skeleton min-h-0 flex-1 rounded-xl" />
       </div>
     );
   }
@@ -301,43 +291,118 @@ export function ExperimentDetailPanel({
   const status = experiment.status;
   const hasValidationReport = experiment.validation_report != null;
   const showWaitlistSection = WAITLIST_VISIBLE_STATUSES.has(status);
-  const pageTitle = getExperimentDisplayName({
-    name: experiment.name,
-    raw_idea: rawIdea,
-  });
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="sr-only">{pageTitle}</h1>
-      <div className="mb-6 flex flex-wrap items-center gap-3">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2">
         <StatusBadge status={status} />
-      </div>
 
-      {error && (
-        <div className="fv-error mb-6 px-4 py-3 text-sm">{error}</div>
-      )}
-
-      {hasValidationReport && (
-        <div className="mb-6">
+        {hasValidationReport && (
           <button
             type="button"
             onClick={() => setReportOpen(true)}
-            className="view-report-btn"
+            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold"
           >
-            View Validation Report
+            <Eye className="h-3.5 w-3.5" />
+            Validation report
           </button>
-        </div>
+        )}
+
+        {status === "RESEARCH_READY" && (
+          <button
+            type="button"
+            onClick={() => setShowTemplatePicker((v) => !v)}
+            className="fv-btn-ghost px-3 py-1.5 text-xs font-semibold"
+          >
+            Generate landing page
+          </button>
+        )}
+
+        {(status === "LANDING_DRAFT" || status === "LANDING_LIVE") && (
+          <Link
+            href={`/experiment/${experimentId}/landing-page`}
+            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold no-underline"
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            Landing page editor
+          </Link>
+        )}
+
+        {status === "LANDING_LIVE" && (
+          <button
+            type="button"
+            onClick={() => setShowMetrics((v) => !v)}
+            className="fv-btn-ghost px-3 py-1.5 text-xs font-semibold"
+          >
+            Live metrics
+          </button>
+        )}
+
+        {(status === "INSIGHT_READY" || status === "COMPLETED") && (
+          <button
+            type="button"
+            onClick={() => setShowInsight((v) => !v)}
+            className="fv-btn-ghost px-3 py-1.5 text-xs font-semibold"
+          >
+            Insight report
+          </button>
+        )}
+
+        {status === "RESEARCH_FAILED" && (
+          <button
+            type="button"
+            onClick={() => void handleRetryResearch()}
+            disabled={retrying}
+            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-300 disabled:opacity-50"
+          >
+            {retrying ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            Retry research
+          </button>
+        )}
+
+        {status === "INSIGHT_FAILED" && (
+          <button
+            type="button"
+            onClick={() => void handleRetryInsight()}
+            disabled={retryingInsight}
+            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-300 disabled:opacity-50"
+          >
+            {retryingInsight ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3.5 w-3.5" />
+            )}
+            Retry insight
+          </button>
+        )}
+
+        {status === "ARCHIVED" && (
+          <button
+            type="button"
+            onClick={() => void handleUnarchive()}
+            disabled={unarchiving}
+            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+          >
+            {unarchiving ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ArchiveRestore className="h-3.5 w-3.5" />
+            )}
+            Unarchive
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <div className="fv-error mb-3 shrink-0 px-4 py-2 text-sm">{error}</div>
       )}
 
-      {RESEARCH_IN_PROGRESS.has(status) && (
-        <ResearchProgress
-          experimentId={experimentId}
-          onComplete={handleResearchComplete}
-        />
-      )}
-
-      {status === "RESEARCH_READY" && (
-        <div className="space-y-6">
+      {showTemplatePicker && status === "RESEARCH_READY" && (
+        <div className="fv-card mb-4 shrink-0 p-4">
           <TemplatePicker
             selectedId={selectedTemplate}
             onSelect={setSelectedTemplate}
@@ -347,92 +412,26 @@ export function ExperimentDetailPanel({
         </div>
       )}
 
-      {status === "RESEARCH_FAILED" && (
-        <div className="fv-error px-6 py-8 text-center">
-          <h2 className="text-lg font-semibold text-red-300">
-            Research failed
-          </h2>
-          <p className="mt-2 text-sm text-red-200/80">
-            Something went wrong during market research. You can retry and
-            we&apos;ll pick up where we left off.
-          </p>
-          <button
-            type="button"
-            onClick={handleRetryResearch}
-            disabled={retrying}
-            className="fv-btn-ghost mt-6 inline-flex items-center gap-2 border-[rgba(239,68,68,0.3)] px-5 py-2.5 text-sm font-semibold text-red-300 hover:border-[rgba(239,68,68,0.5)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {retrying ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Retry research
-          </button>
+      {status === "LANDING_GENERATING" && (
+        <div className="mb-4 shrink-0">
+          <LandingGenerationProgress
+            experimentId={experimentId}
+            onComplete={loadExperiment}
+          />
         </div>
       )}
 
-      {status === "LANDING_GENERATING" && (
-        <LandingGenerationProgress
-          experimentId={experimentId}
-          onComplete={loadExperiment}
-        />
-      )}
-
-      {status === "LANDING_LIVE" && (
-        <div className="space-y-6">
+      {showMetrics && status === "LANDING_LIVE" && (
+        <div className="mb-4 shrink-0">
           <MetricsWidget
             experimentId={experimentId}
             onInsightStarted={loadExperiment}
           />
-          <div className="fv-card px-6 py-8">
-            <h2 className="text-lg font-semibold text-[var(--fv-text)]">
-              Landing page is live
-            </h2>
-            <p className="mt-2 text-sm text-[var(--fv-text-soft)]">
-              Your landing page is published and collecting traffic.
-            </p>
-            <Link
-              href={`/experiment/${experimentId}/landing-page`}
-              className="fv-btn-primary mt-6 inline-flex px-5 py-2.5 text-sm no-underline"
-            >
-              Open landing page editor
-            </Link>
-          </div>
         </div>
       )}
 
-      {status === "LANDING_DRAFT" && (
-        <div className="fv-card px-6 py-8">
-          <h2 className="text-lg font-semibold text-[var(--fv-text)]">
-            Landing page draft ready
-          </h2>
-          <p className="mt-2 text-sm text-[var(--fv-text-soft)]">
-            Review and customize your landing page before publishing.
-          </p>
-          <Link
-            href={`/experiment/${experimentId}/landing-page`}
-            className="fv-btn-primary mt-6 inline-flex px-5 py-2.5 text-sm no-underline"
-          >
-            Review & customize landing page
-          </Link>
-        </div>
-      )}
-
-      {status === "INSIGHT_GENERATING" && (
-        <div className="fv-card flex flex-col items-center px-6 py-16 text-center">
-          <Loader2 className="h-8 w-8 animate-spin text-[var(--fv-accent)]" />
-          <p className="mt-4 text-sm font-medium text-[var(--fv-text)]">
-            Generating insight report…
-          </p>
-          <p className="mt-1 text-sm text-[var(--fv-text-muted)]">
-            This usually takes under a minute.
-          </p>
-        </div>
-      )}
-
-      {status === "INSIGHT_READY" && (
-        <div className="space-y-8">
+      {showInsight && (status === "INSIGHT_READY" || status === "COMPLETED") && (
+        <div className="mb-4 max-h-[40vh] shrink-0 space-y-4 overflow-y-auto">
           <InsightReportViewer experimentId={experimentId} />
           <DecisionPanel
             experimentId={experimentId}
@@ -441,91 +440,13 @@ export function ExperimentDetailPanel({
         </div>
       )}
 
-      {status === "INSIGHT_FAILED" && (
-        <div className="fv-error px-6 py-8 text-center">
-          <h2 className="text-lg font-semibold text-red-300">
-            Insight generation failed
-          </h2>
-          <p className="mt-2 text-sm text-red-200/80">
-            Something went wrong while building your insight report.
-          </p>
-          <button
-            type="button"
-            onClick={handleRetryInsight}
-            disabled={retryingInsight}
-            className="fv-btn-ghost mt-6 inline-flex items-center gap-2 border-[rgba(239,68,68,0.3)] px-5 py-2.5 text-sm font-semibold text-red-300 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {retryingInsight ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4" />
-            )}
-            Retry insight generation
-          </button>
-        </div>
-      )}
-
-      {status === "ARCHIVED" && (
-        <div className="fv-card px-6 py-8 text-center">
-          <h2 className="text-lg font-semibold text-[var(--fv-text)]">
-            Experiment archived
-          </h2>
-          <p className="mt-2 text-sm text-[var(--fv-text-soft)]">
-            This experiment is archived. Restore it to review reports and
-            continue where you left off.
-          </p>
-          <button
-            type="button"
-            onClick={handleUnarchive}
-            disabled={unarchiving}
-            className="fv-btn-ghost mt-6 inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {unarchiving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <ArchiveRestore className="h-4 w-4" />
-            )}
-            Unarchive
-          </button>
-        </div>
-      )}
-
-      {!RESEARCH_IN_PROGRESS.has(status) &&
-        status !== "RESEARCH_READY" &&
-        status !== "RESEARCH_FAILED" &&
-        status !== "LANDING_DRAFT" &&
-        status !== "LANDING_LIVE" &&
-        status !== "LANDING_GENERATING" &&
-        status !== "INSIGHT_GENERATING" &&
-        status !== "INSIGHT_READY" &&
-        status !== "INSIGHT_FAILED" &&
-        status !== "ARCHIVED" && (
-          <div className="fv-card px-6 py-8 text-center">
-            <p className="text-sm text-[var(--fv-text-soft)]">
-              This experiment is in{" "}
-              <span className="font-medium text-[var(--fv-text)]">
-                {status.replace(/_/g, " ").toLowerCase()}
-              </span>{" "}
-              status.
-            </p>
-            {(status === "DRAFT" ||
-              status === "REFINING" ||
-              status === "REFINED") && (
-              <Link
-                href="/new"
-                className="mt-4 inline-block text-sm font-semibold text-[var(--fv-accent)] no-underline hover:text-[var(--fv-accent-hover)]"
-              >
-                Continue in chat
-              </Link>
-            )}
-          </div>
-        )}
-
       {showWaitlistSection && (
-        <div className="mt-6">
-          <WaitlistSection experimentId={experimentId} />
-        </div>
+        <WaitlistSection experimentId={experimentId} />
       )}
+
+      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-[var(--fv-border)]">
+        <ChatInterface experimentId={experimentId} />
+      </div>
 
       <ValidationReportPanel
         experimentId={experimentId}

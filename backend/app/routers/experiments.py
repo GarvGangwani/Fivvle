@@ -158,6 +158,7 @@ class GetExperimentDetailResponse(BaseModel):
     id: UUID
     name: str | None = None
     status: ExperimentStatus
+    thread_id: UUID | None = None
     validation_report: ExperimentValidationReportSummary | None = None
 
 
@@ -953,6 +954,7 @@ async def unarchive_experiment(
         id=experiment.id,
         name=experiment.name,
         status=experiment.status,
+        thread_id=experiment.thread_id,
         validation_report=summary,
     )
 
@@ -998,6 +1000,7 @@ async def rename_experiment(
         id=experiment.id,
         name=experiment.name,
         status=experiment.status,
+        thread_id=experiment.thread_id,
         validation_report=summary,
     )
 
@@ -1037,5 +1040,6 @@ async def get_experiment_detail(
         id=experiment.id,
         name=experiment.name,
         status=experiment.status,
+        thread_id=experiment.thread_id,
         validation_report=summary,
     )

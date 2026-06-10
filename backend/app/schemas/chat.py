@@ -8,7 +8,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.db.enums import ChatTurnKind, ExperimentStatus
+from app.db.enums import ChatRole, ChatTurnKind, ExperimentStatus
 from app.services.chat_service import ChatTurnResult
 
 
@@ -56,3 +56,19 @@ class ChatTurnResponse(BaseModel):
             experiment_status=result.experiment_status,
             research_error_detail=result.research_error_detail,
         )
+
+
+class ChatMessageItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    role: ChatRole
+    content: str
+    turn_kind: ChatTurnKind | None
+    created_at: datetime
+
+
+class ExperimentChatMessagesResponse(BaseModel):
+    thread_id: UUID | None
+    experiment_id: UUID
+    messages: list[ChatMessageItem]

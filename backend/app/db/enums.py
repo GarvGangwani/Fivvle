@@ -87,6 +87,7 @@ class ChatRole(StrEnum):
 
 class ChatTurnKind(StrEnum):
     NORMAL_CHAT = "normal_chat"
+    DISCUSS = "discuss"
     REFINEMENT_CLARIFY = "refinement_clarify"
     REFINEMENT_FINALIZE = "refinement_finalize"
     DISPATCH_ANNOUNCE = "dispatch_announce"

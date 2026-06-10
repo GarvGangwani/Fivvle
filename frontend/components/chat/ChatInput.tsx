@@ -52,7 +52,7 @@ export function ChatInput({
     if (!el) return;
     const text = el.value.trim();
     if (!text || disabled) return;
-    onSend(text, deepResearch);
+    onSend(text, deepResearchLocked ? false : deepResearch);
     el.value = "";
     el.style.height = "auto";
   }
@@ -63,8 +63,6 @@ export function ChatInput({
       handleSend();
     }
   }
-
-  const effectiveDeepResearch = deepResearchLocked ? true : deepResearch;
 
   return (
     <div className="sticky bottom-0 z-10 bg-gradient-to-t from-[var(--fv-bg)] via-[var(--fv-bg)]/95 to-transparent px-6 pb-4 pt-6 backdrop-blur-md sm:px-12">
@@ -91,17 +89,17 @@ export function ChatInput({
             <Paperclip className="h-4 w-4" />
           </button>
 
-          <button
-            type="button"
-            onClick={() => !deepResearchLocked && setDeepResearch((v) => !v)}
-            disabled={disabled || deepResearchLocked}
-            className={`fv-deep-toggle ${
-              effectiveDeepResearch ? "fv-deep-toggle-on" : ""
-            }`}
-          >
-            <Zap className="h-[13px] w-[13px]" />
-            Deep Research {effectiveDeepResearch ? "ON" : "OFF"}
-          </button>
+          {!deepResearchLocked && (
+            <button
+              type="button"
+              onClick={() => setDeepResearch((v) => !v)}
+              disabled={disabled}
+              className={`fv-deep-toggle ${deepResearch ? "fv-deep-toggle-on" : ""}`}
+            >
+              <Zap className="h-[13px] w-[13px]" />
+              Deep Research {deepResearch ? "ON" : "OFF"}
+            </button>
+          )}
 
           <button
             type="button"

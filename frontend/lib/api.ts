@@ -4,6 +4,7 @@ import type {
   ChatTurnResponse,
   Experiment,
   ExperimentAnalytics,
+  ExperimentChatMessagesResponse,
   ExperimentDetail,
   ExperimentSummary,
   FounderDecision,
@@ -186,6 +187,14 @@ export async function chatTurn(
     method: "POST",
     body,
   });
+}
+
+export async function getExperimentChatMessages(
+  experimentId: string,
+): Promise<ExperimentChatMessagesResponse> {
+  return apiFetch<ExperimentChatMessagesResponse>(
+    `/chat/experiments/${experimentId}/messages`,
+  );
 }
 
 export async function refineExperiment(
