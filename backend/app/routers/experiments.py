@@ -62,6 +62,7 @@ from app.schemas.experiment import (
     CreateExperimentRequest,
     ExperimentResponse,
     RegenerateRefinementRequest,
+    RenameExperimentRequest,
     ResearchStatusResponse,
 )
 from app.schemas.validation_report import ValidationReport as ValidationReportSchema
@@ -147,6 +148,7 @@ class GetExperimentDetailResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: UUID
+    name: str | None = None
     status: ExperimentStatus
     validation_report: ExperimentValidationReportSummary | None = None
 
@@ -204,7 +206,12 @@ async def create_experiment(
 ) -> Experiment:
     user_id = str(current_user.id)  # cache before try — avoids lazy-load on broken session
     try:
-        return await create_experiment_with_refinement(db, current_user, body.raw_idea)
+        return await create_experiment_with_refinement(
+            db,
+            current_user,
+            body.raw_idea,
+            body.name,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
@@ -847,6 +854,52 @@ async def unarchive_experiment(
 
     return GetExperimentDetailResponse(
         id=experiment.id,
+        name=experiment.name,
+        status=experiment.status,
+        validation_report=summary,
+    )
+
+
+@router.patch(
+    "/{experiment_id}/name",
+    response_model=GetExperimentDetailResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def rename_experiment(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: RenameExperimentRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> GetExperimentDetailResponse:
+    result = await db.execute(
+        select(Experiment)
+        .options(selectinload(Experiment.validation_report))
+        .where(Experiment.id == experiment_id),
+    )
+    experiment = result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    stripped = body.name.strip()
+    if not stripped:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="name must not be empty",
+        )
+
+    experiment.name = stripped
+    await db.commit()
+
+    summary = None
+    if experiment.validation_report is not None:
+        summary = _aggregate_validation_report(experiment.validation_report.raw_report)
+
+    return GetExperimentDetailResponse(
+        id=experiment.id,
+        name=experiment.name,
         status=experiment.status,
         validation_report=summary,
     )
@@ -885,6 +938,7 @@ async def get_experiment_detail(
 
     return GetExperimentDetailResponse(
         id=experiment.id,
+        name=experiment.name,
         status=experiment.status,
         validation_report=summary,
     )

@@ -122,15 +122,30 @@ export async function syncUser(): Promise<UserSyncResponse> {
 
 export async function createExperiment(
   raw_idea: string,
+  name?: string | null,
 ): Promise<ExperimentDetail> {
+  const body: { raw_idea: string; name?: string } = { raw_idea };
+  if (name?.trim()) {
+    body.name = name.trim();
+  }
   return apiFetch<ExperimentDetail>("/experiments", {
     method: "POST",
-    body: { raw_idea },
+    body,
   });
 }
 
 export async function getExperiment(id: string): Promise<Experiment> {
   return apiFetch<Experiment>(`/experiments/${id}`);
+}
+
+export async function renameExperiment(
+  id: string,
+  name: string,
+): Promise<Experiment> {
+  return apiFetch<Experiment>(`/experiments/${id}/name`, {
+    method: "PATCH",
+    body: { name },
+  });
 }
 
 export async function getValidationReport(

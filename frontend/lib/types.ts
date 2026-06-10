@@ -138,6 +138,7 @@ export interface RefinedIdea {
 export interface ExperimentSummary {
   id: string;
   slug: string | null;
+  name?: string | null;
   raw_idea: string;
   status: string;
   created_at: string;
@@ -186,6 +187,7 @@ export interface ExperimentValidationReportSummary {
 /** GET /experiments/{id} response shape */
 export interface Experiment {
   id: string;
+  name?: string | null;
   status: string;
   validation_report: ExperimentValidationReportSummary | null;
 }

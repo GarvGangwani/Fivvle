@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Plus } from "lucide-react";
+import { getExperimentDisplayName } from "@/lib/experiment-name";
 import type { ExperimentSummary } from "@/lib/types";
 
 const VALIDATED_STATUSES = new Set([
@@ -27,7 +28,6 @@ const IN_PROGRESS_STATUSES = new Set([
 ]);
 
 type ExperimentWithRefinement = ExperimentSummary & {
-  refined_idea?: { one_liner?: string; refined_one_liner?: string } | null;
   validation_report?: {
     overall_recommendation?: string | null;
     total_finding_count?: number;
@@ -37,17 +37,6 @@ type ExperimentWithRefinement = ExperimentSummary & {
 interface DashboardSidebarProps {
   experiments: ExperimentWithRefinement[];
   selectedId?: string | null;
-}
-
-function getIdeaTitle(experiment: ExperimentWithRefinement): string {
-  const oneLiner =
-    experiment.refined_idea?.one_liner ??
-    experiment.refined_idea?.refined_one_liner;
-  if (oneLiner) return oneLiner;
-
-  const raw = experiment.raw_idea;
-  if (raw.length <= 50) return raw;
-  return `${raw.slice(0, 50)}…`;
 }
 
 function getStatusLine(experiment: ExperimentWithRefinement): {
@@ -113,7 +102,7 @@ export function DashboardSidebar({
                 }`}
               >
                 <p className="text-[13px] font-medium text-fv-text">
-                  {getIdeaTitle(experiment)}
+                  {getExperimentDisplayName(experiment)}
                 </p>
                 <div className="mt-1 flex items-center gap-1.5">
                   <span

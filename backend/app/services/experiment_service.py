@@ -58,10 +58,14 @@ class InvalidExperimentState(DomainError):  # noqa: N818
 # ---------------------------------------------------------------------------
 
 
+_NAME_MAX_LEN = 100
+
+
 async def create_experiment_with_refinement(
     db: AsyncSession,
     user: User,
     raw_idea: str,
+    name: str | None = None,
 ) -> Experiment:
     """Create an Experiment and run first-pass AI refinement synchronously.
 
@@ -91,9 +95,17 @@ async def create_experiment_with_refinement(
     if len(raw_idea) > _RAW_IDEA_MAX_LEN:
         raise ValueError(f"raw_idea must be at most {_RAW_IDEA_MAX_LEN} characters")
 
+    stored_name: str | None = None
+    if name is not None:
+        stripped_name = name.strip()
+        if len(stripped_name) > _NAME_MAX_LEN:
+            raise ValueError(f"name must be at most {_NAME_MAX_LEN} characters")
+        stored_name = stripped_name or None
+
     experiment = Experiment(
         user_id=user.id,
         raw_idea=raw_idea,
+        name=stored_name,
         status=ExperimentStatus.DRAFT,
         refinement_count=0,
     )

@@ -37,6 +37,20 @@ class CreateExperimentRequest(BaseModel):
             "and the proposed solution. 2-5 sentences."
         ),
     )
+    name: str | None = Field(
+        default=None,
+        max_length=100,
+        description="Optional user-defined project name.",
+    )
+
+
+class RenameExperimentRequest(BaseModel):
+    """Body for PATCH /experiments/{id}/name."""
+
+    name: str = Field(
+        max_length=100,
+        description="User-defined project name (1-100 characters).",
+    )
 
 
 class RegenerateRefinementRequest(BaseModel):
@@ -64,6 +78,7 @@ class ExperimentResponse(BaseModel):
     id: UUID
     user_id: UUID
     slug: str | None
+    name: str | None
     raw_idea: str
     refined_idea: RefinedIdea | None
     status: ExperimentStatus

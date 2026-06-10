@@ -47,6 +47,10 @@ class Experiment(Base):
         nullable=True,
         index=True,
     )
+    name: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
     raw_idea: Mapped[str] = mapped_column(
         Text,
         nullable=False,

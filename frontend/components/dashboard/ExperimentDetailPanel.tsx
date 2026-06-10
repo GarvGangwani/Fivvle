@@ -23,6 +23,7 @@ import {
   type TemplateId,
 } from "@/components/research/TemplatePicker";
 import { ValidationReportPanel } from "@/components/research/ValidationReportPanel";
+import { getExperimentDisplayName } from "@/lib/experiment-name";
 
 const RESEARCH_IN_PROGRESS = new Set([
   "RESEARCHING",
@@ -35,10 +36,14 @@ const RESEARCH_IN_PROGRESS = new Set([
 
 interface ExperimentDetailPanelProps {
   experimentId: string;
+  rawIdea?: string;
+  nameRefreshKey?: number;
 }
 
 export function ExperimentDetailPanel({
   experimentId,
+  rawIdea = "",
+  nameRefreshKey = 0,
 }: ExperimentDetailPanelProps) {
   const [experiment, setExperiment] = useState<Experiment | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,7 +76,7 @@ export function ExperimentDetailPanel({
   useEffect(() => {
     setLoading(true);
     void loadExperiment();
-  }, [loadExperiment]);
+  }, [loadExperiment, nameRefreshKey]);
 
   useEffect(() => {
     if (
@@ -172,11 +177,15 @@ export function ExperimentDetailPanel({
 
   const status = experiment.status;
   const hasValidationReport = experiment.validation_report != null;
+  const pageTitle = getExperimentDisplayName({
+    name: experiment.name,
+    raw_idea: rawIdea,
+  });
 
   return (
     <div className="mx-auto max-w-3xl">
+      <h1 className="sr-only">{pageTitle}</h1>
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-bold text-[var(--fv-text)]">Experiment</h1>
         <StatusBadge status={status} />
       </div>
 

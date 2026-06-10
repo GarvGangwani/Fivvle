@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { ChevronDown, Lightbulb } from "lucide-react";
-import { listExperiments, ApiError } from "@/lib/api";
+import { listExperiments, renameExperiment, ApiError } from "@/lib/api";
+import { getExperimentDisplayName } from "@/lib/experiment-name";
 import type { ExperimentSummary } from "@/lib/types";
 import { DashboardSidebar } from "./DashboardSidebar";
 import { ExperimentDetailPanel } from "./ExperimentDetailPanel";
@@ -46,10 +47,112 @@ function DashboardLoadingSkeleton() {
   );
 }
 
+interface ExperimentNameHeaderProps {
+  experiment: ExperimentSummary;
+  onRenamed: () => void;
+}
+
+function ExperimentNameHeader({
+  experiment,
+  onRenamed,
+}: ExperimentNameHeaderProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const displayName = getExperimentDisplayName(experiment);
+
+  useEffect(() => {
+    if (editing) {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing]);
+
+  function startEditing() {
+    setDraft(experiment.name?.trim() ?? "");
+    setError(null);
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    setEditing(false);
+    setDraft("");
+    setError(null);
+  }
+
+  async function saveName() {
+    const trimmed = draft.trim();
+    if (!trimmed) {
+      setError("Name cannot be empty.");
+      return;
+    }
+    if (trimmed === experiment.name?.trim()) {
+      cancelEditing();
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    try {
+      await renameExperiment(experiment.id, trimmed);
+      setEditing(false);
+      onRenamed();
+    } catch {
+      setError("Could not save name. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void saveName();
+    } else if (event.key === "Escape") {
+      cancelEditing();
+    }
+  }
+
+  return (
+    <div className="mb-6">
+      {editing ? (
+        <div>
+          <input
+            ref={inputRef}
+            type="text"
+            value={draft}
+            maxLength={100}
+            disabled={saving}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => void saveName()}
+            onKeyDown={handleKeyDown}
+            className="w-full max-w-xl rounded-xl border border-white/[0.12] bg-[var(--fv-surface-2)] px-4 py-2.5 text-xl font-bold text-[var(--fv-text)] outline-none focus:border-[var(--fv-accent)]/50"
+            aria-label="Project name"
+          />
+          {error && <p className="mt-2 text-sm text-red-300">{error}</p>}
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={startEditing}
+          className="cursor-pointer text-left text-xl font-bold text-[var(--fv-text)] transition-colors hover:text-[var(--fv-accent)]"
+          title="Click to rename"
+        >
+          {displayName}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function DashboardContent() {
   const searchParams = useSearchParams();
   const selectedId = searchParams.get("e");
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
+  const [nameRefreshKey, setNameRefreshKey] = useState(0);
 
   const fetchExperiments = useCallback(async () => {
     try {
@@ -94,6 +197,10 @@ export function DashboardContent() {
   const { experiments } = loadState;
   const effectiveSelectedId =
     selectedId ?? (experiments.length > 0 ? experiments[0].id : null);
+  const selectedExperiment =
+    effectiveSelectedId != null
+      ? experiments.find((experiment) => experiment.id === effectiveSelectedId)
+      : undefined;
 
   return (
     <div className="flex h-[calc(100vh-4rem)]">
@@ -118,7 +225,7 @@ export function DashboardContent() {
             >
               {experiments.map((exp) => (
                 <option key={exp.id} value={exp.id}>
-                  {exp.raw_idea.slice(0, 60)}
+                  {getExperimentDisplayName(exp)}
                 </option>
               ))}
             </select>
@@ -155,8 +262,21 @@ export function DashboardContent() {
               ))}
             </div>
           </div>
-        ) : effectiveSelectedId ? (
-          <ExperimentDetailPanel experimentId={effectiveSelectedId} />
+        ) : effectiveSelectedId && selectedExperiment ? (
+          <>
+            <ExperimentNameHeader
+              experiment={selectedExperiment}
+              onRenamed={() => {
+                void fetchExperiments();
+                setNameRefreshKey((key) => key + 1);
+              }}
+            />
+            <ExperimentDetailPanel
+              experimentId={effectiveSelectedId}
+              rawIdea={selectedExperiment.raw_idea}
+              nameRefreshKey={nameRefreshKey}
+            />
+          </>
         ) : (
           <div className="mx-auto max-w-md py-16 text-center">
             <p className="text-sm text-[var(--fv-text-muted)]">
