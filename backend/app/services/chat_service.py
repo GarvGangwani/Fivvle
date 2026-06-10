@@ -9,9 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from sqlalchemy import select
+from sqlalchemy import and_, delete, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -72,6 +72,27 @@ _DISCUSSION_CHAT_MAX_TOKENS = 1536
 
 class ChatAuthorizationError(Exception):
     """Raised when a thread or experiment is not owned by the requesting user."""
+
+
+class ChatMessageEditError(Exception):
+    """Raised when the edit target is missing or not a user message."""
+
+
+@dataclass(frozen=True)
+class ChatEditTurnResult:
+    thread_id: UUID
+    edited_message_id: UUID
+    message_id: UUID
+    experiment_id: UUID | None
+    assistant_message: str
+    turn_kind: ChatTurnKind
+    clarifying_dimension: str | None
+    pipeline_dispatched: bool
+    dispatched_at: datetime | None
+    experiment_status: ExperimentStatus | None
+    research_error_detail: str | None
+    user_facing_error: UserFacingError | None
+    messages: list[ChatMessage]
 
 
 @dataclass(frozen=True)
@@ -217,6 +238,82 @@ async def _load_dr_chat_history(
             continue
         history.append((row.role.value, row.content))
     return history
+
+
+async def _load_history_before_message(
+    db: AsyncSession,
+    thread_id: UUID,
+    before: ChatMessage,
+    *,
+    plain_chat_only: bool,
+) -> list[tuple[str, str]]:
+    """Messages strictly before ``before`` in thread order (for edit replay)."""
+    result = await db.execute(
+        select(ChatMessage)
+        .where(
+            ChatMessage.thread_id == thread_id,
+            or_(
+                ChatMessage.created_at < before.created_at,
+                and_(
+                    ChatMessage.created_at == before.created_at,
+                    ChatMessage.id < before.id,
+                ),
+            ),
+        )
+        .order_by(ChatMessage.created_at.asc())
+    )
+    history: list[tuple[str, str]] = []
+    for row in result.scalars().all():
+        if row.turn_kind in _SYSTEM_TURN_KINDS_EXCLUDED_FROM_DR_HISTORY:
+            continue
+        if plain_chat_only and row.turn_kind is not None:
+            if row.turn_kind not in _PLAIN_CHAT_HISTORY_TURN_KINDS:
+                continue
+        history.append((row.role.value, row.content))
+    return history
+
+
+async def _delete_messages_after(
+    db: AsyncSession,
+    thread_id: UUID,
+    anchor: ChatMessage,
+) -> None:
+    """Remove every message chronologically after ``anchor``.
+
+    Uses ``created_at`` as the primary ordering key. When multiple rows share
+    the same timestamp (common when tests batch-insert or the DB truncates to
+    seconds), also removes co-timestamp siblings except the anchor itself —
+    UUID lexical order does not reflect insertion order.
+    """
+    await db.execute(
+        delete(ChatMessage).where(
+            ChatMessage.thread_id == thread_id,
+            or_(
+                ChatMessage.created_at > anchor.created_at,
+                and_(
+                    ChatMessage.created_at == anchor.created_at,
+                    ChatMessage.id != anchor.id,
+                ),
+            ),
+        )
+    )
+
+
+async def _list_thread_messages_after_edit(
+    db: AsyncSession,
+    thread_id: UUID,
+) -> list[ChatMessage]:
+    result = await db.execute(
+        select(ChatMessage)
+        .where(ChatMessage.thread_id == thread_id)
+        .order_by(ChatMessage.created_at.asc())
+    )
+    messages: list[ChatMessage] = []
+    for row in result.scalars().all():
+        if row.turn_kind in _SYSTEM_TURN_KINDS_EXCLUDED_FROM_DR_HISTORY:
+            continue
+        messages.append(row)
+    return messages
 
 
 async def _load_plain_chat_history(
@@ -512,6 +609,7 @@ async def _handle_plain_chat_turn(
     message: str,
     thread_id: UUID | None,
     experiment_id: UUID | None,
+    existing_user_message: ChatMessage | None = None,
 ) -> ChatTurnResult:
     thread = await _resolve_thread(
         db,
@@ -530,19 +628,25 @@ async def _handle_plain_chat_turn(
             message=message,
             thread=thread,
             experiment=experiment,
+            existing_user_message=existing_user_message,
         )
 
-    chat_history = await _load_plain_chat_history(db, thread.id)
-
-    user_msg = ChatMessage(
-        thread_id=thread.id,
-        role=ChatRole.USER,
-        content=message,
-        experiment_id=experiment.id if experiment is not None else None,
-        turn_kind=None,
-    )
-    db.add(user_msg)
-    await db.flush()
+    if existing_user_message is not None:
+        chat_history = await _load_history_before_message(
+            db, thread.id, existing_user_message, plain_chat_only=True
+        )
+        user_msg = existing_user_message
+    else:
+        chat_history = await _load_plain_chat_history(db, thread.id)
+        user_msg = ChatMessage(
+            thread_id=thread.id,
+            role=ChatRole.USER,
+            content=message,
+            experiment_id=experiment.id if experiment is not None else None,
+            turn_kind=None,
+        )
+        db.add(user_msg)
+        await db.flush()
 
     assistant_text = await reply_plain(
         db,
@@ -584,18 +688,24 @@ async def _handle_discussion_turn(
     message: str,
     thread: ChatThread,
     experiment: Experiment,
+    existing_user_message: ChatMessage | None = None,
 ) -> ChatTurnResult:
-    chat_history = await _load_dr_chat_history(db, thread.id)
-
-    user_msg = ChatMessage(
-        thread_id=thread.id,
-        role=ChatRole.USER,
-        content=message,
-        experiment_id=experiment.id,
-        turn_kind=None,
-    )
-    db.add(user_msg)
-    await db.flush()
+    if existing_user_message is not None:
+        chat_history = await _load_history_before_message(
+            db, thread.id, existing_user_message, plain_chat_only=False
+        )
+        user_msg = existing_user_message
+    else:
+        chat_history = await _load_dr_chat_history(db, thread.id)
+        user_msg = ChatMessage(
+            thread_id=thread.id,
+            role=ChatRole.USER,
+            content=message,
+            experiment_id=experiment.id,
+            turn_kind=None,
+        )
+        db.add(user_msg)
+        await db.flush()
 
     assistant_text = await reply_discussion(db, experiment, chat_history, message)
 
@@ -633,6 +743,7 @@ async def _handle_deep_research_turn(
     experiment_id: UUID | None,
     idempotency_key: str | None,
     dispatcher: ResearchDispatcher,
+    existing_user_message: ChatMessage | None = None,
 ) -> ChatTurnResult:
     if idempotency_key is None:
         raise ValueError("idempotency_key required for deep_research=true")
@@ -644,25 +755,31 @@ async def _handle_deep_research_turn(
         first_message_for_title=message if thread_id is None else None,
     )
 
-    cached = await _fetch_idempotent_result(db, thread.id, idempotency_key)
-    if cached is not None:
-        return cached
+    if existing_user_message is None:
+        cached = await _fetch_idempotent_result(db, thread.id, idempotency_key)
+        if cached is not None:
+            return cached
 
     experiment = await _resolve_refinement_experiment(
         db, user, thread, message, experiment_id
     )
 
-    chat_history = await _load_dr_chat_history(db, thread.id)
-
-    user_msg = ChatMessage(
-        thread_id=thread.id,
-        role=ChatRole.USER,
-        content=message,
-        experiment_id=experiment.id,
-        turn_kind=None,
-    )
-    db.add(user_msg)
-    await db.flush()
+    if existing_user_message is not None:
+        chat_history = await _load_history_before_message(
+            db, thread.id, existing_user_message, plain_chat_only=False
+        )
+        user_msg = existing_user_message
+    else:
+        chat_history = await _load_dr_chat_history(db, thread.id)
+        user_msg = ChatMessage(
+            thread_id=thread.id,
+            role=ChatRole.USER,
+            content=message,
+            experiment_id=experiment.id,
+            turn_kind=None,
+        )
+        db.add(user_msg)
+        await db.flush()
 
     try:
         decision = await refinement_service.run_turn(
@@ -790,3 +907,81 @@ async def _handle_deep_research_turn(
     await _store_idempotency(db, thread.id, idempotency_key, result)
     await db.commit()
     return result
+
+
+async def handle_edit_turn(
+    db: AsyncSession,
+    user: User,
+    thread_id: UUID,
+    message_id: UUID,
+    new_content: str,
+    dispatcher: ResearchDispatcher,
+) -> ChatEditTurnResult:
+    """Edit a user message, truncate downstream turns, and replay from that point."""
+    new_content = _sanitize_user_message(new_content)
+    if not new_content.strip():
+        raise ValueError("new_content must not be empty")
+
+    thread = await _resolve_thread(db, user, thread_id)
+
+    result = await db.execute(
+        select(ChatMessage).where(
+            ChatMessage.id == message_id,
+            ChatMessage.thread_id == thread.id,
+        )
+    )
+    edited_msg = result.scalar_one_or_none()
+    if edited_msg is None:
+        raise ChatMessageEditError("Message not found in this thread")
+    if edited_msg.role != ChatRole.USER:
+        raise ChatMessageEditError("Only user messages can be edited")
+
+    await _delete_messages_after(db, thread.id, edited_msg)
+    edited_msg.content = new_content
+    await db.flush()
+
+    experiment = await _resolve_experiment_for_plain_chat(
+        db,
+        user,
+        thread,
+        edited_msg.experiment_id,
+    )
+
+    if experiment is not None and experiment.status == ExperimentStatus.REFINING:
+        turn_result = await _handle_deep_research_turn(
+            db,
+            user=user,
+            message=new_content,
+            thread_id=thread.id,
+            experiment_id=experiment.id,
+            idempotency_key=str(uuid4()),
+            dispatcher=dispatcher,
+            existing_user_message=edited_msg,
+        )
+    else:
+        turn_result = await _handle_plain_chat_turn(
+            db,
+            user=user,
+            message=new_content,
+            thread_id=thread.id,
+            experiment_id=edited_msg.experiment_id,
+            existing_user_message=edited_msg,
+        )
+
+    messages = await _list_thread_messages_after_edit(db, thread.id)
+
+    return ChatEditTurnResult(
+        thread_id=turn_result.thread_id,
+        edited_message_id=edited_msg.id,
+        message_id=turn_result.message_id,
+        experiment_id=turn_result.experiment_id,
+        assistant_message=turn_result.assistant_message,
+        turn_kind=turn_result.turn_kind,
+        clarifying_dimension=turn_result.clarifying_dimension,
+        pipeline_dispatched=turn_result.pipeline_dispatched,
+        dispatched_at=turn_result.dispatched_at,
+        experiment_status=turn_result.experiment_status,
+        research_error_detail=turn_result.research_error_detail,
+        user_facing_error=turn_result.user_facing_error,
+        messages=messages,
+    )

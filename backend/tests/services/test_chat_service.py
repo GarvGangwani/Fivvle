@@ -793,3 +793,66 @@ async def test_post_refinement_plain_chat_uses_discuss_turn(
     assistant_row = await db_session.get(ChatMessage, result.message_id)
     assert assistant_row is not None
     assert assistant_row.turn_kind == ChatTurnKind.DISCUSS
+
+
+@pytest.mark.asyncio
+@patch("app.services.chat_service.reply_plain", new_callable=AsyncMock)
+async def test_edit_user_message_truncates_downstream_and_replays(
+    mock_reply_plain: AsyncMock,
+    db_session: AsyncSession,
+) -> None:
+    mock_reply_plain.return_value = "Updated assistant reply."
+    user = await _persist_user(db_session)
+    thread = await _persist_thread(db_session, user)
+
+    user_msg = ChatMessage(
+        thread_id=thread.id,
+        role=ChatRole.USER,
+        content="Original question",
+    )
+    old_assistant = ChatMessage(
+        thread_id=thread.id,
+        role=ChatRole.ASSISTANT,
+        content="Old answer",
+        turn_kind=ChatTurnKind.NORMAL_CHAT,
+    )
+    later_user = ChatMessage(
+        thread_id=thread.id,
+        role=ChatRole.USER,
+        content="Follow-up",
+    )
+    db_session.add_all([user_msg, old_assistant, later_user])
+    await db_session.commit()
+    await db_session.refresh(user_msg)
+
+    from app.services.chat_service import handle_edit_turn
+
+    result = await handle_edit_turn(
+        db_session,
+        user,
+        thread.id,
+        user_msg.id,
+        "Edited question",
+        _RecordingDispatcher(),
+    )
+
+    assert result.edited_message_id == user_msg.id
+    assert result.assistant_message == "Updated assistant reply."
+
+    debug_lines = [
+        f"{m.role.value}: {m.content!r}" for m in result.messages
+    ]
+    assert len(result.messages) == 2, (
+        "expected edited user + new assistant; got:\n  "
+        + "\n  ".join(debug_lines)
+    )
+    assert result.messages[0].content == "Edited question"
+    assert result.messages[1].content == "Updated assistant reply."
+
+    remaining = await db_session.execute(
+        select(ChatMessage).where(ChatMessage.thread_id == thread.id)
+    )
+    rows = list(remaining.scalars().all())
+    assert len(rows) == 2
+    assert all(row.content != "Follow-up" for row in rows)
+    assert all(row.content != "Old answer" for row in rows)

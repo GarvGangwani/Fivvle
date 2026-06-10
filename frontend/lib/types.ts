@@ -304,6 +304,21 @@ export interface ChatMessage {
   timestamp?: string;
 }
 
+export interface ChatEditTurnResponse {
+  thread_id: string;
+  edited_message_id: string;
+  message_id: string;
+  experiment_id: string | null;
+  assistant_message: string;
+  turn_kind: ChatTurnKind;
+  clarifying_dimension: string | null;
+  pipeline_dispatched: boolean;
+  dispatched_at: string | null;
+  experiment_status: string | null;
+  research_error_detail: string | null;
+  messages: ChatHistoryMessage[];
+}
+
 export interface ChatTurnResponse {
   thread_id: string;
   message_id: string;

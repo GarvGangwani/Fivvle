@@ -72,3 +72,26 @@ class ExperimentChatMessagesResponse(BaseModel):
     thread_id: UUID | None
     experiment_id: UUID
     messages: list[ChatMessageItem]
+
+
+class ChatEditTurnRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    thread_id: UUID
+    message_id: UUID
+    new_content: Annotated[str, Field(min_length=1, max_length=4000)]
+
+
+class ChatEditTurnResponse(BaseModel):
+    thread_id: UUID
+    edited_message_id: UUID
+    message_id: UUID
+    experiment_id: UUID | None
+    assistant_message: str
+    turn_kind: ChatTurnKind
+    clarifying_dimension: str | None
+    pipeline_dispatched: bool
+    dispatched_at: datetime | None
+    experiment_status: ExperimentStatus | None
+    research_error_detail: str | None
+    messages: list[ChatMessageItem]

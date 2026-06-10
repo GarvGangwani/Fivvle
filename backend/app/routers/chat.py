@@ -20,12 +20,20 @@ from app.dispatchers.protocol import ResearchDispatcher
 from app.logging_config import get_logger
 from app.reliability.rate_limit import AUTH_RATE_LIMIT, limiter, user_key
 from app.schemas.chat import (
+    ChatEditTurnRequest,
+    ChatEditTurnResponse,
     ChatMessageItem,
     ChatTurnRequest,
     ChatTurnResponse,
     ExperimentChatMessagesResponse,
 )
-from app.services.chat_service import ChatAuthorizationError, handle_turn, list_experiment_chat_messages
+from app.services.chat_service import (
+    ChatAuthorizationError,
+    ChatMessageEditError,
+    handle_edit_turn,
+    handle_turn,
+    list_experiment_chat_messages,
+)
 from app.services.experiment_service import InvalidExperimentState
 
 _logger = get_logger(__name__)
@@ -81,6 +89,81 @@ async def chat_turn(
         request_id: str = getattr(request.state, "request_id", "unknown")
         _logger.error(
             "chat turn failed",
+            exc_info=exc,
+            error_type=type(exc).__name__,
+            user_id=str(current_user.id),
+            request_id=request_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "Internal error", "request_id": request_id},
+        ) from exc
+
+
+@router.post(
+    "/turn/edit",
+    response_model=ChatEditTurnResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def chat_turn_edit(
+    request: Request,
+    response: Response,
+    body: ChatEditTurnRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    dispatcher: Annotated[ResearchDispatcher, Depends(get_dispatcher_dep)],
+) -> ChatEditTurnResponse:
+    if get_settings().auto_fire_chat_enabled == "off":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    try:
+        result = await handle_edit_turn(
+            db,
+            current_user,
+            body.thread_id,
+            body.message_id,
+            body.new_content,
+            dispatcher,
+        )
+        return ChatEditTurnResponse(
+            thread_id=result.thread_id,
+            edited_message_id=result.edited_message_id,
+            message_id=result.message_id,
+            experiment_id=result.experiment_id,
+            assistant_message=result.assistant_message,
+            turn_kind=result.turn_kind,
+            clarifying_dimension=result.clarifying_dimension,
+            pipeline_dispatched=result.pipeline_dispatched,
+            dispatched_at=result.dispatched_at,
+            experiment_status=result.experiment_status,
+            research_error_detail=result.research_error_detail,
+            messages=[ChatMessageItem.model_validate(m) for m in result.messages],
+        )
+    except ChatAuthorizationError:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Forbidden",
+        ) from None
+    except ChatMessageEditError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from None
+    except InvalidExperimentState as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(exc),
+        ) from None
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from None
+    except Exception as exc:
+        request_id: str = getattr(request.state, "request_id", "unknown")
+        _logger.error(
+            "chat edit turn failed",
             exc_info=exc,
             error_type=type(exc).__name__,
             user_id=str(current_user.id),

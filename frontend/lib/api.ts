@@ -5,6 +5,7 @@ import type {
   Experiment,
   ExperimentAnalytics,
   ExperimentChatMessagesResponse,
+  ChatEditTurnResponse,
   ExperimentDetail,
   ExperimentSummary,
   FounderDecision,
@@ -195,6 +196,21 @@ export async function getExperimentChatMessages(
   return apiFetch<ExperimentChatMessagesResponse>(
     `/chat/experiments/${experimentId}/messages`,
   );
+}
+
+export async function editChatMessage(
+  threadId: string,
+  messageId: string,
+  newContent: string,
+): Promise<ChatEditTurnResponse> {
+  return apiFetch<ChatEditTurnResponse>("/chat/turn/edit", {
+    method: "POST",
+    body: {
+      thread_id: threadId,
+      message_id: messageId,
+      new_content: newContent,
+    },
+  });
 }
 
 export async function refineExperiment(

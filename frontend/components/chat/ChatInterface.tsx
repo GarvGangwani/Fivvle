@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   chatTurn,
+  editChatMessage,
   getExperiment,
   getExperimentChatMessages,
   ApiError,
@@ -76,6 +77,21 @@ const STARTER_PROMPTS = [
 ] as const;
 
 const SCROLL_NEAR_BOTTOM_THRESHOLD_PX = 100;
+
+function mapApiMessages(
+  messages: { id: string; role: ChatMessageType["role"]; content: string; created_at: string }[],
+): ChatMessageType[] {
+  return messages.map((msg) => ({
+    id: msg.id,
+    role: msg.role,
+    content: msg.content,
+    timestamp: msg.created_at,
+  }));
+}
+
+function isPersistedMessageId(id: string): boolean {
+  return !id.startsWith("local-");
+}
 
 function apiErrorMessage(err: ApiError): string {
   if (err.status === 429) {
@@ -178,14 +194,7 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
           setThreadId(chatData.thread_id);
         }
 
-        setMessages(
-          chatData.messages.map((msg) => ({
-            id: msg.id,
-            role: msg.role,
-            content: msg.content,
-            timestamp: msg.created_at,
-          })),
-        );
+        setMessages(mapApiMessages(chatData.messages));
       } catch {
         if (!cancelled) {
           setMessages([]);
@@ -308,6 +317,63 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
     }
   }
 
+  async function handleEditMessage(messageId: string, newContent: string) {
+    if (!threadId) return;
+
+    const editIndex = messages.findIndex((msg) => msg.id === messageId);
+    if (editIndex === -1) return;
+
+    forceScrollRef.current = true;
+    setMessages((prev) =>
+      prev
+        .slice(0, editIndex + 1)
+        .map((msg, idx) =>
+          idx === editIndex ? { ...msg, content: newContent } : msg,
+        ),
+    );
+    setLoading(true);
+
+    try {
+      const response = await editChatMessage(threadId, messageId, newContent);
+
+      setThreadId(response.thread_id);
+      if (response.experiment_id) {
+        setResolvedExperimentId(response.experiment_id);
+      }
+      if (response.experiment_status) {
+        setExperimentStatus(response.experiment_status);
+      }
+
+      setMessages(mapApiMessages(response.messages));
+
+      if (
+        isResearchUnderway(
+          response.pipeline_dispatched,
+          response.experiment_status,
+        )
+      ) {
+        setResearchStarted(true);
+      }
+    } catch (err) {
+      const message =
+        err instanceof ApiError
+          ? apiErrorMessage(err)
+          : "Something went wrong. Please try again.";
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: nextMessageId(),
+          role: "assistant",
+          content: message,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const chatDisabled =
     loading || historyLoading || experimentStatus === "ARCHIVED";
   const deepResearchLocked =
@@ -366,8 +432,16 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
             {messages.map((msg, index) => (
               <ChatMessage
                 key={msg.id}
+                id={msg.id}
                 role={msg.role}
                 content={msg.content}
+                canEdit={
+                  msg.role === "user" &&
+                  !chatDisabled &&
+                  !!threadId &&
+                  isPersistedMessageId(msg.id)
+                }
+                onEdit={handleEditMessage}
                 showRefining={
                   msg.role === "assistant" &&
                   !researchStarted &&
