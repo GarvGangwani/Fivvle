@@ -309,6 +309,18 @@ export type TakeawaySourceType = "BEHAVIORAL" | "COGNITIVE" | "SYNTHESIZED";
 
 export type FounderDecision = InsightRecommendationType;
 
+export interface WaitlistSignup {
+  id: string;
+  email: string;
+  source_tag: string | null;
+  created_at: string;
+}
+
+export interface WaitlistSignupsResponse {
+  signups: WaitlistSignup[];
+  total: number;
+}
+
 export interface ExperimentAnalytics {
   total_page_views: number;
   total_signups: number;

@@ -18,6 +18,9 @@ Per AGENTS.md «Error handling»:
 
 from __future__ import annotations
 
+import csv
+import io
+import re
 from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
@@ -35,6 +38,7 @@ from app.db.models.insight_report import InsightReport
 from app.db.models.landing_page import LandingPage
 from app.db.models.user import User
 from app.db.models.validation_report import ValidationReport
+from app.db.models.waitlist_signup import WaitlistSignup
 from app.db.session import get_session
 from app.dispatchers.dependencies import get_dispatcher_dep, get_insight_dispatcher_dep
 from app.dispatchers.factory import get_landing_page_dispatcher_dep
@@ -56,6 +60,8 @@ from app.schemas.api_responses import (
     PublishLandingPageRequest,
     PublishResponse,
     ValidationReportResponse,
+    WaitlistSignupItem,
+    WaitlistSignupsResponse,
 )
 from app.schemas.experiment import (
     ConfirmResearchResponse,
@@ -83,6 +89,8 @@ _logger = get_logger(__name__)
 
 # 30/min/user for the polling endpoint — per the spec.
 _RESEARCH_STATUS_RATE_LIMIT = "30/minute"
+
+_WAITLIST_EXPORT_FILENAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
 
 
 class ExperimentValidationReportSummary(BaseModel):
@@ -758,6 +766,95 @@ async def get_experiment_analytics(
         signups_by_source=aggregate.signups_by_source,
         conversion_rate_by_source=aggregate.conversion_rate_by_source,
         days_live=aggregate.days_live,
+    )
+
+
+def _waitlist_export_filename(experiment: Experiment) -> str:
+    base = (experiment.name or experiment.slug or str(experiment.id)).strip()
+    safe = _WAITLIST_EXPORT_FILENAME_RE.sub("-", base).strip("-._") or "experiment"
+    return f"{safe[:80]}-waitlist.csv"
+
+
+@router.get(
+    "/{experiment_id}/waitlist/export",
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def export_experiment_waitlist(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> Response:
+    exp_result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+    experiment = exp_result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    signups_result = await db.execute(
+        select(WaitlistSignup)
+        .where(WaitlistSignup.experiment_id == experiment_id)
+        .order_by(WaitlistSignup.ts.desc()),
+    )
+    signups = list(signups_result.scalars().all())
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["email", "source_tag", "signed_up_at"])
+    for signup in signups:
+        writer.writerow(
+            [
+                signup.email,
+                signup.source_tag or "",
+                signup.ts.isoformat(),
+            ]
+        )
+
+    filename = _waitlist_export_filename(experiment)
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
+    "/{experiment_id}/waitlist",
+    response_model=WaitlistSignupsResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def list_experiment_waitlist(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> WaitlistSignupsResponse:
+    exp_result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+    experiment = exp_result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    signups_result = await db.execute(
+        select(WaitlistSignup)
+        .where(WaitlistSignup.experiment_id == experiment_id)
+        .order_by(WaitlistSignup.ts.desc()),
+    )
+    signups = list(signups_result.scalars().all())
+
+    return WaitlistSignupsResponse(
+        signups=[
+            WaitlistSignupItem(
+                id=signup.id,
+                email=signup.email,
+                source_tag=signup.source_tag,
+                created_at=signup.ts,
+            )
+            for signup in signups
+        ],
+        total=len(signups),
     )
 
 

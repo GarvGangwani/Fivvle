@@ -2,16 +2,18 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, RefreshCw, ArchiveRestore } from "lucide-react";
+import { Loader2, RefreshCw, ArchiveRestore, Download } from "lucide-react";
 import {
   confirmExperiment,
+  exportWaitlistCsv,
   generateInsight,
   generateLandingPage,
   getExperiment,
+  getWaitlistSignups,
   unarchiveExperiment,
   ApiError,
 } from "@/lib/api";
-import type { Experiment, FounderDecision } from "@/lib/types";
+import type { Experiment, FounderDecision, WaitlistSignupsResponse } from "@/lib/types";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { DecisionPanel } from "@/components/insight/DecisionPanel";
 import { InsightReportViewer } from "@/components/insight/InsightReportViewer";
@@ -33,6 +35,127 @@ const RESEARCH_IN_PROGRESS = new Set([
   "RESEARCH_REFLECTING",
   "RESEARCH_SYNTHESIZING",
 ]);
+
+const WAITLIST_VISIBLE_STATUSES = new Set([
+  "LANDING_LIVE",
+  "INSIGHT_GENERATING",
+  "INSIGHT_READY",
+  "INSIGHT_FAILED",
+  "COMPLETED",
+  "ARCHIVED",
+]);
+
+function formatWaitlistDate(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+interface WaitlistSectionProps {
+  experimentId: string;
+}
+
+function WaitlistSection({ experimentId }: WaitlistSectionProps) {
+  const [waitlist, setWaitlist] = useState<WaitlistSignupsResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadWaitlist() {
+      setLoading(true);
+      try {
+        const data = await getWaitlistSignups(experimentId);
+        if (!cancelled) {
+          setWaitlist(data);
+          setError(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setError("Could not load waitlist signups.");
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadWaitlist();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [experimentId]);
+
+  async function handleExport() {
+    setExporting(true);
+    setError(null);
+    try {
+      await exportWaitlistCsv(experimentId);
+    } catch {
+      setError("Could not export waitlist. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  if (loading || !waitlist || waitlist.total === 0) {
+    return null;
+  }
+
+  return (
+    <section className="fv-card p-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold text-[var(--fv-text)]">
+          Waitlist ({waitlist.total} signup{waitlist.total === 1 ? "" : "s"})
+        </h2>
+        <button
+          type="button"
+          onClick={() => void handleExport()}
+          disabled={exporting}
+          className="fv-btn-ghost inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {exporting ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Download className="h-4 w-4" />
+          )}
+          Export CSV
+        </button>
+      </div>
+
+      {error && <p className="mt-4 text-sm text-red-300">{error}</p>}
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="min-w-full text-left text-sm">
+          <thead>
+            <tr className="border-b border-white/[0.08] text-[var(--fv-text-muted)]">
+              <th className="px-3 py-2 font-medium">Email</th>
+              <th className="px-3 py-2 font-medium">Source</th>
+              <th className="px-3 py-2 font-medium">Signed up</th>
+            </tr>
+          </thead>
+          <tbody>
+            {waitlist.signups.map((signup) => (
+              <tr
+                key={signup.id}
+                className="border-b border-white/[0.04] text-[var(--fv-text-soft)]"
+              >
+                <td className="px-3 py-3 text-[var(--fv-text)]">{signup.email}</td>
+                <td className="px-3 py-3">{signup.source_tag ?? "—"}</td>
+                <td className="px-3 py-3">{formatWaitlistDate(signup.created_at)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
 
 interface ExperimentDetailPanelProps {
   experimentId: string;
@@ -177,6 +300,7 @@ export function ExperimentDetailPanel({
 
   const status = experiment.status;
   const hasValidationReport = experiment.validation_report != null;
+  const showWaitlistSection = WAITLIST_VISIBLE_STATUSES.has(status);
   const pageTitle = getExperimentDisplayName({
     name: experiment.name,
     raw_idea: rawIdea,
@@ -396,6 +520,12 @@ export function ExperimentDetailPanel({
             )}
           </div>
         )}
+
+      {showWaitlistSection && (
+        <div className="mt-6">
+          <WaitlistSection experimentId={experimentId} />
+        </div>
+      )}
 
       <ValidationReportPanel
         experimentId={experimentId}

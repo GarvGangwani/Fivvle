@@ -14,6 +14,7 @@ import type {
   LandingPagePatch,
   ResearchStatus,
   ValidationReport,
+  WaitlistSignupsResponse,
 } from "./types";
 
 const API_BASE = (
@@ -247,6 +248,64 @@ export async function getExperimentAnalytics(
   id: string,
 ): Promise<ExperimentAnalytics> {
   return apiFetch<ExperimentAnalytics>(`/experiments/${id}/analytics`);
+}
+
+export async function getWaitlistSignups(
+  experimentId: string,
+): Promise<WaitlistSignupsResponse> {
+  return apiFetch<WaitlistSignupsResponse>(
+    `/experiments/${experimentId}/waitlist`,
+  );
+}
+
+export async function exportWaitlistCsv(experimentId: string): Promise<void> {
+  const auth = getFirebaseAuth();
+  const user = auth.currentUser;
+  if (!user) {
+    throw new ApiError(401, { error: "Not authenticated" }, null);
+  }
+
+  const token = await user.getIdToken();
+  let response: Response;
+  try {
+    response = await fetch(apiUrl(`/experiments/${experimentId}/waitlist/export`), {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch (err) {
+    throw new ApiError(
+      0,
+      { error: err instanceof Error ? err.message : "Network error" },
+      null,
+    );
+  }
+
+  const requestId = response.headers.get("X-Request-ID");
+
+  if (!response.ok) {
+    const contentType = response.headers.get("content-type") ?? "";
+    const parsed = contentType.includes("application/json")
+      ? await response.json()
+      : await response.text();
+    throw new ApiError(response.status, parsed, requestId);
+  }
+
+  const blob = await response.blob();
+  const disposition = response.headers.get("Content-Disposition");
+  let filename = "waitlist.csv";
+  const match = disposition?.match(/filename="([^"]+)"/);
+  if (match?.[1]) {
+    filename = match[1];
+  }
+
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
 }
 
 export async function getInsightReport(

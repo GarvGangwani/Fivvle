@@ -99,3 +99,23 @@ class ArchiveExperimentResponse(BaseModel):
 
     experiment_id: UUID
     status: ExperimentStatus
+
+
+class WaitlistSignupItem(BaseModel):
+    """Single waitlist signup in GET /experiments/{id}/waitlist."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    email: str
+    source_tag: str | None
+    created_at: datetime
+
+
+class WaitlistSignupsResponse(BaseModel):
+    """GET /experiments/{id}/waitlist response."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    signups: list[WaitlistSignupItem]
+    total: int = Field(ge=0)
