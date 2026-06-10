@@ -8,6 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { Maximize2, X } from "lucide-react";
 import {
   DEVICE_CATEGORIES,
   frameChromeSize,
@@ -185,7 +186,11 @@ function PreviewToolbar({
           title={isFullscreen ? "Exit full screen" : "Full screen preview"}
           aria-label={isFullscreen ? "Exit full screen" : "Full screen preview"}
         >
-          {isFullscreen ? "✕" : "⛶"}
+          {isFullscreen ? (
+            <X className="h-4 w-4" />
+          ) : (
+            <Maximize2 className="h-4 w-4" />
+          )}
         </button>
       </div>
     </div>
@@ -328,34 +333,45 @@ export function DevicePreview({
     };
   }, [isFullscreen]);
 
-  const editorToolbar = isEditor ? (
+  const editorToolbar = isEditor && !isFullscreen ? (
     <div
-      className="flex items-center justify-center gap-1 border-b px-4 py-3"
+      className="flex items-center justify-between gap-3 border-b px-4 py-3"
       style={{
         borderColor: "rgba(255,255,255,0.07)",
         background: "rgba(0,0,0,0.25)",
       }}
     >
-      <div
-        className="inline-flex rounded-xl border p-1"
-        style={{
-          background: "rgba(255,255,255,0.04)",
-          borderColor: "rgba(255,255,255,0.08)",
-        }}
-      >
-        {EDITOR_DEVICES.map((preset) => (
-          <button
-            key={preset.id}
-            type="button"
-            onClick={() => handleDeviceChange(preset.id)}
-            className={`fv-tab-pill ${
-              deviceId === preset.id ? "fv-tab-pill-active" : ""
-            }`}
-          >
-            {preset.label}
-          </button>
-        ))}
+      <div className="flex flex-1 justify-center">
+        <div
+          className="inline-flex rounded-xl border p-1"
+          style={{
+            background: "rgba(255,255,255,0.04)",
+            borderColor: "rgba(255,255,255,0.08)",
+          }}
+        >
+          {EDITOR_DEVICES.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => handleDeviceChange(preset.id)}
+              className={`fv-tab-pill ${
+                deviceId === preset.id ? "fv-tab-pill-active" : ""
+              }`}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
       </div>
+      <button
+        type="button"
+        className={styles.iconBtn}
+        onClick={() => setIsFullscreen(true)}
+        title="Full screen preview"
+        aria-label="Full screen preview"
+      >
+        <Maximize2 className="h-4 w-4" />
+      </button>
     </div>
   ) : null;
 
@@ -384,6 +400,22 @@ export function DevicePreview({
       {children}
     </ScaledPreview>
   );
+
+  if (isFullscreen && isEditor) {
+    return (
+      <div className="fixed inset-0 z-[200] flex flex-col bg-[var(--fv-bg)]">
+        <button
+          type="button"
+          onClick={() => setIsFullscreen(false)}
+          className="fv-btn-ghost fixed top-4 right-4 z-[201] inline-flex items-center gap-2 px-3 py-2"
+          aria-label="Exit full screen"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        <div className="h-full w-full overflow-auto">{children}</div>
+      </div>
+    );
+  }
 
   if (isFullscreen && !isEditor) {
     return (
