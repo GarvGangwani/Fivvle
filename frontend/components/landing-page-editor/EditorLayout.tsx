@@ -46,7 +46,6 @@ export function EditorLayout({
   const [page, setPage] = useState<PageJson>(resolved.page);
   const [templateId, setTemplateId] = useState<TemplateId>(resolved.templateId);
   const [publishedSlug, setPublishedSlug] = useState(landingPage.slug);
-  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { toast } = useToast();
 
@@ -90,7 +89,6 @@ export function EditorLayout({
 
   const handleTemplateSelect = (id: TemplateId) => {
     setTemplateId(id);
-    setShowTemplatePicker(false);
     const nextPage: PageJson = syncPageJsonSections(
       {
         ...page,
@@ -117,13 +115,7 @@ export function EditorLayout({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div
-        className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3"
-        style={{
-          borderColor: "rgba(255,255,255,0.07)",
-          background: "rgba(255,255,255,0.02)",
-        }}
-      >
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--fv-border)] bg-white/[0.02] px-4 py-3">
         <div className="min-w-0">
           <p className="truncate text-[15px] font-semibold text-[var(--fv-text)]">
             {experimentName}
@@ -136,7 +128,7 @@ export function EditorLayout({
       </div>
 
       {isLive && publishedSlug && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[rgba(16,185,129,0.3)] bg-[rgba(16,185,129,0.1)] px-4 py-3">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color-mix(in_srgb,var(--fv-success)_30%,transparent)] bg-[color-mix(in_srgb,var(--fv-success)_10%,transparent)] px-4 py-3">
           <div className="min-w-0">
             <span className="badge-proceed">Published</span>
             <p className="mt-2 truncate text-[13px] text-[var(--fv-text-soft)]">
@@ -150,7 +142,7 @@ export function EditorLayout({
             href={`/e/${publishedSlug}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="fv-btn-ghost inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-sm no-underline"
+            className="fv-btn-ghost inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-sm no-underline transition-all duration-200"
           >
             View live
             <ExternalLink className="h-4 w-4" />
@@ -178,13 +170,13 @@ export function EditorLayout({
                   <span className="w-28 shrink-0 text-[13px] text-[var(--fv-text-soft)]">
                     {label}
                   </span>
-                  <code className="min-w-0 flex-1 truncate rounded bg-white/[0.03] px-3 py-2 font-mono text-[12px] text-[var(--fv-text-muted)]">
+                  <code className="min-w-0 flex-1 truncate rounded-lg bg-white/[0.03] px-3 py-2 font-mono text-[12px] text-[var(--fv-text-muted)]">
                     {url}
                   </code>
                   <button
                     type="button"
                     onClick={() => void navigator.clipboard.writeText(url)}
-                    className="fv-btn-ghost shrink-0 px-3 py-1.5 text-[12px]"
+                    className="fv-btn-ghost shrink-0 px-3 py-1.5 text-[12px] transition-all duration-200"
                   >
                     Copy
                   </button>
@@ -199,7 +191,7 @@ export function EditorLayout({
         <button
           type="button"
           onClick={() => setMobilePanel("edit")}
-          className={`fv-tab-pill inline-flex flex-1 items-center justify-center gap-1.5 ${
+          className={`fv-tab-pill inline-flex flex-1 items-center justify-center gap-1.5 transition-all duration-200 ${
             mobilePanel === "edit" ? "fv-tab-pill-active" : ""
           }`}
         >
@@ -209,7 +201,7 @@ export function EditorLayout({
         <button
           type="button"
           onClick={() => setMobilePanel("preview")}
-          className={`fv-tab-pill inline-flex flex-1 items-center justify-center gap-1.5 ${
+          className={`fv-tab-pill inline-flex flex-1 items-center justify-center gap-1.5 transition-all duration-200 ${
             mobilePanel === "preview" ? "fv-tab-pill-active" : ""
           }`}
         >
@@ -220,61 +212,59 @@ export function EditorLayout({
 
       <div className="grid min-h-0 flex-1 gap-6 lg:grid-cols-[minmax(300px,380px)_1fr]">
         <div
-          className={`lp-editor-panel flex flex-col overflow-hidden rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)] ${
+          className={`lp-editor-panel flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)] ${
             mobilePanel === "edit" ? "flex" : "hidden lg:flex"
           }`}
         >
-          <div className="flex-1 space-y-5 overflow-y-auto p-4 sm:p-5">
-            <div>
-              <h2 className="text-[16px] font-semibold text-[var(--fv-text)]">
-                Edit Your Landing Page
-              </h2>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-[13px]">
-                <span className="text-[var(--fv-text-soft)]">
-                  {templateMeta?.name ?? templateId}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowTemplatePicker((v) => !v)}
-                  className="text-[var(--fv-accent)] hover:text-[var(--fv-accent-hover)]"
-                >
-                  Change template
-                </button>
+          <div className="shrink-0 border-b border-[var(--fv-border)] p-6 pb-4">
+            <h2 className="text-lg font-semibold text-[var(--fv-text)]">
+              Edit Landing Page
+            </h2>
+            <p className="mt-0.5 text-[13px] text-[var(--fv-text-muted)]">
+              {templateMeta?.name ?? templateId}
+            </p>
+
+            <div className="mt-4">
+              <p className="mb-2 text-[12px] font-medium text-[var(--fv-text-soft)]">
+                Template
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {PAGE_TEMPLATES.map((tpl) => {
+                  const selected = templateId === tpl.id;
+                  return (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      onClick={() => handleTemplateSelect(tpl.id)}
+                      className={`flex flex-col items-center gap-1.5 rounded-lg p-1 transition-all duration-200 ${
+                        selected
+                          ? "ring-2 ring-[var(--fv-accent)]"
+                          : "hover:opacity-80"
+                      }`}
+                      aria-pressed={selected}
+                      aria-label={`Select ${tpl.name} template`}
+                    >
+                      <div
+                        className="h-12 w-16 rounded-lg"
+                        style={{
+                          background: `linear-gradient(135deg, ${tpl.preview.accent}, ${tpl.preview.bg})`,
+                        }}
+                      />
+                      <span className="max-w-[4.5rem] truncate text-center text-[11px] text-[var(--fv-text-muted)]">
+                        {tpl.name}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
+          </div>
 
-            {showTemplatePicker && (
-              <div className="grid gap-2">
-                {PAGE_TEMPLATES.map((tpl) => (
-                  <button
-                    key={tpl.id}
-                    type="button"
-                    onClick={() => handleTemplateSelect(tpl.id)}
-                    className={`host-card text-left ${
-                      templateId === tpl.id ? "host-card selected" : ""
-                    }`}
-                  >
-                    <div
-                      className="h-1 w-full"
-                      style={{ background: tpl.preview.accent }}
-                    />
-                    <div className="p-3">
-                      <p className="text-[13px] font-semibold text-fv-text">
-                        {tpl.name}
-                      </p>
-                      <p className="mt-0.5 text-[11px] text-[var(--fv-text-muted)]">
-                        {tpl.description}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-
+          <div className="min-h-0 flex-1 overflow-y-auto p-6 pt-4">
             <CopyFieldsEditor copy={copy} onChange={handleCopyChange} />
           </div>
 
-          <div className="shrink-0 border-t border-[var(--fv-border)] p-4 sm:p-5">
+          <div className="shrink-0 border-t border-[var(--fv-border)] bg-[var(--fv-surface)] p-6">
             {isLive ? (
               <div className="space-y-2 text-center">
                 <span className="badge-proceed">Published</span>
@@ -283,7 +273,7 @@ export function EditorLayout({
                     href={`/e/${publishedSlug}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="fv-btn-ghost flex w-full items-center justify-center gap-2 py-2.5 text-sm no-underline"
+                    className="fv-btn-ghost flex w-full items-center justify-center gap-2 py-2.5 text-sm no-underline transition-all duration-200"
                   >
                     View at /e/{publishedSlug}
                     <ExternalLink className="h-4 w-4" />

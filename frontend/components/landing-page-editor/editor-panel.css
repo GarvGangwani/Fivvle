@@ -3,51 +3,11 @@
   color: var(--fv-text);
 }
 
-.lp-editor-panel .fv-panel-label {
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--fv-text-muted);
-}
-
-.lp-editor-panel .fv-card {
-  background: var(--fv-surface-2);
-  border: 1px solid var(--fv-border);
-  border-radius: 14px;
-}
-
-.lp-editor-panel .fv-btn-primary {
-  background: var(--fv-accent);
-  border: none;
-  border-radius: 12px;
-  color: var(--fv-on-accent);
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.lp-editor-panel .fv-btn-primary:hover:not(:disabled) {
-  background: var(--fv-accent-hover);
-}
-
-.lp-editor-panel .fv-btn-primary:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .lp-editor-panel .fv-input {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  color: var(--fv-text);
-  outline: none;
   width: 100%;
 }
 
 .lp-editor-panel .fv-input:focus {
-  border-color: color-mix(in srgb, var(--fv-accent) 40%, transparent);
+  border-color: color-mix(in srgb, var(--fv-accent) 50%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fv-accent) 18%, transparent);
 }

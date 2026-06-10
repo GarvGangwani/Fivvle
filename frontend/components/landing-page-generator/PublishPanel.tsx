@@ -187,8 +187,10 @@ export function PublishPanel({
         type="button"
         disabled={disabled || isPublishing}
         onClick={() => void handlePublish()}
-        className={`fv-btn-primary px-4 py-2.5 text-sm disabled:opacity-50 ${
-          fullWidth ? "w-full justify-center" : "w-full sm:w-auto"
+        className={`fv-btn-primary transition-all duration-200 disabled:opacity-50 ${
+          fullWidth
+            ? "w-full justify-center py-3 text-[15px]"
+            : "w-full px-4 py-2.5 text-sm sm:w-auto"
         }`}
       >
         {isPublishing ? "Publishing…" : "Publish to Fivvle"}
