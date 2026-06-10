@@ -208,7 +208,7 @@ export function PublishPanel({
                   href={p.public_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[var(--fv-accent)]/80 hover:underline"
+                  className="font-mono text-[var(--fv-accent)]/80 hover:underline"
                 >
                   {p.slug}
                 </a>

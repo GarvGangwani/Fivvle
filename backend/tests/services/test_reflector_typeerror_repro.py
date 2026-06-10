@@ -1,11 +1,12 @@
-"""Diagnostic repro: TypeError on execute_reflector post-re-search path (M-2).
+"""Regression: post-re-search path completes without TypeError (M-2 blocker).
 
-Does not assert outcome — surfaces the full traceback when the degrade path fires.
+Previously ``_partial_re_read`` omitted required ``_extract_for_question`` kwargs
+(``refined_idea``, ``research_questions``, ``settings``), causing TypeError after
+successful Tavily re-search and triggering the degrade invariant.
 """
 
 from __future__ import annotations
 
-import traceback
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
@@ -91,6 +92,8 @@ def _minimal_refined_idea() -> RefinedIdea:
 def _make_error_printer(orig_error):
     def _print_logged_exc_info(*args, **kwargs):
         if kwargs.get("exc_info") is True:
+            import traceback
+
             traceback.print_exc()
         return orig_error(*args, **kwargs)
 
@@ -98,8 +101,8 @@ def _make_error_printer(orig_error):
 
 
 @pytest.mark.asyncio
-async def test_execute_reflector_post_research_typeerror_trace() -> None:
-    """Force re-search + real _extract_for_question; surface TypeError traceback."""
+async def test_execute_reflector_post_research_path_completes_without_typeerror() -> None:
+    """Force re-search + real _extract_for_question; must not hit degrade path."""
     plan = _minimal_plan(("q1", "q2", "q3", "q4", "q5"))
     outputs = {
         "q1": _make_reader_output("q1", [], gap_note="still unknown"),
@@ -178,14 +181,17 @@ async def test_execute_reflector_post_research_typeerror_trace() -> None:
             side_effect=_make_error_printer(reflector_mod._logger.error),
         ),
     ):
-        try:
-            await execute_reflector(
-                experiment_id=uuid4(),
-                research_plan=plan,
-                reader_outputs=outputs,
-                search_results=sr_in,
-                db=MagicMock(spec=[]),
-                settings=settings,
-            )
-        except Exception:
-            traceback.print_exc()
+        ro_out, sr_out, summary = await execute_reflector(
+            experiment_id=uuid4(),
+            research_plan=plan,
+            reader_outputs=outputs,
+            search_results=sr_in,
+            db=MagicMock(spec=[]),
+            settings=settings,
+        )
+
+    assert summary.waves_used == 1
+    assert "q1" in ro_out
+    assert ro_out["q1"].extracted_evidence
+    assert ro_out["q1"].extracted_evidence[0].source_url == fresh_url
+    assert any(r.url == fresh_url for r in sr_out.get("q1", []))

@@ -32,6 +32,8 @@ Each ADR follows the Michael Nygard format:
 | 0014 | [Anthropic prompt caching for research engine phases](0014-anthropic-prompt-caching.md) | Accepted | 2026-05 |
 | 0015 | [Multi-source search inputs](0015-multi-source-search-inputs.md) | Proposed | 2026-05 |
 | 0016 | [Synthesizer five-field contract](0016-synthesizer-five-field-contract.md) | Proposed | 2026-05 |
+| 0022 | [Landing page generator pipeline](0022-landing-page-generator-pipeline.md) | Accepted | 2026-06 |
+| 0023 | [CSS modules permitted for landing page templates](0023-css-modules-for-landing-templates.md) | Accepted | 2026-06 |
 
 ## When to write a new ADR
 

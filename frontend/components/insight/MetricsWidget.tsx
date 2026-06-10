@@ -126,7 +126,7 @@ export function MetricsWidget({
             <MousePointerClick className="h-3.5 w-3.5" />
             Page views
           </div>
-          <p className="mt-2 text-2xl font-bold text-[var(--fv-accent)]">
+          <p className="mt-2 font-mono text-2xl font-bold text-[var(--fv-accent)]">
             {analytics.total_page_views.toLocaleString()}
           </p>
         </div>
@@ -135,7 +135,7 @@ export function MetricsWidget({
             <Users className="h-3.5 w-3.5" />
             Signups
           </div>
-          <p className="mt-2 text-2xl font-bold text-[var(--fv-accent)]">
+          <p className="mt-2 font-mono text-2xl font-bold text-[var(--fv-accent)]">
             {analytics.total_signups.toLocaleString()}
           </p>
         </div>
@@ -143,7 +143,7 @@ export function MetricsWidget({
           <p className="text-xs font-medium uppercase tracking-wide text-[var(--fv-text-muted)]">
             Conversion rate
           </p>
-          <p className="mt-2 text-2xl font-bold text-[var(--fv-accent)]">
+          <p className="mt-2 font-mono text-2xl font-bold text-[var(--fv-accent)]">
             {formatPercent(analytics.conversion_rate)}
           </p>
         </div>
@@ -165,7 +165,7 @@ export function MetricsWidget({
                   className="fv-card flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm"
                 >
                   <span className="font-medium text-[var(--fv-text-soft)]">{source}</span>
-                  <span className="text-[var(--fv-text-muted)]">
+                  <span className="font-mono text-[var(--fv-text-muted)]">
                     {views} views · {signups} signups · {formatPercent(rate)}
                   </span>
                 </div>

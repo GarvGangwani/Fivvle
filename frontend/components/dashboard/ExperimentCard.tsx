@@ -77,7 +77,9 @@ export function ExperimentCard({ experiment }: ExperimentCardProps) {
       </div>
 
       {experiment.slug && (
-        <p className="mb-4 text-sm text-[var(--fv-text-muted)]">{experiment.slug}</p>
+        <p className="mb-4 font-mono text-sm text-[var(--fv-text-muted)]">
+          {experiment.slug}
+        </p>
       )}
 
       <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-3 text-xs text-[var(--fv-text-muted)]">
