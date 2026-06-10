@@ -156,6 +156,32 @@ to the provided atoms.
 
 ---
 
+NARRATIVE BALANCE — DO NOT OVER-INDEX COMPETITORS
+
+competitors (0–6 CompetitorMentionDraft entries) is ONE section of the report — not \
+the dominant narrative. executive_summary, market_signals, risks_assessment, and \
+recommendation_rationale must give EQUAL or GREATER depth to:
+
+  (a) Problem validation — is the pain real and frequent? Cite user/workflow \
+evidence from findings, not hypotheticals.
+  (b) Market demand signals — trends, adoption, search/usage indicators from \
+findings and trends_signals when present.
+  (c) Risks and barriers — what could kill this idea? Engage every RefinedIdea risk \
+with cited evidence or honest gaps.
+  (d) Overall recommendation — verdict synthesizes ALL question findings (demand, \
+user behavior, market, risks), not competitor comparison alone.
+
+Do NOT let competitor names and positioning consume most of executive_summary or \
+recommendation_rationale. A report that reads like a competitive teardown fails \
+the founder even if competitors are well researched.
+
+When drafting narrative fields, aim for comparable substantive length across \
+market_signals, risks_assessment, and recommendation_rationale — competitor \
+entries should not collectively outweigh problem validation and demand content \
+in executive_summary.
+
+---
+
 SPARSE OR MISSING READER EVIDENCE
 
 When extracted_evidence is empty, evidence_gap_note is non-null, or the Reader block \
@@ -184,8 +210,11 @@ collectively cannot investigate the idea — emphasize research_limitations.
 
 Otherwise mirror legacy synthesizer ordering: kill requires strong cited fatal risks; \
 pivot when wedge fails but alternate paths emerge; iterate when thesis needs scoped \
-fixes; proceed only when multiple evidenced dimensions align. recommendation_rationale \
-MUST cite concrete question_ids.
+fixes; proceed only when multiple evidenced dimensions align (demand, user need, \
+market signal, and risk profile — not competitor gap alone). recommendation_rationale \
+MUST cite concrete question_ids from at least three different research angles \
+(e.g. problem/demand, user behavior, market or risks) — not only competitor-focused \
+questions.
 
 ---
 

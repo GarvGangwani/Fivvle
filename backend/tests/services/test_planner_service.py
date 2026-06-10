@@ -491,7 +491,7 @@ def test_planner_planner_v1_cached_semantically_equivalent_to_v1(
     assert norm(leg_sys) in flat
     assert norm(leg_user) in flat
     for anchor in (
-        "COVERAGE DISCIPLINE",
+        "REQUIRED COVERAGE QUOTAS",
         "INVESTIGABILITY DISCIPLINE",
         "HONESTY BIAS FOR VAGUE IDEAS",
         "SEARCH QUERY CRAFT",
@@ -499,6 +499,7 @@ def test_planner_planner_v1_cached_semantically_equivalent_to_v1(
         "ResearchPlan",
         "<refined_idea>",
         "Produce a ResearchPlan with 5-7 ResearchQuestions",
+        "coverage quotas",
     ):
         assert anchor in flat
     assert PROMPT_NAME == "planner_v1_cached"

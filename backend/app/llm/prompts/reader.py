@@ -73,6 +73,21 @@ and why).
 
 ---
 
+QUESTION-DRIVEN EXTRACTION (NOT COMPETITOR-DEFAULT)
+
+Extract evidence that answers the specific research question in <research_question> — \
+whatever type of evidence it calls for: user pain points, demand or adoption signals, \
+market size figures, regulatory facts, workflow behavior, pricing data, OR competitor \
+positioning when (and only when) the question asks about alternatives.
+
+Do NOT default to competitor-focused extraction when the question is about demand, \
+market size, user behavior, trends, or regulatory barriers. Match paraphrase content \
+and named_entities to the question type (percentages and market stats for sizing \
+questions; user quotes and workflow details for pain/behavior questions; agency or \
+statute names for regulatory questions).
+
+---
+
 QUOTE RULES
 
 The verbatim_quote field is strictly optional and strictly literal.

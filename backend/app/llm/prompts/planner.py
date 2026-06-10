@@ -70,30 +70,51 @@ refute the core assumptions embedded in this specific idea.
 
 ---
 
-COVERAGE DISCIPLINE
+REQUIRED COVERAGE QUOTAS (MANDATORY)
 
-The 5-7 questions MUST span at least 4 of the following dimensions (where applicable
-to the idea at hand). Do NOT cluster multiple questions on the same dimension:
+Produce 5-7 questions total. They MUST span diverse angles — do NOT cluster multiple
+questions on competitors or competitive landscape. Before finalizing your plan, verify
+ALL of the following:
 
-  1. Market size and growth — Is there evidence the target market is large enough
-     and growing fast enough to support a business at this scale?
-  2. Named competitors and positioning — Who specifically already exists in this
-     space, what do they do, and what gap (if any) does this idea fill?
-  3. Willingness-to-pay evidence — Is there evidence that the target audience pays
-     for solutions to this problem today, and at what price points?
-  4. Distribution and acquisition channels — How do similar products reach this
-     audience? What channels work, and what is known about their cost or friction?
-  5. Technical feasibility — Are the core technical components (APIs, models, data
-     sources, integrations) available and reliable enough to build on?
-  6. Regulatory and legal constraints — Are there compliance requirements, licensing
-     needs, industry-specific regulations, or legal risks that could block launch?
-  7. Supply-side dynamics (marketplaces and two-sided platforms only) — What are
-     the known supply-acquisition challenges? Has a similar supply-side recruitment
-     strategy been attempted and what happened?
+  a) At least 1 question on PROBLEM VALIDATION / DEMAND SIGNALS — evidence the pain
+     is real, frequent, and costly (user complaints, workflow friction, churn drivers,
+     willingness to switch). Not a vague "is there demand?" — a searchable signal.
+  b) At least 1 question on TARGET USER BEHAVIOR / NEEDS — how the audience works
+     today, what they do when the problem hits, jobs-to-be-done or workflow detail.
+  c) At most 2 questions whose PRIMARY focus is COMPETITORS or direct alternatives
+     (named incumbents, positioning gaps, feature parity). Do not spend 3-4 slots on
+     competitor teardown — spread competitor inquiry across at most two questions.
+  d) At least 1 question on MARKET SIZE / GROWTH / TRENDS — quantified or cited
+     estimates, adoption trajectories, analyst reports, category growth rates.
+  e) At least 1 question on RISKS / REGULATORY / BARRIERS — compliance, procurement,
+     technical constraints, supply-side blockers, or failure modes from the risks list.
 
-If the idea clearly has no regulatory risk, skip dimension 6 and add a stronger
-question in another undercovered dimension. Apply judgment — do not force dimensions
-that don't apply, but do force the four that matter most for this idea.
+Each question must be research-actionable and Tavily-investigable. Vague questions
+are banned.
+
+BAD: "What is the market like?"
+BAD: "What is the competitive landscape for this idea?"
+GOOD: "What is the estimated market size for async standup tools serving remote
+  engineering teams under 50 people, and what CAGR do recent industry reports project?"
+GOOD: "What do r/startups and Hacker News threads cite as the top friction in weekly
+  status updates for async remote teams — and do they mention paying for a fix?"
+
+You may cover additional dimensions (willingness-to-pay, distribution channels,
+technical feasibility, supply-side dynamics) within the 5-7 cap, but the quotas
+above are non-negotiable.
+
+---
+
+SUPPLEMENTARY DIMENSIONS (USE SPARINGLY)
+
+Where applicable, you may also investigate (without duplicating quota slots above):
+
+  - Willingness-to-pay evidence — price points and procurement patterns
+  - Distribution and acquisition channels — how similar products reach this audience
+  - Technical feasibility — APIs, models, integrations available to build on
+  - Supply-side dynamics (marketplaces only) — supply acquisition challenges
+
+Apply judgment — do not force dimensions that don't apply to this idea.
 
 ---
 
@@ -120,15 +141,18 @@ SPECIFICITY BIAS
 Sharp questions get sharp answers. Generic questions get generic answers.
 
 BAD: "What is the competitive landscape for this idea?"
+BAD: "Is there willingness to pay in this market?"
 GOOD: "Does Guru's knowledge base feature — which embeds in Slack and answers
   policy questions — already solve what this Slack HR bot proposes?"
-
-BAD: "Is there willingness to pay in this market?"
 GOOD: "At what price points do operations managers at Series A-C companies currently
   pay for tools like Guru, Tettra, or Notion Teams, and do those contracts require
   IT procurement sign-off?"
+GOOD: "What CAGR do analyst reports project for AI-assisted HR compliance tools
+  serving US companies with 50-500 employees?"
 
-Name competitors, name subreddits, name specific features. Concrete is better.
+Name competitors when the question is competitor-focused (max 2 such questions).
+For other quotas, name forums, workflows, regulatory bodies, market segments, and
+specific metrics. Concrete is better.
 
 ---
 
@@ -183,8 +207,9 @@ For each question, provide 1-3 Tavily-ready search queries. Rules:
   - No quotation marks, no site: filters, no boolean operators (AND, OR, NOT)
   - Queries must be diverse — three queries that are near-paraphrases are wasteful.
     Three queries that approach the question from different angles are valuable:
-    one for direct competitor evidence, one for user complaints/Reddit signals,
-    one for industry analyst coverage
+    one for user pain or forum signals, one for market/analyst or trend data, one
+    for named products or regulatory context — matched to what the question asks.
+    Do not default every question to a competitor-first query set.
   - If one query fully covers the question, one is sufficient. Don't pad.
   - Queries must be 3-8 words to stay within Tavily's optimal performance range.
 
@@ -250,10 +275,12 @@ def _build_zone_b(refined_idea: RefinedIdea) -> str:
     idea_json = json.dumps(refined_idea.model_dump(), indent=2)
     return (
         f"<refined_idea>\n{idea_json}\n</refined_idea>\n\n"
-        "Produce a ResearchPlan with 5-7 ResearchQuestions, ensuring coverage "
-        "discipline and that at least 3 questions are downstream of the stated "
-        "risks. If the refined idea contains placeholder/undefined fields, follow "
-        "the vague-idea honesty rules from the system prompt."
+        "Produce a ResearchPlan with 5-7 ResearchQuestions, satisfying the required "
+        "coverage quotas (demand/problem validation, user behavior, at most 2 "
+        "competitor-focused, market/trends, risks/barriers) and ensuring at least "
+        "3 questions are downstream of the stated risks. If the refined idea "
+        "contains placeholder/undefined fields, follow the vague-idea honesty "
+        "rules from the system prompt."
     )
 
 
@@ -285,13 +312,5 @@ def build_planner_user_prompt(
 
 def planner_v1_legacy_flat_user_and_system(refined_idea: RefinedIdea) -> tuple[str, str]:
     """Rebuild pre-H-3 ``(system_text, user_text)`` for semantic equivalence tests."""
-    idea_json = json.dumps(refined_idea.model_dump(), indent=2)
-    user_inner = (
-        _PLANNER_USER_INTRO_BEFORE_REFINED_IDEA
-        + f"<refined_idea>\n{idea_json}\n</refined_idea>\n\n"
-        + "Produce a ResearchPlan with 5-7 ResearchQuestions, ensuring coverage "
-        "discipline and that at least 3 questions are downstream of the stated "
-        "risks. If the refined idea contains placeholder/undefined fields, follow "
-        "the vague-idea honesty rules from the system prompt."
-    )
+    user_inner = _PLANNER_USER_INTRO_BEFORE_REFINED_IDEA + _build_zone_b(refined_idea)
     return _PLANNER_LEGACY_SYSTEM_ONLY, user_inner

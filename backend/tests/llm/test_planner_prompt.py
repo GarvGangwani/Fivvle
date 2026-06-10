@@ -66,7 +66,7 @@ _REQUIRED_MARKERS = [
     "untrusted data",      # security framing — data/instruction separation
     "ResearchPlan",        # output structure declaration
     "5-7",                 # question count requirement
-    "coverage",            # coverage discipline section
+    "COVERAGE QUOTAS",     # required coverage quotas section
     "honesty",             # vague-idea honesty rules
     "search_queries",      # search query craft guidance
 ]
