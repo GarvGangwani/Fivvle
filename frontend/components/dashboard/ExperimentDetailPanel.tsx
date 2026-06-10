@@ -16,6 +16,7 @@ import {
   generateInsight,
   generateLandingPage,
   getExperiment,
+  getLandingPage,
   getWaitlistSignups,
   unarchiveExperiment,
   ApiError,
@@ -32,6 +33,18 @@ import {
   type TemplateId,
 } from "@/components/research/TemplatePicker";
 import { ReportCanvas } from "@/components/research/ReportCanvas";
+import { DistributeSection } from "@/components/distribution/DistributeSection";
+import { getExperimentDisplayName } from "@/lib/experiment-name";
+
+const DISTRIBUTE_VISIBLE_STATUSES = new Set([
+  "LANDING_LIVE",
+  "INSIGHT_GENERATING",
+  "INSIGHT_READY",
+  "INSIGHT_FAILED",
+  "ANALYZING",
+  "COMPLETED",
+  "ARCHIVED",
+]);
 
 const WAITLIST_VISIBLE_STATUSES = new Set([
   "LANDING_LIVE",
@@ -174,6 +187,7 @@ export function ExperimentDetailPanel({
   const [showInsight, setShowInsight] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [landingSlug, setLandingSlug] = useState<string | null>(null);
 
   const loadExperiment = useCallback(async () => {
     try {
@@ -212,6 +226,34 @@ export function ExperimentDetailPanel({
 
     return () => clearInterval(intervalId);
   }, [experiment?.status, loadExperiment]);
+
+  useEffect(() => {
+    if (!experiment || !DISTRIBUTE_VISIBLE_STATUSES.has(experiment.status)) {
+      setLandingSlug(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadSlug() {
+      try {
+        const lp = await getLandingPage(experimentId);
+        if (!cancelled && lp.slug) {
+          setLandingSlug(lp.slug);
+        }
+      } catch {
+        if (!cancelled) {
+          setLandingSlug(null);
+        }
+      }
+    }
+
+    void loadSlug();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [experiment, experimentId]);
 
   async function handleRetryResearch() {
     setRetrying(true);
@@ -291,6 +333,11 @@ export function ExperimentDetailPanel({
   const status = experiment.status;
   const hasValidationReport = experiment.validation_report != null;
   const showWaitlistSection = WAITLIST_VISIBLE_STATUSES.has(status);
+  const showDistributeSection =
+    DISTRIBUTE_VISIBLE_STATUSES.has(status) && landingSlug !== null;
+  const experimentDisplayName = experiment.name?.trim()
+    ? experiment.name.trim()
+    : getExperimentDisplayName({ name: null, raw_idea: "" });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -419,6 +466,14 @@ export function ExperimentDetailPanel({
             onComplete={loadExperiment}
           />
         </div>
+      )}
+
+      {showDistributeSection && landingSlug && (
+        <DistributeSection
+          experimentId={experimentId}
+          slug={landingSlug}
+          experimentName={experimentDisplayName}
+        />
       )}
 
       {showMetrics && status === "LANDING_LIVE" && (

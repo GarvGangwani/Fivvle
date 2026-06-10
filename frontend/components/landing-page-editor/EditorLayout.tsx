@@ -19,6 +19,7 @@ import { StatusBadge } from "@/components/dashboard/StatusBadge";
 import { LandingPagePreview } from "@/components/landing-page-generator/LandingPagePreview";
 import { PublishPanel } from "@/components/landing-page-generator/PublishPanel";
 import { useToast } from "@/components/ui/ToastProvider";
+import { ShareLinksPanel } from "@/components/distribution/ShareLinksPanel";
 import { CopyFieldsEditor } from "./CopyFieldsEditor";
 import "./editor-panel.css";
 
@@ -152,38 +153,10 @@ export function EditorLayout({
 
       {isLive && publishedSlug && (
         <div className="mb-4 rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)] p-4">
-          <p className="fv-panel-label mb-3">Share with tracking</p>
-          <p className="mb-3 text-[12px] text-[var(--fv-text-muted)]">
-            Each link tracks which channel drives traffic. Use these when sharing.
-          </p>
-          <div className="space-y-2">
-            {[
-              { label: "Twitter / X", tag: "twitter" },
-              { label: "LinkedIn", tag: "linkedin" },
-              { label: "Reddit", tag: "reddit" },
-              { label: "Email", tag: "email" },
-              { label: "Friends & family", tag: "warm" },
-            ].map(({ label, tag }) => {
-              const url = `${window.location.origin}/e/${publishedSlug}?ref=${tag}`;
-              return (
-                <div key={tag} className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <span className="shrink-0 text-[13px] text-[var(--fv-text-soft)] sm:w-28">
-                    {label}
-                  </span>
-                  <code className="min-w-0 flex-1 truncate rounded-lg bg-white/[0.03] px-3 py-2 font-mono text-[12px] text-[var(--fv-text-muted)]">
-                    {url}
-                  </code>
-                  <button
-                    type="button"
-                    onClick={() => void navigator.clipboard.writeText(url)}
-                    className="fv-btn-ghost min-h-[44px] shrink-0 px-3 py-1.5 text-[12px] transition-all duration-200 sm:min-h-0"
-                  >
-                    Copy
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+          <ShareLinksPanel
+            slug={publishedSlug}
+            experimentName={experimentName}
+          />
         </div>
       )}
 

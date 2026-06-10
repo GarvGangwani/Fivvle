@@ -1,0 +1,81 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useToast } from "@/components/ui/ToastProvider";
+
+export const SHARE_CHANNELS = [
+  { label: "Twitter / X", tag: "twitter" },
+  { label: "LinkedIn", tag: "linkedin" },
+  { label: "Reddit", tag: "reddit" },
+  { label: "Email", tag: "email" },
+  { label: "Friends & family", tag: "warm" },
+] as const;
+
+interface ShareLinksPanelProps {
+  slug: string;
+  experimentName: string;
+  showDescription?: boolean;
+}
+
+export function ShareLinksPanel({
+  slug,
+  experimentName,
+  showDescription = true,
+}: ShareLinksPanelProps) {
+  const [origin, setOrigin] = useState("");
+  const { toast } = useToast();
+
+  useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
+
+  function handleCopy(url: string, channelLabel: string) {
+    void navigator.clipboard.writeText(url).then(() => {
+      toast(`${channelLabel} link copied`, "success");
+    });
+  }
+
+  return (
+    <div>
+      {showDescription && (
+        <>
+          <p className="fv-panel-label mb-3">Share with tracking</p>
+          <p className="mb-3 text-[12px] text-[var(--fv-text-muted)]">
+            Each link tracks which channel drives traffic. Use these when sharing{" "}
+            <span className="font-medium text-[var(--fv-text-soft)]">
+              {experimentName}
+            </span>
+            .
+          </p>
+        </>
+      )}
+      <div className="space-y-2">
+        {SHARE_CHANNELS.map(({ label, tag }) => {
+          const url = origin
+            ? `${origin}/e/${slug}?ref=${tag}`
+            : `/e/${slug}?ref=${tag}`;
+          return (
+            <div
+              key={tag}
+              className="flex flex-col gap-2 sm:flex-row sm:items-center"
+            >
+              <span className="shrink-0 text-[13px] text-[var(--fv-text-soft)] sm:w-28">
+                {label}
+              </span>
+              <code className="min-w-0 flex-1 truncate rounded-lg bg-white/[0.03] px-3 py-2 font-mono text-[12px] text-[var(--fv-text-muted)]">
+                {url}
+              </code>
+              <button
+                type="button"
+                onClick={() => handleCopy(url, label)}
+                className="fv-btn-ghost min-h-[44px] shrink-0 px-3 py-1.5 text-[12px] transition-all duration-200 sm:min-h-0"
+              >
+                Copy
+              </button>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
