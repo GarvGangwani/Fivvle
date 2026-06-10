@@ -194,7 +194,7 @@ export function ReportCanvas({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-[var(--fv-border)] bg-[var(--fv-bg)] px-4 py-4 lg:px-8">
+      <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-[var(--fv-border)] bg-[var(--fv-bg)] px-8 py-4">
         <div className="flex min-w-0 items-center gap-3">
           {mobile && (
             <button
@@ -233,19 +233,20 @@ export function ReportCanvas({
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 py-6 lg:px-8">
-        {loading && (
-          <div className="flex items-center justify-center py-24">
-            <Loader2 className="h-6 w-6 animate-spin text-[var(--fv-accent)]" />
-          </div>
-        )}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="space-y-12 px-8 py-6">
+          {loading && (
+            <div className="flex items-center justify-center py-24">
+              <Loader2 className="h-6 w-6 animate-spin text-[var(--fv-accent)]" />
+            </div>
+          )}
 
-        {error && !loading && (
-          <div className="fv-error text-sm">{error}</div>
-        )}
+          {error && !loading && (
+            <div className="fv-error text-sm">{error}</div>
+          )}
 
-        {report && !loading && (
-          <article className="mx-auto max-w-3xl space-y-12 text-[16px] leading-[1.75] text-[var(--fv-text-soft)]">
+          {report && !loading && (
+            <article className="mx-auto max-w-3xl space-y-12 text-[16px] leading-[1.75] text-[var(--fv-text-soft)]">
             <section>
               <h2 className="mb-4 text-[22px] font-semibold leading-tight text-[var(--fv-text)]">
                 Executive Summary
@@ -467,8 +468,9 @@ export function ReportCanvas({
                 </p>
               </section>
             )}
-          </article>
-        )}
+            </article>
+          )}
+        </div>
       </div>
     </div>
   );

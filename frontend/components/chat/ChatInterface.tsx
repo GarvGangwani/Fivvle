@@ -408,9 +408,9 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
   }, []);
 
   return (
-    <div className="flex h-full min-h-0 flex-1">
+    <div className="flex h-full min-h-0 flex-1 overflow-hidden">
       <div
-        className={`flex min-h-0 flex-col bg-[var(--fv-bg)] ${
+        className={`flex h-full min-h-0 flex-col overflow-hidden bg-[var(--fv-bg)] ${
           canvasOpen ? "hidden w-full lg:flex lg:w-[40%] lg:min-w-[320px]" : "w-full flex-1"
         }`}
         style={{ transition: "width 350ms cubic-bezier(0.16, 1, 0.3, 1)" }}
@@ -418,7 +418,7 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto px-4 py-6 lg:px-12 lg:py-8"
+          className="min-h-0 flex-1 overflow-y-auto px-4 py-6 lg:px-12 lg:py-8"
         >
           <div className="mx-auto w-full">
             {showEmptyState && (
@@ -579,7 +579,7 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
       </div>
 
       {canvasOpen && resolvedExperimentId && (
-        <div className="fixed inset-0 z-[60] min-h-0 overflow-y-auto border-l border-[var(--fv-border)] bg-[var(--fv-bg)] fv-msg-enter lg:relative lg:z-auto lg:flex lg:w-[60%] lg:flex-col">
+        <div className="fixed inset-0 z-[60] flex h-full min-h-0 flex-col overflow-hidden border-l border-[var(--fv-border)] bg-[var(--fv-bg)] fv-msg-enter lg:relative lg:z-auto lg:h-full lg:w-[60%] lg:min-h-0">
           <ReportCanvas
             experimentId={resolvedExperimentId}
             onClose={() => setCanvasOpen(false)}
