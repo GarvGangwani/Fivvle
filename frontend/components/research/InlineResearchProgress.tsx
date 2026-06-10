@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Activity, Eye } from "lucide-react";
+import { Activity } from "lucide-react";
 import { getResearchStatus, ApiError } from "@/lib/api";
 import type { ResearchStatus } from "@/lib/types";
 import {
@@ -23,13 +23,11 @@ const RESEARCH_ACTIVE_STATUSES = new Set([
 interface InlineResearchProgressProps {
   experimentId: string;
   onComplete?: () => void;
-  onViewReport?: () => void;
 }
 
 export function InlineResearchProgress({
   experimentId,
   onComplete,
-  onViewReport,
 }: InlineResearchProgressProps) {
   const [status, setStatus] = useState<ResearchStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -107,22 +105,10 @@ export function InlineResearchProgress({
           )}
 
           {isComplete && (
-            <>
-              <p className="mt-3 text-[14px] leading-relaxed text-[var(--fv-text-soft)]">
-                Your market validation report is ready. Review the findings and
-                recommendation before generating your landing page.
-              </p>
-              {onViewReport && (
-                <button
-                  type="button"
-                  onClick={onViewReport}
-                  className="view-report-btn mt-4"
-                >
-                  <Eye className="h-4 w-4" />
-                  View Validation Report
-                </button>
-              )}
-            </>
+            <p className="mt-3 text-[14px] leading-relaxed text-[var(--fv-text-soft)]">
+              Your market validation report is ready. Review the findings and
+              recommendation before generating your landing page.
+            </p>
           )}
 
           {isFailed && (

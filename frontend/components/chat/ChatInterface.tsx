@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { chatTurn, ApiError } from "@/lib/api";
+import { chatTurn, getExperiment, ApiError } from "@/lib/api";
 import type { ChatMessage as ChatMessageType } from "@/lib/types";
+import { Eye } from "lucide-react";
 import { InlineResearchProgress } from "@/components/research/InlineResearchProgress";
 import { ValidationReportPanel } from "@/components/research/ValidationReportPanel";
 import { ChatMessage } from "./ChatMessage";
@@ -63,6 +64,7 @@ export function ChatInterface() {
   const [loading, setLoading] = useState(false);
   const [researchStarted, setResearchStarted] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [hasValidationReport, setHasValidationReport] = useState(false);
   const [prefillText, setPrefillText] = useState<string | null>(null);
   const [prefillNonce, setPrefillNonce] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -97,7 +99,36 @@ export function ChatInterface() {
       scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
       forceScrollRef.current = false;
     }
-  }, [messages, loading, researchStarted]);
+  }, [messages, loading, researchStarted, hasValidationReport]);
+
+  useEffect(() => {
+    if (!experimentId || !researchStarted) {
+      setHasValidationReport(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadExperiment() {
+      if (!experimentId) return;
+      try {
+        const data = await getExperiment(experimentId);
+        if (!cancelled) {
+          setHasValidationReport(data.validation_report != null);
+        }
+      } catch {
+        // Ignore — progress polling handles transient errors elsewhere
+      }
+    }
+
+    void loadExperiment();
+    const intervalId = setInterval(loadExperiment, 3000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+    };
+  }, [experimentId, researchStarted]);
 
   function handleStarterChipClick(text: string) {
     setPrefillText(text);
@@ -251,10 +282,20 @@ export function ChatInterface() {
             )}
 
             {researchStarted && experimentId && (
-              <InlineResearchProgress
-                experimentId={experimentId}
-                onViewReport={() => setReportOpen(true)}
-              />
+              <InlineResearchProgress experimentId={experimentId} />
+            )}
+
+            {hasValidationReport && experimentId && (
+              <div className="flex justify-start">
+                <button
+                  type="button"
+                  onClick={() => setReportOpen(true)}
+                  className="view-report-btn"
+                >
+                  <Eye className="h-4 w-4" />
+                  View Validation Report
+                </button>
+              </div>
             )}
 
             <div ref={scrollAnchorRef} />

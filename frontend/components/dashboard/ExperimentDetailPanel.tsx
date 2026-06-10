@@ -157,6 +157,7 @@ export function ExperimentDetailPanel({
   if (!experiment) return null;
 
   const status = experiment.status;
+  const hasValidationReport = experiment.validation_report != null;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -169,6 +170,18 @@ export function ExperimentDetailPanel({
         <div className="fv-error mb-6 px-4 py-3 text-sm">{error}</div>
       )}
 
+      {hasValidationReport && (
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={() => setReportOpen(true)}
+            className="view-report-btn"
+          >
+            View Validation Report
+          </button>
+        </div>
+      )}
+
       {RESEARCH_IN_PROGRESS.has(status) && (
         <ResearchProgress
           experimentId={experimentId}
@@ -178,13 +191,6 @@ export function ExperimentDetailPanel({
 
       {status === "RESEARCH_READY" && (
         <div className="space-y-6">
-          <button
-            type="button"
-            onClick={() => setReportOpen(true)}
-            className="view-report-btn"
-          >
-            View Validation Report
-          </button>
           <TemplatePicker
             selectedId={selectedTemplate}
             onSelect={setSelectedTemplate}
