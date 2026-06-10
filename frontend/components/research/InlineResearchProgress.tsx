@@ -76,51 +76,59 @@ export function InlineResearchProgress({
         : "RESEARCHING";
 
   return (
-    <div className="flex justify-start">
-      <div className="w-full max-w-[80%]">
-        <div className="mb-1.5 flex items-center gap-2">
-          <div className="fv-f-logo" style={{ width: 22, height: 22, fontSize: 11 }}>
+    <div className="border-b border-[var(--fv-border)] py-6">
+      <div className="mx-auto max-w-[680px]">
+        <div className="flex items-start gap-3">
+          <div
+            className="fv-f-logo"
+            style={{ width: 24, height: 24, fontSize: 12 }}
+            aria-hidden
+          >
             F
           </div>
-          <span className="text-[12px] font-medium text-fv-text-dim">Fivvle</span>
-        </div>
-        <div className="fv-msg-ai max-w-full">
-          <div className="mb-3 flex items-center gap-2">
-            <Activity className="h-[14px] w-[14px] text-[var(--fv-accent)]" />
-            <span className="text-[13px] font-bold text-[var(--fv-accent)]">
-              {isComplete
-                ? "Research Complete"
-                : isFailed
-                  ? "Research Failed"
-                  : "Deep Research Running"}
+          <div className="min-w-0 flex-1">
+            <span className="mb-1 block text-[13px] font-medium text-[var(--fv-text-soft)]">
+              Fivvle
             </span>
+            <div className="fv-msg-ai">
+              <div className="mb-3 flex items-center gap-2">
+                <Activity className="h-[14px] w-[14px] text-[var(--fv-accent)]" />
+                <span className="text-[13px] font-bold text-[var(--fv-accent)]">
+                  {isComplete
+                    ? "Research Complete"
+                    : isFailed
+                      ? "Research Failed"
+                      : "Deep Research Running"}
+                </span>
+              </div>
+
+              {!isFailed && (
+                <PhaseIndicator
+                  currentPhase={isComplete ? "RESEARCH_SYNTHESIZING" : currentPhase}
+                  phases={[...RESEARCH_PHASE_IDS]}
+                  variant="inline"
+                />
+              )}
+
+              {isComplete && (
+                <p className="mt-3 text-[14px] leading-relaxed text-[var(--fv-text-soft)]">
+                  Your market validation report is ready. Review the findings and
+                  recommendation before generating your landing page.
+                </p>
+              )}
+
+              {isFailed && (
+                <p className="text-[14px] text-[var(--fv-warning)]">
+                  {status?.error_detail ??
+                    "Something went wrong during research. Please try again from your experiment page."}
+                </p>
+              )}
+
+              {error && !isComplete && !isFailed && (
+                <p className="mt-2 text-[12px] text-[var(--fv-warning)]">{error}</p>
+              )}
+            </div>
           </div>
-
-          {!isFailed && (
-            <PhaseIndicator
-              currentPhase={isComplete ? "RESEARCH_SYNTHESIZING" : currentPhase}
-              phases={[...RESEARCH_PHASE_IDS]}
-              variant="inline"
-            />
-          )}
-
-          {isComplete && (
-            <p className="mt-3 text-[14px] leading-relaxed text-[var(--fv-text-soft)]">
-              Your market validation report is ready. Review the findings and
-              recommendation before generating your landing page.
-            </p>
-          )}
-
-          {isFailed && (
-            <p className="text-[14px] text-[var(--fv-warning)]">
-              {status?.error_detail ??
-                "Something went wrong during research. Please try again from your experiment page."}
-            </p>
-          )}
-
-          {error && !isComplete && !isFailed && (
-            <p className="mt-2 text-[12px] text-[var(--fv-warning)]">{error}</p>
-          )}
         </div>
       </div>
     </div>

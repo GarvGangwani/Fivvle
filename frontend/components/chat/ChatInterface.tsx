@@ -208,7 +208,7 @@ export function ChatInterface() {
           onScroll={handleScroll}
           className="flex-1 overflow-y-auto px-6 py-8 sm:px-12"
         >
-          <div className="mx-auto flex max-w-3xl flex-col gap-5">
+          <div className="mx-auto w-full">
             {messages.length === 0 && !loading && (
               <div className="flex flex-col items-center py-16 text-center">
                 <div
@@ -255,27 +255,30 @@ export function ChatInterface() {
             ))}
 
             {loading && (
-              <div className="flex justify-start">
-                <div className="w-full max-w-[80%]">
-                  <div className="mb-1.5 flex items-center gap-2">
+              <div className="fv-msg-enter border-b border-[var(--fv-border)] py-6">
+                <div className="mx-auto max-w-[680px]">
+                  <div className="flex items-start gap-3">
                     <div
                       className="fv-f-logo"
-                      style={{ width: 22, height: 22, fontSize: 11 }}
+                      style={{ width: 24, height: 24, fontSize: 12 }}
+                      aria-hidden
                     >
                       F
                     </div>
-                    <span className="text-[12px] font-medium text-fv-text-dim">
-                      Fivvle
-                    </span>
-                  </div>
-                  <div className="fv-msg-ai flex items-center gap-1.5 px-2 py-3">
-                    {[0, 150, 300].map((delay) => (
-                      <span
-                        key={delay}
-                        className="h-2 w-2 animate-pulse rounded-full bg-[var(--fv-text-dim)]"
-                        style={{ animationDelay: `${delay}ms` }}
-                      />
-                    ))}
+                    <div className="min-w-0 flex-1">
+                      <span className="mb-1 block text-[13px] font-medium text-[var(--fv-text-soft)]">
+                        Fivvle
+                      </span>
+                      <div className="flex items-center gap-1.5 py-1">
+                        {[0, 150, 300].map((delay) => (
+                          <span
+                            key={delay}
+                            className="h-2 w-2 animate-pulse rounded-full bg-[var(--fv-text-dim)]"
+                            style={{ animationDelay: `${delay}ms` }}
+                          />
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -286,15 +289,17 @@ export function ChatInterface() {
             )}
 
             {hasValidationReport && experimentId && (
-              <div className="flex justify-start">
-                <button
-                  type="button"
-                  onClick={() => setReportOpen(true)}
-                  className="view-report-btn"
-                >
-                  <Eye className="h-4 w-4" />
-                  View Validation Report
-                </button>
+              <div className="border-b border-[var(--fv-border)] py-6">
+                <div className="mx-auto max-w-[680px]">
+                  <button
+                    type="button"
+                    onClick={() => setReportOpen(true)}
+                    className="view-report-btn"
+                  >
+                    <Eye className="h-4 w-4" />
+                    View Validation Report
+                  </button>
+                </div>
               </div>
             )}
 

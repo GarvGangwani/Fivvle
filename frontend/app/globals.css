@@ -234,24 +234,15 @@ body {
 }
 
 .fv-msg-user {
-  background: color-mix(in srgb, var(--fv-accent) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--fv-accent) 20%, transparent);
-  border-radius: 14px 14px 4px 14px;
-  padding: 12px 16px;
-  max-width: 72%;
-  font-size: 14px;
-  line-height: 1.6;
-  margin-left: auto;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--fv-text);
 }
 
 .fv-msg-ai {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 14px 14px 14px 4px;
-  padding: 12px 16px;
-  max-width: 80%;
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--fv-text);
 }
 
 .fv-deep-toggle {
@@ -390,26 +381,17 @@ body {
   background: var(--fv-inactive);
 }
 
-/* Message bubble aliases */
+/* Legacy message content aliases — flat conversational style */
 .msg-bubble-user {
-  background: color-mix(in srgb, var(--fv-accent) 12%, transparent);
-  border: 1px solid color-mix(in srgb, var(--fv-accent) 20%, transparent);
-  border-radius: 14px 14px 4px 14px;
-  padding: 12px 16px;
-  max-width: 72%;
-  font-size: 14px;
-  line-height: 1.6;
-  margin-left: auto;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--fv-text);
 }
 
 .msg-bubble-ai {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.07);
-  border-radius: 14px 14px 14px 4px;
-  padding: 12px 16px;
-  max-width: 80%;
-  font-size: 14px;
-  line-height: 1.6;
+  font-size: 15px;
+  line-height: 1.65;
+  color: var(--fv-text);
 }
 
 .view-report-btn {
