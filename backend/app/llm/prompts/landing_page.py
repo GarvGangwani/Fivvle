@@ -82,14 +82,50 @@ Produce TWO structured outputs in a single response:
 
 **LandingPageStrategy** — conversion architecture:
   page_type: align with page_goal (e.g. waitlist → waitlist page)
-  messaging_angle: core angle aligned with brand_direction (e.g. trust-first, \
-urgency-driven, transformation-led, comparison-led)
+  messaging_angle: ONE specific, non-generic angle for THIS idea — not SaaS boilerplate \
+(e.g. "night-shift nurses drowning in handoff paperwork" not "productivity for healthcare"). \
+Must synthesize the three messaging pillars below into a single coherent hook.
   section_sequence: ordered list drawn ONLY from these section keys: \
 hero, problem, features, comparison, proof, objections, faq, pricing, cta
   cta_strategy: list of specific copywriting strategies for primary and secondary CTAs
-  copy_framework: exactly "PAS" (Pain-Agitate-Solve) or "AIDA" (Attention-Interest-Desire-Action) \
-chosen based on ICP buyer psychology — PAS for pain-aware buyers with acute frustration; \
-AIDA for aspirational or discovery-stage buyers
+  copy_framework: exactly "PAS" (Pain-Agitate-Solve) or "AIDA" (Attention-Interest-Desire-Action). \
+Choose deliberately from idea type and buyer psychology — do NOT default to PAS. Justify the \
+choice implicitly through how section_sequence and cta_strategy are structured.
+
+---
+
+MESSAGING SPECIFICITY — identify these BEFORE writing strategy fields
+
+Before filling LandingPageInputModel and LandingPageStrategy, extract three pillars from \
+ValidationReport + RefinedIdea. Every downstream field must reflect them.
+
+(a) **Compelling insight** — the single most attention-worthy finding from ValidationReport \
+(strongest market signal, sharpest competitor gap, most specific user complaint, or clearest \
+demand proof). This is what makes THIS idea worth paying attention to right now — not a \
+category platitude. Surface it in offer_core, positioning_intelligence, and messaging_angle.
+
+(b) **Primary emotional driver** — the dominant emotion that will move the ICP to act. Pick ONE \
+and let it shape tone and section emphasis:
+  • frustration — acute daily pain, broken status quo
+  • fear of missing out — peers adopting, window closing, trend accelerating
+  • aspiration — identity upgrade, becoming the kind of person/org they want to be
+  • time pressure — deadline, seasonality, regulatory change, cost of delay
+Reflect the chosen driver in buyer_psychology, messaging_angle, and cta_strategy.
+
+(c) **Primary objection to preempt** — ONE specific objection the landing page must address \
+head-on before the visitor bounces (e.g. "I already use Notion for this", "My team won't adopt \
+another tool", "This sounds too good to be true for our budget"). Ground it in \
+risks_assessment and findings. Put it first in top_objections and ensure objection_rebuttals \
+and section_sequence (objections, proof, or faq) directly neutralize it.
+
+**Copy framework selection** — choose PAS or AIDA based on idea type and ICP stage, not habit:
+  • PAS when: buyer already feels the pain acutely, alternatives are known and hated, research \
+shows specific complaints or workarounds. Example: replacing a manual workflow tool users \
+actively complain about.
+  • AIDA when: buyer is discovery-stage, category is emerging, or aspiration/identity matters \
+more than pain agitation. Example: new category, early-adopter audience, transformation-led offer.
+If inputs are ambiguous, pick the framework that best serves the emotional driver in (b) and \
+explain the choice through section_sequence ordering and cta_strategy — never pick at random.
 
 ---
 
@@ -111,6 +147,17 @@ page_goal in LandingPageInputModel MUST match the page_goal value in Zone C.
 
 STRONG vs WEAK EXAMPLES — internalize these
 
+WEAK messaging_angle (do not produce):
+"AI-powered productivity for modern teams."
+Why it fails: could describe any SaaS product; no insight, emotion, or objection hook.
+
+STRONG messaging_angle (model after this):
+"Night-shift nurses lose 40 minutes per handoff to typing — voice capture that charge nurses \
+already trust cuts it to 5, preempting the 'another app my floor won't use' objection with \
+charge-nurse-formatted output."
+Why it works: names who, states the insight, names the emotion (time/frustration), and the \
+objection the page must kill.
+
 WEAK one_line_pitch (do not produce):
 "Revolutionize your workflow with our powerful AI platform."
 Why it fails: generic filler, no specific audience, no concrete outcome.
@@ -118,6 +165,10 @@ Why it fails: generic filler, no specific audience, no concrete outcome.
 STRONG one_line_pitch (model after this):
 "Shift handoff notes for night-shift nurses — from 40 minutes of typing to a 5-minute voice capture."
 Why it works: names the user, states the concrete before/after transformation.
+
+WEAK copy_framework choice (do not produce):
+Defaulting to PAS for every B2B SaaS idea without reading buyer_psychology or findings.
+Why it fails: aspirational or discovery-stage buyers need AIDA; framework must match idea type.
 
 WEAK section_sequence (do not produce):
 ["hero", "about", "team", "contact"]
@@ -142,8 +193,13 @@ empty lists are valid if no evidence exists
   objection_rebuttals: map each top_objection to a strategic rebuttal sentence
 
 LandingPageStrategy:
-  cta_strategy: 2-4 actionable bullet strategies (not vague "be compelling")
-  section_sequence: ordered, no duplicates
+  messaging_angle: must encode the compelling insight (a), emotional driver (b), and primary \
+objection hook (c) — not a generic category label
+  cta_strategy: 2-4 actionable bullet strategies tied to the emotional driver (urgency, exclusivity, \
+fear of missing out, etc.) — not vague "be compelling"
+  section_sequence: ordered, no duplicates; order should reflect copy_framework choice (PAS: \
+problem before features; AIDA: hero/proof before hard ask)
+  copy_framework: PAS or AIDA only; choice must align with ICP stage and idea type per guidance above
 
 ---
 
@@ -227,22 +283,38 @@ brand, proof).
 Produce **CopyOutput** with copy_json: a dict keyed by section type. Write copy ONLY for \
 sections listed in strategy.section_sequence. Each key's value matches the structure below.
 
+**Voice & specificity:** Write as if you are the founder speaking directly to one specific \
+person who has the problem — not as a copywriter writing for a website. Use "you" and concrete \
+situations from problem_intelligence and customer_intelligence.icp. Every sentence should \
+only make sense for THIS startup.
+
+**Banned words/phrases** — never use: revolutionary, game-changing, seamless, cutting-edge, \
+leverage, utilize, elevate, empower, streamline, robust, next-generation, state-of-the-art, \
+best-in-class, unlock, transform (as filler), next-level, powerful (as filler).
+
 ---
 
 SECTION STRUCTURES — copy_json keys
 
 "hero": { headline, subheadline, cta }
-  headline: benefit-first, concrete, max ~80 chars. No banned filler: Revolutionize, Unlock, \
-Transform, Empower, Next-level, Game-changing, Seamless, Powerful, Cutting-edge.
-  subheadline: one supporting sentence with specifics (how it works or who it's for).
-  cta: action-oriented button label aligned with page_goal and cta_strategy.
+  headline: specific to THIS idea — state a concrete outcome, pain, or claim the ICP recognizes. \
+Max ~80 chars. Bad: "The Future of [Category]" or "Transform your business with AI." \
+Good: "Stop losing 3 hours every Monday to standup meetings that could be async."
+  subheadline: one sentence naming the target user AND the core benefit together \
+(e.g. "For engineering leads tired of status meetings — get async updates your team actually reads.").
+  cta: button label that creates urgency or exclusivity aligned with page_goal and cta_strategy \
+— not generic "Sign up" or "Get started" unless strategy explicitly calls for low-friction wording.
 
 "problem": { heading, body }
-  heading: captures user frustration in their language.
-  body: agitated problem narrative — status quo is unacceptable. Use copy_framework structure.
+  heading: a line the target user would say out loud — their frustration in their words.
+  body: paint a vivid, specific scenario they recognize (time, place, tool, consequence) — not \
+abstract industry pain like "teams struggle with communication." Use copy_framework structure \
+(PAS: agitate before solution; AIDA: hook curiosity then deepen).
 
 "features": list of { title, description }
-  3-5 items. Each title maps to a direct benefit; description is actionable and specific.
+  3-5 items. Each title states the BENEFIT, not the mechanic. \
+Bad title: "AI-Powered Analytics". Good title: "See which channels actually convert — not just clicks." \
+Description: what the user gets or does — actionable and specific to this product.
 
 "comparison": { metric_label, competitor_name, our_features, competitor_features }
   our_features: list of our advantages; competitor_features: list of legacy drawbacks.
@@ -254,10 +326,12 @@ and social_proof_hooks.
 
 "objections": { heading, items }
   heading: e.g. "You might be wondering…"
-  items: list of { question, answer } mapping top_objections to objection_rebuttals.
+  items: list of { question, answer } mapping top_objections to objection_rebuttals. Answers: direct, \
+confidence-building — state why the concern doesn't apply or how you handle it. No hedging.
 
 "faq": list of { question, answer }
-  3-5 FAQ items addressing remaining buyer questions not covered in objections.
+  3-5 FAQ items addressing remaining buyer questions not covered in objections. Answers: direct and \
+confidence-building — specific facts or policies, not "We're always here to help" vagueness.
 
 "pricing": { plans }
   plans: list of { name, price, features } — include ONLY when monetization or WTP signals \
@@ -265,33 +339,79 @@ in customer_intelligence.willingness_to_pay support concrete tiers; otherwise om
 pricing key entirely.
 
 "cta": { heading, subheading, button }
-  Final conversion block: trust-building microcopy + action button.
+  Final conversion block: heading + subheading should create urgency, exclusivity, or fear of \
+missing out (waitlist spots, early access, cost of waiting) — grounded in strategy.cta_strategy \
+and page_goal. Button text: action-specific, not generic "Sign up" unless low-friction is the strategy.
 
 ---
 
 NON-NEGOTIABLE OBLIGATIONS
 
 BE SPECIFIC TO THIS STARTUP — reference the actual ICP, pain points, competitors, and \
-transformation promise from LandingPageInputModel. No generic AI filler.
+transformation promise from LandingPageInputModel. No generic AI filler or category boilerplate.
+Write in the founder's voice to one reader; avoid website-copy tone and marketing jargon.
 USE copy_framework from strategy: PAS sections agitate pain before presenting solution; \
 AIDA sections build attention → interest → desire → action.
 MATCH brand_direction.tone throughout — a premium tone does not use casual slang; a \
 lighthearted tone does not use corporate jargon.
 ONLY emit keys present in strategy.section_sequence — do not write sections not in the plan.
-CTA labels must align with strategy.cta_strategy and page_goal.
+CTA labels must align with strategy.cta_strategy and page_goal; prefer urgency/exclusivity \
+over generic signup language unless cta_strategy says otherwise.
 Do not fabricate pricing tiers, customer counts, or testimonials absent from inputs.
+Do not use any banned words/phrases listed above.
 
 ---
 
 STRONG vs WEAK EXAMPLES — internalize these
 
 WEAK hero headline (do not produce):
-"Transform your business with next-level AI solutions."
-Why it fails: banned filler words, no specific benefit, no audience.
+"The Future of Project Management" or "Transform your business with next-level AI solutions."
+Why it fails: category platitude / banned filler; could be any product.
 
 STRONG hero headline (model after this):
-"Finish shift handoffs in 5 minutes, not 40."
-Why it works: concrete outcome, specific time claim grounded in the offer.
+"Stop losing 3 hours every Monday to standup meetings that could be async."
+Why it works: specific pain, time cost, scenario the ICP recognizes.
+
+WEAK subheadline (do not produce):
+"The all-in-one platform for modern teams."
+Why it fails: no named user, no concrete benefit.
+
+STRONG subheadline (model after this):
+"For engineering leads who'd rather ship code than run status meetings — async updates your team actually reads."
+Why it works: names who + core benefit in one sentence.
+
+WEAK problem body (do not produce):
+"Businesses today face increasing challenges with workflow efficiency."
+Why it fails: abstract industry pain; no recognizable scenario.
+
+STRONG problem body (model after this):
+"It's 4:47 PM on Friday. You're copying Slack threads into a doc for Monday's standup — again — \
+while your team waits on a deploy you haven't had time to review."
+Why it works: vivid moment the target user has lived.
+
+WEAK feature title (do not produce):
+"AI-Powered Analytics"
+Why it fails: names the mechanic, not the benefit.
+
+STRONG feature title (model after this):
+"See which channels actually convert — not just which ones get clicks"
+Why it works: outcome the user cares about.
+
+WEAK FAQ answer (do not produce):
+"We're committed to providing the best experience possible and are always improving."
+Why it fails: defensive, vague, builds no confidence.
+
+STRONG FAQ answer (model after this):
+"Yes — you can export everything to CSV anytime. No lock-in, no sales call required."
+Why it works: direct, specific, confidence-building.
+
+WEAK CTA button (do not produce):
+"Sign up"
+Why it fails: no urgency or reason to act now.
+
+STRONG CTA button (model after this):
+"Join the waitlist — 200 spots for Q1 beta"
+Why it works: exclusivity + urgency when strategy supports it.
 
 WEAK feature description (do not produce):
 "Our platform leverages cutting-edge technology to streamline workflows."
