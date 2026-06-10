@@ -810,6 +810,48 @@ async def archive_experiment(
     )
 
 
+@router.post(
+    "/{experiment_id}/unarchive",
+    response_model=GetExperimentDetailResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def unarchive_experiment(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> GetExperimentDetailResponse:
+    result = await db.execute(
+        select(Experiment)
+        .options(selectinload(Experiment.validation_report))
+        .where(Experiment.id == experiment_id),
+    )
+    experiment = result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    if experiment.status != ExperimentStatus.ARCHIVED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Experiment is not archived",
+        )
+
+    experiment.status = ExperimentStatus.COMPLETED
+    await db.commit()
+
+    summary = None
+    if experiment.validation_report is not None:
+        summary = _aggregate_validation_report(experiment.validation_report.raw_report)
+
+    return GetExperimentDetailResponse(
+        id=experiment.id,
+        status=experiment.status,
+        validation_report=summary,
+    )
+
+
 # ---------------------------------------------------------------------------
 # GET /experiments/{id} — owner detail + ValidationReport aggregates (smoke / FE)
 # ---------------------------------------------------------------------------

@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw, ArchiveRestore } from "lucide-react";
 import {
   confirmExperiment,
   generateInsight,
   generateLandingPage,
   getExperiment,
+  unarchiveExperiment,
   ApiError,
 } from "@/lib/api";
 import type { Experiment, FounderDecision } from "@/lib/types";
@@ -45,6 +46,7 @@ export function ExperimentDetailPanel({
   const [retrying, setRetrying] = useState(false);
   const [generatingLp, setGeneratingLp] = useState(false);
   const [retryingInsight, setRetryingInsight] = useState(false);
+  const [unarchiving, setUnarchiving] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateId | null>(
     null,
   );
@@ -131,6 +133,18 @@ export function ExperimentDetailPanel({
 
   function handleDecision(_decision: FounderDecision) {
     void loadExperiment();
+  }
+
+  async function handleUnarchive() {
+    setUnarchiving(true);
+    try {
+      await unarchiveExperiment(experimentId);
+      await loadExperiment();
+    } catch {
+      setError("Could not restore experiment. Please try again.");
+    } finally {
+      setUnarchiving(false);
+    }
   }
 
   if (loading) {
@@ -318,6 +332,31 @@ export function ExperimentDetailPanel({
         </div>
       )}
 
+      {status === "ARCHIVED" && (
+        <div className="fv-card px-6 py-8 text-center">
+          <h2 className="text-lg font-semibold text-[var(--fv-text)]">
+            Experiment archived
+          </h2>
+          <p className="mt-2 text-sm text-[var(--fv-text-soft)]">
+            This experiment is archived. Restore it to review reports and
+            continue where you left off.
+          </p>
+          <button
+            type="button"
+            onClick={handleUnarchive}
+            disabled={unarchiving}
+            className="fv-btn-ghost mt-6 inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {unarchiving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ArchiveRestore className="h-4 w-4" />
+            )}
+            Unarchive
+          </button>
+        </div>
+      )}
+
       {!RESEARCH_IN_PROGRESS.has(status) &&
         status !== "RESEARCH_READY" &&
         status !== "RESEARCH_FAILED" &&
@@ -326,7 +365,8 @@ export function ExperimentDetailPanel({
         status !== "LANDING_GENERATING" &&
         status !== "INSIGHT_GENERATING" &&
         status !== "INSIGHT_READY" &&
-        status !== "INSIGHT_FAILED" && (
+        status !== "INSIGHT_FAILED" &&
+        status !== "ARCHIVED" && (
           <div className="fv-card px-6 py-8 text-center">
             <p className="text-sm text-[var(--fv-text-soft)]">
               This experiment is in{" "}

@@ -262,6 +262,13 @@ export async function archiveExperiment(
   });
 }
 
+export async function unarchiveExperiment(id: string): Promise<Experiment> {
+  return apiFetch<Experiment>(`/experiments/${id}/unarchive`, {
+    method: "POST",
+    body: {},
+  });
+}
+
 export async function submitPageView(
   slug: string,
   source_tag?: string,
