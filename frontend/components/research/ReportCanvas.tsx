@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ArrowLeft, X } from "lucide-react";
 import { getValidationReport, ApiError } from "@/lib/api";
 import type {
@@ -82,6 +82,10 @@ function inferRiskSeverity(
   return "high";
 }
 
+function formatRiskSeverity(severity: "high" | "medium" | "low"): string {
+  return `${severity.charAt(0).toUpperCase()}${severity.slice(1)} risk`;
+}
+
 function collectAllCitations(report: ValidationReport): Citation[] {
   const seen = new Set<string>();
   const citations: Citation[] = [];
@@ -132,9 +136,32 @@ function ReportSectionHeader({ title }: { title: string }) {
   );
 }
 
+function CollapsibleSection({
+  toggleLabel,
+  children,
+}: {
+  toggleLabel: string;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <section className="mt-16 border-t border-[var(--fv-border)] pt-16">
+      <button
+        type="button"
+        onClick={() => setOpen((prev) => !prev)}
+        className="mb-6 text-[15px] text-[var(--fv-text-soft)] hover:text-[var(--fv-text)]"
+      >
+        {open ? toggleLabel.replace("▾", "▴") : toggleLabel}
+      </button>
+      {open && children}
+    </section>
+  );
+}
+
 function ReportLoadingSkeleton() {
   return (
-    <div className="mx-auto max-w-[680px] space-y-3">
+    <div className="space-y-3">
       <div className="fv-skeleton h-6 w-48 rounded" />
       <div className="fv-skeleton h-4 w-full rounded" />
       <div className="fv-skeleton h-4 w-full rounded" />
@@ -151,15 +178,15 @@ function FindingItem({
   citationIndexMap: Map<string, number>;
 }) {
   return (
-    <div className="mb-6">
-      <p className="text-[15px] leading-[1.75] text-[var(--fv-text)]">
+    <>
+      <p className="mb-4 text-[15px] leading-[1.8] text-[var(--fv-text-soft)]">
         {finding.claim}
-        <span className="ml-2 text-[12px] uppercase text-[var(--fv-text-muted)]">
+        <span className="ml-2 text-[12px] text-[var(--fv-text-dim)]">
           {finding.confidence}
         </span>
       </p>
       {(finding.evidence_summary || finding.citations.length > 0) && (
-        <p className="mt-1 text-[14px] text-[var(--fv-text-dim)]">
+        <p className="mb-4 text-[14px] leading-[1.8] text-[var(--fv-text-dim)]">
           {finding.evidence_summary}
           {finding.citations.map((citation) => {
             const key = citation.url || citation.title;
@@ -170,11 +197,11 @@ function FindingItem({
         </p>
       )}
       {finding.confidence_rationale && (
-        <p className="mt-1 text-[14px] text-[var(--fv-text-dim)]">
+        <p className="mb-4 text-[14px] leading-[1.8] text-[var(--fv-text-dim)]">
           {finding.confidence_rationale}
         </p>
       )}
-    </div>
+    </>
   );
 }
 
@@ -236,9 +263,15 @@ export function ReportCanvas({
     report &&
     report.overall_recommendation !== "too_vague_to_recommend";
 
+  const hasMarketSignals =
+    report &&
+    (report.market_signals ||
+      report.distribution_signals ||
+      report.regulatory_signals);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-[var(--fv-border)] bg-[var(--fv-bg)] px-8 py-4">
+      <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-[var(--fv-border)] bg-[var(--fv-bg)]/95 px-8 py-3 backdrop-blur-sm">
         <div className="flex min-w-0 items-center gap-3">
           {mobile && (
             <button
@@ -265,19 +298,30 @@ export function ReportCanvas({
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--fv-bg)]">
-        <div className="px-8 py-8">
+        <div className="mx-auto max-w-[680px] px-8 py-8">
           {loading && <ReportLoadingSkeleton />}
 
           {error && !loading && (
-            <div className="fv-error mx-auto max-w-[680px] text-sm">{error}</div>
+            <div className="fv-error text-sm">{error}</div>
           )}
 
           {report && !loading && (
-            <article className="mx-auto max-w-[680px] [&>section+section]:mt-20">
-              <section>
-                <ReportSectionHeader title="Executive Summary" />
-                {showRecommendation && (
-                  <div className="mb-8">
+            <article>
+              <div>
+                {showRecommendation && report.recommendation_rationale && (
+                  <p className="mb-4 text-[15px] leading-[1.8] text-[var(--fv-text-soft)]">
+                    <span
+                      className={`mr-2 inline-flex !px-1.5 !py-px !text-[10px] !font-semibold ${recommendationBadgeClass(
+                        report.overall_recommendation,
+                      )}`}
+                    >
+                      {formatRecommendation(report.overall_recommendation)}
+                    </span>
+                    {report.recommendation_rationale}
+                  </p>
+                )}
+                {showRecommendation && !report.recommendation_rationale && (
+                  <p className="mb-4 text-[15px] leading-[1.8] text-[var(--fv-text-soft)]">
                     <span
                       className={`inline-flex !px-1.5 !py-px !text-[10px] !font-semibold ${recommendationBadgeClass(
                         report.overall_recommendation,
@@ -285,160 +329,118 @@ export function ReportCanvas({
                     >
                       {formatRecommendation(report.overall_recommendation)}
                     </span>
-                    {report.recommendation_rationale && (
-                      <p className="mt-3 text-[15px] leading-[1.75] text-[var(--fv-text-soft)]">
-                        {report.recommendation_rationale}
-                      </p>
-                    )}
-                  </div>
+                  </p>
                 )}
                 {!showRecommendation && report.recommendation_rationale && (
-                  <p className="mb-8 text-[15px] leading-[1.75] text-[var(--fv-text-soft)]">
+                  <p className="mb-4 text-[15px] leading-[1.8] text-[var(--fv-text-soft)]">
                     {report.recommendation_rationale}
                   </p>
                 )}
-                <p className="whitespace-pre-wrap text-[16px] leading-[1.85] text-[var(--fv-text-soft)]">
+                <p className="whitespace-pre-wrap text-[15px] leading-[1.8] text-[var(--fv-text-soft)]">
                   {report.executive_summary}
                 </p>
-              </section>
+              </div>
 
-              <section>
+              <section className="mt-16 border-t border-[var(--fv-border)] pt-16">
                 <ReportSectionHeader title="Research Questions & Findings" />
                 {report.questions_and_findings.length === 0 ? (
                   <p className="text-[var(--fv-text-muted)]">
                     No research findings available.
                   </p>
                 ) : (
-                  <div>
-                    {report.questions_and_findings.map((qf) => (
-                      <div key={qf.question_id} className="mb-12">
-                        <h3 className="mb-4 text-lg font-medium text-[var(--fv-text)]">
+                  <>
+                    {report.questions_and_findings.map((qf, qfIndex) => (
+                      <div
+                        key={qf.question_id}
+                        className={
+                          qfIndex > 0
+                            ? "mt-8 border-t border-[var(--fv-border)] pt-8"
+                            : undefined
+                        }
+                      >
+                        <h3 className="mb-4 text-[17px] font-medium text-[var(--fv-text)]">
                           {qf.question}
                         </h3>
-                        <div>
-                          {qf.findings.map((finding) => (
+                        {qf.findings.map((finding) => (
+                          <div
+                            key={`${finding.question_id}-${finding.claim}`}
+                            className="mb-8"
+                          >
                             <FindingItem
-                              key={`${finding.question_id}-${finding.claim}`}
                               finding={finding}
                               citationIndexMap={citationIndexMap}
                             />
-                          ))}
-                          {qf.evidence_gap && (
-                            <p className="text-[14px] text-[var(--fv-text-muted)]">
-                              Evidence gap: {qf.evidence_gap}
-                            </p>
-                          )}
-                        </div>
+                          </div>
+                        ))}
+                        {qf.evidence_gap && (
+                          <p className="mb-4 text-[14px] leading-[1.8] text-[var(--fv-text-muted)]">
+                            Evidence gap: {qf.evidence_gap}
+                          </p>
+                        )}
                       </div>
                     ))}
-                  </div>
+                  </>
                 )}
               </section>
 
-              <section>
+              <section className="mt-16 border-t border-[var(--fv-border)] pt-16">
                 <ReportSectionHeader title="Competitor Landscape" />
                 {report.competitors.length === 0 ? (
                   <p className="text-[var(--fv-text-muted)]">
                     No competitors identified.
                   </p>
                 ) : (
-                  <div>
+                  <>
                     {report.competitors.map((comp) => (
-                      <div key={comp.name} className="mb-6">
-                        <p className="font-medium text-[15px] text-[var(--fv-text)]">
+                      <p
+                        key={comp.name}
+                        className="mb-6 text-[15px] leading-[1.8] text-[var(--fv-text-soft)]"
+                      >
+                        <span className="font-medium text-[var(--fv-text)]">
                           {comp.name}
-                        </p>
-                        <p className="mt-1 whitespace-pre-wrap text-[14px] text-[var(--fv-text-soft)]">
-                          {comp.description}
-                        </p>
+                        </span>
+                        {" — "}
+                        {comp.description}
                         {comp.positioning_vs_idea && (
-                          <p className="mt-1 whitespace-pre-wrap text-[14px] text-[var(--fv-text-soft)]">
+                          <>
+                            {" "}
                             {comp.positioning_vs_idea}
-                          </p>
+                          </>
                         )}
-                      </div>
+                      </p>
                     ))}
-                  </div>
+                  </>
                 )}
               </section>
 
-              <section>
-                <ReportSectionHeader title="Market Signals" />
-                <div className="space-y-8">
-                  {(
-                    [
-                      ["Market overview", report.market_signals],
-                      ["Distribution", report.distribution_signals],
-                      ["Regulatory", report.regulatory_signals],
-                    ] as const
-                  ).map(([label, text]) => {
-                    if (!text) return null;
-                    const lines = parseBulletLines(text);
-                    const items = lines.length > 1 ? lines : [text];
-
-                    return (
-                      <div key={label}>
-                        <h3 className="mb-4 text-[15px] font-semibold text-[var(--fv-text)]">
-                          {label}
-                        </h3>
-                        <ul className="space-y-2">
-                          {items.map((item, index) => (
-                            <li
-                              key={`${label}-${index}`}
-                              className="flex items-start gap-2"
-                            >
-                              <span
-                                className="shrink-0 text-[var(--fv-text-muted)]"
-                                aria-hidden
-                              >
-                                •
-                              </span>
-                              <p className="text-[15px] leading-[1.75] text-[var(--fv-text-soft)] whitespace-pre-wrap">
-                                {item}
-                              </p>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    );
-                  })}
-                  {!report.market_signals &&
-                    !report.distribution_signals &&
-                    !report.regulatory_signals && (
-                      <p className="text-[var(--fv-text-muted)]">
-                        No market signals available.
-                      </p>
-                    )}
-                </div>
-              </section>
-
-              <section>
+              <section className="mt-16 border-t border-[var(--fv-border)] pt-16">
                 <ReportSectionHeader title="Risks" />
                 {risks.length === 0 ? (
                   <p className="text-[var(--fv-text-muted)]">
                     No significant risks identified.
                   </p>
                 ) : (
-                  <ul className="list-none">
+                  <>
                     {risks.map((risk, index) => {
                       const severity = inferRiskSeverity(risk, index);
                       return (
-                        <li key={`${index}-${risk.slice(0, 32)}`} className="mb-4">
-                          <p className="text-[15px] leading-[1.75] text-[var(--fv-text-soft)] whitespace-pre-wrap">
-                            <span className="text-[12px] uppercase text-[var(--fv-text-muted)]">
-                              {severity}
-                            </span>
-                            {" — "}
-                            {risk}
-                          </p>
-                        </li>
+                        <p
+                          key={`${index}-${risk.slice(0, 32)}`}
+                          className="mb-4 text-[15px] leading-[1.8] text-[var(--fv-text-soft)] whitespace-pre-wrap"
+                        >
+                          <span className="font-bold">
+                            {formatRiskSeverity(severity)}
+                          </span>
+                          {" — "}
+                          {risk}
+                        </p>
                       );
                     })}
-                  </ul>
+                  </>
                 )}
               </section>
 
-              <section>
+              <section className="mt-16 border-t border-[var(--fv-border)] pt-16">
                 <ReportSectionHeader title="Citations" />
                 {citations.length === 0 ? (
                   <p className="text-[var(--fv-text-muted)]">
@@ -450,7 +452,7 @@ export function ReportCanvas({
                       <li
                         key={`${citation.url}-${index}`}
                         id={`citation-${index + 1}`}
-                        className="mb-2 text-[14px]"
+                        className="mb-1 text-[13px] leading-[1.6]"
                       >
                         <span className="text-[var(--fv-text-muted)]">
                           {index + 1}.{" "}
@@ -468,13 +470,46 @@ export function ReportCanvas({
                 )}
               </section>
 
+              {hasMarketSignals && (
+                <CollapsibleSection toggleLabel="Show market signals ▾">
+                  <div>
+                    {(
+                      [
+                        ["Market overview", report.market_signals],
+                        ["Distribution", report.distribution_signals],
+                        ["Regulatory", report.regulatory_signals],
+                      ] as const
+                    ).map(([label, text]) => {
+                      if (!text) return null;
+                      const lines = parseBulletLines(text);
+                      const items = lines.length > 1 ? lines : [text];
+
+                      return (
+                        <div key={label} className="mb-8">
+                          <h3 className="mb-4 text-[15px] font-medium text-[var(--fv-text)]">
+                            {label}
+                          </h3>
+                          {items.map((item, index) => (
+                            <p
+                              key={`${label}-${index}`}
+                              className="mb-4 text-[15px] leading-[1.8] text-[var(--fv-text-soft)] whitespace-pre-wrap"
+                            >
+                              {item}
+                            </p>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CollapsibleSection>
+              )}
+
               {report.research_limitations && (
-                <section>
-                  <ReportSectionHeader title="Research Limitations" />
-                  <p className="whitespace-pre-wrap text-[15px] leading-[1.75] text-[var(--fv-text-muted)]">
+                <CollapsibleSection toggleLabel="Show limitations ▾">
+                  <p className="whitespace-pre-wrap text-[15px] leading-[1.8] text-[var(--fv-text-muted)]">
                     {report.research_limitations}
                   </p>
-                </section>
+                </CollapsibleSection>
               )}
             </article>
           )}
