@@ -619,12 +619,12 @@ async def test_run_turn_finalize_persists_refined_idea_count_unchanged(
 
 
 @pytest.mark.asyncio
-async def test_run_turn_fourth_turn_prompt_includes_force_finalize_note(
+async def test_run_turn_hard_ceiling_prompt_includes_force_finalize_note(
     valid_refined_idea: RefinedIdea,
 ) -> None:
-    """When refinement_count is 3, user prompt includes the fourth-turn finalize note."""
+    """When refinement_count hits the hard ceiling, user prompt requires finalize."""
     db = AsyncMock(spec=AsyncSession)
-    experiment = _make_experiment_for_run_turn(refinement_count=3)
+    experiment = _make_experiment_for_run_turn(refinement_count=6)
     decision = _make_finalize_decision(refined_idea=valid_refined_idea)
     mock_meta = _make_mock_llm_result()
     mock_complete = AsyncMock(return_value=(decision, mock_meta))
@@ -644,7 +644,7 @@ async def test_run_turn_fourth_turn_prompt_includes_force_finalize_note(
         )
 
     user_prompt: str = mock_complete.call_args.kwargs["user"]
-    assert "This is the fourth turn" in user_prompt
+    assert "Hard ceiling reached" in user_prompt
     assert mock_complete.call_args.kwargs["prompt_name"] == PROMPT_NAME_V2_CHAT
     assert mock_complete.call_args.kwargs["phase"] == "refinement_chat"
 
@@ -690,15 +690,30 @@ def test_refinement_turn_decision_clarify_requires_question_mark() -> None:
         )
 
 
-def test_build_refinement_v2_chat_user_prompt_fourth_turn_note_at_count_three() -> None:
-    """Prompt builder appends force-finalize note when turn_count >= 3."""
+def test_build_refinement_v2_chat_user_prompt_blocks_early_finalize() -> None:
+    """Prompt builder forbids finalize before the minimum clarifying turn count."""
     prompt = build_refinement_v2_chat_user_prompt(
         chat_history=[("user", "earlier"), ("assistant", "Who?")],
         latest_message="CrossFit coaches.",
-        turn_count=3,
+        turn_count=2,
+        max_clarifying_turns=6,
+        min_turns_before_finalize=3,
     )
     assert "<chat_history>" in prompt
     assert "[user]: CrossFit coaches." in prompt
-    assert "Latest user message: CrossFit coaches." in prompt
-    assert "Clarifying turns used so far: 3" in prompt
-    assert "This is the fourth turn" in prompt
+    assert "Clarifying turns used so far: 2" in prompt
+    assert "You MUST choose CLARIFY" in prompt
+    assert "Finalize is not permitted" in prompt
+
+
+def test_build_refinement_v2_chat_user_prompt_hard_ceiling_at_six() -> None:
+    """Prompt builder requires finalize once the hard ceiling is reached."""
+    prompt = build_refinement_v2_chat_user_prompt(
+        chat_history=[("user", "earlier"), ("assistant", "Who?")],
+        latest_message="CrossFit coaches.",
+        turn_count=6,
+        max_clarifying_turns=6,
+        min_turns_before_finalize=3,
+    )
+    assert "hard ceiling reached" in prompt.lower()
+    assert "you must finalize" in prompt.lower()

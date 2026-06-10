@@ -108,6 +108,22 @@ class Settings(BaseSettings):
         ),
     )
 
+    refinement_max_clarifying_turns: int = Field(
+        default=6,
+        description=(
+            "Hard ceiling on chat-mode clarifying turns before the refinement "
+            "assistant must finalize. Per refinement prompt anti-loop cap."
+        ),
+    )
+
+    refinement_min_clarifying_turns_before_finalize: int = Field(
+        default=3,
+        description=(
+            "Minimum clarifying turns before the refinement assistant may choose "
+            "to finalize. Enforced via prompt instructions, not post-hoc overrides."
+        ),
+    )
+
     # ------------------------------------------------------------------
     # Derived helpers (not env vars)
     # ------------------------------------------------------------------

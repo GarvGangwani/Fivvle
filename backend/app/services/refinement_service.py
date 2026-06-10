@@ -284,13 +284,15 @@ async def run_turn(
         latest_message_length=len(latest_message),
     )
 
+    settings = get_settings()
+
     user_prompt = build_refinement_v2_chat_user_prompt(
         chat_history=chat_history,
         latest_message=latest_message,
         turn_count=turn_count,
+        max_clarifying_turns=settings.refinement_max_clarifying_turns,
+        min_turns_before_finalize=settings.refinement_min_clarifying_turns_before_finalize,
     )
-
-    settings = get_settings()
 
     parsed, meta = await llm_client.complete_structured(
         db,
