@@ -1,0 +1,33 @@
+.editable {
+  outline: none;
+  cursor: text;
+  border-radius: 0.2rem;
+  transition:
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.editable:hover {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fv-accent, #3b82f6) 35%, transparent);
+  background-color: color-mix(in srgb, var(--fv-accent, #3b82f6) 6%, transparent);
+}
+
+.editable:focus {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--fv-accent, #3b82f6) 55%, transparent);
+  background-color: color-mix(in srgb, var(--fv-accent, #3b82f6) 10%, transparent);
+}
+
+.editable:empty::before {
+  content: attr(data-placeholder);
+  color: inherit;
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.inline {
+  display: inline;
+}
+
+.multiline {
+  white-space: pre-wrap;
+}

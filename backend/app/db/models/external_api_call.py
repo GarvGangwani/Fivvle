@@ -39,6 +39,14 @@ class ExternalAPICall(Base):
     )
     # Provider slug, e.g. "tavily", "reddit", "pytrends"
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Product-level rollup bucket — see app.cost.category.CostCategory
+    cost_category: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="platform",
+        server_default="platform",
+        index=True,
+    )
     # Operation name, e.g. "search", "fetch_post"
     operation: Mapped[str] = mapped_column(String(100), nullable=False)
     latency_ms: Mapped[int] = mapped_column(
@@ -51,6 +59,12 @@ class ExternalAPICall(Base):
         Numeric(precision=10, scale=6),
         nullable=False,
         default=Decimal("0"),
+    )
+    # Provider-reported credits when available (Tavily usage.credits).
+    api_credits: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+        default=None,
     )
     success: Mapped[bool] = mapped_column(
         Boolean,

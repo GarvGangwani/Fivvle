@@ -11,6 +11,17 @@ export function truncateText(text: string, max: number): string {
   return `${cut.trim()}…`;
 }
 
+/** Template display cap — used only when explicitly opting into truncation. */
+export function displayText(
+  text: string,
+  max: number,
+  options?: { forEditor?: boolean; truncate?: boolean },
+): string {
+  const t = text.trim();
+  if (options?.forEditor || options?.truncate !== true) return t;
+  return truncateText(t, max);
+}
+
 export const LIMITS = {
   headline: 88,
   subheadline: 140,

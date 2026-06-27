@@ -28,6 +28,7 @@ dependencies = [
     "pytrends>=4.9.2",
     "slowapi==0.1.9",
     "openai==2.36.0",
+    "pypdf==6.0.0",
 ]
 
 [dependency-groups]

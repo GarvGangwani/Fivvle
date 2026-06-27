@@ -7,6 +7,8 @@ export interface PageBranding {
   logo_url?: string;
   logo_emoji?: string;
   logo_alt?: string;
+  /** Mark size as % of template default (60–160). */
+  logo_scale?: number;
 }
 
 export interface ResolvedBranding {
@@ -14,6 +16,16 @@ export interface ResolvedBranding {
   logo_url: string | null;
   logo_emoji: string | null;
   logo_alt: string;
+  logo_scale: number;
+}
+
+const LOGO_SCALE_MIN = 60;
+const LOGO_SCALE_MAX = 160;
+const LOGO_SCALE_DEFAULT = 100;
+
+export function clampLogoScale(value: number | undefined): number {
+  if (value == null || Number.isNaN(value)) return LOGO_SCALE_DEFAULT;
+  return Math.min(LOGO_SCALE_MAX, Math.max(LOGO_SCALE_MIN, Math.round(value)));
 }
 
 const URL_RE = /^https?:\/\/.+/i;
@@ -48,6 +60,7 @@ export function resolveBranding(
     logo_url: url && URL_RE.test(url) ? url : null,
     logo_emoji: emoji,
     logo_alt: alt,
+    logo_scale: clampLogoScale(b?.logo_scale),
   };
 }
 

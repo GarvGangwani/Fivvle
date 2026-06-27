@@ -1,17 +1,19 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { PublishedLandingPage } from "@/components/published/PublishedLandingPage";
 import { fetchPublishedPage } from "@/lib/published-page";
 
-export const revalidate = 60;
+/** ISR fallback window in production; dev uses immediate refresh. */
+export const revalidate = process.env.NODE_ENV === "development" ? 0 : 60;
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ ref?: string }>;
+  searchParams: Promise<{ utm_source?: string }>;
 }
 
 /**
@@ -83,14 +85,16 @@ export default async function PublicLandingPageRoute({
   searchParams,
 }: PageProps) {
   const { slug } = await params;
-  const { ref: sourceTag } = await searchParams;
+  const { utm_source: sourceTag } = await searchParams;
   const data = await fetchPublishedPage(slug);
   if (!data) notFound();
 
   return (
-    <main className="min-h-screen">
+    <div data-fivvle-public-landing className="min-h-screen">
       <PageViewBeacon slug={slug} sourceTag={sourceTag} />
-      <PublishedLandingPage data={data} />
-    </main>
+      <Suspense fallback={null}>
+        <PublishedLandingPage data={data} />
+      </Suspense>
+    </div>
   );
 }

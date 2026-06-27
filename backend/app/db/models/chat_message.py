@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy import Enum as SQLEnum
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -65,6 +66,10 @@ class ChatMessage(Base):
     )
     clarifying_dimension: Mapped[str | None] = mapped_column(
         String(40),
+        nullable=True,
+    )
+    clarifying_questions: Mapped[list | None] = mapped_column(
+        JSONB,
         nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(

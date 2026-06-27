@@ -1,0 +1,490 @@
+/* Validation report — readable editorial layout */
+
+.report-canvas-article {
+  --report-prose-width: 42rem;
+  color: var(--fv-text);
+}
+
+.report-masthead {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--fv-accent) 22%, transparent);
+  border-radius: 1rem;
+  background:
+    radial-gradient(
+      120% 140% at 100% 0%,
+      color-mix(in srgb, var(--fv-accent) 14%, transparent),
+      transparent 55%
+    ),
+    linear-gradient(
+      165deg,
+      color-mix(in srgb, var(--fv-surface-2) 92%, transparent),
+      var(--fv-surface)
+    );
+  padding: 1.25rem 1.25rem 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .report-masthead {
+    padding: 1.5rem 1.75rem 1.75rem;
+  }
+}
+
+.report-masthead-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--fv-text-muted);
+}
+
+.report-masthead-title {
+  margin-top: 0.35rem;
+  font-size: 1.35rem;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+  color: var(--fv-text);
+}
+
+@media (min-width: 640px) {
+  .report-masthead-title {
+    font-size: 1.6rem;
+  }
+}
+
+.report-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.report-stat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--fv-border);
+  background: color-mix(in srgb, white 3%, transparent);
+  padding: 0.3rem 0.65rem;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fv-text-soft);
+}
+
+.report-stat-pill strong {
+  font-weight: 650;
+  color: var(--fv-text);
+}
+
+.report-question-score {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  border-radius: 999px;
+  border: 1px solid var(--fv-border);
+  padding: 0.1rem 0.45rem;
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--fv-text-soft);
+  background: color-mix(in srgb, white 4%, transparent);
+}
+
+.report-section-nav {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  margin: 0 -0.25rem 1.25rem;
+  padding: 0.5rem 0.25rem;
+  background: color-mix(in srgb, var(--fv-bg) 88%, transparent);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--fv-border);
+}
+
+.report-section-nav-inner {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding-bottom: 0.15rem;
+  scrollbar-width: none;
+}
+
+.report-section-nav-inner::-webkit-scrollbar {
+  display: none;
+}
+
+.report-section-link {
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  padding: 0.35rem 0.75rem;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--fv-text-muted);
+  text-decoration: none;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.report-section-link:hover {
+  color: var(--fv-text);
+  border-color: var(--fv-border);
+  background: color-mix(in srgb, white 4%, transparent);
+}
+
+.report-block {
+  scroll-margin-top: 4.5rem;
+  margin-bottom: 2rem;
+}
+
+.report-block-title {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-bottom: 1rem;
+  font-size: 1.05rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--fv-text);
+}
+
+.report-block-icon {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background: var(--fv-accent-muted);
+  color: var(--fv-accent);
+}
+
+.report-card {
+  border: 1px solid var(--fv-border);
+  border-radius: 0.875rem;
+  background: var(--fv-surface);
+  padding: 1.25rem 1.25rem 1.35rem;
+}
+
+.report-card-accent {
+  border-color: color-mix(in srgb, var(--fv-accent) 28%, transparent);
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--fv-accent) 9%, transparent),
+    var(--fv-surface) 45%
+  );
+}
+
+.report-recommendation-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.625rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.report-prose {
+  max-width: var(--report-prose-width);
+  font-size: 0.9375rem;
+  line-height: 1.72;
+  color: var(--fv-text-soft);
+}
+
+.report-prose p + p {
+  margin-top: 0.85em;
+}
+
+.report-question {
+  overflow: hidden;
+  border: 1px solid var(--fv-border);
+  border-radius: 0.875rem;
+  background: color-mix(in srgb, var(--fv-surface-2) 80%, transparent);
+}
+
+.report-question-trigger {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem 1.1rem;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.report-question-trigger:hover {
+  background: color-mix(in srgb, white 3%, transparent);
+}
+
+.report-question-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.45rem;
+  background: var(--fv-accent-muted);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--fv-accent);
+}
+
+.report-question-title {
+  margin-top: 0.45rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--fv-text);
+}
+
+.report-question-body {
+  border-top: 1px solid var(--fv-border);
+  padding: 0.85rem 1.1rem 1.1rem;
+}
+
+.report-finding {
+  position: relative;
+  border-radius: 0.75rem;
+  border: 1px solid var(--fv-border);
+  background: var(--fv-surface);
+  padding: 1rem 1rem 1rem 1.15rem;
+}
+
+.report-finding::before {
+  content: "";
+  position: absolute;
+  top: 0.65rem;
+  bottom: 0.65rem;
+  left: 0;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--fv-border-strong);
+}
+
+.report-finding-high::before {
+  background: var(--fv-success);
+}
+
+.report-finding-medium::before {
+  background: var(--fv-warning);
+}
+
+.report-finding-low::before {
+  background: var(--fv-text-dim);
+}
+
+.report-finding-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+}
+
+.report-finding-index {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--fv-text-muted);
+}
+
+.report-finding-claim {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--fv-text);
+}
+
+.report-finding-evidence {
+  margin-top: 0.65rem;
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--fv-text-soft);
+}
+
+.report-cite-ref {
+  margin-left: 0.15rem;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--fv-accent);
+  text-decoration: none;
+  vertical-align: super;
+}
+
+.report-cite-ref:hover {
+  text-decoration: underline;
+}
+
+.report-evidence-gap {
+  margin-top: 0.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid color-mix(in srgb, var(--fv-warning) 28%, transparent);
+  background: color-mix(in srgb, var(--fv-warning) 8%, transparent);
+  padding: 0.75rem 0.85rem;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--fv-text-soft);
+}
+
+.report-evidence-gap strong {
+  color: var(--fv-warning);
+}
+
+.report-competitor-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .report-competitor-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.report-competitor-card {
+  border: 1px solid var(--fv-border);
+  border-radius: 0.75rem;
+  background: var(--fv-surface);
+  padding: 1rem;
+}
+
+.report-competitor-name {
+  font-size: 0.95rem;
+  font-weight: 650;
+  color: var(--fv-text);
+}
+
+.report-signal-block + .report-signal-block {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--fv-border);
+}
+
+.report-signal-label {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--fv-text-muted);
+}
+
+.report-source-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.report-source-item {
+  display: flex;
+  gap: 0.75rem;
+  border-radius: 0.625rem;
+  border: 1px solid var(--fv-border);
+  background: var(--fv-surface);
+  padding: 0.65rem 0.75rem;
+}
+
+.report-source-num {
+  flex-shrink: 0;
+  width: 1.5rem;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fv-text-muted);
+}
+
+.report-footer-note {
+  margin-top: 0.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--fv-border);
+  font-size: 11px;
+  color: var(--fv-text-dim);
+}
+
+.report-risk-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.report-risk-item {
+  border-radius: 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--fv-warning) 22%, transparent);
+  background: color-mix(in srgb, var(--fv-warning) 4%, var(--fv-surface));
+  padding: 1rem 1.05rem 1.1rem;
+}
+
+.report-risk-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.report-risk-num {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.45rem;
+  background: color-mix(in srgb, var(--fv-warning) 16%, transparent);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--fv-warning);
+}
+
+.report-risk-heading {
+  min-width: 0;
+  flex: 1;
+}
+
+.report-risk-title {
+  font-size: 0.95rem;
+  font-weight: 650;
+  line-height: 1.4;
+  color: var(--fv-text);
+}
+
+.report-risk-verdict {
+  display: inline-flex;
+  margin-top: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--fv-warning) 30%, transparent);
+  background: color-mix(in srgb, var(--fv-warning) 10%, transparent);
+  padding: 0.15rem 0.55rem;
+  font-size: 11px;
+  font-weight: 600;
+  color: color-mix(in srgb, var(--fv-warning) 88%, var(--fv-text));
+}
+
+.report-risk-body {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--fv-warning) 14%, var(--fv-border));
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--fv-text-soft);
+}
+
+.report-risk-body p + p {
+  margin-top: 0.65em;
+}
+
+.report-risk-preamble {
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid var(--fv-border);
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--fv-text-soft);
+}

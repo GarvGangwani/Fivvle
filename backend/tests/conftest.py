@@ -28,6 +28,14 @@ FAKE_DECODED_TOKEN = {
     "email_verified": True,
 }
 
+NON_ADMIN_FIREBASE_UID = "test-firebase-uid-non-admin"
+NON_ADMIN_EMAIL = "founder@example.com"
+NON_ADMIN_DECODED_TOKEN = {
+    "uid": NON_ADMIN_FIREBASE_UID,
+    "email": NON_ADMIN_EMAIL,
+    "email_verified": True,
+}
+
 
 @pytest.fixture
 def mock_firebase() -> Generator[None, None, None]:
@@ -55,6 +63,22 @@ def mock_firebase() -> Generator[None, None, None]:
     ), patch(
         "app.routers.users.verify_id_token",
         return_value=FAKE_DECODED_TOKEN,
+    ):
+        yield
+
+
+@pytest.fixture
+def mock_firebase_non_admin() -> Generator[None, None, None]:
+    """Patch verify_id_token with a non-admin email (not on ADMIN_EMAILS allowlist)."""
+    with patch(
+        "app.auth.firebase.verify_id_token",
+        return_value=NON_ADMIN_DECODED_TOKEN,
+    ), patch(
+        "app.auth.dependencies.verify_id_token",
+        return_value=NON_ADMIN_DECODED_TOKEN,
+    ), patch(
+        "app.routers.users.verify_id_token",
+        return_value=NON_ADMIN_DECODED_TOKEN,
     ):
         yield
 
@@ -87,6 +111,26 @@ def _init_db_engine() -> Generator[None, None, None]:
     yield
     # dispose_engine is async; pytest's session teardown runs sync. We
     # rely on process exit to dispose; not ideal but acceptable for tests.
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _configure_test_admin_emails() -> Generator[None, None, None]:
+    """Let admin API tests use the canonical fake user email."""
+    import os
+
+    os.environ["ADMIN_EMAILS"] = FAKE_EMAIL
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _default_monetization_disabled(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
+    """Tests opt into billing via the monetization_enabled fixture."""
+    monkeypatch.setenv("MONETIZATION_ENABLED", "false")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture(autouse=True)

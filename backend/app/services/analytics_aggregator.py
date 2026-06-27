@@ -21,8 +21,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.landing_page import LandingPage
 from app.db.models.page_view import PageView
 from app.db.models.waitlist_signup import WaitlistSignup
+from app.integrations.ip_geolocation import location_label
 from app.logging_config import get_logger
-from app.schemas.insight import AnalyticsAggregate
+from app.schemas.insight import AnalyticsAggregate, SignupLocationBucket
 
 _logger = get_logger(__name__)
 
@@ -64,6 +65,32 @@ def _is_warm_source(source_tag: str) -> bool:
 def _percentile_p90(sorted_times: list[int]) -> int:
     idx = int(0.9 * (len(sorted_times) - 1))
     return sorted_times[idx]
+
+
+def _build_signups_by_location(
+    waitlist_signups: list[WaitlistSignup],
+) -> list[SignupLocationBucket]:
+    counts: dict[tuple[str | None, str | None, str | None], int] = {}
+    for signup in waitlist_signups:
+        key = (signup.geo_city, signup.geo_region, signup.geo_country)
+        counts[key] = counts.get(key, 0) + 1
+
+    buckets = [
+        SignupLocationBucket(
+            city=city,
+            region=region,
+            country=country,
+            count=count,
+        )
+        for (city, region, country), count in counts.items()
+    ]
+    buckets.sort(
+        key=lambda bucket: (
+            -bucket.count,
+            location_label(city=bucket.city, region=bucket.region, country=bucket.country),
+        )
+    )
+    return buckets
 
 
 async def build_analytics_aggregate(
@@ -229,6 +256,7 @@ async def build_analytics_aggregate(
         views_by_source=views_by_source,
         signups_by_source=signups_by_source,
         conversion_rate_by_source=conversion_rate_by_source,
+        signups_by_location=_build_signups_by_location(waitlist_signups),
         warm_network_bias_index=warm_network_bias_index,
         time_on_page_p50_seconds=time_on_page_p50_seconds,
         time_on_page_p90_seconds=time_on_page_p90_seconds,

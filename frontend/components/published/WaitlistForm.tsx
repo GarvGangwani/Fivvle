@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
-import { submitWaitlistLead } from "@/lib/published-page";
+import { submitWaitlistLead, LANDING_PAGE_SOURCE_PARAM } from "@/lib/published-page";
 
 interface WaitlistFormProps {
   slug: string;
@@ -11,6 +11,9 @@ interface WaitlistFormProps {
   inputClassName?: string;
   buttonClassName?: string;
   metaClassName?: string;
+  /** When true, fine print renders below the form instead of inside it (for pill layouts). */
+  metaOutsideForm?: boolean;
+  wrapperClassName?: string;
   children?: ReactNode;
 }
 
@@ -21,10 +24,12 @@ export function WaitlistForm({
   inputClassName,
   buttonClassName,
   metaClassName,
+  metaOutsideForm = true,
+  wrapperClassName,
   children,
 }: WaitlistFormProps) {
   const searchParams = useSearchParams();
-  const sourceTag = searchParams.get("ref");
+  const sourceTag = searchParams.get(LANDING_PAGE_SOURCE_PARAM);
 
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">(
@@ -48,14 +53,28 @@ export function WaitlistForm({
   };
 
   if (status === "done") {
-    return (
+    const doneMessage = (
       <p className={metaClassName} style={{ color: "var(--accent, #6366f1)" }}>
         {message}
       </p>
     );
+    return metaOutsideForm ? (
+      <div className={wrapperClassName}>{doneMessage}</div>
+    ) : (
+      doneMessage
+    );
   }
 
-  return (
+  const metaContent =
+    status === "error" ? (
+      <p className={metaClassName} style={{ color: "#dc2626" }}>
+        {message}
+      </p>
+    ) : (
+      <p className={metaClassName}>No spam · Unsubscribe anytime</p>
+    );
+
+  const form = (
     <form className={className} onSubmit={onSubmit}>
       {children}
       <input
@@ -66,18 +85,23 @@ export function WaitlistForm({
         placeholder="you@company.com"
         className={inputClassName}
         disabled={status === "loading"}
+        autoComplete="email"
       />
       <button type="submit" className={buttonClassName} disabled={status === "loading"}>
         {status === "loading" ? "Sending…" : buttonLabel}
       </button>
-      {status === "error" && (
-        <p className={metaClassName} style={{ color: "var(--fv-danger)" }}>
-          {message}
-        </p>
-      )}
-      {status !== "error" && (
-        <p className={metaClassName}>No spam · Unsubscribe anytime</p>
-      )}
+      {!metaOutsideForm && metaContent}
     </form>
   );
+
+  if (metaOutsideForm) {
+    return (
+      <div className={wrapperClassName}>
+        {form}
+        {metaContent}
+      </div>
+    );
+  }
+
+  return form;
 }

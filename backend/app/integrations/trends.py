@@ -26,6 +26,7 @@ from pydantic import ValidationError
 import pytrends.request as pytrends_request
 from pytrends.exceptions import ResponseError, TooManyRequestsError
 
+from app.cost.category import resolve_cost_category_from_external_provider
 from app.db.models.external_api_call import ExternalAPICall
 from app.db.session_lock import lock_for
 from app.logging_config import get_logger
@@ -56,6 +57,7 @@ async def _log_api_call(
     call = ExternalAPICall(
         experiment_id=experiment_id,
         provider="pytrends",
+        cost_category=resolve_cost_category_from_external_provider("pytrends").value,
         operation=operation,
         latency_ms=latency_ms,
         cost_usd=Decimal("0"),

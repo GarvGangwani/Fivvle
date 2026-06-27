@@ -57,19 +57,48 @@ export interface UserColorPalette {
   foreground: string;
 }
 
+export type SurfaceTexture = "none" | "grain" | "paper" | "dot-grid" | "linen";
+
+export type HeroGlow = "off" | "soft" | "bold";
+
+export type GradientStyle = "flat" | "radial" | "mesh-warm" | "mesh-cool";
+
+export interface PageSurface {
+  texture?: SurfaceTexture;
+  /** @deprecated Use hero_glow_intensity (0–100). Migrated in resolveSurface(). */
+  hero_glow?: HeroGlow;
+  gradient_style?: GradientStyle;
+  /** 0 = off, 100 = strongest hero spotlight */
+  hero_glow_intensity?: number;
+  /** 0–100; only applies when texture is not "none" */
+  texture_intensity?: number;
+  /** 0–100; only applies when gradient_style is not "flat" */
+  gradient_intensity?: number;
+}
+
 export interface PageJson {
   template_id?: string;
   template_name?: string;
   color_mode?: "dark" | "light";
   color_palette?: Partial<UserColorPalette>;
+  surface?: PageSurface;
   branding?: {
     icon_mode?: "initials" | "url" | "emoji" | "mark";
     logo_url?: string;
     logo_emoji?: string;
     logo_alt?: string;
+    /** Logo mark scale (%). Default 100. Typical range 60–160. */
+    logo_scale?: number;
   };
+  /** Template section image slots → hosted image URLs (editor uploads). */
+  section_images?: Record<string, string>;
   theme?: PageTheme;
   sections?: Array<{ type: string; content: unknown }>;
+  meta?: {
+    generation_id?: string;
+    generated_at?: string;
+    regeneration_hint?: string | null;
+  };
 }
 
 export const PAGE_GOALS: {
@@ -135,6 +164,11 @@ export interface RefinedIdea {
   cta_text: string;
 }
 
+export interface ExperimentCardStats {
+  page_views: number;
+  waitlist_signups: number;
+}
+
 export interface ExperimentSummary {
   id: string;
   slug: string | null;
@@ -143,6 +177,7 @@ export interface ExperimentSummary {
   status: string;
   created_at: string;
   updated_at: string;
+  card_stats?: ExperimentCardStats | null;
 }
 
 export interface ExperimentDetail extends ExperimentSummary {
@@ -188,9 +223,25 @@ export interface ExperimentValidationReportSummary {
 export interface Experiment {
   id: string;
   name?: string | null;
+  raw_idea?: string | null;
   status: string;
   thread_id?: string | null;
   validation_report: ExperimentValidationReportSummary | null;
+}
+
+// --- Clarifying question block (refinement pre-research) ---
+
+export type ClarifyingSelectionMode = "single" | "multiple";
+
+export interface ClarifyingQuestion {
+  question: string;
+  selection_mode: ClarifyingSelectionMode;
+  options: string[];
+}
+
+export interface ClarifyingQuestionAnswer {
+  selectedOptions: string[];
+  otherText: string;
 }
 
 export interface ChatHistoryMessage {
@@ -198,6 +249,7 @@ export interface ChatHistoryMessage {
   role: ChatRole;
   content: string;
   turn_kind: ChatTurnKind | null;
+  clarifying_questions?: ClarifyingQuestion[] | null;
   created_at: string;
 }
 
@@ -223,11 +275,27 @@ export interface Finding {
   confidence_rationale: string;
 }
 
+export interface SectionScore {
+  section_id:
+    | "market"
+    | "competition"
+    | "distribution"
+    | "regulatory"
+    | "risk"
+    | "research";
+  label: string;
+  score: number;
+  rationale?: string | null;
+  pros?: string[];
+  cons?: string[];
+}
+
 export interface QuestionFindings {
   question_id: string;
   question: string;
   findings: Finding[];
   evidence_gap: string | null;
+  score?: number | null;
 }
 
 export interface CompetitorMention {
@@ -256,6 +324,8 @@ export interface ValidationReport {
   recommendation_rationale: string;
   research_limitations: string;
   rubric_version_used: string;
+  section_scores?: SectionScore[];
+  overall_score?: number | null;
 }
 
 export interface LandingPageData {
@@ -281,7 +351,15 @@ export type LandingPagePatch = {
   copy_json?: CopyJson;
   page_json?: PageJson;
   template_id?: string;
+  slug?: string;
 };
+
+export interface LandingPageSlugAvailability {
+  slug: string;
+  available: boolean;
+  taken_by_live: boolean;
+  message: string | null;
+}
 
 // --- Chat types (POST /chat/turn, ADR 0019) ---
 
@@ -302,6 +380,8 @@ export interface ChatMessage {
   role: ChatRole;
   content: string;
   timestamp?: string;
+  turnKind?: ChatTurnKind | null;
+  clarifyingQuestions?: ClarifyingQuestion[];
 }
 
 export interface ChatEditTurnResponse {
@@ -312,6 +392,7 @@ export interface ChatEditTurnResponse {
   assistant_message: string;
   turn_kind: ChatTurnKind;
   clarifying_dimension: string | null;
+  clarifying_questions?: ClarifyingQuestion[];
   pipeline_dispatched: boolean;
   dispatched_at: string | null;
   experiment_status: string | null;
@@ -326,6 +407,7 @@ export interface ChatTurnResponse {
   assistant_message: string;
   turn_kind: ChatTurnKind;
   clarifying_dimension: string | null;
+  clarifying_questions?: ClarifyingQuestion[];
   pipeline_dispatched: boolean;
   dispatched_at: string | null;
   experiment_status: string | null;
@@ -344,12 +426,22 @@ export interface WaitlistSignup {
   id: string;
   email: string;
   source_tag: string | null;
+  geo_city?: string | null;
+  geo_region?: string | null;
+  geo_country?: string | null;
   created_at: string;
 }
 
 export interface WaitlistSignupsResponse {
   signups: WaitlistSignup[];
   total: number;
+}
+
+export interface SignupLocationBucket {
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  count: number;
 }
 
 export interface ExperimentAnalytics {
@@ -360,6 +452,7 @@ export interface ExperimentAnalytics {
   views_by_source: Record<string, number>;
   signups_by_source: Record<string, number>;
   conversion_rate_by_source: Record<string, number>;
+  signups_by_location: SignupLocationBucket[];
   days_live: number;
   warm_network_bias_index?: number;
 }
@@ -410,9 +503,15 @@ export interface InsightReport {
 export interface GenerateInsightResponse {
   experiment_id: string;
   status: string;
+  credits_balance: number;
 }
 
 export interface ArchiveExperimentResponse {
   experiment_id: string;
   status: string;
+}
+
+export interface DeleteExperimentResponse {
+  experiment_id: string;
+  deleted: boolean;
 }

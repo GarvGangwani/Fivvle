@@ -5,45 +5,22 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Home, MessageSquare, Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { SidebarProvider } from "@/lib/sidebar-context";
+import { SettingsButton } from "@/components/settings/SettingsButton";
 import {
   getExperimentIdFromPath,
   ShellSidebar,
 } from "@/components/layout/ShellSidebar";
+import { FivvleLogo } from "@/components/layout/FivvleLogo";
+import { WalletTrigger } from "@/components/wallet/WalletTrigger";
+import { WalletProvider } from "@/lib/wallet-context";
+import { getUserFirstName } from "@/lib/user-avatar";
 
 function getGreeting(): string {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning,";
   if (hour < 17) return "Good afternoon,";
   return "Good evening,";
-}
-
-function getFirstName(
-  displayName: string | null | undefined,
-  email: string | null | undefined,
-): string {
-  if (displayName) {
-    const first = displayName.trim().split(/\s+/)[0];
-    if (first) return first;
-  }
-  if (email) {
-    const local = email.split("@")[0];
-    if (local) return local.charAt(0).toUpperCase() + local.slice(1);
-  }
-  return "Founder";
-}
-
-function getUserInitial(
-  displayName: string | null | undefined,
-  email: string | null | undefined,
-): string {
-  if (displayName) {
-    const initial = displayName.trim().charAt(0);
-    if (initial) return initial.toUpperCase();
-  }
-  if (email) {
-    return email.charAt(0).toUpperCase();
-  }
-  return "U";
 }
 
 function mobileTabActive(
@@ -69,12 +46,24 @@ interface FivvleShellProps {
 }
 
 export function FivvleShell({ children, fullHeight = false }: FivvleShellProps) {
+  return (
+    <SidebarProvider>
+      <WalletProvider>
+        <FivvleShellInner fullHeight={fullHeight}>{children}</FivvleShellInner>
+      </WalletProvider>
+    </SidebarProvider>
+  );
+}
+
+function FivvleShellInner({
+  children,
+  fullHeight = false,
+}: FivvleShellProps) {
   const pathname = usePathname();
   const { user } = useAuth();
   const experimentId = getExperimentIdFromPath(pathname);
 
-  const firstName = getFirstName(user?.displayName, user?.email);
-  const userInitial = getUserInitial(user?.displayName, user?.email);
+  const firstName = getUserFirstName(user?.displayName, user?.email);
 
   const experimentHref = experimentId
     ? `/experiment/${experimentId}`
@@ -85,32 +74,26 @@ export function FivvleShell({ children, fullHeight = false }: FivvleShellProps) 
     : "flex-1 overflow-y-auto";
 
   return (
-    <div className="flex min-h-screen bg-[var(--fv-bg)] text-[var(--fv-text)]">
+    <div className="flex h-screen max-h-screen overflow-hidden bg-[var(--fv-bg)] text-[var(--fv-text)]">
       <ShellSidebar />
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden transition-[padding] duration-300 ease-out">
         <header
-          className="sticky top-0 z-50 flex h-16 min-w-0 shrink-0 items-center justify-between gap-2 border-b border-[var(--fv-border)] px-4 sm:px-6 lg:pl-6"
-          style={{
-            background: "rgba(8,12,20,0.9)",
-            backdropFilter: "blur(12px)",
-          }}
+          className={`fv-shell-header sticky top-0 z-50 flex shrink-0 items-center justify-between gap-2 border-b border-[var(--fv-border)] px-4 sm:px-6 lg:pl-5 ${
+            fullHeight ? "h-12" : "h-16"
+          }`}
         >
-          <Link
-            href="/"
-            className="flex min-w-0 shrink items-center gap-2 no-underline lg:hidden"
-          >
-            <div
-              className="fv-f-logo shrink-0"
-              style={{ width: 30, height: 30, fontSize: 15 }}
-              aria-hidden
+          <div className="flex min-w-0 items-center gap-2">
+            <Link
+              href="/"
+              className="flex min-w-0 shrink items-center gap-2 no-underline lg:hidden"
             >
-              F
-            </div>
+            <FivvleLogo size={30} className="shrink-0" />
             <span className="truncate text-base font-semibold tracking-[-0.02em] text-[var(--fv-text)]">
               Fivvle
             </span>
           </Link>
+          </div>
 
           <div className="hidden min-w-0 flex-1 lg:block" aria-hidden />
 
@@ -121,12 +104,8 @@ export function FivvleShell({ children, fullHeight = false }: FivvleShellProps) 
                 {firstName}
               </span>
             </p>
-            <div
-              className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--fv-accent-muted)] text-xs font-semibold text-[var(--fv-accent)]"
-              aria-hidden
-            >
-              {userInitial}
-            </div>
+            <WalletTrigger />
+            <SettingsButton />
           </div>
         </header>
 

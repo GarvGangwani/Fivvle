@@ -18,7 +18,7 @@ from app.db.models.user import User
 from app.dispatchers.dependencies import get_dispatcher_dep
 from app.dispatchers.protocol import DispatchError
 from app.main import app
-from app.schemas.refinement import RefinedIdea, RefinementTurnDecision
+from app.schemas.refinement import ClarifyingQuestion, RefinedIdea, RefinementTurnDecision
 
 _AUTH_HEADER = {"Authorization": "Bearer faketoken"}
 
@@ -53,8 +53,15 @@ def _make_refined_idea() -> RefinedIdea:
 def _clarify_decision() -> RefinementTurnDecision:
     return RefinementTurnDecision(
         decision="clarify",
-        assistant_message="Who specifically feels this pain day to day?",
+        assistant_message="Got it — let's pin down who this is for.",
         clarifying_dimension="audience",
+        clarifying_questions=[
+            ClarifyingQuestion(
+                question="Who specifically feels this pain day to day?",
+                selection_mode="multiple",
+                options=["CrossFit coaches", "Personal trainers", "Gym owners"],
+            ),
+        ],
         reasoning_trace="Need a concrete audience before research.",
     )
 
@@ -339,7 +346,7 @@ def test_chat_turn_dr_experiment_wrong_status_409(
     assert "REFINING" in resp.json()["detail"]
 
 
-def test_chat_turn_dr_finalize_dispatches_200(
+def test_chat_turn_dr_finalize_refined_no_dispatch(
     client: TestClient,
     mock_firebase: None,
     mock_run_turn: AsyncMock,
@@ -356,14 +363,14 @@ def test_chat_turn_dr_finalize_dispatches_200(
 
     assert resp.status_code == 200
     data = resp.json()
-    assert data["pipeline_dispatched"] is True
-    assert data["experiment_status"] == ExperimentStatus.RESEARCHING.value
-    assert data["dispatched_at"] is not None
+    assert data["pipeline_dispatched"] is False
+    assert data["experiment_status"] == ExperimentStatus.REFINED.value
+    assert data["dispatched_at"] is None
     assert data["turn_kind"] == ChatTurnKind.REFINEMENT_FINALIZE.value
-    assert fake_dispatcher.dispatched == [data["experiment_id"]]
+    assert fake_dispatcher.dispatched == []
 
 
-def test_chat_turn_dr_finalize_dispatch_error_200(
+def test_chat_turn_dr_finalize_deferred_even_if_dispatcher_would_fail(
     client: TestClient,
     mock_firebase: None,
     mock_run_turn: AsyncMock,
@@ -381,10 +388,9 @@ def test_chat_turn_dr_finalize_dispatch_error_200(
         assert resp.status_code == 200
         data = resp.json()
         assert data["pipeline_dispatched"] is False
-        assert data["experiment_status"] == ExperimentStatus.RESEARCH_FAILED.value
-        assert data["research_error_detail"] is not None
-        assert "DispatchError" in data["research_error_detail"]
+        assert data["experiment_status"] == ExperimentStatus.REFINED.value
         assert data["assistant_message"].lower().startswith("researching:")
+        assert fd.dispatched == []
     finally:
         app.dependency_overrides.pop(get_dispatcher_dep, None)
 

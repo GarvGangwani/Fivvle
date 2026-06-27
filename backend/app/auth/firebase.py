@@ -8,6 +8,7 @@ Design decisions:
 - verify_id_token is a thin wrapper so tests can patch one location.
 """
 
+from pathlib import Path
 from typing import Any
 
 import firebase_admin
@@ -22,13 +23,24 @@ _logger = get_logger(__name__)
 # Module-level flag so init is idempotent across multiple callers.
 _initialized: bool = False
 
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _resolve_service_account_path(settings: Settings) -> Path:
+    """Resolve FIREBASE_SERVICE_ACCOUNT_PATH to an absolute filesystem path."""
+    raw = settings.firebase_service_account_path.strip()
+    path = Path(raw)
+    if not path.is_absolute():
+        path = (_BACKEND_ROOT / path).resolve()
+    return path
+
 
 def init_firebase(settings: Settings) -> None:
     """Initialize the Firebase Admin SDK.
 
     Idempotent — calling this function more than once (e.g., in tests or
     during a hot-reload) is safe.  The service account file path is read
-    from ``settings.google_application_credentials``; the value itself is
+    from ``settings.firebase_service_account_path``; the value itself is
     never logged.
 
     Args:
@@ -39,9 +51,20 @@ def init_firebase(settings: Settings) -> None:
     if _initialized:
         return
 
-    cred = credentials.Certificate(settings.google_application_credentials)
+    cred_path = _resolve_service_account_path(settings)
+    if not cred_path.is_file():
+        raise FileNotFoundError(
+            f"Firebase service account file not found: {cred_path}. "
+            "Set FIREBASE_SERVICE_ACCOUNT_PATH in backend/.env "
+            "(e.g. ./service-account.json). "
+            "If you use a Windows GOOGLE_APPLICATION_CREDENTIALS variable, "
+            "it no longer overrides Fivvle — use FIREBASE_SERVICE_ACCOUNT_PATH."
+        )
+
+    cred = credentials.Certificate(str(cred_path))
+    bucket = settings.firebase_storage_bucket.strip() or f"{settings.firebase_project_id}.appspot.com"
     try:
-        firebase_admin.initialize_app(cred)
+        firebase_admin.initialize_app(cred, {"storageBucket": bucket})
     except ValueError:
         # Firebase Admin raises ValueError when the default app already exists.
         # Treat this as success — the SDK is already initialized.

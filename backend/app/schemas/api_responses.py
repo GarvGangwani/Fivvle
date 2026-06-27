@@ -14,7 +14,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.db.enums import ExperimentStatus
-from app.schemas.insight import InsightReportOutput
+from app.schemas.insight import InsightReportOutput, SignupLocationBucket
 from app.schemas.validation_report import ValidationReport
 
 # Re-export full report shapes the frontend renders directly.
@@ -51,6 +51,37 @@ class LandingPagePatchRequest(BaseModel):
     template_id: str | None = None
     copy_json: dict[str, Any] | None = None
     page_json: dict[str, Any] | None = None
+    slug: str | None = Field(
+        default=None,
+        description="Public URL slug (6–40 chars, lowercase alphanumeric + hyphens).",
+    )
+
+
+class LandingPageSlugAvailabilityResponse(BaseModel):
+    """GET /experiments/{id}/landing-page/slug-availability response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    slug: str
+    available: bool
+    taken_by_live: bool = Field(
+        description="True when another published (live) landing page uses this slug.",
+    )
+    message: str | None = None
+
+
+class LogoUploadResponse(BaseModel):
+    """POST /experiments/{id}/landing-page/logo response."""
+
+    logo_url: str
+    filename: str
+
+
+class SectionImageUploadResponse(BaseModel):
+    """POST /experiments/{id}/landing-page/section-image response."""
+
+    image_url: str
+    filename: str
 
 
 class PublishLandingPageRequest(BaseModel):
@@ -83,7 +114,26 @@ class AnalyticsResponse(BaseModel):
     views_by_source: dict[str, int]
     signups_by_source: dict[str, int]
     conversion_rate_by_source: dict[str, float]
+    signups_by_location: list[SignupLocationBucket] = Field(default_factory=list)
     days_live: int = Field(ge=0)
+
+
+class MetricsAccessResponse(BaseModel):
+    """GET /experiments/{id}/metrics-access — whether metrics were purchased."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    unlocked: bool
+
+
+class UnlockMetricsResponse(BaseModel):
+    """POST /experiments/{id}/unlock-metrics response."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    unlocked: bool
+    already_unlocked: bool
+    credits_balance: int = Field(ge=0)
 
 
 class ArchiveRequest(BaseModel):
@@ -91,7 +141,7 @@ class ArchiveRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    outcome: Literal["iterate", "proceed", "pivot", "kill"]
+    outcome: Literal["iterate", "proceed", "pivot", "kill", "manual"]
 
 
 class ArchiveExperimentResponse(BaseModel):
@@ -99,6 +149,24 @@ class ArchiveExperimentResponse(BaseModel):
 
     experiment_id: UUID
     status: ExperimentStatus
+
+
+class DeleteExperimentRequest(BaseModel):
+    """DELETE /experiments/{id} body — permanent project removal."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    confirmation: str = Field(
+        ...,
+        description='Must be exactly "CONFIRM" to delete the project',
+    )
+
+
+class DeleteExperimentResponse(BaseModel):
+    """DELETE /experiments/{id} response."""
+
+    experiment_id: UUID
+    deleted: bool = True
 
 
 class WaitlistSignupItem(BaseModel):
@@ -109,6 +177,9 @@ class WaitlistSignupItem(BaseModel):
     id: UUID
     email: str
     source_tag: str | None
+    geo_city: str | None = None
+    geo_region: str | None = None
+    geo_country: str | None = None
     created_at: datetime
 
 

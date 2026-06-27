@@ -41,6 +41,22 @@ class WaitlistSignup(Base):
         nullable=True,
         index=True,
     )
+    ip_address: Mapped[str | None] = mapped_column(
+        String(45),
+        nullable=True,
+    )
+    geo_city: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+    geo_region: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+    geo_country: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
     ts: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

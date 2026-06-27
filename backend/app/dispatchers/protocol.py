@@ -87,6 +87,8 @@ class LandingPageDispatcher(Protocol):
         experiment_id: UUID,
         page_goal: str,
         template_id: str,
+        regeneration_hint: str | None = None,
+        was_live: bool = False,
     ) -> None:
         """Schedule the landing page pipeline for experiment_id.
 

@@ -99,3 +99,22 @@ class ChatTurnKind(StrEnum):
 class DispatchTrigger(StrEnum):
     USER_CONFIRM = "user_confirm"
     AUTO_FIRE = "auto_fire"
+
+
+class WalletTransactionType(StrEnum):
+    """Ledger entry types for wallet_transactions (ADR 0024 / migration f8a2c1d4e6b7)."""
+
+    TOPUP = "TOPUP"
+    BONUS = "BONUS"
+    COUPON = "COUPON"
+    SERVICE_USAGE = "SERVICE_USAGE"
+    REFUND = "REFUND"
+    ADMIN_ADJUSTMENT = "ADMIN_ADJUSTMENT"
+
+
+class PaymentOrderStatus(StrEnum):
+    """Razorpay credit-pack purchase lifecycle."""
+
+    CREATED = "CREATED"
+    PAID = "PAID"
+    FAILED = "FAILED"

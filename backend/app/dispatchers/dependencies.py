@@ -20,7 +20,11 @@ from __future__ import annotations
 
 from fastapi import Request
 
-from app.dispatchers.protocol import InsightDispatcher, ResearchDispatcher
+from app.dispatchers.protocol import (
+    InsightDispatcher,
+    LandingPageDispatcher,
+    ResearchDispatcher,
+)
 
 
 async def get_dispatcher_dep(request: Request) -> ResearchDispatcher:
@@ -31,3 +35,8 @@ async def get_dispatcher_dep(request: Request) -> ResearchDispatcher:
 async def get_insight_dispatcher_dep(request: Request) -> InsightDispatcher:
     """Return the insight dispatcher stored on app.state by lifespan handler."""
     return request.app.state.insight_dispatcher  # type: ignore[no-any-return]
+
+
+async def get_landing_page_dispatcher_dep(request: Request) -> LandingPageDispatcher:
+    """Return the landing page dispatcher stored on app.state by lifespan handler."""
+    return request.app.state.landing_page_dispatcher  # type: ignore[no-any-return]

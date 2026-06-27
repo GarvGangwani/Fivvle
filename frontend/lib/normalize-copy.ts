@@ -1,5 +1,7 @@
 import type { CopyJson, FaqItem, FeatureCopy } from "./types";
-import { LIMITS, truncateText } from "./copy-limits";
+import { LIMITS } from "./copy-limits";
+
+type TextCap = (text: string, max: number) => string;
 
 /** Coerce LLM/legacy shapes into plain text safe for React children. */
 export function asDisplayText(value: unknown): string {
@@ -45,7 +47,7 @@ function unwrapSectionItems(value: unknown): unknown {
   return value;
 }
 
-function normalizeFeature(item: unknown): FeatureCopy | null {
+function normalizeFeature(item: unknown, cap: TextCap): FeatureCopy | null {
   if (!item || typeof item !== "object") return null;
   const o = item as Record<string, unknown>;
   const title = asDisplayText(o.title ?? o.name ?? o.heading);
@@ -54,8 +56,8 @@ function normalizeFeature(item: unknown): FeatureCopy | null {
   );
   if (!title && !description) return null;
   return {
-    title: truncateText(title || "Feature", LIMITS.featureTitle),
-    description: truncateText(description || "", LIMITS.featureBody),
+    title: cap(title || "Feature", LIMITS.featureTitle),
+    description: cap(description || "", LIMITS.featureBody),
   };
 }
 
@@ -71,41 +73,47 @@ function normalizeFaqItem(item: unknown): FaqItem | null {
 /**
  * Sanitize copy_json before template render — prevents React crashes when
  * the LLM returns objects (e.g. proof elements as { stat, description }).
+ *
+ * Does not truncate display text; preview and published pages must match exactly.
+ * Length limits apply at generation/validation time, not at render time.
  */
-export function normalizeCopyJson(copy: CopyJson): CopyJson {
+export function normalizeCopyJson(
+  copy: CopyJson,
+  _options?: { forEditor?: boolean },
+): CopyJson {
+  const cap: TextCap = (text) => text.trim();
+
   const next: CopyJson = { ...copy };
 
   if (copy.hero && typeof copy.hero === "object") {
     const h = copy.hero as unknown as Record<string, unknown>;
     next.hero = {
-      headline: truncateText(asDisplayText(h.headline) || "Your product", LIMITS.headline),
-      subheadline: truncateText(asDisplayText(h.subheadline), LIMITS.subheadline),
-      cta: truncateText(asDisplayText(h.cta) || "Get started", 32),
+      headline: cap(asDisplayText(h.headline) || "Your product", LIMITS.headline),
+      subheadline: cap(asDisplayText(h.subheadline), LIMITS.subheadline),
+      cta: cap(asDisplayText(h.cta) || "Get started", LIMITS.headline),
     };
   }
 
   if (copy.problem && typeof copy.problem === "object") {
     const p = copy.problem as unknown as Record<string, unknown>;
     next.problem = {
-      heading: truncateText(asDisplayText(p.heading) || "The problem", LIMITS.proofHeadline),
-      body: truncateText(asDisplayText(p.body), LIMITS.featureBody),
+      heading: cap(asDisplayText(p.heading) || "The problem", LIMITS.proofHeadline),
+      body: cap(asDisplayText(p.body), LIMITS.featureBody),
     };
   }
 
   if (copy.features != null) {
     const rawFeatures = unwrapSectionItems(copy.features);
     next.features = (Array.isArray(rawFeatures) ? rawFeatures : [])
-      .map(normalizeFeature)
+      .map((item) => normalizeFeature(item, cap))
       .filter((f): f is FeatureCopy => f != null);
   }
 
   if (copy.proof && typeof copy.proof === "object") {
     const p = copy.proof as unknown as Record<string, unknown>;
     next.proof = {
-      headline: truncateText(asDisplayText(p.headline) || "Proof", LIMITS.proofHeadline),
-      elements: normalizeStringList(p.elements).map((s) =>
-        truncateText(s, 160),
-      ),
+      headline: cap(asDisplayText(p.headline) || "Proof", LIMITS.proofHeadline),
+      elements: normalizeStringList(p.elements).map((s) => cap(s, 160)),
     };
   }
 
@@ -140,9 +148,9 @@ export function normalizeCopyJson(copy: CopyJson): CopyJson {
   if (copy.cta && typeof copy.cta === "object") {
     const c = copy.cta as unknown as Record<string, unknown>;
     next.cta = {
-      heading: truncateText(asDisplayText(c.heading) || "Ready to start?", LIMITS.ctaHeading),
-      subheading: truncateText(asDisplayText(c.subheading), LIMITS.ctaSubheading),
-      button: truncateText(asDisplayText(c.button ?? c.cta) || "Sign up", 28),
+      heading: cap(asDisplayText(c.heading) || "Ready to start?", LIMITS.ctaHeading),
+      subheading: cap(asDisplayText(c.subheading), LIMITS.ctaSubheading),
+      button: cap(asDisplayText(c.button ?? c.cta) || "Sign up", LIMITS.ctaHeading),
     };
   }
 

@@ -1,24 +1,41 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   chatTurn,
+  confirmExperiment,
   editChatMessage,
   getExperiment,
   getExperimentChatMessages,
   ApiError,
 } from "@/lib/api";
-import type { ChatMessage as ChatMessageType } from "@/lib/types";
+import type { ChatMessage as ChatMessageType, ChatTurnKind, ClarifyingQuestion, ClarifyingQuestionAnswer } from "@/lib/types";
 import { FileText } from "lucide-react";
 import { InlineResearchProgress } from "@/components/research/InlineResearchProgress";
 import { ReportCanvas } from "@/components/research/ReportCanvas";
-import { ChatMessage } from "./ChatMessage";
+import { ClarifyingQuestionBlock } from "@/components/refinement/ClarifyingQuestionBlock";
+import { ClarifyingQuestionsLoading } from "@/components/refinement/ClarifyingQuestionsLoading";
+import { RefinementThreadMessage } from "@/components/refinement/RefinementThreadMessage";
+import { PressureTestSection } from "@/components/refinement/PressureTestSection";
+import {
+  findPendingQuestionBlock,
+  formatClarifyingAnswers,
+} from "@/lib/clarifying-questions";
+import {
+  collectSourcedClarityBlocks,
+  parseClarifyingAnswerContent,
+} from "@/lib/refinement-thread";
 import { ChatInput } from "./ChatInput";
+import { FivvleLogo } from "@/components/layout/FivvleLogo";
+import { notifyExperimentsChanged } from "@/lib/experiment-events";
+import { shouldShowValidationResearchPrompt } from "@/lib/validation-flow";
+import { useValidationPaywallGate } from "@/components/wallet/useValidationPaywallGate";
+import { ValidationResearchPrompt } from "@/components/wallet/ValidationResearchPrompt";
+import { VALIDATION_PAYWALL_CREDITS } from "@/lib/wallet-paywall";
+import { readPaidActionError } from "@/lib/wallet-errors";
+import { syncWalletAfterPaidAction } from "@/lib/wallet-sync";
+import { useWallet } from "@/lib/wallet-context";
 
 const RESEARCH_ACTIVE_STATUSES = new Set([
   "RESEARCHING",
@@ -77,15 +94,25 @@ const STARTER_PROMPTS = [
 ] as const;
 
 const SCROLL_NEAR_BOTTOM_THRESHOLD_PX = 100;
+const CHAT_TURN_TIMEOUT_MS = 120_000;
 
 function mapApiMessages(
-  messages: { id: string; role: ChatMessageType["role"]; content: string; created_at: string }[],
+  messages: {
+    id: string;
+    role: ChatMessageType["role"];
+    content: string;
+    created_at: string;
+    turn_kind?: ChatTurnKind | null;
+    clarifying_questions?: ClarifyingQuestion[] | null;
+  }[],
 ): ChatMessageType[] {
   return messages.map((msg) => ({
     id: msg.id,
     role: msg.role,
     content: msg.content,
     timestamp: msg.created_at,
+    turnKind: msg.turn_kind ?? undefined,
+    clarifyingQuestions: msg.clarifying_questions ?? undefined,
   }));
 }
 
@@ -108,23 +135,44 @@ function apiErrorMessage(err: ApiError): string {
       ? `Too many requests. Try again in ${retry} seconds.`
       : "Too many requests. Please wait a moment and try again.";
   }
+  if (err.status === 402) {
+    return (
+      readPaidActionError(err, {
+        fallbackRequired: VALIDATION_PAYWALL_CREDITS,
+        fallback:
+          "Not enough credits to start validation. Open your wallet to buy more.",
+      })
+    );
+  }
   if (err.status === 409) {
     return "This experiment is archived or unavailable for chat.";
   }
   if (err.status === 404) {
     if (process.env.NODE_ENV === "development") {
-      return "Chat is not available. Set AUTO_FIRE_CHAT_ENABLED=on in backend/.env and restart the API.";
+      return "Chat is not available. Set AUTO_FIRE_CHAT_ENABLED=shadow (or on) in backend/.env and restart the API.";
     }
     return "Chat is not available right now. Please try again later.";
+  }
+  if (err.status === 502) {
+    return readPaidActionError(err);
   }
   return "Something went wrong. Please try again.";
 }
 
 export interface ChatInterfaceProps {
   experimentId?: string;
+  onExperimentChange?: () => void;
+  onRefinementFinalized?: (finalized: boolean) => void;
 }
 
-export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
+export function ChatInterface({
+  experimentId,
+  onExperimentChange,
+  onRefinementFinalized,
+}: ChatInterfaceProps = {}) {
+  const router = useRouter();
+  const { requestValidation, paywallModal } = useValidationPaywallGate();
+  const { refresh: refreshWallet, applyWalletPatch } = useWallet();
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [resolvedExperimentId, setResolvedExperimentId] = useState<string | null>(
@@ -139,6 +187,7 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
   const [reportReadyAt, setReportReadyAt] = useState<string | null>(null);
   const [prefillText, setPrefillText] = useState<string | null>(null);
   const [prefillNonce, setPrefillNonce] = useState(0);
+  const [projectName, setProjectName] = useState("");
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
@@ -193,6 +242,9 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
 
         setResolvedExperimentId(experimentId!);
         setExperimentStatus(experiment.status);
+        if (experiment.name?.trim()) {
+          setProjectName(experiment.name.trim());
+        }
         const reportAvailable = experiment.validation_report != null;
         setHasValidationReport(reportAvailable);
         if (reportAvailable) {
@@ -204,6 +256,8 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
 
         if (isResearchTriggeredStatus(experiment.status)) {
           setResearchStarted(true);
+        } else if (experiment.status === "REFINED") {
+          setResearchStarted(false);
         }
 
         if (chatData.thread_id) {
@@ -211,6 +265,13 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
         }
 
         setMessages(mapApiMessages(chatData.messages));
+
+        const finalized = chatData.messages.some(
+          (m) => m.turn_kind === "refinement_finalize",
+        );
+        if (finalized) {
+          onRefinementFinalized?.(true);
+        }
       } catch {
         if (!cancelled) {
           setMessages([]);
@@ -227,7 +288,7 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
     return () => {
       cancelled = true;
     };
-  }, [experimentId]);
+  }, [experimentId, onRefinementFinalized]);
 
   useEffect(() => {
     const activeExperimentId = resolvedExperimentId;
@@ -273,17 +334,46 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
     setPrefillNonce((n) => n + 1);
   }
 
-  async function handleSend(text: string, deepResearch: boolean) {
+  const refreshChatMessages = useCallback(async () => {
+    const expId = resolvedExperimentId ?? experimentId;
+    if (!expId) return;
+    try {
+      const chatData = await getExperimentChatMessages(expId);
+      setMessages(mapApiMessages(chatData.messages));
+      if (chatData.thread_id) {
+        setThreadId(chatData.thread_id);
+      }
+    } catch {
+      // Non-blocking — user can retry
+    }
+  }, [resolvedExperimentId, experimentId]);
+
+  async function handleSend(
+    text: string,
+    deepResearch: boolean,
+    attachments: Array<{ id: string; filename: string }> = [],
+  ) {
     forceScrollRef.current = true;
+    const attachmentLine =
+      attachments.length > 0
+        ? `\n\n📎 ${attachments.map((item) => item.filename).join(", ")}`
+        : "";
     const userMessage: ChatMessageType = {
       id: nextMessageId(),
       role: "user",
-      content: text,
+      content: `${text || "Shared attachments"}${attachmentLine}`,
       timestamp: new Date().toISOString(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setLoading(true);
+
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeoutId = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, CHAT_TURN_TIMEOUT_MS);
 
     try {
       const response = await chatTurn({
@@ -292,7 +382,16 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
         thread_id: threadId,
         experiment_id: resolvedExperimentId,
         idempotency_key: crypto.randomUUID(),
+        name:
+          !resolvedExperimentId && projectName.trim()
+            ? projectName.trim()
+            : undefined,
+        attachment_ids: attachments.map((item) => item.id),
+        signal: controller.signal,
       });
+
+      const createdNewExperiment =
+        !resolvedExperimentId && response.experiment_id != null;
 
       setThreadId(response.thread_id);
       if (response.experiment_id) {
@@ -307,11 +406,19 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
         role: "assistant",
         content: response.assistant_message,
         timestamp: new Date().toISOString(),
+        turnKind: response.turn_kind,
+        clarifyingQuestions: response.clarifying_questions,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
 
       if (
+        response.turn_kind === "refinement_finalize" &&
+        !response.pipeline_dispatched
+      ) {
+        setResearchStarted(false);
+        setExperimentStatus(response.experiment_status ?? "REFINED");
+      } else if (
         isResearchUnderway(
           response.pipeline_dispatched,
           response.experiment_status,
@@ -319,9 +426,34 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
       ) {
         setResearchStarted(true);
       }
+
+      if (createdNewExperiment || response.turn_kind === "refinement_finalize") {
+        notifyExperimentsChanged();
+      }
+
+      if (response.turn_kind === "refinement_finalize") {
+        onRefinementFinalized?.(true);
+      }
+
+      if (createdNewExperiment && response.experiment_id && !experimentId) {
+        router.replace(`/experiment/${response.experiment_id}`);
+        return;
+      }
+
+      if (response.experiment_id && response.turn_kind === "refinement_finalize") {
+        try {
+          const exp = await getExperiment(response.experiment_id);
+          if (exp.name?.trim()) {
+            setProjectName(exp.name.trim());
+          }
+        } catch {
+          // Non-blocking — sidebar still refreshes via event
+        }
+      }
     } catch (err) {
-      const message =
-        err instanceof ApiError
+      const message = timedOut
+        ? "This is taking longer than expected. Try refreshing — your answer may already be saved."
+        : err instanceof ApiError
           ? apiErrorMessage(err)
           : "Something went wrong. Please try again.";
 
@@ -334,9 +466,59 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
           timestamp: new Date().toISOString(),
         },
       ]);
+
+      if (timedOut) {
+        void refreshChatMessages();
+      }
     } finally {
+      window.clearTimeout(timeoutId);
       setLoading(false);
     }
+  }
+
+  async function handleStartValidation() {
+    const expId = resolvedExperimentId ?? experimentId;
+    if (!expId) return;
+
+    const runConfirm = async () => {
+      setLoading(true);
+      try {
+        const result = await confirmExperiment(expId);
+        await syncWalletAfterPaidAction(
+          refreshWallet,
+          applyWalletPatch,
+          result.credits_balance,
+        );
+        setResearchStarted(true);
+        setExperimentStatus("RESEARCHING");
+        notifyExperimentsChanged();
+        onExperimentChange?.();
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 502) {
+          await refreshWallet();
+        }
+        const message =
+          err instanceof ApiError
+            ? apiErrorMessage(err)
+            : "Could not start validation. Please try again.";
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: nextMessageId(),
+            role: "assistant",
+            content: message,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    requestValidation(async () => {
+      await runConfirm();
+    });
   }
 
   async function handleEditMessage(messageId: string, newContent: string) {
@@ -398,20 +580,191 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
 
   const chatDisabled =
     loading || historyLoading || experimentStatus === "ARCHIVED";
+  const pendingQuestionBlock = useMemo(
+    () => findPendingQuestionBlock(messages),
+    [messages],
+  );
+  const firstUserMessageId = useMemo(
+    () => messages.find((m) => m.role === "user")?.id,
+    [messages],
+  );
+  const originalIdea = useMemo(
+    () => messages.find((m) => m.role === "user")?.content,
+    [messages],
+  );
+  const allClarityBlocks = useMemo(
+    () => collectSourcedClarityBlocks(messages, firstUserMessageId ?? null),
+    [messages, firstUserMessageId],
+  );
+  const clarityContentKey = useMemo(
+    () =>
+      messages
+        .filter(
+          (m) =>
+            m.role === "user" &&
+            m.id !== firstUserMessageId &&
+            parseClarifyingAnswerContent(m.content),
+        )
+        .map((m) => m.content)
+        .join("\n---\n"),
+    [messages, firstUserMessageId],
+  );
+  const clarityMessageContentById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const msg of messages) {
+      if (
+        msg.role === "user" &&
+        msg.id !== firstUserMessageId &&
+        parseClarifyingAnswerContent(msg.content)
+      ) {
+        map[msg.id] = msg.content;
+      }
+    }
+    return map;
+  }, [messages, firstUserMessageId]);
+  const hasRefinementFinalize = useMemo(
+    () => messages.some((m) => m.turnKind === "refinement_finalize"),
+    [messages],
+  );
+
+  useEffect(() => {
+    onRefinementFinalized?.(hasRefinementFinalize);
+  }, [hasRefinementFinalize, onRefinementFinalized]);
+  const awaitingRefinementAfterUser = useMemo(() => {
+    if (hasRefinementFinalize) return false;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "user") return false;
+    if (last.id === firstUserMessageId) {
+      return allClarityBlocks.length === 0;
+    }
+    return parseClarifyingAnswerContent(last.content ?? "") !== null;
+  }, [
+    messages,
+    firstUserMessageId,
+    allClarityBlocks.length,
+    hasRefinementFinalize,
+  ]);
+  const isRefinementStageActive = useMemo(() => {
+    if (hasRefinementFinalize) return false;
+    if (
+      isDeepResearchLocked(experimentStatus) ||
+      (researchStarted && allClarityBlocks.length > 0)
+    ) {
+      return false;
+    }
+    return true;
+  }, [
+    hasRefinementFinalize,
+    experimentStatus,
+    researchStarted,
+    allClarityBlocks.length,
+  ]);
+  const showQuestionBlock =
+    pendingQuestionBlock !== null &&
+    !loading &&
+    isRefinementStageActive;
+  const isQuestionsLoading =
+    loading && !researchStarted && awaitingRefinementAfterUser;
+  const awaitingServerReply =
+    awaitingRefinementAfterUser &&
+    !loading &&
+    !showQuestionBlock &&
+    isRefinementStageActive;
+  const showQuestionsLoadingUi = isQuestionsLoading || awaitingServerReply;
+  const showPressureTestSummary = useMemo(() => {
+    if (allClarityBlocks.length === 0) return false;
+    if (showQuestionBlock || showQuestionsLoadingUi) return false;
+    if (hasRefinementFinalize) return true;
+    if (researchStarted || isDeepResearchLocked(experimentStatus)) return true;
+    return !awaitingRefinementAfterUser;
+  }, [
+    allClarityBlocks.length,
+    showQuestionBlock,
+    showQuestionsLoadingUi,
+    hasRefinementFinalize,
+    researchStarted,
+    experimentStatus,
+    awaitingRefinementAfterUser,
+  ]);
+  const inputDisabled = chatDisabled || showQuestionBlock;
+  const showChatLoading = loading && !isQuestionsLoading;
+
+  useEffect(() => {
+    if (!awaitingServerReply) return;
+    const expId = resolvedExperimentId ?? experimentId;
+    if (!expId) return;
+
+    let cancelled = false;
+
+    async function poll() {
+      if (cancelled) return;
+      await refreshChatMessages();
+    }
+
+    void poll();
+    const intervalId = window.setInterval(() => void poll(), 4000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [awaitingServerReply, resolvedExperimentId, experimentId, refreshChatMessages]);
+
+  function handleQuestionSubmit(answers: ClarifyingQuestionAnswer[]) {
+    if (!pendingQuestionBlock) return;
+    const text = formatClarifyingAnswers(
+      pendingQuestionBlock.questions,
+      answers,
+    );
+    void handleSend(text, true);
+  }
+
   const deepResearchLocked =
     researchStarted || isDeepResearchLocked(experimentStatus);
+  const showValidationPrompt = shouldShowValidationResearchPrompt(
+    hasRefinementFinalize,
+    researchStarted,
+    experimentStatus,
+    hasValidationReport,
+  );
   const showEmptyState =
     messages.length === 0 && !loading && !historyLoading && !experimentId;
+
+  const showChatInput = useMemo(() => {
+    const isIdeaIntake =
+      messages.length === 0 &&
+      !historyLoading &&
+      !experimentId &&
+      !resolvedExperimentId;
+    if (isIdeaIntake) return true;
+    return hasValidationReport;
+  }, [
+    messages.length,
+    historyLoading,
+    experimentId,
+    resolvedExperimentId,
+    hasValidationReport,
+  ]);
 
   const openCanvas = useCallback(() => {
     setCanvasOpen(true);
   }, []);
 
+  const handleResearchComplete = useCallback(() => {
+    setHasValidationReport(true);
+    setReportReadyAt((prev) => prev ?? new Date().toISOString());
+    setExperimentStatus("RESEARCH_READY");
+    notifyExperimentsChanged();
+    onExperimentChange?.();
+  }, [onExperimentChange]);
+
   return (
-    <div className="flex h-full min-h-0 flex-1 overflow-hidden">
+    <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden">
       <div
         className={`flex h-full min-h-0 flex-col overflow-hidden bg-[var(--fv-bg)] ${
-          canvasOpen ? "hidden w-full lg:flex lg:w-[40%] lg:min-w-[320px]" : "w-full flex-1"
+          canvasOpen
+            ? "hidden w-full lg:flex lg:min-w-[320px] lg:max-w-[45%] lg:shrink-0 lg:w-[40%]"
+            : "w-full flex-1"
         }`}
         style={{ transition: "width 350ms cubic-bezier(0.16, 1, 0.3, 1)" }}
       >
@@ -423,12 +776,7 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
           <div className="mx-auto w-full">
             {showEmptyState && (
               <div className="flex flex-col items-center py-16 text-center">
-                <div
-                  className="fv-f-logo mb-4"
-                  style={{ width: 40, height: 40, fontSize: 20 }}
-                >
-                  F
-                </div>
+                <FivvleLogo size={40} className="mb-4" />
                 <h2 className="text-lg font-semibold text-[var(--fv-text)]">
                   What&apos;s your idea?
                 </h2>
@@ -460,40 +808,149 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
               </div>
             )}
 
-            {messages.map((msg, index) => (
-              <ChatMessage
-                key={msg.id}
-                id={msg.id}
-                role={msg.role}
-                content={msg.content}
-                canEdit={
-                  msg.role === "user" &&
-                  !chatDisabled &&
-                  !!threadId &&
-                  isPersistedMessageId(msg.id)
-                }
-                onEdit={handleEditMessage}
-                showRefining={
-                  msg.role === "assistant" &&
-                  !researchStarted &&
-                  !deepResearchLocked &&
-                  index === messages.length - 1 &&
-                  !loading
-                }
-              />
-            ))}
+            {(() => {
+              const hasThread =
+                messages.length > 0 ||
+                showQuestionBlock ||
+                showQuestionsLoadingUi;
+              let pressureTestRendered = false;
 
-            {loading && (
+              const threadMessages = messages.map((msg, index) => {
+                if (
+                  msg.role === "assistant" &&
+                  msg.turnKind === "refinement_clarify" &&
+                  msg.clarifyingQuestions?.length
+                ) {
+                  return null;
+                }
+
+                const isSparkIdea =
+                  msg.role === "user" && msg.id === firstUserMessageId;
+                const isClarityAnswer =
+                  msg.role === "user" &&
+                  !isSparkIdea &&
+                  parseClarifyingAnswerContent(msg.content);
+
+                if (isClarityAnswer) {
+                  if (pressureTestRendered || !showPressureTestSummary) return null;
+                  pressureTestRendered = true;
+                  return (
+                    <PressureTestSection
+                      key="pressure-test-unified"
+                      blocks={allClarityBlocks}
+                      contentKey={clarityContentKey}
+                      messageContentById={clarityMessageContentById}
+                      canEditMessage={(messageId) =>
+                        !inputDisabled &&
+                        !!threadId &&
+                        isPersistedMessageId(messageId)
+                      }
+                      onEdit={handleEditMessage}
+                    />
+                  );
+                }
+
+                if (msg.turnKind === "refinement_finalize") {
+                  return (
+                    <div key={msg.id}>
+                      <RefinementThreadMessage
+                        id={msg.id}
+                        role={msg.role}
+                        content={msg.content}
+                        turnKind={msg.turnKind}
+                        isSparkIdea={isSparkIdea}
+                        originalIdea={originalIdea}
+                        canEdit={
+                          msg.role === "user" &&
+                          !inputDisabled &&
+                          !!threadId &&
+                          isPersistedMessageId(msg.id)
+                        }
+                        onEdit={handleEditMessage}
+                        showRefining={false}
+                      />
+                      {showValidationPrompt ? (
+                        <ValidationResearchPrompt
+                          onStart={() => void handleStartValidation()}
+                          loading={loading}
+                        />
+                      ) : null}
+                    </div>
+                  );
+                }
+
+                return (
+                  <RefinementThreadMessage
+                    key={msg.id}
+                    id={msg.id}
+                    role={msg.role}
+                    content={msg.content}
+                    turnKind={msg.turnKind}
+                    isSparkIdea={isSparkIdea}
+                    originalIdea={originalIdea}
+                    canEdit={
+                      msg.role === "user" &&
+                      !inputDisabled &&
+                      !!threadId &&
+                      isPersistedMessageId(msg.id)
+                    }
+                    onEdit={handleEditMessage}
+                    showRefining={
+                      msg.role === "assistant" &&
+                      !researchStarted &&
+                      !deepResearchLocked &&
+                      index === messages.length - 1 &&
+                      !loading &&
+                      !showQuestionBlock
+                    }
+                  />
+                );
+              });
+
+              if (!hasThread) return null;
+
+              return (
+                <article className="ra-story">
+                  {threadMessages}
+                  {showPressureTestSummary && !pressureTestRendered && (
+                    <PressureTestSection
+                      key="pressure-test-unified"
+                      blocks={allClarityBlocks}
+                      contentKey={clarityContentKey}
+                      messageContentById={clarityMessageContentById}
+                      canEditMessage={(messageId) =>
+                        !inputDisabled &&
+                        !!threadId &&
+                        isPersistedMessageId(messageId)
+                      }
+                      onEdit={handleEditMessage}
+                    />
+                  )}
+                  {showQuestionBlock && pendingQuestionBlock && (
+                    <ClarifyingQuestionBlock
+                      variant="ascent"
+                      questions={pendingQuestionBlock.questions}
+                      questionNumberStart={allClarityBlocks.length + 1}
+                      submitting={loading}
+                      onSubmit={(answers) => void handleQuestionSubmit(answers)}
+                    />
+                  )}
+                  {showQuestionsLoadingUi && (
+                    <ClarifyingQuestionsLoading
+                      questionNumber={allClarityBlocks.length + 1}
+                      phase={isQuestionsLoading ? "submitting" : "syncing"}
+                      onRetry={() => void refreshChatMessages()}
+                    />
+                  )}
+                </article>
+              );
+            })()}
+
+            {showChatLoading && (
               <div className="fv-msg-enter border-b border-[var(--fv-border)] py-6">
                 <div className="mx-auto w-full max-w-full lg:max-w-[680px]">
                   <div className="flex items-start gap-3">
-                    <div
-                      className="fv-f-logo"
-                      style={{ width: 24, height: 24, fontSize: 12 }}
-                      aria-hidden
-                    >
-                      F
-                    </div>
+                    <FivvleLogo size={24} />
                     <div className="min-w-0 flex-1">
                       <span className="mb-1 block text-[13px] font-medium text-[var(--fv-text-soft)]">
                         Fivvle
@@ -514,49 +971,39 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
             )}
 
             {researchStarted && resolvedExperimentId && (
-              <InlineResearchProgress experimentId={resolvedExperimentId} />
+              <InlineResearchProgress
+                experimentId={resolvedExperimentId}
+                reportReady={hasValidationReport}
+                onComplete={handleResearchComplete}
+              />
             )}
 
             {hasValidationReport && resolvedExperimentId && (
-              <div className="mx-auto my-4 w-full max-w-full lg:max-w-[680px]">
-                <div
-                  role="button"
-                  tabIndex={0}
+              <div className="mx-auto my-6 w-full max-w-full lg:max-w-[680px]">
+                <button
+                  type="button"
                   onClick={openCanvas}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      openCanvas();
-                    }
-                  }}
-                  className="cursor-pointer rounded-xl border border-[var(--fv-border-strong)] bg-[var(--fv-surface)] p-4 transition-all duration-200 hover:border-[var(--fv-accent)]/40"
+                  className="group w-full rounded-xl border border-[color-mix(in_srgb,var(--fv-accent)_30%,transparent)] bg-gradient-to-br from-[color-mix(in_srgb,var(--fv-accent)_10%,transparent)] to-transparent p-5 text-left transition-all hover:border-[var(--fv-accent)]/50"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--fv-accent-muted)]">
-                      <FileText className="h-5 w-5 text-[var(--fv-accent)]" />
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--fv-accent-muted)]">
+                      <FileText className="h-6 w-6 text-[var(--fv-accent)]" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[15px] font-medium text-[var(--fv-text)]">
-                        Validation Report
+                      <p className="font-semibold text-[var(--fv-text)]">
+                        Validation report ready
                       </p>
-                      <p className="text-[13px] text-[var(--fv-text-muted)]">
+                      <p className="mt-0.5 text-sm text-[var(--fv-text-muted)]">
                         {reportReadyAt
                           ? formatReportDate(reportReadyAt)
-                          : "Research complete"}
+                          : "View your market research findings"}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openCanvas();
-                      }}
-                      className="fv-btn-primary px-4 py-2 text-sm"
-                    >
-                      Open
-                    </button>
+                    <span className="fv-btn-primary shrink-0 px-4 py-2 text-sm opacity-90 group-hover:opacity-100">
+                      Open report
+                    </span>
                   </div>
-                </div>
+                </button>
               </div>
             )}
 
@@ -564,29 +1011,57 @@ export function ChatInterface({ experimentId }: ChatInterfaceProps = {}) {
           </div>
         </div>
 
-        <ChatInput
-          onSend={handleSend}
-          disabled={chatDisabled}
-          deepResearchLocked={deepResearchLocked}
-          prefillText={prefillText}
-          prefillNonce={prefillNonce}
-          placeholder={
-            experimentId || messages.length > 0
-              ? "Continue the conversation…"
-              : "Describe your idea..."
-          }
-        />
+        {!experimentId && !resolvedExperimentId && showChatInput && (
+          <div className="shrink-0 border-t border-[var(--fv-border)] bg-[var(--fv-surface)]/50 px-4 py-3 lg:px-12">
+            <label
+              htmlFor="project-name"
+              className="mb-1.5 block text-[12px] font-medium uppercase tracking-wide text-[var(--fv-text-muted)]"
+            >
+              Project name{" "}
+              <span className="normal-case text-[var(--fv-text-dim)]">
+                (optional — AI will suggest one if blank)
+              </span>
+            </label>
+            <input
+              id="project-name"
+              type="text"
+              value={projectName}
+              maxLength={100}
+              disabled={inputDisabled}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="e.g. Async Standup, CFO Match"
+              className="fv-input w-full max-w-md px-3 py-2 text-sm"
+            />
+          </div>
+        )}
+
+        {showChatInput && (
+          <ChatInput
+            onSend={handleSend}
+            disabled={inputDisabled}
+            deepResearchLocked={deepResearchLocked}
+            prefillText={prefillText}
+            prefillNonce={prefillNonce}
+            placeholder={
+              hasValidationReport
+                ? "Continue the conversation…"
+                : "Describe your idea..."
+            }
+          />
+        )}
       </div>
 
       {canvasOpen && resolvedExperimentId && (
-        <div className="fixed inset-0 z-[60] flex h-full min-h-0 flex-col overflow-hidden border-l border-[var(--fv-border)] bg-[var(--fv-bg)] fv-msg-enter lg:relative lg:z-auto lg:h-full lg:w-[60%] lg:min-h-0">
+        <div className="fixed inset-0 z-[60] flex min-h-0 flex-col overflow-hidden border-l border-[var(--fv-border)] bg-[var(--fv-bg)] fv-msg-enter lg:relative lg:z-auto lg:min-h-0 lg:flex lg:min-w-0 lg:flex-1 lg:overflow-hidden">
           <ReportCanvas
             experimentId={resolvedExperimentId}
+            projectName={projectName || "Validation report"}
             onClose={() => setCanvasOpen(false)}
             mobile
           />
         </div>
       )}
+      {paywallModal}
     </div>
   );
 }

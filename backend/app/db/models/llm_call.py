@@ -64,6 +64,14 @@ class LLMCall(Base):
         nullable=True,
         index=True,
     )
+    # Product-level rollup bucket — see app.cost.category.CostCategory
+    cost_category: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="platform",
+        server_default="platform",
+        index=True,
+    )
     # Provider slug, e.g. "anthropic", "groq"
     provider: Mapped[str] = mapped_column(String(20), nullable=False)
     model: Mapped[str] = mapped_column(String(100), nullable=False)

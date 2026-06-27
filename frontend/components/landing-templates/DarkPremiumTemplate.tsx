@@ -1,11 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import type { TemplateProps } from "./template-shared";
 import { mergeFaq, splitHeadline } from "./template-shared";
 import { CtaAction } from "./CtaAction";
 import { BrandMark } from "./BrandMark";
 import { WaitlistForm } from "@/components/published/WaitlistForm";
+import {
+  updateCta,
+  updateFaqItem,
+  updateFeature,
+  updateHero,
+  updateProblem,
+} from "@/lib/copy-mutations";
+import { CopyText } from "./CopyText";
 import styles from "./dark-premium.module.css";
 import base from "./template-base.module.css";
 
@@ -23,18 +31,12 @@ export function DarkPremiumTemplate({
   scrollTarget = "#cta",
   branding,
 }: TemplateProps) {
-  const [mode, setMode] = useState(colorMode);
   const hero = copy.hero;
   const problem = copy.problem;
   const features = copy.features ?? [];
-  const proof = copy.proof;
   const cta = copy.cta;
   const faq = mergeFaq(copy);
   const headline = splitHeadline(hero?.headline ?? projectName);
-
-  useEffect(() => {
-    setMode(colorMode);
-  }, [colorMode]);
 
   useEffect(() => {
     const id = "fivvle-dp-fonts";
@@ -50,7 +52,7 @@ export function DarkPremiumTemplate({
   return (
     <div
       className={`${styles.root} ${base.root}`}
-      data-theme={mode}
+      data-theme={colorMode}
       style={cssVarStyle}
     >
       <div className={styles.ambient} aria-hidden />
@@ -64,49 +66,51 @@ export function DarkPremiumTemplate({
             className={styles.brand}
           />
           <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-            {!isPublished && (
-              <button
-                type="button"
-                className={styles.navCta}
-                style={{
-                  background: "transparent",
-                  color: "var(--text)",
-                  border: "1px solid var(--line-strong)",
-                  padding: "8px 12px",
-                }}
-                onClick={() => setMode((m) => (m === "dark" ? "light" : "dark"))}
-              >
-                {mode === "dark" ? "Light" : "Dark"}
-              </button>
-            )}
             <CtaAction
               config={ctaConfig}
               scrollTarget={scrollTarget}
               className={styles.navCta}
             >
-              {hero?.cta ?? "Sign in"}
+              <CopyText
+                copy={copy}
+                inline
+                value={hero?.cta ?? "Sign in"}
+                mutate={(c, v) => updateHero(c, "cta", v)}
+              />
             </CtaAction>
           </div>
         </nav>
 
         {hero && (
           <section className={styles.hero}>
-            <h1 className={styles.heroTitle}>
-              {headline.main}
-              {headline.accent && (
-                <>
-                  <br />
-                  <span className={styles.italic}>{headline.accent}</span>
-                </>
-              )}
-            </h1>
-            <p className={styles.heroSub}>{hero.subheadline}</p>
+            <CopyText
+              copy={copy}
+              as="h1"
+              className={styles.heroTitle}
+              value={hero.headline}
+              mutate={(c, v) => updateHero(c, "headline", v)}
+              multiline
+            />
+            <CopyText
+              copy={copy}
+              as="p"
+              className={styles.heroSub}
+              value={hero.subheadline}
+              mutate={(c, v) => updateHero(c, "subheadline", v)}
+              multiline
+            />
             <CtaAction
               config={ctaConfig}
               scrollTarget={scrollTarget}
               className={styles.heroBtn}
             >
-              {hero.cta} →
+              <CopyText
+                copy={copy}
+                inline
+                value={hero.cta}
+                mutate={(c, v) => updateHero(c, "cta", v)}
+              />{" "}
+              →
             </CtaAction>
           </section>
         )}
@@ -115,8 +119,22 @@ export function DarkPremiumTemplate({
           <section className={styles.statement}>
             <div className={styles.eyebrow}>The problem</div>
             <p className={styles.statementText}>
-              {problem.heading}.{" "}
-              <span className={styles.quiet}>{problem.body}</span>
+              <CopyText
+                copy={copy}
+                inline
+                value={problem.heading}
+                mutate={(c, v) => updateProblem(c, "heading", v)}
+              />
+              .{" "}
+              <span className={styles.quiet}>
+                <CopyText
+                  copy={copy}
+                  inline
+                  value={problem.body}
+                  mutate={(c, v) => updateProblem(c, "body", v)}
+                  multiline
+                />
+              </span>
             </p>
           </section>
         )}
@@ -131,22 +149,25 @@ export function DarkPremiumTemplate({
             {features.map((f, i) => (
               <article key={i} className={styles.featureRow}>
                 <h3>
-                  <span className={styles.italic}>{f.title}</span>
+                  <span className={styles.italic}>
+                    <CopyText
+                      copy={copy}
+                      inline
+                      value={f.title}
+                      mutate={(c, v) => updateFeature(c, i, "title", v)}
+                    />
+                  </span>
                 </h3>
-                <p className={styles.featureDesc}>{f.description}</p>
+                <CopyText
+                  copy={copy}
+                  as="p"
+                  className={styles.featureDesc}
+                  value={f.description}
+                  mutate={(c, v) => updateFeature(c, i, "description", v)}
+                  multiline
+                />
               </article>
             ))}
-          </section>
-        )}
-
-        {proof && (proof.elements?.length ?? 0) > 0 && (
-          <section className={styles.proof}>
-            <h2 className={styles.proofTitle}>{proof.headline}</h2>
-            <ul className={styles.proofList}>
-              {(proof.elements ?? []).map((el, i) => (
-                <li key={i}>{el}</li>
-              ))}
-            </ul>
           </section>
         )}
 
@@ -157,8 +178,22 @@ export function DarkPremiumTemplate({
             </h2>
             {faq.map((item, i) => (
               <details key={i} className={styles.faqItem} open={i === 0}>
-                <summary className={styles.faqQ}>{item.question}</summary>
-                <p className={styles.faqA}>{item.answer}</p>
+                <summary className={styles.faqQ}>
+                  <CopyText
+                    copy={copy}
+                    inline
+                    value={item.question}
+                    mutate={(c, v) => updateFaqItem(c, i, "question", v)}
+                  />
+                </summary>
+                <CopyText
+                  copy={copy}
+                  as="p"
+                  className={styles.faqA}
+                  value={item.answer}
+                  mutate={(c, v) => updateFaqItem(c, i, "answer", v)}
+                  multiline
+                />
               </details>
             ))}
           </section>
@@ -166,14 +201,20 @@ export function DarkPremiumTemplate({
 
         {cta && (
           <section className={styles.final} id="cta">
-            <h2>
-              {cta.heading.split(" ")[0] ?? "Ready"}
-              <br />
-              <span className={styles.italic}>
-                {cta.heading.split(" ").slice(1).join(" ") || "when you are."}
-              </span>
-            </h2>
-            <p>{cta.subheading}</p>
+            <CopyText
+              copy={copy}
+              as="h2"
+              value={cta.heading}
+              mutate={(c, v) => updateCta(c, "heading", v)}
+              multiline
+            />
+            <CopyText
+              copy={copy}
+              as="p"
+              value={cta.subheading}
+              mutate={(c, v) => updateCta(c, "subheading", v)}
+              multiline
+            />
             {isPublished &&
             ctaConfig?.mode === "waitlist" &&
             publicationSlug ? (
@@ -189,7 +230,13 @@ export function DarkPremiumTemplate({
                 scrollTarget={scrollTarget}
                 className={styles.heroBtn}
               >
-                {cta.button} →
+                <CopyText
+                  copy={copy}
+                  inline
+                  value={cta.button}
+                  mutate={(c, v) => updateCta(c, "button", v)}
+                />{" "}
+                →
               </CtaAction>
             )}
           </section>

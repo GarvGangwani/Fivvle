@@ -25,6 +25,7 @@ from app.services.insight_service import (
     MissingValidationReportError,
     generate_insight_report,
 )
+from app.utils.wallet_http import refund_for_service
 
 logger = structlog.get_logger(__name__)
 
@@ -62,20 +63,36 @@ class InProcessInsightDispatcher:
                         phase="failed",
                         error_type=type(exc).__name__,
                     )
-                    await _transition_status(
-                        session, experiment_id, ExperimentStatus.INSIGHT_FAILED
-                    )
+                    await _fail_insight_generation(session, experiment_id)
                 except Exception as exc:  # noqa: BLE001
                     log.exception(
                         "insight pipeline crashed",
                         phase="failed",
                         error_type=type(exc).__name__,
                     )
-                    await _transition_status(
-                        session, experiment_id, ExperimentStatus.INSIGHT_FAILED
-                    )
+                    await _fail_insight_generation(session, experiment_id)
 
         asyncio.create_task(_run())
+
+
+async def _fail_insight_generation(session, experiment_id: UUID) -> None:
+    """Mark insight generation failed and refund the service debit."""
+    result = await session.execute(
+        select(Experiment).where(Experiment.id == experiment_id)
+    )
+    experiment = result.scalar_one_or_none()
+    if experiment is None:
+        return
+
+    await refund_for_service(
+        session,
+        user_id=experiment.user_id,
+        service="insightReport",
+        reason="insight pipeline failed",
+        experiment_id=experiment_id,
+    )
+    experiment.status = ExperimentStatus.INSIGHT_FAILED
+    await session.commit()
 
 
 async def _transition_status(

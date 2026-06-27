@@ -1,28 +1,25 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getResearchStatus, ApiError } from "@/lib/api";
 import type { ResearchStatus } from "@/lib/types";
+import {
+  isResearchComplete,
+  isResearchFailed,
+  isResearchInProgress,
+  resolveResearchPhase,
+} from "@/lib/research-status";
 import {
   PhaseIndicator,
   RESEARCH_PHASE_IDS,
 } from "./PhaseIndicator";
 
-const POLL_INTERVAL_MS = 3000;
-
-const RESEARCH_ACTIVE_STATUSES = new Set([
-  "RESEARCHING",
-  "RESEARCH_PLANNING",
-  "RESEARCH_SEARCHING",
-  "RESEARCH_READING",
-  "RESEARCH_REFLECTING",
-  "RESEARCH_SYNTHESIZING",
-]);
-
 interface ResearchProgressProps {
   experimentId: string;
   onComplete: () => void;
 }
+
+const POLL_INTERVAL_MS = 3000;
 
 export function ResearchProgress({
   experimentId,
@@ -30,10 +27,17 @@ export function ResearchProgress({
 }: ResearchProgressProps) {
   const [status, setStatus] = useState<ResearchStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const completedNotifiedRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
     let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const notifyCompleteOnce = () => {
+      if (completedNotifiedRef.current) return;
+      completedNotifiedRef.current = true;
+      onComplete();
+    };
 
     async function poll() {
       try {
@@ -43,10 +47,10 @@ export function ResearchProgress({
         setStatus(data);
         setError(null);
 
-        if (data.status === "RESEARCH_READY") {
+        if (isResearchComplete(data.status)) {
           if (intervalId) clearInterval(intervalId);
-          onComplete();
-        } else if (data.status === "RESEARCH_FAILED") {
+          notifyCompleteOnce();
+        } else if (isResearchFailed(data.status)) {
           if (intervalId) clearInterval(intervalId);
         }
       } catch (err) {
@@ -59,8 +63,9 @@ export function ResearchProgress({
       }
     }
 
-    poll();
-    intervalId = setInterval(poll, POLL_INTERVAL_MS);
+    completedNotifiedRef.current = false;
+    void poll();
+    intervalId = setInterval(() => void poll(), POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
@@ -68,16 +73,14 @@ export function ResearchProgress({
     };
   }, [experimentId, onComplete]);
 
-  const currentPhase =
-    status && RESEARCH_ACTIVE_STATUSES.has(status.status)
-      ? status.status
-      : "RESEARCHING";
+  const currentPhase = resolveResearchPhase(status?.status);
+  const isComplete = isResearchComplete(status?.status);
 
   return (
     <div className="mx-auto max-w-lg">
       <div className="mb-6">
         <h2 className="text-[16px] font-bold text-[var(--fv-text)]">
-          Research in progress
+          {isComplete ? "Research complete" : "Research in progress"}
         </h2>
         <p className="mt-1 text-[14px] text-[var(--fv-text-muted)]">
           This usually takes 2–4 minutes. You can leave this page — we&apos;ll

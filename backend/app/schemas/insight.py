@@ -58,6 +58,17 @@ SourceType = Literal["BEHAVIORAL", "COGNITIVE", "SYNTHESIZED"]
 _FindingId = Annotated[str, Field(min_length=1, max_length=100)]
 
 
+class SignupLocationBucket(BaseModel):
+    """Grouped waitlist signups by resolved city / region / country."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    city: str | None = None
+    region: str | None = None
+    country: str | None = None
+    count: int = Field(ge=1)
+
+
 class AnalyticsAggregate(BaseModel):
     """Derived analytics input to the insight LLM (planning doc §4.1).
 
@@ -78,6 +89,7 @@ class AnalyticsAggregate(BaseModel):
     views_by_source: dict[str, int]
     signups_by_source: dict[str, int]
     conversion_rate_by_source: dict[str, float]
+    signups_by_location: list[SignupLocationBucket] = Field(default_factory=list)
     warm_network_bias_index: float = Field(ge=0.0, le=1.0)
     time_on_page_p50_seconds: int = Field(ge=0)
     time_on_page_p90_seconds: int = Field(ge=0)

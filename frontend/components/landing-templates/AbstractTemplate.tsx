@@ -8,8 +8,23 @@ import { WaitlistForm } from "@/components/published/WaitlistForm";
 import {
   extractShortStat,
   LIMITS,
-  truncateText,
 } from "@/lib/copy-limits";
+import {
+  hasPricingSection,
+  resolvePricingPlans,
+} from "@/lib/landing-page-sections";
+import { ABSTRACT_IMAGE_SLOTS, getSectionImageUrl } from "@/lib/section-images";
+import {
+  updateCta,
+  updateFeature,
+  updateHero,
+  updateProblem,
+  updateProofHeadline,
+} from "@/lib/copy-mutations";
+import { SectionImageSlot } from "./SectionImageSlot";
+import { CopyText } from "./CopyText";
+import { useCopyEdit } from "./CopyEditContext";
+import { useScrollReveal } from "./useScrollReveal";
 import styles from "./abstract.module.css";
 import base from "./template-base.module.css";
 
@@ -17,56 +32,9 @@ const FONTS =
   "https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap";
 
 const MARQUEE_FALLBACK = [
-  "Brand One",
-  "Brand Two",
-  "Brand Three",
-  "Brand Four",
-  "Brand Five",
-  "Brand Six",
-  "Brand Seven",
-  "Brand Eight",
-];
-
-const DEFAULT_FEATURES = [
-  {
-    title: "Feature headline here",
-    description:
-      "A short description of the feature and the outcome it delivers for your customer.",
-  },
-  {
-    title: "Feature headline here",
-    description:
-      "A short description of the feature and the outcome it delivers for your customer.",
-  },
-  {
-    title: "Feature headline here",
-    description:
-      "A short description of the feature and the outcome it delivers for your customer.",
-  },
-  {
-    title: "Feature headline here",
-    description:
-      "A short description of the feature and the outcome it delivers for your customer.",
-  },
-  {
-    title: "Feature headline here",
-    description:
-      "A short description of the feature and the outcome it delivers for your customer.",
-  },
-];
-
-const DEFAULT_METRICS = [
-  { value: "98%", label: "Metric label here" },
-  { value: "4.2x", label: "Metric label here" },
-  { value: "<60s", label: "Metric label here" },
-  { value: "12k+", label: "Metric label here" },
-];
-
-const PRICE_FEATURES = [
-  "Feature check one",
-  "Feature check two",
-  "Feature check three",
-  "Feature check four",
+  "Early access",
+  "Founding members",
+  "Waitlist open",
 ];
 
 function ArrowIcon() {
@@ -105,14 +73,20 @@ function getScrollParent(node: HTMLElement | null): HTMLElement | Window {
   return window;
 }
 
-function metricFromProof(el: unknown, i: number): { value: string; label: string } {
+function metricFromProof(
+  el: unknown,
+  i: number,
+): { value: string; label: string } | null {
+  const cap = (text: string) => text.trim();
   if (typeof el === "object" && el !== null) {
     const o = el as { stat?: string; description?: string };
-    const value = truncateText(String(o.stat ?? ""), LIMITS.floatValue);
+    const value = cap(String(o.stat ?? ""));
     if (value) {
       return {
         value,
-        label: truncateText(String(o.description ?? `Metric ${i + 1}`), LIMITS.floatLabel),
+        label: cap(
+          String(o.description ?? `Metric ${i + 1}`),
+        ),
       };
     }
   }
@@ -121,13 +95,12 @@ function metricFromProof(el: unknown, i: number): { value: string; label: string
   if (stat) {
     return {
       value: stat,
-      label: truncateText(
+      label: cap(
         s.replace(stat, "").replace(/^[\s:—–\-]+/, "").trim() || `Metric ${i + 1}`,
-        LIMITS.floatLabel,
       ),
     };
   }
-  return DEFAULT_METRICS[i] ?? { value: "—", label: `Metric ${i + 1}` };
+  return null;
 }
 
 export function AbstractTemplate({
@@ -138,17 +111,33 @@ export function AbstractTemplate({
   ctaConfig,
   publicationSlug,
   scrollTarget = "#cta-section",
+  forEditor = false,
+  sectionImages,
+  experimentId,
+  onSectionImageChange,
 }: TemplateProps) {
+  const cap = (text: string) => text.trim();
+  const imageEditable =
+    forEditor && Boolean(onSectionImageChange) && Boolean(experimentId);
+  const imageSlotProps = {
+    editable: imageEditable,
+    experimentId,
+    onImageChange: onSectionImageChange,
+  };
+  const inlineEditable = useCopyEdit()?.editable ?? false;
   const [navScrolled, setNavScrolled] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const hero = copy.hero;
   const headline = splitHeadline(hero?.headline ?? projectName);
   const problem = copy.problem;
+  const pricingPlans = resolvePricingPlans(copy);
+  const showPricing = hasPricingSection(copy);
+
   const features =
     (copy.features ?? []).length > 0
       ? (copy.features ?? []).slice(0, 5)
-      : DEFAULT_FEATURES;
+      : [];
   const proof = copy.proof;
   const proofEls = proof?.elements ?? [];
   const cta = copy.cta;
@@ -157,17 +146,25 @@ export function AbstractTemplate({
   const marqueeItems =
     proofEls.length >= 3
       ? proofEls.map((el, i) =>
-          truncateText(
+          cap(
             typeof el === "string" ? el : `Partner ${i + 1}`,
-            LIMITS.marqueeItem,
           ),
         )
       : MARQUEE_FALLBACK;
 
-  const metrics = DEFAULT_METRICS.map((d, i) => {
-    const el = proofEls[i];
-    return el != null ? metricFromProof(el, i) : d;
-  });
+  const metrics =
+    proofEls.length > 0
+      ? proofEls
+          .slice(0, 4)
+          .map((el, i) => metricFromProof(el, i))
+          .filter((m): m is { value: string; label: string } => m != null)
+      : [];
+
+  const navItems = [
+    { href: "#about", label: "About", show: Boolean(problem?.heading || problem?.body) },
+    { href: "#features", label: "Features", show: features.length > 0 },
+    { href: "#pricing", label: "Pricing", show: showPricing },
+  ].filter((item) => item.show);
 
   const showcaseTitle =
     problem?.heading ??
@@ -179,11 +176,6 @@ export function AbstractTemplate({
   const showcaseP2 =
     showcaseBody[1] ??
     "Explain the second key benefit here. Keep it concrete and avoid generic marketing language.";
-
-  const priceFeats =
-    features.length >= 4
-      ? features.slice(0, 4).map((f) => truncateText(f.title, LIMITS.featureTitle))
-      : PRICE_FEATURES;
 
   const displayName = projectName;
 
@@ -214,26 +206,8 @@ export function AbstractTemplate({
     return () => scrollTargetEl.removeEventListener("scroll", onScroll);
   }, []);
 
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    const els = root.querySelectorAll(`.${styles.reveal}`);
-    const scrollRoot = getScrollParent(root);
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) e.target.classList.add(styles.revealVisible);
-        }
-      },
-      {
-        threshold: 0.12,
-        rootMargin: "0px 0px -10% 0px",
-        root: scrollRoot === window ? null : (scrollRoot as HTMLElement),
-      },
-    );
-    els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, [copy]);
+  const { revealProps, revealClass } = useScrollReveal(rootRef, [copy]);
+  const rv = (id: string) => revealClass(id, styles.reveal, styles.revealVisible);
 
   return (
     <div
@@ -254,9 +228,11 @@ export function AbstractTemplate({
           {displayName}
         </a>
         <div className={styles["nav-links"]}>
-          <a href="#about">About</a>
-          <a href="#features">Features</a>
-          <a href="#pricing">Pricing</a>
+          {navItems.map((item) => (
+            <a key={item.href} href={item.href}>
+              {item.label}
+            </a>
+          ))}
         </div>
         <CtaAction
           config={ctaConfig}
@@ -264,7 +240,12 @@ export function AbstractTemplate({
           className={styles["nav-menu-btn"]}
           as="link"
         >
-          {ctaLabel}
+          <CopyText
+            copy={copy}
+            inline
+            value={ctaLabel}
+            mutate={(c, v) => updateCta(c, "button", v)}
+          />
         </CtaAction>
       </nav>
 
@@ -275,31 +256,47 @@ export function AbstractTemplate({
           <div className={styles["hero-bg-fade-bottom"]} />
         </div>
         <div className={styles["hero-left"]}>
-          <h1 className={`${styles["hero-title"]} ${styles.reveal}`}>
-            {headline.main}
-            {headline.accent ? (
-              <>
-                <br />
-                <span className={styles.light}>{headline.accent}</span>
-              </>
-            ) : null}
-          </h1>
-          <p className={`${styles["hero-sub"]} ${styles.reveal}`}>
-            {truncateText(
-              hero?.subheadline ??
-                "A short description of your product and why it matters. Lead with the outcome, not the feature list.",
-              LIMITS.subheadline,
-            )}
-          </p>
-          <CtaAction
-            config={ctaConfig}
-            scrollTarget="#features"
-            className={`${styles["btn-arrow"]} ${styles.reveal}`}
-            as="link"
-          >
-            <span>{hero?.cta ?? "See how it works"}</span>
+          <div {...revealProps("hero-title")} className={rv("hero-title")}>
+            <CopyText
+              copy={copy}
+              as="h1"
+              className={styles["hero-title"]}
+              value={hero?.headline ?? projectName}
+              mutate={(c, v) => updateHero(c, "headline", v)}
+              maxLength={LIMITS.headline}
+              multiline
+            />
+          </div>
+          <div {...revealProps("hero-sub")} className={rv("hero-sub")}>
+            <CopyText
+              copy={copy}
+              as="p"
+              className={styles["hero-sub"]}
+              value={
+                hero?.subheadline ??
+                "A short description of your product and why it matters. Lead with the outcome, not the feature list."
+              }
+              mutate={(c, v) => updateHero(c, "subheadline", v)}
+              maxLength={LIMITS.subheadline}
+              multiline
+            />
+          </div>
+          <div {...revealProps("hero-cta")} className={rv("hero-cta")}>
+            <CtaAction
+              config={ctaConfig}
+              scrollTarget="#features"
+              className={styles["btn-arrow"]}
+              as="link"
+            >
+            <CopyText
+              copy={copy}
+              inline
+              value={hero?.cta ?? "See how it works"}
+              mutate={(c, v) => updateHero(c, "cta", v)}
+            />
             <ArrowIcon />
           </CtaAction>
+          </div>
         </div>
         <div className={styles["hero-right"]} />
       </section>
@@ -316,21 +313,31 @@ export function AbstractTemplate({
 
       <section className={styles.about} id="about">
         <div className={styles.container}>
-          <div className={`${styles["about-inner"]} ${styles.reveal}`}>
-            <h2>
-              {truncateText(
+          <div
+            {...revealProps("about")}
+            className={`${styles["about-inner"]} ${rv("about")}`}
+          >
+            <CopyText
+              copy={copy}
+              as="h2"
+              value={
                 problem?.heading ??
-                  "A longer description of what your product does and the value it creates.",
-                LIMITS.proofHeadline,
-              )}
-            </h2>
-            <p>
-              {truncateText(
+                "A longer description of what your product does and the value it creates."
+              }
+              mutate={(c, v) => updateProblem(c, "heading", v)}
+              maxLength={LIMITS.proofHeadline}
+            />
+            <CopyText
+              copy={copy}
+              as="p"
+              value={
                 problem?.body ??
-                  "Explain the core problem your product solves and the transformation it delivers. Write about outcomes, not features.",
-                LIMITS.subheadline + 80,
-              )}
-            </p>
+                "Explain the core problem your product solves and the transformation it delivers. Write about outcomes, not features."
+              }
+              mutate={(c, v) => updateProblem(c, "body", v)}
+              maxLength={LIMITS.subheadline + 80}
+              multiline
+            />
             <a href="#features" className={styles["btn-arrow"]}>
               <span>Learn more</span>
               <ArrowIcon />
@@ -339,55 +346,124 @@ export function AbstractTemplate({
         </div>
       </section>
 
+      {features.length > 0 ? (
       <section className={styles.features} id="features">
         <div className={styles.container}>
-          <div className={`${styles["features-header"]} ${styles.reveal}`}>
+          <div
+            {...revealProps("features-header")}
+            className={`${styles["features-header"]} ${rv("features-header")}`}
+          >
             <h2>What makes it different.</h2>
             <p>
-              {truncateText(
-                proof?.headline ?? "A summary of your core differentiators, explained clearly.",
-                LIMITS.proofHeadline,
-              )}
+              <CopyText
+                copy={copy}
+                inline
+                value={
+                  proof?.headline ??
+                  "A summary of your core differentiators, explained clearly."
+                }
+                mutate={updateProofHeadline}
+                maxLength={LIMITS.proofHeadline}
+              />
             </p>
           </div>
           <div className={styles["feature-accordion"]}>
             {features.map((f, i) => (
-              <div key={i} className={`${styles["feature-row"]} ${styles.reveal}`}>
+              <div
+                key={i}
+                {...revealProps(`feature-${i}`)}
+                className={`${styles["feature-row"]} ${rv(`feature-${i}`)}`}
+              >
                 <span className={styles["feature-num"]}>
                   {String(i + 1).padStart(2, "0")}
                 </span>
-                <h3>{truncateText(f.title, LIMITS.featureTitle)}</h3>
-                <p>{truncateText(f.description, LIMITS.featureBody)}</p>
+                <CopyText
+                  copy={copy}
+                  as="h3"
+                  value={f.title}
+                  mutate={(c, v) => updateFeature(c, i, "title", v)}
+                  maxLength={LIMITS.featureTitle}
+                />
+                <CopyText
+                  copy={copy}
+                  as="p"
+                  value={f.description}
+                  mutate={(c, v) => updateFeature(c, i, "description", v)}
+                  maxLength={LIMITS.featureBody}
+                  multiline
+                />
               </div>
             ))}
           </div>
         </div>
       </section>
+      ) : null}
 
       <section className={styles.showcase}>
         <div className={styles.container}>
           <div className={styles["showcase-grid"]}>
-            <div className={`${styles["showcase-image"]} ${styles.reveal}`}>
-              <div className={styles.showcasePlaceholder} aria-hidden />
+            <div
+              {...revealProps("showcase-image")}
+              className={`${styles["showcase-image"]} ${rv("showcase-image")}`}
+            >
+              <SectionImageSlot
+                slotId={ABSTRACT_IMAGE_SLOTS.showcase}
+                imageUrl={getSectionImageUrl(sectionImages, ABSTRACT_IMAGE_SLOTS.showcase)}
+                fill
+                className={styles.showcasePlaceholder}
+                placeholderClassName={styles.showcasePlaceholder}
+                alt=""
+                {...imageSlotProps}
+              />
             </div>
-            <div className={`${styles["showcase-content"]} ${styles.reveal}`}>
-              <h2>{truncateText(showcaseTitle, LIMITS.proofHeadline)}</h2>
-              <p>{truncateText(showcaseP1, LIMITS.featureBody + 40)}</p>
-              <p>{truncateText(showcaseP2, LIMITS.featureBody + 40)}</p>
+            <div
+              {...revealProps("showcase-content")}
+              className={`${styles["showcase-content"]} ${rv("showcase-content")}`}
+            >
+              <CopyText
+                copy={copy}
+                as="h2"
+                value={showcaseTitle}
+                mutate={(c, v) => updateProblem(c, "heading", v)}
+                maxLength={LIMITS.proofHeadline}
+              />
+              <CopyText
+                copy={copy}
+                as="p"
+                value={showcaseP1}
+                mutate={(c, v) => updateProblem(c, "body", v)}
+                maxLength={LIMITS.featureBody + 40}
+                multiline
+              />
+              {!inlineEditable && showcaseP2 ? (
+                <p>{showcaseP2.trim()}</p>
+              ) : null}
+              {showPricing ? (
               <a href="#pricing" className={styles["btn-arrow"]} style={{ marginTop: "1rem" }}>
                 <span>View plans</span>
                 <ArrowIcon />
               </a>
+              ) : (
+              <a href="#cta-section" className={styles["btn-arrow"]} style={{ marginTop: "1rem" }}>
+                <span>{ctaLabel}</span>
+                <ArrowIcon />
+              </a>
+              )}
             </div>
           </div>
         </div>
       </section>
 
+      {metrics.length > 0 ? (
       <section className={styles.metrics}>
         <div className={styles.container}>
           <div className={styles["metrics-row"]}>
             {metrics.map((m, i) => (
-              <div key={i} className={`${styles.metric} ${styles.reveal}`}>
+              <div
+                key={i}
+                {...revealProps(`metric-${i}`)}
+                className={`${styles.metric} ${rv(`metric-${i}`)}`}
+              >
                 <div className={styles["metric-val"]}>{m.value}</div>
                 <p className={styles["metric-label"]}>{m.label}</p>
               </div>
@@ -395,108 +471,141 @@ export function AbstractTemplate({
           </div>
         </div>
       </section>
+      ) : null}
 
+      {showPricing ? (
       <section className={styles.pricing} id="pricing">
         <div className={styles.container}>
-          <div className={`${styles["pricing-intro"]} ${styles.reveal}`}>
-            <h2>Flexible pricing, no surprises.</h2>
-            <p>
-              Choose the plan that fits your needs. Both plans include core features and
-              standard support.
-            </p>
+          <div
+            {...revealProps("pricing-intro")}
+            className={`${styles["pricing-intro"]} ${rv("pricing-intro")}`}
+          >
+            <h2>Choose your plan.</h2>
+            <p>Pick the option that matches where you are today.</p>
           </div>
-          <div className={`${styles["pricing-duo"]} ${styles.reveal}`}>
-            <div className={styles["price-tier"]}>
-              <div>
-                <div className={styles["price-name"]}>Standard</div>
-                <div>
-                  <span className={styles["price-amount"]}>$29</span>
-                  <span className={styles["price-period"]}>/once</span>
-                </div>
-                <p className={styles["price-desc"]}>
-                  For individuals getting started with the essentials.
-                </p>
-                <ul className={styles["price-feat"]}>
-                  {priceFeats.map((feat, i) => (
-                    <li key={i}>
-                      <CheckIcon />
-                      {feat}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <CtaAction
-                config={ctaConfig}
-                scrollTarget={scrollTarget}
-                className={styles["btn-tier"]}
-                as="link"
+          <div
+            {...revealProps("pricing-duo")}
+            className={`${styles["pricing-duo"]} ${rv("pricing-duo")}`}
+          >
+            {pricingPlans.map((plan, i) => (
+              <div
+                key={plan.name}
+                className={`${styles["price-tier"]}${
+                  plan.featured || i === 1 ? ` ${styles.featured}` : ""
+                }`}
               >
-                {ctaLabel}
-              </CtaAction>
-            </div>
-            <div className={`${styles["price-tier"]} ${styles.featured}`}>
-              <div>
-                <div className={styles["price-name"]}>Professional</div>
                 <div>
-                  <span className={styles["price-amount"]}>$99</span>
-                  <span className={styles["price-period"]} style={{ color: "rgba(255,255,255,0.5)" }}>
-                    /once
-                  </span>
+                  <div className={styles["price-name"]}>{plan.name}</div>
+                  <div>
+                    <span className={styles["price-amount"]}>{plan.price}</span>
+                    {plan.period ? (
+                      <span
+                        className={styles["price-period"]}
+                        style={
+                          plan.featured || i === 1
+                            ? { color: "rgba(255,255,255,0.5)" }
+                            : undefined
+                        }
+                      >
+                        /{plan.period}
+                      </span>
+                    ) : null}
+                  </div>
+                  {plan.description ? (
+                    <p className={styles["price-desc"]}>{plan.description}</p>
+                  ) : null}
+                  {plan.features.length > 0 ? (
+                    <ul className={styles["price-feat"]}>
+                      {plan.features.map((feat, j) => (
+                        <li key={j}>
+                          <CheckIcon />
+                          {feat}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
-                <p className={styles["price-desc"]}>
-                  For growing teams that need more power and support.
-                </p>
-                <ul className={styles["price-feat"]}>
-                  {[...priceFeats, "Feature check five"].map((feat, i) => (
-                    <li key={i}>
-                      <CheckIcon />
-                      {feat}
-                    </li>
-                  ))}
-                </ul>
+                <CtaAction
+                  config={ctaConfig}
+                  scrollTarget={scrollTarget}
+                  className={
+                    plan.featured || i === 1
+                      ? styles["btn-tier-light"]
+                      : styles["btn-tier"]
+                  }
+                  as="link"
+                >
+                  {ctaLabel}
+                </CtaAction>
               </div>
-              <CtaAction
-                config={ctaConfig}
-                scrollTarget={scrollTarget}
-                className={styles["btn-tier-light"]}
-                as="link"
-              >
-                {ctaLabel}
-              </CtaAction>
-            </div>
+            ))}
           </div>
         </div>
       </section>
+      ) : null}
 
       <section className={styles.cta} id="cta-section">
         <div className={styles.container}>
           <div className={styles["cta-layout"]}>
-            <div className={`${styles["cta-text"]} ${styles.reveal}`}>
-              <h2>{truncateText(cta?.heading ?? "Ready to get started?", LIMITS.ctaHeading)}</h2>
-              <p>
-                {truncateText(
+            <div
+              {...revealProps("cta-text")}
+              className={`${styles["cta-text"]} ${rv("cta-text")}`}
+            >
+              <CopyText
+                copy={copy}
+                as="h2"
+                value={cta?.heading ?? "Ready to get started?"}
+                mutate={(c, v) => updateCta(c, "heading", v)}
+                maxLength={LIMITS.ctaHeading}
+              />
+              <CopyText
+                copy={copy}
+                as="p"
+                value={
                   cta?.subheading ??
-                    "A short description of what happens when they sign up. No credit card required, free to start.",
-                  LIMITS.ctaSubheading,
-                )}
-              </p>
+                  "Join the waitlist for early access when the next cohort opens."
+                }
+                mutate={(c, v) => updateCta(c, "subheading", v)}
+                maxLength={LIMITS.ctaSubheading}
+                multiline
+              />
               {isPublished && publicationSlug ? (
                 <WaitlistForm
                   slug={publicationSlug}
                   buttonLabel={ctaLabel}
                   className={styles["cta-form"]}
-                  inputClassName=""
-                  buttonClassName=""
+                  metaClassName={styles.ctaFormMeta}
                 />
               ) : (
-                <form className={styles["cta-form"]} onSubmit={(e) => e.preventDefault()}>
-                  <input type="email" placeholder="Enter your email" required readOnly />
-                  <button type="submit">{ctaLabel}</button>
-                </form>
+                <>
+                  <form className={styles["cta-form"]} onSubmit={(e) => e.preventDefault()}>
+                    <input type="email" placeholder="Enter your email" required readOnly />
+                    <button type="submit">
+                      <CopyText
+                        copy={copy}
+                        inline
+                        value={ctaLabel}
+                        mutate={(c, v) => updateCta(c, "button", v)}
+                      />
+                    </button>
+                  </form>
+                  <p className={styles.ctaFormMeta}>No spam · Unsubscribe anytime</p>
+                </>
               )}
             </div>
-            <div className={`${styles["cta-visual"]} ${styles.reveal}`}>
-              <div className={styles.ctaVisualShape} aria-hidden />
+            <div
+              {...revealProps("cta-visual")}
+              className={`${styles["cta-visual"]} ${rv("cta-visual")}`}
+            >
+              <SectionImageSlot
+                slotId={ABSTRACT_IMAGE_SLOTS.cta}
+                imageUrl={getSectionImageUrl(sectionImages, ABSTRACT_IMAGE_SLOTS.cta)}
+                fill
+                className={styles.ctaVisualShape}
+                placeholderClassName={styles.ctaVisualShape}
+                alt=""
+                {...imageSlotProps}
+              />
             </div>
           </div>
         </div>

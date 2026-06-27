@@ -1,11 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TemplateProps } from "./template-shared";
 import { mergeFaq, splitHeadline } from "./template-shared";
 import { CtaAction } from "./CtaAction";
 import { BrandMark } from "./BrandMark";
 import { WaitlistForm } from "@/components/published/WaitlistForm";
+import {
+  EDITORIAL_WORKFLOW_IMAGE_SLOT,
+  editorialFeatureImageSlot,
+  getSectionImageUrl,
+} from "@/lib/section-images";
+import {
+  updateCta,
+  updateFaqItem,
+  updateFeature,
+  updateHero,
+  updateProblem,
+} from "@/lib/copy-mutations";
+import { SectionImageSlot } from "./SectionImageSlot";
+import { CopyText } from "./CopyText";
+import { useScrollReveal } from "./useScrollReveal";
 import styles from "./editorial-saas.module.css";
 import base from "./template-base.module.css";
 
@@ -20,13 +35,6 @@ const GRAD_PAIRS = [
 
 const EYEBROWS = ["CAPABILITY ONE", "CAPABILITY TWO", "CAPABILITY THREE"];
 
-function initialsFrom(text: string): string {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return "FL";
-  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
-  return (words[0][0] + words[1][0]).toUpperCase();
-}
-
 export function EditorialSaasTemplate({
   copy,
   projectName,
@@ -37,12 +45,20 @@ export function EditorialSaasTemplate({
   publicationSlug,
   scrollTarget = "#join",
   branding,
+  forEditor = false,
+  sectionImages,
+  experimentId,
+  onSectionImageChange,
 }: TemplateProps) {
-  const [mode, setMode] = useState(colorMode);
+  const imageEditable =
+    forEditor && Boolean(onSectionImageChange) && Boolean(experimentId);
+  const imageSlotProps = {
+    editable: imageEditable,
+    experimentId,
+    onImageChange: onSectionImageChange,
+  };
   const [openFaq, setOpenFaq] = useState<number | null>(0);
-  const [quoteIndex, setQuoteIndex] = useState(0);
-  const [activeSlide, setActiveSlide] = useState(0);
-  const featuresRef = useRef<HTMLElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
   const hero = copy.hero;
   const features = (copy.features ?? []).slice(0, 3);
@@ -56,27 +72,6 @@ export function EditorialSaasTemplate({
               "A short description of the feature and the outcome it delivers.",
           },
         ];
-  const proof = copy.proof;
-  const proofElements = (proof?.elements ?? []).map((el) =>
-    typeof el === "string" ? el : String(el),
-  );
-  const quotes =
-    proofElements.length > 0
-      ? proofElements.map((q, i) => ({
-          quote: q.startsWith("“") ? q : `“${q}”`,
-          name: proof?.headline?.split(/[—–-]/)[0]?.trim() || "Customer",
-          role: proof?.headline || "Verified user",
-          av: initialsFrom(proof?.headline ?? `User ${i + 1}`),
-        }))
-      : [
-          {
-            quote:
-              "“A short, punchy quote from a happy customer that reads like a tweet.”",
-            name: "First Last",
-            role: "Title, Company",
-            av: "FL",
-          },
-        ];
   const workflowSteps = featureSlides.slice(0, 3).map((f, i) => ({
     num: i + 1,
     title: f.title,
@@ -84,11 +79,12 @@ export function EditorialSaasTemplate({
   }));
   const cta = copy.cta;
   const faq = mergeFaq(copy);
+  const { revealProps, revealClass } = useScrollReveal(rootRef, [
+    faq.length,
+    featureSlides.length,
+  ]);
+  const rv = (id: string) => revealClass(id, styles.reveal, styles.revealIn);
   const headline = splitHeadline(hero?.headline ?? projectName);
-
-  useEffect(() => {
-    setMode(colorMode);
-  }, [colorMode]);
 
   useEffect(() => {
     const id = "fivvle-editorial-saas-fonts";
@@ -101,55 +97,11 @@ export function EditorialSaasTemplate({
     }
   }, []);
 
-  const handleFeaturesScroll = useCallback(() => {
-    const section = featuresRef.current;
-    if (!section || window.innerWidth <= 960) return;
-
-    const rect = section.getBoundingClientRect();
-    const scrollableDist = rect.height - window.innerHeight;
-    if (scrollableDist <= 0) return;
-
-    const percent = Math.min(Math.max(-rect.top / scrollableDist, 0), 1);
-    let index = 0;
-    if (percent >= 0.66) index = 2;
-    else if (percent >= 0.33) index = 1;
-    setActiveSlide(index);
-  }, []);
-
-  useEffect(() => {
-    window.addEventListener("scroll", handleFeaturesScroll, { passive: true });
-    window.addEventListener("resize", handleFeaturesScroll);
-    handleFeaturesScroll();
-    return () => {
-      window.removeEventListener("scroll", handleFeaturesScroll);
-      window.removeEventListener("resize", handleFeaturesScroll);
-    };
-  }, [handleFeaturesScroll, featureSlides.length]);
-
-  useEffect(() => {
-    const els = document.querySelectorAll(`.${styles.reveal}`);
-    if (!els.length || !("IntersectionObserver" in window)) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((e) => {
-          if (e.isIntersecting) {
-            e.target.classList.add(styles.revealIn);
-            io.unobserve(e.target);
-          }
-        });
-      },
-      { threshold: 0.12 },
-    );
-    els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, [faq.length, featureSlides.length]);
-
-  const currentQuote = quotes[quoteIndex % quotes.length];
-
   return (
     <div
+      ref={rootRef}
       className={`${styles.root} ${base.root}`}
-      data-theme={mode}
+      data-theme={colorMode}
       style={cssVarStyle}
     >
       <header className={styles.nav}>
@@ -165,29 +117,21 @@ export function EditorialSaasTemplate({
           <nav className={styles.navLinks} aria-label="Primary">
             <a href="#features">Features</a>
             <a href="#workflow">Mechanism</a>
-            <a href="#testimonials">Testimonials</a>
             <a href="#faq">FAQ</a>
           </nav>
           <div className={styles.navCta}>
-            {!isPublished && (
-              <button
-                type="button"
-                className={styles.themeToggle}
-                aria-label="Toggle theme"
-                onClick={() => setMode((m) => (m === "dark" ? "light" : "dark"))}
-              >
-                <span className={styles.themeThumb}>
-                  {mode === "dark" ? "☾" : "☀"}
-                </span>
-              </button>
-            )}
             <CtaAction
               config={ctaConfig}
               scrollTarget={scrollTarget}
               className={`${styles.btn} ${styles.btnSecondary}`}
               as="link"
             >
-              {hero?.cta ?? "Get started"}
+              <CopyText
+                copy={copy}
+                inline
+                value={hero?.cta ?? "Get started"}
+                mutate={(c, v) => updateHero(c, "cta", v)}
+              />
             </CtaAction>
           </div>
         </div>
@@ -197,20 +141,41 @@ export function EditorialSaasTemplate({
         {hero && (
           <section className={styles.hero}>
             <div className={`${styles.wrap} ${styles.heroInner}`}>
-              <h1 className={`${styles.display} ${styles.reveal}`}>
-                {headline.main}{" "}
-                {headline.accent && (
-                  <span className={styles.italic}>{headline.accent}</span>
-                )}
-              </h1>
-              <p className={`${styles.heroSub} ${styles.reveal}`}>{hero.subheadline}</p>
-              <div className={`${styles.heroActions} ${styles.reveal}`}>
+              <div {...revealProps("hero-title")} className={rv("hero-title")}>
+                <CopyText
+                  copy={copy}
+                  as="h1"
+                  className={styles.display}
+                  value={hero.headline}
+                  mutate={(c, v) => updateHero(c, "headline", v)}
+                  multiline
+                />
+              </div>
+              <div {...revealProps("hero-sub")} className={rv("hero-sub")}>
+                <CopyText
+                  copy={copy}
+                  as="p"
+                  className={styles.heroSub}
+                  value={hero.subheadline}
+                  mutate={(c, v) => updateHero(c, "subheadline", v)}
+                  multiline
+                />
+              </div>
+              <div
+                {...revealProps("hero-actions")}
+                className={`${styles.heroActions} ${rv("hero-actions")}`}
+              >
                 <CtaAction
                   config={ctaConfig}
                   scrollTarget={scrollTarget}
                   className={`${styles.btn} ${styles.btnPrimary}`}
                 >
-                  {hero.cta}
+                  <CopyText
+                    copy={copy}
+                    inline
+                    value={hero.cta}
+                    mutate={(c, v) => updateHero(c, "cta", v)}
+                  />
                 </CtaAction>
                 <a className={`${styles.btn} ${styles.btnSecondary}`} href="#features">
                   See how it works
@@ -247,78 +212,75 @@ export function EditorialSaasTemplate({
           </section>
         )}
 
-        <section className={styles.featuresSticky} id="features" ref={featuresRef}>
-          <div className={styles.featuresTrack}>
-            <div className={`${styles.wrap} ${styles.featuresInner}`}>
-              <div className={styles.featuresLeft}>
-                {featureSlides.map((feat, idx) => {
-                  const [g1, g2] = GRAD_PAIRS[idx % GRAD_PAIRS.length];
-                  const textClass =
-                    idx === activeSlide
-                      ? styles.featureTextActive
-                      : idx < activeSlide
-                        ? styles.featureTextPast
-                        : "";
-                  return (
-                    <div
-                      key={idx}
-                      className={`${styles.featureText} ${textClass}`}
-                    >
-                      <div className={styles.mobileVisual}>
-                        <div className={styles.gradCard} style={{ ["--g1" as string]: g1, ["--g2" as string]: g2 }}>
-                          <div className={styles.gradOverlay} />
-                        </div>
-                      </div>
-                      <span className={styles.eyebrow}>{EYEBROWS[idx] ?? `CAPABILITY ${idx + 1}`}</span>
-                      <h2 className={styles.h2}>{feat.title}</h2>
-                      <p className={styles.lede}>{feat.description}</p>
-                      <div className={styles.featureList}>
-                        <div className={`${styles.featureItem} ${styles.featureItemVisible}`}>
-                          <h4 className={styles.featureItemTitle}>{feat.title}</h4>
-                          <p className={styles.featureItemBody}>{feat.description}</p>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              <div className={styles.featuresRight}>
-                <div className={styles.visualWrapper}>
-                  {featureSlides.map((_, idx) => {
-                    const [g1, g2] = GRAD_PAIRS[idx % GRAD_PAIRS.length];
-                    const visClass =
-                      idx === activeSlide
-                        ? styles.featureVisualActive
-                        : idx < activeSlide
-                          ? styles.featureVisualPast
-                          : "";
-                    return (
-                      <div
-                        key={idx}
-                        className={`${styles.featureVisual} ${visClass}`}
-                      >
-                        <div
-                          className={styles.gradCard}
-                          style={{ ["--g1" as string]: g1, ["--g2" as string]: g2 }}
-                        >
-                          <div className={styles.gradOverlay} />
-                        </div>
-                      </div>
-                    );
-                  })}
+        <section className={styles.capabilities} id="features">
+          <div className={styles.wrap}>
+            {featureSlides.map((feat, idx) => {
+              const [g1, g2] = GRAD_PAIRS[idx % GRAD_PAIRS.length];
+              const reversed = idx % 2 === 1;
+              return (
+                <div
+                  key={idx}
+                  className={`${styles.capabilityRow} ${reversed ? styles.capabilityRowReverse : ""}`}
+                >
+                  <div className={styles.capabilityText}>
+                    <span className={styles.eyebrow}>
+                      {EYEBROWS[idx] ?? `CAPABILITY ${idx + 1}`}
+                    </span>
+                    <CopyText
+                      copy={copy}
+                      as="h2"
+                      className={styles.h2}
+                      value={feat.title}
+                      mutate={(c, v) => updateFeature(c, idx, "title", v)}
+                    />
+                    <CopyText
+                      copy={copy}
+                      as="p"
+                      className={styles.lede}
+                      value={feat.description}
+                      mutate={(c, v) => updateFeature(c, idx, "description", v)}
+                      multiline
+                    />
+                  </div>
+                  <div className={styles.capabilityVisual}>
+                    <SectionImageSlot
+                      slotId={editorialFeatureImageSlot(idx)}
+                      imageUrl={getSectionImageUrl(
+                        sectionImages,
+                        editorialFeatureImageSlot(idx),
+                      )}
+                      fill
+                      placeholderClassName={styles.gradCard}
+                      placeholderStyle={{
+                        ["--g1" as string]: g1,
+                        ["--g2" as string]: g2,
+                      }}
+                      placeholderChildren={<div className={styles.gradOverlay} />}
+                      alt=""
+                      {...imageSlotProps}
+                    />
+                  </div>
                 </div>
-              </div>
-            </div>
+              );
+            })}
           </div>
         </section>
 
         <section className={styles.workflow} id="workflow">
           <div className={`${styles.wrap} ${styles.workflowGrid}`}>
-            <div className={styles.reveal}>
+            <div {...revealProps("workflow-copy")} className={rv("workflow-copy")}>
               <h2 className={styles.h2}>How the process works</h2>
               <p className={styles.lede} style={{ marginTop: 14 }}>
-                {copy.problem?.body ??
-                  "A simple overview of the steps involved in our workflow."}
+                <CopyText
+                  copy={copy}
+                  inline
+                  value={
+                    copy.problem?.body ??
+                    "A simple overview of the steps involved in our workflow."
+                  }
+                  mutate={(c, v) => updateProblem(c, "body", v)}
+                  multiline
+                />
               </p>
               <div className={styles.workflowSteps}>
                 {workflowSteps.map((step) => (
@@ -328,8 +290,23 @@ export function EditorialSaasTemplate({
                   >
                     <div className={styles.stepNum}>{step.num}</div>
                     <div>
-                      <h4 className={styles.stepTitle}>{step.title}</h4>
-                      <p className={styles.stepBody}>{step.body}</p>
+                      <CopyText
+                        copy={copy}
+                        as="h4"
+                        className={styles.stepTitle}
+                        value={step.title}
+                        mutate={(c, v) => updateFeature(c, step.num - 1, "title", v)}
+                      />
+                      <CopyText
+                        copy={copy}
+                        as="p"
+                        className={styles.stepBody}
+                        value={step.body}
+                        mutate={(c, v) =>
+                          updateFeature(c, step.num - 1, "description", v)
+                        }
+                        multiline
+                      />
                     </div>
                   </div>
                 ))}
@@ -344,57 +321,25 @@ export function EditorialSaasTemplate({
                 </CtaAction>
               </div>
             </div>
-            <div className={styles.reveal}>
+            <div {...revealProps("workflow-visual")} className={rv("workflow-visual")}>
               <div className={styles.mechanismVisual}>
-                <div
-                  className={styles.gradCard}
-                  style={{
+                <SectionImageSlot
+                  slotId={EDITORIAL_WORKFLOW_IMAGE_SLOT}
+                  imageUrl={getSectionImageUrl(
+                    sectionImages,
+                    EDITORIAL_WORKFLOW_IMAGE_SLOT,
+                  )}
+                  fill
+                  placeholderClassName={styles.gradCard}
+                  placeholderStyle={{
                     ["--g1" as string]: GRAD_PAIRS[0][0],
                     ["--g2" as string]: GRAD_PAIRS[0][1],
                   }}
-                >
-                  <div className={styles.gradOverlay} />
-                </div>
+                  placeholderChildren={<div className={styles.gradOverlay} />}
+                  alt=""
+                  {...imageSlotProps}
+                />
               </div>
-            </div>
-          </div>
-        </section>
-
-        <section className={styles.testimonial} id="testimonials">
-          <div className={`${styles.wrap} ${styles.testimonialInner} ${styles.reveal}`}>
-            <blockquote className={styles.testimonialQuote}>
-              {currentQuote.quote}
-            </blockquote>
-            <div className={styles.testimonialFooter}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div className={styles.testimonialAv}>{currentQuote.av}</div>
-                <div>
-                  <div className={styles.testimonialName}>{currentQuote.name}</div>
-                  <span className={styles.testimonialRole}>{currentQuote.role}</span>
-                </div>
-              </div>
-              {quotes.length > 1 && (
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    type="button"
-                    className={styles.arrowBtn}
-                    aria-label="Previous quote"
-                    onClick={() =>
-                      setQuoteIndex((i) => (i - 1 + quotes.length) % quotes.length)
-                    }
-                  >
-                    ←
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.arrowBtn}
-                    aria-label="Next quote"
-                    onClick={() => setQuoteIndex((i) => (i + 1) % quotes.length)}
-                  >
-                    →
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </section>
@@ -402,7 +347,10 @@ export function EditorialSaasTemplate({
         {faq.length > 0 && (
           <section className={styles.faqSection} id="faq">
             <div className={styles.wrap}>
-              <div className={`${styles.faqHead} ${styles.reveal}`}>
+              <div
+                {...revealProps("faq-head")}
+                className={`${styles.faqHead} ${rv("faq-head")}`}
+              >
                 <span className={styles.eyebrow}>FAQ</span>
                 <h2 className={styles.h2} style={{ marginTop: 16 }}>
                   Questions, answered.
@@ -412,7 +360,8 @@ export function EditorialSaasTemplate({
                 {faq.map((item, i) => (
                   <div
                     key={i}
-                    className={`${styles.faqItem} ${openFaq === i ? styles.faqOpen : ""} ${styles.reveal}`}
+                    {...revealProps(`faq-${i}`)}
+                    className={`${styles.faqItem} ${openFaq === i ? styles.faqOpen : ""} ${rv(`faq-${i}`)}`}
                   >
                     <button
                       type="button"
@@ -420,13 +369,26 @@ export function EditorialSaasTemplate({
                       aria-expanded={openFaq === i}
                       onClick={() => setOpenFaq(openFaq === i ? null : i)}
                     >
-                      <span>{item.question}</span>
+                      <CopyText
+                        copy={copy}
+                        inline
+                        value={item.question}
+                        mutate={(c, v) => updateFaqItem(c, i, "question", v)}
+                      />
                       <span className={styles.faqBtn} aria-hidden>
                         +
                       </span>
                     </button>
                     {openFaq === i && (
-                      <div className={styles.faqPanel}>{item.answer}</div>
+                      <div className={styles.faqPanel}>
+                        <CopyText
+                          copy={copy}
+                          as="div"
+                          value={item.answer}
+                          mutate={(c, v) => updateFaqItem(c, i, "answer", v)}
+                          multiline
+                        />
+                      </div>
                     )}
                   </div>
                 ))}
@@ -437,9 +399,25 @@ export function EditorialSaasTemplate({
 
         {cta && (
           <section className={styles.cta} id="join">
-            <div className={`${styles.wrap} ${styles.ctaInner} ${styles.reveal}`}>
-              <h2 className={styles.ctaTitle}>{cta.heading}</h2>
-              <p className={styles.lede}>{cta.subheading}</p>
+            <div
+              {...revealProps("cta")}
+              className={`${styles.wrap} ${styles.ctaInner} ${rv("cta")}`}
+            >
+              <CopyText
+                copy={copy}
+                as="h2"
+                className={styles.ctaTitle}
+                value={cta.heading}
+                mutate={(c, v) => updateCta(c, "heading", v)}
+              />
+              <CopyText
+                copy={copy}
+                as="p"
+                className={styles.lede}
+                value={cta.subheading}
+                mutate={(c, v) => updateCta(c, "subheading", v)}
+                multiline
+              />
               {isPublished &&
               ctaConfig?.mode === "waitlist" &&
               publicationSlug ? (
@@ -463,7 +441,12 @@ export function EditorialSaasTemplate({
                     aria-label="Email"
                   />
                   <button type="submit" className={`${styles.btn} ${styles.btnPrimary}`}>
-                    {cta.button}
+                    <CopyText
+                      copy={copy}
+                      inline
+                      value={cta.button}
+                      mutate={(c, v) => updateCta(c, "button", v)}
+                    />
                   </button>
                 </form>
               )}
@@ -488,7 +471,6 @@ export function EditorialSaasTemplate({
           <nav className={styles.footCols} aria-label="Footer">
             <a href="#features">Features</a>
             <a href="#workflow">Mechanism</a>
-            <a href="#testimonials">Testimonials</a>
             <a href="#faq">FAQ</a>
           </nav>
           <a

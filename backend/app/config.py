@@ -7,6 +7,7 @@ Never log or print any setting value — see AGENTS.md "Logging hygiene".
 """
 
 from functools import lru_cache
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import Field
@@ -25,13 +26,39 @@ class Settings(BaseSettings):
 
     # --- Firebase Admin ---
     firebase_project_id: str
-    google_application_credentials: str
+    # Use FIREBASE_SERVICE_ACCOUNT_PATH (not GOOGLE_APPLICATION_CREDENTIALS) so a
+    # machine-wide GCP credential env var does not override backend/.env.
+    firebase_service_account_path: str = Field(
+        validation_alias="FIREBASE_SERVICE_ACCOUNT_PATH",
+    )
+    firebase_storage_bucket: str = Field(
+        default="",
+        description=(
+            "Firebase Storage bucket for founder uploads (e.g. landing-page logos). "
+            "When empty, defaults to {FIREBASE_PROJECT_ID}.appspot.com."
+        ),
+    )
+    logo_upload_backend: Literal["auto", "local", "firebase"] = Field(
+        default="auto",
+        description=(
+            "Where to store uploaded landing-page logos. "
+            "auto=local disk in development/test, Firebase otherwise."
+        ),
+    )
 
     # --- LLM and search APIs ---
     anthropic_api_key: str
     groq_api_key: str
     moonshot_api_key: str = ""
     tavily_api_key: str
+    tavily_usd_per_credit: Decimal = Field(
+        default=Decimal("0.008"),
+        description=(
+            "USD cost per Tavily API credit for audit rollups. Default matches "
+            "Tavily pay-as-you-go ($0.008/credit). Set to your plan rate "
+            "(e.g. 0.0075 on Project) for accurate admin dashboards."
+        ),
+    )
 
     # --- Reddit (read-only research) ---
     reddit_client_id: str
@@ -45,6 +72,16 @@ class Settings(BaseSettings):
     environment: Literal["development", "staging", "production", "test"] = "development"
     # Comma-separated list of allowed CORS origins; use cors_origins_list for the parsed form.
     cors_allowed_origins: str = "http://localhost:3000"
+    cors_landing_origin_regex: str = Field(
+        default=(
+            r"http://[a-z0-9-]{6,40}\.localhost(?::\d+)?|"
+            r"https://[a-z0-9-]{6,40}\.fivvle\.io"
+        ),
+        description=(
+            "Regex allowlist for published landing page origins (subdomain page-view "
+            "and waitlist beacons). Complements cors_allowed_origins; not a wildcard."
+        ),
+    )
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
     reader_concurrency_limit: int = Field(
@@ -81,6 +118,14 @@ class Settings(BaseSettings):
     synthesizer_model: str = Field(default="claude-sonnet-4-6")
     insight_provider: str = Field(default="kimi")
     insight_model: str = Field(default="kimi-k2.6")
+    chat_attachment_vision_provider: str = Field(
+        default="kimi",
+        description="LLM provider for extracting text and context from chat image uploads.",
+    )
+    chat_attachment_vision_model: str = Field(
+        default="kimi-k2.6",
+        description="Model for chat attachment image extraction (vision).",
+    )
 
     # --- Research dispatcher (ADR 0009) ---
     # in_process: invokes the research engine directly via asyncio.create_task (dev/test).
@@ -124,9 +169,66 @@ class Settings(BaseSettings):
         ),
     )
 
+    monetization_enabled: bool = Field(
+        default=False,
+        description=(
+            "When true, debit credits on paid services. Default false for local dev."
+        ),
+    )
+
+    # --- Razorpay (credit pack top-ups; test mode in dev) ---
+    razorpay_key_id: str = Field(
+        default="",
+        description="Razorpay key_id (public). Empty disables order creation.",
+    )
+    razorpay_key_secret: str = Field(
+        default="",
+        description="Razorpay key_secret. Never expose to frontend.",
+    )
+    usd_inr_rate: float = Field(
+        default=83.0,
+        description="USD→INR rate for Razorpay order amounts (product UI stays USD/credits).",
+    )
+
+    # Comma-separated emails granted admin API access (verified Firebase email only).
+    admin_emails: str = Field(
+        default="",
+        description=(
+            "Comma-separated list of emails allowed to call /admin/* endpoints. "
+            "Matched case-insensitively against the Firebase-verified email on "
+            "POST /users/sync. Example: fivvleio@gmail.com"
+        ),
+    )
+
+    frontend_revalidate_url: str | None = Field(
+        default=None,
+        description="Next.js ISR revalidate endpoint (optional in local dev).",
+    )
+    revalidate_secret: str | None = Field(
+        default=None,
+        description="Shared secret for POST /api/revalidate (optional in local dev).",
+    )
+
+    landing_public_root_domain: str = Field(
+        default="fivvle.io",
+        description="Root domain for published landing pages ({slug}.fivvle.io).",
+    )
+    landing_public_dev_port: int = Field(
+        default=3000,
+        description="Dev port for {slug}.localhost landing page URLs.",
+    )
+
     # ------------------------------------------------------------------
     # Derived helpers (not env vars)
     # ------------------------------------------------------------------
+
+    @property
+    def admin_emails_list(self) -> list[str]:
+        return [
+            part.strip().lower()
+            for part in self.admin_emails.split(",")
+            if part.strip()
+        ]
 
     @property
     def is_production(self) -> bool:

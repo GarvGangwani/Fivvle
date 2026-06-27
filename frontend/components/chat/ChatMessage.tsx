@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Pencil } from "lucide-react";
 import type { ChatRole } from "@/lib/types";
+import { useAuth } from "@/lib/auth-context";
+import { getChatUserLabel } from "@/lib/user-avatar";
+import { UserAvatar } from "@/components/auth/UserAvatar";
+import { FivvleLogo } from "@/components/layout/FivvleLogo";
+import { ChatMarkdown } from "./ChatMarkdown";
 
 interface ChatMessageProps {
   id: string;
@@ -22,6 +27,7 @@ export function ChatMessage({
   canEdit = false,
   onEdit,
 }: ChatMessageProps) {
+  const { user } = useAuth();
   const isUser = role === "user";
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(content);
@@ -79,24 +85,19 @@ export function ChatMessage({
         )}
         <div className="flex items-start gap-3">
           {isUser ? (
-            <div
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/[0.08] text-[11px] font-semibold text-[var(--fv-text-soft)]"
-              aria-hidden
-            >
-              Y
-            </div>
+            <UserAvatar
+              displayName={user?.displayName}
+              email={user?.email}
+              photoUrl={user?.photoURL}
+              size="sm"
+              className="!h-6 !w-6 !text-[11px]"
+            />
           ) : (
-            <div
-              className="fv-f-logo"
-              style={{ width: 24, height: 24, fontSize: 12 }}
-              aria-hidden
-            >
-              F
-            </div>
+            <FivvleLogo size={24} />
           )}
           <div className="min-w-0 flex-1">
             <span className="mb-1 block text-[13px] font-medium text-[var(--fv-text-soft)]">
-              {isUser ? "You" : "Fivvle"}
+              {isUser ? getChatUserLabel(user) : "Fivvle"}
               {!isUser && showRefining && (
                 <span className="fv-refining-badge ml-2">Refining</span>
               )}
@@ -130,12 +131,12 @@ export function ChatMessage({
                   </button>
                 </div>
               </div>
-            ) : (
-              <div
-                className={`whitespace-pre-wrap break-words ${isUser ? "fv-msg-user" : "fv-msg-ai"}`}
-              >
+            ) : isUser ? (
+              <div className="fv-msg-user whitespace-pre-wrap break-words">
                 {content}
               </div>
+            ) : (
+              <ChatMarkdown content={content} className="fv-msg-ai break-words" />
             )}
           </div>
         </div>

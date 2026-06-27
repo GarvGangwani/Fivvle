@@ -300,6 +300,9 @@ async def run_research_engine_pipeline(
                 await session.commit()
                 return
 
+            # Persist Tavily/Trends ExternalAPICall rows before later phases can fail.
+            await session.commit()
+
             search_results = merged.tavily
             trends_signals = merged.trends
 
@@ -388,6 +391,8 @@ async def run_research_engine_pipeline(
                 db=session,
                 settings=settings,
             )
+
+            await session.commit()
 
             # ------------------------------------------------------------------
             # 5. RESEARCH_SYNTHESIZING — synthesizer builds the report from Reader output.

@@ -9,6 +9,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.db.enums import ChatRole, ChatTurnKind, ExperimentStatus
+from app.schemas.refinement import ClarifyingQuestion
 from app.services.chat_service import ChatTurnResult
 
 
@@ -17,15 +18,41 @@ class ChatTurnRequest(BaseModel):
 
     thread_id: UUID | None = None
     experiment_id: UUID | None = None
-    message: Annotated[str, Field(min_length=1, max_length=4000)]
+    message: Annotated[str, Field(default="", max_length=4000)]
+    attachment_ids: Annotated[
+        list[UUID],
+        Field(default_factory=list, max_length=5),
+    ]
+    name: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=100,
+            description="Optional project name when starting a new experiment via chat.",
+        ),
+    ] = None
     deep_research: bool
     idempotency_key: Annotated[str, Field(min_length=1, max_length=200)] | None = None
 
     @model_validator(mode="after")
-    def _check_idempotency_required(self) -> ChatTurnRequest:
+    def _check_turn_payload(self) -> ChatTurnRequest:
         if self.deep_research and self.idempotency_key is None:
             raise ValueError("idempotency_key is required when deep_research=true")
+        if not self.message.strip() and not self.attachment_ids:
+            raise ValueError("message or attachment_ids is required")
         return self
+
+
+class ChatAttachmentUploadItem(BaseModel):
+    id: UUID
+    filename: str
+    content_kind: str
+    excerpt: str
+    char_count: int
+
+
+class ChatAttachmentsUploadResponse(BaseModel):
+    attachments: list[ChatAttachmentUploadItem]
 
 
 class ChatTurnResponse(BaseModel):
@@ -37,6 +64,7 @@ class ChatTurnResponse(BaseModel):
     assistant_message: str
     turn_kind: ChatTurnKind
     clarifying_dimension: str | None
+    clarifying_questions: list[ClarifyingQuestion] = Field(default_factory=list)
     pipeline_dispatched: bool
     dispatched_at: datetime | None
     experiment_status: ExperimentStatus | None
@@ -51,6 +79,7 @@ class ChatTurnResponse(BaseModel):
             assistant_message=result.assistant_message,
             turn_kind=result.turn_kind,
             clarifying_dimension=result.clarifying_dimension,
+            clarifying_questions=list(result.clarifying_questions),
             pipeline_dispatched=result.pipeline_dispatched,
             dispatched_at=result.dispatched_at,
             experiment_status=result.experiment_status,
@@ -65,6 +94,7 @@ class ChatMessageItem(BaseModel):
     role: ChatRole
     content: str
     turn_kind: ChatTurnKind | None
+    clarifying_questions: list[ClarifyingQuestion] | None = None
     created_at: datetime
 
 
@@ -90,6 +120,7 @@ class ChatEditTurnResponse(BaseModel):
     assistant_message: str
     turn_kind: ChatTurnKind
     clarifying_dimension: str | None
+    clarifying_questions: list[ClarifyingQuestion] = Field(default_factory=list)
     pipeline_dispatched: bool
     dispatched_at: datetime | None
     experiment_status: ExperimentStatus | None

@@ -334,7 +334,7 @@ async def test_dr_idempotency_replay_skips_second_run_turn(
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_dispatches_with_auto_fire(
+async def test_dr_finalize_defers_to_refined(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
 ) -> None:
@@ -353,16 +353,16 @@ async def test_dr_finalize_dispatches_with_auto_fire(
         dispatcher=dispatcher,
     )
 
-    assert result.pipeline_dispatched is True
-    assert result.dispatched_at is not None
+    assert result.pipeline_dispatched is False
+    assert result.dispatched_at is None
     assert result.turn_kind == ChatTurnKind.REFINEMENT_FINALIZE
-    assert result.experiment_status == ExperimentStatus.RESEARCHING
-    assert dispatcher.dispatched == [result.experiment_id]
+    assert result.experiment_status == ExperimentStatus.REFINED
+    assert dispatcher.dispatched == []
 
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_dispatch_error_sets_research_failed(
+async def test_dr_finalize_deferred_even_if_dispatcher_would_fail(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
 ) -> None:
@@ -384,16 +384,13 @@ async def test_dr_finalize_dispatch_error_sets_research_failed(
     )
 
     assert result.pipeline_dispatched is False
-    assert result.experiment_status == ExperimentStatus.RESEARCH_FAILED
-    assert result.research_error_detail is not None
-    assert "DispatchError" in result.research_error_detail
-    assert result.user_facing_error is not None
-    assert result.user_facing_error.message.startswith("Research didn't complete")
+    assert result.experiment_status == ExperimentStatus.REFINED
+    assert dispatcher.dispatched == []
 
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_shadow_gates_dispatch(
+async def test_dr_finalize_deferred_logs(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -421,14 +418,13 @@ async def test_dr_finalize_shadow_gates_dispatch(
     assert result.experiment_status == ExperimentStatus.REFINED
     assert dispatcher.dispatched == []
     mock_info.assert_called_once()
-    assert mock_info.call_args.args[0] == "auto_fire_gated"
-    assert mock_info.call_args.kwargs["mode"] == "shadow"
-    assert mock_info.call_args.kwargs["would_have_fired"] is True
+    assert mock_info.call_args.args[0] == "refinement_finalize_deferred"
+    assert mock_info.call_args.kwargs["auto_fire_mode"] == "shadow"
 
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_cohort_10_in_bucket_dispatches(
+async def test_dr_finalize_cohort_10_in_bucket_still_deferred(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -458,9 +454,9 @@ async def test_dr_finalize_cohort_10_in_bucket_dispatches(
         dispatcher=dispatcher,
     )
 
-    assert result.pipeline_dispatched is True
-    assert result.experiment_status == ExperimentStatus.RESEARCHING
-    assert dispatcher.dispatched == [experiment_id]
+    assert result.pipeline_dispatched is False
+    assert result.experiment_status == ExperimentStatus.REFINED
+    assert dispatcher.dispatched == []
 
 
 @pytest.mark.asyncio

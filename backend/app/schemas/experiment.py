@@ -87,16 +87,31 @@ class ExperimentResponse(BaseModel):
     updated_at: datetime
 
 
+class ExperimentCardStats(BaseModel):
+    """Lightweight behavioral metrics for dashboard project cards."""
+
+    page_views: int = Field(ge=0)
+    waitlist_signups: int = Field(ge=0)
+
+
+class ExperimentListItemResponse(ExperimentResponse):
+    """GET /experiments list item — behavioral metrics when metrics are unlocked."""
+
+    card_stats: ExperimentCardStats | None = None
+
+
 class ConfirmResearchResponse(BaseModel):
     """202 response for POST /experiments/{id}/confirm.
 
     status_url is the absolute path to the polling endpoint so clients
     can start polling without constructing the URL themselves.
+    credits_balance is the wallet balance after any debit for this request.
     """
 
     experiment_id: UUID
     status: ExperimentStatus
     status_url: str
+    credits_balance: int = Field(ge=0)
 
 
 class ResearchStatusResponse(BaseModel):

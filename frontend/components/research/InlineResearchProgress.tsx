@@ -1,38 +1,53 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Activity } from "lucide-react";
-import { getResearchStatus, ApiError } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import { Activity, CheckCircle2 } from "lucide-react";
+import { getResearchStatus } from "@/lib/api";
 import type { ResearchStatus } from "@/lib/types";
+import {
+  isResearchComplete,
+  isResearchFailed,
+  isResearchInProgress,
+  resolveResearchPhase,
+} from "@/lib/research-status";
 import {
   PhaseIndicator,
   RESEARCH_PHASE_IDS,
 } from "./PhaseIndicator";
+import { ResearchActivityFeed } from "./ResearchActivityFeed";
+import { useResearchActivityLog } from "./useResearchActivityLog";
+import { FivvleLogo } from "@/components/layout/FivvleLogo";
 
 const POLL_INTERVAL_MS = 3000;
-
-const RESEARCH_ACTIVE_STATUSES = new Set([
-  "RESEARCHING",
-  "RESEARCH_PLANNING",
-  "RESEARCH_SEARCHING",
-  "RESEARCH_READING",
-  "RESEARCH_REFLECTING",
-  "RESEARCH_SYNTHESIZING",
-]);
 
 interface InlineResearchProgressProps {
   experimentId: string;
   onComplete?: () => void;
+  /** When true, show completed bar immediately (report already exists). */
+  reportReady?: boolean;
 }
 
 export function InlineResearchProgress({
   experimentId,
   onComplete,
+  reportReady = false,
 }: InlineResearchProgressProps) {
   const [status, setStatus] = useState<ResearchStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const completedNotifiedRef = useRef(false);
 
   useEffect(() => {
+    const notifyCompleteOnce = () => {
+      if (completedNotifiedRef.current) return;
+      completedNotifiedRef.current = true;
+      onComplete?.();
+    };
+
+    if (reportReady) {
+      notifyCompleteOnce();
+      return;
+    }
+
     let cancelled = false;
     let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -44,10 +59,10 @@ export function InlineResearchProgress({
         setStatus(data);
         setError(null);
 
-        if (data.status === "RESEARCH_READY") {
+        if (isResearchComplete(data.status)) {
           if (intervalId) clearInterval(intervalId);
-          onComplete?.();
-        } else if (data.status === "RESEARCH_FAILED") {
+          notifyCompleteOnce();
+        } else if (isResearchFailed(data.status)) {
           if (intervalId) clearInterval(intervalId);
         }
       } catch {
@@ -56,57 +71,80 @@ export function InlineResearchProgress({
       }
     }
 
-    poll();
-    intervalId = setInterval(poll, POLL_INTERVAL_MS);
+    completedNotifiedRef.current = false;
+    void poll();
+    intervalId = setInterval(() => void poll(), POLL_INTERVAL_MS);
 
     return () => {
       cancelled = true;
       if (intervalId) clearInterval(intervalId);
     };
-  }, [experimentId, onComplete]);
+  }, [experimentId, onComplete, reportReady]);
 
-  const isComplete = status?.status === "RESEARCH_READY";
-  const isFailed = status?.status === "RESEARCH_FAILED";
+  const apiStatus = status?.status;
+  const isComplete = reportReady || isResearchComplete(apiStatus);
+  const isFailed = isResearchFailed(apiStatus);
+  const isRunning = isResearchInProgress(apiStatus);
 
-  const currentPhase =
-    status && RESEARCH_ACTIVE_STATUSES.has(status.status)
-      ? status.status
-      : isComplete
-        ? "RESEARCH_SYNTHESIZING"
-        : "RESEARCHING";
+  const currentPhase = isComplete
+    ? "RESEARCH_READY"
+    : resolveResearchPhase(apiStatus);
+
+  const activityLines = useResearchActivityLog(status, isComplete, isRunning);
 
   return (
     <div className="border-b border-[var(--fv-border)] py-6">
       <div className="mx-auto max-w-[680px]">
         <div className="flex items-start gap-3">
-          <div
-            className="fv-f-logo"
-            style={{ width: 24, height: 24, fontSize: 12 }}
-            aria-hidden
-          >
-            F
-          </div>
+          <FivvleLogo size={24} />
           <div className="min-w-0 flex-1">
             <span className="mb-1 block text-[13px] font-medium text-[var(--fv-text-soft)]">
               Fivvle
             </span>
             <div className="fv-msg-ai">
               <div className="mb-3 flex items-center gap-2">
-                <Activity className="h-[14px] w-[14px] text-[var(--fv-accent)]" />
-                <span className="text-[13px] font-bold text-[var(--fv-accent)]">
+                {isComplete ? (
+                  <CheckCircle2 className="h-[14px] w-[14px] text-[var(--fv-success)]" />
+                ) : (
+                  <Activity
+                    className={`h-[14px] w-[14px] ${
+                      isFailed
+                        ? "text-[var(--fv-warning)]"
+                        : "text-[var(--fv-accent)]"
+                    }`}
+                  />
+                )}
+                <span
+                  className={`text-[13px] font-bold ${
+                    isComplete
+                      ? "text-[var(--fv-success)]"
+                      : isFailed
+                        ? "text-[var(--fv-warning)]"
+                        : "text-[var(--fv-accent)]"
+                  }`}
+                >
                   {isComplete
-                    ? "Research Complete"
+                    ? "Research complete"
                     : isFailed
-                      ? "Research Failed"
-                      : "Deep Research Running"}
+                      ? "Research failed"
+                      : isRunning
+                        ? "Deep research running"
+                        : "Preparing research…"}
                 </span>
               </div>
 
               {!isFailed && (
                 <PhaseIndicator
-                  currentPhase={isComplete ? "RESEARCH_SYNTHESIZING" : currentPhase}
+                  currentPhase={currentPhase}
                   phases={[...RESEARCH_PHASE_IDS]}
-                  variant="inline"
+                  variant="horizontal"
+                />
+              )}
+
+              {!isFailed && (isRunning || isComplete) && (
+                <ResearchActivityFeed
+                  lines={activityLines}
+                  isComplete={isComplete}
                 />
               )}
 

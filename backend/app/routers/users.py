@@ -7,6 +7,7 @@ from firebase_admin import auth as firebase_auth
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.admin_access import apply_admin_role_from_email
 from app.auth.dependencies import _extract_bearer_token
 from app.auth.firebase import verify_id_token
 from app.db.models.user import User
@@ -14,6 +15,7 @@ from app.db.session import get_session
 from app.logging_config import get_logger
 from app.reliability.rate_limit import AUTH_RATE_LIMIT, limiter, user_key
 from app.schemas.user import UserResponse, UserSyncRequest
+from app.services.wallet_service import get_or_create_wallet
 
 _logger = get_logger(__name__)
 
@@ -83,5 +85,13 @@ async def sync_user(
         await db.flush()
         await db.refresh(user)
         _logger.info("user provisioned", user_id=str(user.id))
+    elif user.email != email:
+        user.email = email
+
+    if apply_admin_role_from_email(user, email):
+        await db.flush()
+
+    await get_or_create_wallet(db, user.id)
+    await db.flush()
 
     return user

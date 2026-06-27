@@ -1,8 +1,26 @@
 import type { CopyJson, PageJson } from "./types";
 import type { CtaMode } from "./cta-config";
 
+import {
+  buildPublicLandingPageUrl,
+  formatPublicLandingHost,
+  LANDING_PAGE_SOURCE_PARAM,
+} from "@/lib/landing-host";
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
+
+export { LANDING_PAGE_SOURCE_PARAM };
+
+export function buildTrackedLandingPageUrl(
+  slug: string,
+  sourceTag: string,
+  _origin?: string,
+): string {
+  return buildPublicLandingPageUrl(slug, sourceTag);
+}
+
+export { buildPublicLandingPageUrl, formatPublicLandingHost };
 
 export interface PublishedPagePayload {
   slug: string;
@@ -21,8 +39,9 @@ export interface PublishedPagePayload {
 export async function fetchPublishedPage(
   slug: string,
 ): Promise<PublishedPagePayload | null> {
+  const isDev = process.env.NODE_ENV === "development";
   const res = await fetch(`${API_BASE}/e/${encodeURIComponent(slug)}`, {
-    next: { revalidate: 60 },
+    next: isDev ? { revalidate: 0 } : { revalidate: 60 },
   });
   if (res.status === 404) return null;
   if (!res.ok) {
@@ -69,5 +88,5 @@ export function slugifyProjectName(name: string): string {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 48) || "page";
+    .slice(0, 28) || "page";
 }
