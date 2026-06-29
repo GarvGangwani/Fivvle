@@ -4,6 +4,8 @@ import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { archiveExperiment, ApiError } from "@/lib/api";
 import type { FounderDecision } from "@/lib/types";
+import { notifyExperimentsChanged } from "@/lib/experiment-events";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
 const DECISIONS: {
   id: FounderDecision;
@@ -61,6 +63,7 @@ export function DecisionPanel({
     setError(null);
     try {
       await archiveExperiment(experimentId, decision);
+      notifyExperimentsChanged();
       onDecision(decision);
     } catch (err) {
       setError(
@@ -84,15 +87,13 @@ export function DecisionPanel({
   }
 
   return (
-    <section className="fv-card p-6">
+    <section className="fv-section-card">
       <h2 className="text-lg font-semibold text-[var(--fv-text)]">Your decision</h2>
       <p className="mt-1 text-sm text-[var(--fv-text-muted)]">
         What do you want to do next based on this insight?
       </p>
 
-      {error && (
-        <p className="mt-4 text-sm text-red-300">{error}</p>
-      )}
+      {error && <ErrorBanner message={error} className="mt-4" />}
 
       {confirmingAction ? (
         <div className="fv-msg-enter mt-6 space-y-4 rounded-2xl border border-[var(--fv-danger)]/30 bg-[var(--fv-danger)]/5 p-6">

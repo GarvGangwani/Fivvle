@@ -9,78 +9,53 @@ import { WaitlistForm } from "@/components/published/WaitlistForm";
 import {
   extractShortStat,
   LIMITS,
-  truncateText,
 } from "@/lib/copy-limits";
+import {
+  hasPricingSection,
+  resolvePricingPlans,
+} from "@/lib/landing-page-sections";
+import {
+  updateCta,
+  updateFeature,
+  updateHero,
+  updateProblem,
+  updateProofHeadline,
+} from "@/lib/copy-mutations";
+import { CopyText } from "./CopyText";
+import { useScrollReveal } from "./useScrollReveal";
 import styles from "./aether.module.css";
 import base from "./template-base.module.css";
 
 const FONTS =
   "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap";
 
-const CARD_VARIANTS = ["cardDefault", "cardSubtle", "cardGreen", "cardDark"] as const;
 const MARQUEE_FALLBACK = [
-  "BRAND ONE",
-  "BRAND TWO",
-  "BRAND THREE",
-  "BRAND FOUR",
-  "BRAND FIVE",
-  "BRAND SIX",
+  "Early access",
+  "Founding members",
+  "Waitlist open",
 ];
 
-const DEFAULT_BENTO = [
-  { metric: "120+", label: "Metric label", body: "A short description of the feature or metric." },
-  { metric: "100%", label: "Metric label", body: "“A short, punchy testimonial quote from a customer.”" },
-  { metric: "520k+", label: "Metric label", body: "A short description of the feature or metric." },
-  { metric: "20+", label: "Metric label", body: "A short description of the feature or metric." },
-];
-
-const DEFAULT_BENEFITS = [
-  {
-    title: "Feature headline here.",
-    description: "A short description of the feature and the outcome it delivers.",
-  },
-  {
-    title: "Feature headline here.",
-    description: "A short description of the feature and the outcome it delivers.",
-  },
-  {
-    title: "Feature headline here.",
-    description: "A short description of the feature and the outcome it delivers.",
-  },
-];
-
-const DEFAULT_OUTCOMES = [
-  { title: "Benefit headline here.", description: "A short description of the benefit and outcome." },
-  { title: "Benefit headline here.", description: "A short description of the benefit and outcome." },
-  { title: "Benefit headline here.", description: "A short description of the benefit and outcome." },
-  { title: "Benefit headline here.", description: "A short description of the benefit and outcome." },
-];
-
-const DEFAULT_FLOAT = [
-  { label: "Setup time", value: "60s" },
-  { label: "Active users", value: "4,200+" },
-  { label: "Uptime SLA", value: "99.9%" },
-];
+const CARD_VARIANTS = ["cardDefault", "cardSubtle", "cardGreen", "cardDark"] as const;
 
 function floatStat(
   el: unknown,
   i: number,
 ): { label: string; value: string } | null {
+  const cap = (text: string) => text.trim();
   if (typeof el === "object" && el !== null) {
     const o = el as { stat?: string; description?: string };
-    const value = truncateText(String(o.stat ?? ""), LIMITS.floatValue);
+    const value = cap(String(o.stat ?? ""));
     if (!value) return null;
     return {
-      label: truncateText(String(o.description ?? `Metric ${i + 1}`), LIMITS.floatLabel),
+      label: cap(String(o.description ?? `Metric ${i + 1}`)),
       value,
     };
   }
   const s = String(el);
   const stat = extractShortStat(s);
   if (!stat) return null;
-  const label = truncateText(
+  const label = cap(
     s.replace(stat, "").replace(/^[\s:—–\-]+/, "").trim() || `Metric ${i + 1}`,
-    LIMITS.floatLabel,
   );
   return { label, value: stat };
 }
@@ -104,7 +79,9 @@ export function AetherTemplate({
   publicationSlug,
   scrollTarget = "#cta",
   branding,
+  forEditor = false,
 }: TemplateProps) {
+  const cap = (text: string) => text.trim();
   const [navScrolled, setNavScrolled] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -116,51 +93,47 @@ export function AetherTemplate({
   const proof = copy.proof;
   const cta = copy.cta;
 
-  const bento = DEFAULT_BENTO.map((d, i) => {
-    const f = features[i];
+  const pricingPlans = resolvePricingPlans(copy);
+  const showPricing = hasPricingSection(copy);
+
+  const bento = features.slice(0, 4).map((f) => {
+    const metricMatch = f.title.match(/\d[\d,k+%.]*\+?/);
+    const label = (
+      metricMatch ? f.title.replace(metricMatch[0], "") : f.title
+    ).trim();
     return {
-      metric: f?.title?.match(/\d[\d,k+%.]*/)?.[0] ?? d.metric,
-      label: f?.title?.replace(/\d[\d,k+%.]*/g, "").trim() || d.label,
-      body: truncateText(f?.description ?? d.body, LIMITS.cardBody),
+      metric: metricMatch?.[0] ?? "",
+      label: label || f.title,
+      body: f.description,
     };
   });
 
-  const benefits =
-    features.length >= 3
-      ? features.slice(0, 3)
-      : features.length > 0
-        ? [...features, ...DEFAULT_BENEFITS].slice(0, 3)
-        : DEFAULT_BENEFITS;
-
-  const outcomes =
-    features.length >= 4
-      ? features.slice(0, 4).map((f) => ({
-          title: f.title,
-          description: f.description,
-        }))
-      : DEFAULT_OUTCOMES;
+  const benefits = features.slice(0, 3);
+  const outcomes = features.slice(0, 4).map((f) => ({
+    title: f.title,
+    description: f.description,
+  }));
 
   const proofEls = proof?.elements ?? [];
   const extractedFloat = proofEls
-    .map(floatStat)
+    .map((el, i) => floatStat(el, i))
     .filter((x): x is { label: string; value: string } => x != null)
     .slice(0, 3);
-  const floatCards =
-    proofEls.length === 0
-      ? DEFAULT_FLOAT
-      : extractedFloat.length > 0
-        ? extractedFloat
-        : [];
+  const floatCards = extractedFloat;
 
   const marqueeItems =
     proofEls.length >= 3
       ? proofEls.map((el, i) =>
-          truncateText(
-            typeof el === "string" ? el : `Partner ${i + 1}`,
-            LIMITS.marqueeItem,
-          ).toUpperCase(),
+          cap(typeof el === "string" ? el : `Signal ${i + 1}`).toUpperCase(),
         )
       : MARQUEE_FALLBACK;
+
+  const navItems = [
+    { href: "#features", label: "Features", show: features.length > 0 },
+    { href: "#benefits", label: "Benefits", show: benefits.length > 0 },
+    { href: "#outcome", label: "Outcome", show: outcomes.length > 0 },
+    { href: "#pricing", label: "Pricing", show: showPricing },
+  ].filter((item) => item.show);
 
   useEffect(() => {
     const id = "fivvle-aether-fonts";
@@ -189,26 +162,8 @@ export function AetherTemplate({
     return () => scrollTargetEl.removeEventListener("scroll", onScroll);
   }, []);
 
-  useEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    const els = root.querySelectorAll(`.${styles.reveal}`);
-    const scrollRoot = getScrollParent(root);
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) {
-          if (e.isIntersecting) e.target.classList.add(styles.revealVisible);
-        }
-      },
-      {
-        threshold: 0.12,
-        rootMargin: "0px 0px -8% 0px",
-        root: scrollRoot === window ? null : (scrollRoot as HTMLElement),
-      },
-    );
-    els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, [copy]);
+  const { revealProps, revealClass } = useScrollReveal(rootRef, [copy]);
+  const rv = (id: string) => revealClass(id, styles.reveal, styles.revealVisible);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -314,54 +269,76 @@ export function AetherTemplate({
       className={`${styles.root} ${base.root}`}
       style={cssVarStyle}
     >
-      <nav
-        className={`${styles.navbar} ${navScrolled ? styles.navbarScrolled : ""}`}
-      >
-        <div className={styles.navbarInner}>
-          <BrandMark
-            branding={branding}
-            projectName={projectName}
-            variant="aether"
-            className={styles.navBrand}
-            href="#top"
-          />
-          <div className={styles.navLinks}>
-            <a href="#features">Features</a>
-            <a href="#benefits">Benefits</a>
-            <a href="#outcome">Outcome</a>
-            <a href="#pricing">Pricing</a>
-          </div>
-          <CtaAction
-            config={ctaConfig}
-            scrollTarget={scrollTarget}
-            className={styles.btnNav}
-            as="link"
-          >
-            {ctaLabel}
-          </CtaAction>
-        </div>
-      </nav>
-
       <header className={styles.hero}>
         <canvas ref={canvasRef} className={styles.heroCanvas} aria-hidden />
         <div className={styles.heroNebula} aria-hidden />
-        <div className={`${styles.container} ${styles.heroContent}`}>
-          <h1 className={`${styles.heroTitle} ${styles.reveal}`}>
-            {headline.main}
-            {headline.accent ? (
-              <>
-                <br />
-                <span className={styles.opacity70}>{headline.accent}</span>
-              </>
-            ) : null}
-          </h1>
+        <nav
+          className={`${styles.navbar} ${navScrolled ? styles.navbarScrolled : ""}`}
+        >
+          <div className={styles.navbarInner}>
+            <BrandMark
+              branding={branding}
+              projectName={projectName}
+              variant="aether"
+              className={styles.navBrand}
+              href="#top"
+            />
+          <div className={styles.navLinks}>
+            {navItems.map((item) => (
+              <a key={item.href} href={item.href}>
+                {item.label}
+              </a>
+            ))}
+          </div>
+            <CtaAction
+              config={ctaConfig}
+              scrollTarget={scrollTarget}
+              className={styles.btnNav}
+              as="link"
+            >
+              <CopyText
+                copy={copy}
+                inline
+                value={ctaLabel}
+                mutate={(c, v) => updateCta(c, "button", v)}
+              />
+            </CtaAction>
+          </div>
+        </nav>
+
+        <div className={styles.heroStage}>
+          <div className={`${styles.container} ${styles.heroContent}`}>
+          <div {...revealProps("hero-title")} className={rv("hero-title")}>
+            <CopyText
+              copy={copy}
+              as="h1"
+              className={styles.heroTitle}
+              value={hero?.headline ?? projectName}
+              mutate={(c, v) => updateHero(c, "headline", v)}
+              maxLength={LIMITS.headline}
+              multiline
+            />
+          </div>
           <div className={styles.spLg} />
-          <p className={`${styles.heroSub} ${styles.reveal}`}>
-            {hero?.subheadline ??
-              "A short description of your product and why it matters. Lead with the outcome, then earn the click."}
-          </p>
+          <div {...revealProps("hero-sub")} className={rv("hero-sub")}>
+            <CopyText
+              copy={copy}
+              as="p"
+              className={styles.heroSub}
+              value={
+                hero?.subheadline ??
+                "A short description of your product and why it matters. Lead with the outcome, then earn the click."
+              }
+              mutate={(c, v) => updateHero(c, "subheadline", v)}
+              maxLength={LIMITS.subheadline}
+              multiline
+            />
+          </div>
           <div className={styles.spXl} />
-          <div className={`${styles.heroButtons} ${styles.reveal}`}>
+          <div
+            {...revealProps("hero-buttons")}
+            className={`${styles.heroButtons} ${rv("hero-buttons")}`}
+          >
             <CtaAction
               config={ctaConfig}
               scrollTarget="#features"
@@ -376,7 +353,12 @@ export function AetherTemplate({
               className={styles.btnArrowLight}
               as="link"
             >
-              <span>{heroPrimary}</span>
+              <CopyText
+                copy={copy}
+                inline
+                value={heroPrimary}
+                mutate={(c, v) => updateHero(c, "cta", v)}
+              />
               <svg viewBox="0 0 20 20" width={14} height={14} fill="none" aria-hidden>
                 <path
                   d="M13.05 8.13L5.87 15.3 4.69 14.13 11.87 6.95H5.55V5.29h9.17v9.17h-1.67V8.13z"
@@ -387,7 +369,8 @@ export function AetherTemplate({
           </div>
         </div>
 
-        {floatCards.map((card, i) => (
+        {floatCards.length > 0
+          ? floatCards.map((card, i) => (
           <div
             key={i}
             className={`${styles.floatingCard} ${
@@ -401,7 +384,9 @@ export function AetherTemplate({
             <div className={styles.floatingTitle}>{card.label}</div>
             <div className={styles.floatingValue}>{card.value}</div>
           </div>
-        ))}
+        ))
+          : null}
+        </div>
       </header>
 
       <section className={styles.logoStrip} aria-label="Trusted by">
@@ -414,19 +399,31 @@ export function AetherTemplate({
         </div>
       </section>
 
+      {features.length > 0 ? (
       <section id="features" className={styles.sectionPad}>
         <div className={styles.container}>
           <div className={styles.textCenter}>
-            <div className={styles.reveal}>
+            <div {...revealProps("features-tag")} className={rv("features-tag")}>
               <span className={styles.tag}>
                 <span className={styles.tagDot} />
                 Features
               </span>
             </div>
             <div className={styles.spLg} />
-            <div className={`${styles.reveal} ${styles.maxMd}`}>
+            <div
+              {...revealProps("features-heading")}
+              className={`${styles.maxMd} ${rv("features-heading")}`}
+            >
               <h2 className={styles.h2}>
-                {problem?.heading ?? "A short description of the transformation"}{" "}
+                <CopyText
+                  copy={copy}
+                  inline
+                  value={
+                    problem?.heading ?? "A short description of the transformation"
+                  }
+                  mutate={(c, v) => updateProblem(c, "heading", v)}
+                  maxLength={LIMITS.proofHeadline}
+                />{" "}
                 <span className={styles.opacity40}>your product delivers.</span>
               </h2>
             </div>
@@ -436,151 +433,259 @@ export function AetherTemplate({
             {bento.map((item, i) => (
               <div
                 key={i}
-                className={`${styles.card} ${styles[CARD_VARIANTS[i]]} ${styles.reveal}`}
+                {...revealProps(`bento-${i}`)}
+                className={`${styles.card} ${styles[CARD_VARIANTS[i]]} ${rv(`bento-${i}`)}`}
               >
                 <div>
-                  <p className={styles.cardLabel}>{item.label}</p>
+                  <CopyText
+                    copy={copy}
+                    as="p"
+                    className={styles.cardLabel}
+                    value={features[i]?.title ?? item.label}
+                    mutate={(c, v) => updateFeature(c, i, "title", v)}
+                    maxLength={LIMITS.featureTitle}
+                  />
                   <div className={styles.spXs} />
-                  <div className={styles.bigNum}>{item.metric}</div>
+                  {item.metric ? (
+                    <div className={styles.bigNum}>{item.metric}</div>
+                  ) : null}
                 </div>
                 <div className={styles.spSm} />
-                <p className={styles.cardBody}>{item.body}</p>
+                <CopyText
+                  copy={copy}
+                  as="p"
+                  className={styles.cardBody}
+                  value={features[i]?.description ?? item.body}
+                  mutate={(c, v) => updateFeature(c, i, "description", v)}
+                  maxLength={LIMITS.cardBody}
+                  multiline
+                />
               </div>
             ))}
           </div>
         </div>
       </section>
+      ) : null}
 
+      {benefits.length > 0 ? (
       <section
         id="benefits"
         className={`${styles.sectionPad} ${styles.sectionWhite}`}
       >
         <div className={styles.container}>
           <div className={styles.textCenter}>
-            <div className={styles.reveal}>
+            <div {...revealProps("benefits-tag")} className={rv("benefits-tag")}>
               <span className={styles.tag}>
                 <span className={styles.tagDot} />
                 Benefits
               </span>
             </div>
             <div className={styles.spSm} />
-            <h2 className={`${styles.h2} ${styles.reveal} ${styles.maxMd}`}>
+            <h2
+              {...revealProps("benefits-heading")}
+              className={`${styles.h2} ${styles.maxMd} ${rv("benefits-heading")}`}
+            >
               Three reasons it just works.
             </h2>
             <div className={styles.spXs} />
-            <p className={`${styles.reveal} ${styles.textSecondary} ${styles.maxSm}`}>
-              {problem?.body ??
-                "A short description of what makes your product different."}
+            <p
+              {...revealProps("benefits-sub")}
+              className={`${styles.textSecondary} ${styles.maxSm} ${rv("benefits-sub")}`}
+            >
+              <CopyText
+                copy={copy}
+                inline
+                value={
+                  problem?.body ??
+                  "A short description of what makes your product different."
+                }
+                mutate={(c, v) => updateProblem(c, "body", v)}
+                multiline
+              />
             </p>
           </div>
           <div className={styles.spLg} />
           <div className={styles.servicesGrid}>
             {benefits.map((b, i) => (
-              <div key={i} className={`${styles.serviceCard} ${styles.reveal}`}>
+              <div
+                key={i}
+                {...revealProps(`benefit-${i}`)}
+                className={`${styles.serviceCard} ${rv(`benefit-${i}`)}`}
+              >
                 <div>
                   <div className={styles.serviceIcon}>{i + 1}</div>
                   <div className={styles.spMd} />
-                  <h3 className={styles.h3}>{b.title}</h3>
+                  <CopyText
+                    copy={copy}
+                    as="h3"
+                    className={styles.h3}
+                    value={b.title}
+                    mutate={(c, v) => updateFeature(c, i, "title", v)}
+                    maxLength={LIMITS.featureTitle}
+                  />
                   <div className={styles.spXs} />
-                  <p className={styles.textSecondary} style={{ fontSize: "0.875rem" }}>
-                    {truncateText(b.description, LIMITS.featureBody)}
-                  </p>
+                  <CopyText
+                    copy={copy}
+                    as="p"
+                    className={styles.textSecondary}
+                    style={{ fontSize: "0.875rem" }}
+                    value={b.description}
+                    mutate={(c, v) => updateFeature(c, i, "description", v)}
+                    maxLength={LIMITS.featureBody}
+                    multiline
+                  />
                 </div>
               </div>
             ))}
           </div>
         </div>
       </section>
+      ) : null}
 
+      {outcomes.length > 0 ? (
       <section id="outcome" className={styles.sectionPad}>
         <div className={styles.container}>
           <div className={styles.textCenter}>
-            <div className={styles.reveal}>
+            <div {...revealProps("outcome-tag")} className={rv("outcome-tag")}>
               <span className={styles.tag}>
                 <span className={styles.tagDot} />
                 Outcome
               </span>
             </div>
             <div className={styles.spLg} />
-            <h2 className={`${styles.h2} ${styles.reveal} ${styles.maxMd}`}>
-              {proof?.headline ?? "Where your product delivers value"}
-            </h2>
+            <div
+              {...revealProps("outcome-heading")}
+              className={`${styles.maxMd} ${rv("outcome-heading")}`}
+            >
+              <CopyText
+                copy={copy}
+                as="h2"
+                className={styles.h2}
+                value={proof?.headline ?? "Where your product delivers value"}
+                mutate={updateProofHeadline}
+                maxLength={LIMITS.proofHeadline}
+              />
+            </div>
           </div>
           <div className={styles.sp2xl} />
           <div className={styles.aboutGrid}>
             {outcomes.map((o, i) => (
               <div
                 key={i}
-                className={`${styles.card} ${styles.cardDefault} ${styles.reveal}`}
+                {...revealProps(`outcome-${i}`)}
+                className={`${styles.card} ${styles.cardDefault} ${rv(`outcome-${i}`)}`}
               >
-                <h3 className={styles.h3}>{o.title}</h3>
+                <CopyText
+                  copy={copy}
+                  as="h3"
+                  className={styles.h3}
+                  value={o.title}
+                  mutate={(c, v) => updateFeature(c, i, "title", v)}
+                  maxLength={LIMITS.featureTitle}
+                />
                 <div className={styles.spXs} />
-                <p className={styles.cardBody}>
-                  {truncateText(o.description, LIMITS.cardBody)}
-                </p>
+                <CopyText
+                  copy={copy}
+                  as="p"
+                  className={styles.cardBody}
+                  value={o.description}
+                  mutate={(c, v) => updateFeature(c, i, "description", v)}
+                  maxLength={LIMITS.cardBody}
+                  multiline
+                />
               </div>
             ))}
           </div>
         </div>
       </section>
+      ) : null}
 
+      {showPricing ? (
       <section
         id="pricing"
         className={`${styles.sectionPad} ${styles.sectionWhite}`}
       >
         <div className={styles.container}>
           <div className={styles.textCenter}>
-            <div className={styles.reveal}>
+            <div {...revealProps("pricing-tag")} className={rv("pricing-tag")}>
               <span className={styles.tag}>
                 <span className={styles.tagDot} />
                 Pricing
               </span>
             </div>
             <div className={styles.spLg} />
-            <h2 className={`${styles.h2} ${styles.reveal} ${styles.maxMd}`}>
-              Flexible tiers built for growth.
+            <h2
+              {...revealProps("pricing-heading")}
+              className={`${styles.h2} ${styles.maxMd} ${rv("pricing-heading")}`}
+            >
+              Plans that fit how you work.
             </h2>
           </div>
           <div className={styles.sp2xl} />
           <div className={styles.servicesGrid}>
-            {["Starter", "Professional", "Enterprise"].map((tier, i) => (
-              <div key={tier} className={`${styles.serviceCard} ${styles.reveal}`}>
+            {pricingPlans.map((plan, i) => (
+              <div
+                key={plan.name}
+                {...revealProps(`pricing-${plan.name}`)}
+                className={`${styles.serviceCard} ${rv(`pricing-${plan.name}`)}`}
+              >
                 <div>
-                  <h3 className={styles.h3}>{tier}</h3>
+                  <h3 className={styles.h3}>{plan.name}</h3>
                   <div className={styles.spSm} />
                   <div className={styles.bigNum}>
-                    {i === 2 ? "Custom" : i === 1 ? "$99" : "$29"}
+                    {plan.price}
+                    {plan.period ? (
+                      <span className={styles.textSecondary} style={{ fontSize: "0.875rem" }}>
+                        {` /${plan.period}`}
+                      </span>
+                    ) : null}
                   </div>
                   <div className={styles.spSm} />
-                  <p className={styles.textSecondary} style={{ fontSize: "0.875rem" }}>
-                    {i === 0
-                      ? "For individuals getting started."
-                      : i === 1
-                        ? "For growing teams that need more."
-                        : "For organizations at scale."}
-                  </p>
+                  {plan.description ? (
+                    <p className={styles.textSecondary} style={{ fontSize: "0.875rem" }}>
+                      {plan.description}
+                    </p>
+                  ) : null}
                 </div>
                 <CtaAction
                   config={ctaConfig}
                   scrollTarget={scrollTarget}
-                  className={i === 1 ? styles.btnNav : styles.btnOutline}
+                  className={plan.featured || i === 1 ? styles.btnNav : styles.btnOutline}
                   as="link"
                 >
-                  {i === 2 ? "Contact Us" : ctaLabel}
+                  {ctaLabel}
                 </CtaAction>
               </div>
             ))}
           </div>
         </div>
       </section>
+      ) : null}
 
       <section id="cta" className={`${styles.sectionPad} ${styles.ctaWrap}`}>
-        <div className={`${styles.ctaSection} ${styles.reveal}`}>
-          <h2>{cta?.heading ?? "Stop reading. Start building."}</h2>
-          <p className={styles.ctaSub}>
-            {cta?.subheading ??
-              "Set expectations — no credit card, free forever, cancel anytime."}
-          </p>
+        <div
+          {...revealProps("cta")}
+          className={`${styles.ctaSection} ${rv("cta")}`}
+        >
+          <CopyText
+            copy={copy}
+            as="h2"
+            value={cta?.heading ?? "Stop reading. Start building."}
+            mutate={(c, v) => updateCta(c, "heading", v)}
+            maxLength={LIMITS.ctaHeading}
+          />
+          <CopyText
+            copy={copy}
+            as="p"
+            className={styles.ctaSub}
+            value={
+              cta?.subheading ??
+              "Join the waitlist for early access when we open the next cohort."
+            }
+            mutate={(c, v) => updateCta(c, "subheading", v)}
+            maxLength={LIMITS.ctaSubheading}
+            multiline
+          />
           {isPublished && publicationSlug ? (
             <WaitlistForm
               slug={publicationSlug}
@@ -603,7 +708,12 @@ export function AetherTemplate({
                 className={styles.ctaSubmit}
                 as="link"
               >
-                {ctaLabel}
+                <CopyText
+                  copy={copy}
+                  inline
+                  value={ctaLabel}
+                  mutate={(c, v) => updateCta(c, "button", v)}
+                />
               </CtaAction>
             </form>
           )}

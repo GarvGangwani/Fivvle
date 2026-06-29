@@ -26,6 +26,7 @@ import praw
 from pydantic import BaseModel
 
 from app.config import get_settings
+from app.cost.category import resolve_cost_category_from_external_provider
 from app.db.models.external_api_call import ExternalAPICall
 from app.db.session_lock import lock_for
 from app.logging_config import get_logger
@@ -92,6 +93,7 @@ async def _log_api_call(
     call = ExternalAPICall(
         experiment_id=experiment_id,
         provider="reddit",
+        cost_category=resolve_cost_category_from_external_provider("reddit").value,
         operation=operation,
         latency_ms=latency_ms,
         cost_usd=Decimal("0"),  # Reddit free tier — always $0

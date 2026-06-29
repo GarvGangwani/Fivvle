@@ -46,6 +46,7 @@ from app.llm.prompts.refinement import (
     build_refinement_user_prompt,
     build_refinement_v2_chat_user_prompt,
 )
+from app.utils.experiment_naming import apply_llm_name_if_unset
 from app.logging_config import get_logger
 from app.schemas.refinement import RefinedIdea, RefinementTurnDecision
 
@@ -316,6 +317,7 @@ async def run_turn(
             experiment.refinement_count = turn_count + 1
     elif parsed.decision == "finalize" and parsed.refined_idea is not None:
         experiment.refined_idea = parsed.refined_idea.model_dump()
+        apply_llm_name_if_unset(experiment, parsed.refined_idea)
 
     _logger.info(
         "refinement chat turn completed",

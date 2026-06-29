@@ -1,69 +1,58 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown, Plus, Trash2 } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Plus, RefreshCw, Trash2 } from "lucide-react";
 import type { CopyJson, FaqItem, FeatureCopy } from "@/lib/types";
 
 interface CopyFieldsEditorProps {
   copy: CopyJson;
   onChange: (copy: CopyJson) => void;
   disabled?: boolean;
+  onRegenerateSection?: (section: CopySectionId) => void;
+  regeneratingSection?: CopySectionId | null;
 }
 
-const INPUT_CLASS =
-  "fv-input w-full rounded-xl border border-[var(--fv-border)] bg-white/[0.03] px-4 py-3 text-[14px] transition-all duration-200";
-const TEXTAREA_CLASS = `${INPUT_CLASS} min-h-[100px] resize-y leading-relaxed`;
+export type CopySectionId =
+  | "hero"
+  | "problem"
+  | "features"
+  | "comparison"
+  | "proof"
+  | "objections"
+  | "faq"
+  | "cta";
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="mb-1.5 block text-[13px] font-medium text-[var(--fv-text-soft)]">
-      {children}
-    </span>
-  );
-}
+const SECTIONS: {
+  id: CopySectionId;
+  label: string;
+  hint: string;
+}[] = [
+  { id: "hero", label: "Hero", hint: "First screen — headline, subheadline, and button." },
+  { id: "problem", label: "Problem", hint: "The pain your audience feels today." },
+  { id: "features", label: "Features", hint: "Benefits and outcomes your product delivers." },
+  { id: "comparison", label: "Compare", hint: "How you stack up against alternatives." },
+  { id: "proof", label: "Proof", hint: "Signals that build trust and credibility." },
+  { id: "objections", label: "Objections", hint: "Questions and doubts, answered directly." },
+  { id: "faq", label: "FAQ", hint: "Common questions from potential customers." },
+  { id: "cta", label: "CTA", hint: "Final push to join the waitlist or sign up." },
+];
 
-function AccordionSection({
-  title,
-  defaultOpen = true,
+function CopyField({
+  label,
   children,
 }: {
-  title: string;
-  defaultOpen?: boolean;
-  children: React.ReactNode;
+  label: string;
+  children: ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
-
   return (
-    <div className="border-b border-[var(--fv-border)] last:border-b-0">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between py-3 transition-all duration-200 hover:text-[var(--fv-text)]"
-        aria-expanded={open}
-      >
-        <span className="text-[14px] font-semibold text-[var(--fv-text)]">
-          {title}
-        </span>
-        <ChevronDown
-          className={`h-4 w-4 shrink-0 text-[var(--fv-text-muted)] transition-transform duration-200 ${
-            open ? "rotate-180" : ""
-          }`}
-        />
-      </button>
-      <div
-        className={`grid transition-all duration-200 ${
-          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-        }`}
-      >
-        <div className="overflow-hidden">
-          <div className="space-y-3 pb-4">{children}</div>
-        </div>
-      </div>
+    <div className="lp-copy-field">
+      <span className="lp-copy-field-label">{label}</span>
+      {children}
     </div>
   );
 }
 
-function NestedItemCard({
+function ListItem({
   title,
   onRemove,
   disabled,
@@ -72,22 +61,20 @@ function NestedItemCard({
   title: string;
   onRemove: () => void;
   disabled?: boolean;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
-    <div className="group space-y-3 rounded-xl border border-[var(--fv-border)] bg-white/[0.02] p-4">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[13px] font-medium text-[var(--fv-text-soft)]">
-          {title}
-        </span>
+    <div className="lp-copy-list-item">
+      <div className="lp-copy-list-item-head">
+        <span className="lp-copy-list-item-title">{title}</span>
         <button
           type="button"
           disabled={disabled}
           onClick={onRemove}
-          className="rounded-lg p-1.5 text-[var(--fv-danger)] opacity-0 transition-all duration-200 hover:bg-white/[0.05] group-hover:opacity-100 disabled:opacity-0"
+          className="lp-copy-remove-btn"
           aria-label={`Remove ${title}`}
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
       {children}
@@ -95,33 +82,20 @@ function NestedItemCard({
   );
 }
 
-function AddItemButton({
-  label,
-  onClick,
-  disabled,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-[var(--fv-border-strong)] py-3 text-[13px] font-medium text-[var(--fv-text-soft)] transition-all duration-200 hover:border-[var(--fv-accent)] hover:text-[var(--fv-accent)] disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      <Plus className="h-4 w-4" />
-      {label}
-    </button>
-  );
-}
-
 export function CopyFieldsEditor({
   copy,
   onChange,
   disabled,
+  onRegenerateSection,
+  regeneratingSection,
 }: CopyFieldsEditorProps) {
+  const [activeSection, setActiveSection] = useState<CopySectionId>("hero");
+
+  useEffect(() => {
+    if (!regeneratingSection) return;
+    setActiveSection(regeneratingSection);
+  }, [regeneratingSection]);
+
   const hero = copy.hero ?? { headline: "", subheadline: "", cta: "" };
   const problem = copy.problem ?? { heading: "", body: "" };
   const features = copy.features ?? [];
@@ -138,6 +112,9 @@ export function CopyFieldsEditor({
     items: [],
   }) as { heading: string; items: FaqItem[] };
   const cta = copy.cta ?? { heading: "", subheading: "", button: "" };
+
+  const inputClass = "lp-copy-input";
+  const textareaClass = "lp-copy-input lp-copy-textarea";
 
   function updateHero(field: keyof typeof hero, value: string) {
     onChange({ ...copy, hero: { ...hero, [field]: value } });
@@ -212,43 +189,43 @@ export function CopyFieldsEditor({
   );
   const proofElementsText = (proof.elements ?? []).join("\n");
 
-  return (
-    <div className="space-y-2">
-      <AccordionSection title="Hero">
-        <label className="block">
-          <FieldLabel>Headline</FieldLabel>
+  const sectionPanels: Record<CopySectionId, ReactNode> = {
+    hero: (
+      <>
+        <CopyField label="Headline">
           <input
             type="text"
             disabled={disabled}
             value={hero.headline}
             onChange={(e) => updateHero("headline", e.target.value)}
-            className={INPUT_CLASS}
+            className={inputClass}
+            placeholder="Your main hook"
           />
-        </label>
-        <label className="block">
-          <FieldLabel>Subheadline</FieldLabel>
+        </CopyField>
+        <CopyField label="Subheadline">
           <textarea
             disabled={disabled}
             value={hero.subheadline}
             onChange={(e) => updateHero("subheadline", e.target.value)}
-            className={TEXTAREA_CLASS}
+            className={textareaClass}
+            placeholder="Who it's for and what they get"
           />
-        </label>
-        <label className="block">
-          <FieldLabel>Button text</FieldLabel>
+        </CopyField>
+        <CopyField label="Button text">
           <input
             type="text"
             disabled={disabled}
             value={hero.cta}
             onChange={(e) => updateHero("cta", e.target.value)}
-            className={INPUT_CLASS}
+            className={inputClass}
+            placeholder="Join the waitlist"
           />
-        </label>
-      </AccordionSection>
-
-      <AccordionSection title="Problem">
-        <label className="block">
-          <FieldLabel>Heading</FieldLabel>
+        </CopyField>
+      </>
+    ),
+    problem: (
+      <>
+        <CopyField label="Heading">
           <input
             type="text"
             disabled={disabled}
@@ -259,11 +236,11 @@ export function CopyFieldsEditor({
                 problem: { ...problem, heading: e.target.value },
               })
             }
-            className={INPUT_CLASS}
+            className={inputClass}
+            placeholder="The problem in one line"
           />
-        </label>
-        <label className="block">
-          <FieldLabel>Body</FieldLabel>
+        </CopyField>
+        <CopyField label="Body">
           <textarea
             disabled={disabled}
             value={problem.body}
@@ -273,14 +250,16 @@ export function CopyFieldsEditor({
                 problem: { ...problem, body: e.target.value },
               })
             }
-            className={TEXTAREA_CLASS}
+            className={textareaClass}
+            placeholder="Expand on the pain and why it matters now"
           />
-        </label>
-      </AccordionSection>
-
-      <AccordionSection title="Features">
+        </CopyField>
+      </>
+    ),
+    features: (
+      <div className="lp-copy-list">
         {features.map((feature, index) => (
-          <NestedItemCard
+          <ListItem
             key={index}
             title={`Feature ${index + 1}`}
             disabled={disabled}
@@ -291,8 +270,8 @@ export function CopyFieldsEditor({
               disabled={disabled}
               value={feature.title}
               onChange={(e) => updateFeature(index, "title", e.target.value)}
-              placeholder="Title"
-              className={INPUT_CLASS}
+              placeholder="Benefit headline"
+              className={inputClass}
             />
             <textarea
               disabled={disabled}
@@ -300,21 +279,25 @@ export function CopyFieldsEditor({
               onChange={(e) =>
                 updateFeature(index, "description", e.target.value)
               }
-              placeholder="Description"
-              className={TEXTAREA_CLASS}
+              placeholder="What the user gets"
+              className={textareaClass}
             />
-          </NestedItemCard>
+          </ListItem>
         ))}
-        <AddItemButton
-          label="Add feature"
+        <button
+          type="button"
           disabled={disabled}
           onClick={addFeature}
-        />
-      </AccordionSection>
-
-      <AccordionSection title="Comparison">
-        <label className="block">
-          <FieldLabel>Metric label</FieldLabel>
+          className="lp-copy-add-btn"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add feature
+        </button>
+      </div>
+    ),
+    comparison: (
+      <>
+        <CopyField label="Metric label">
           <input
             type="text"
             disabled={disabled}
@@ -325,11 +308,11 @@ export function CopyFieldsEditor({
                 comparison: { ...comparison, metric_label: e.target.value },
               })
             }
-            className={INPUT_CLASS}
+            className={inputClass}
+            placeholder="What you measure"
           />
-        </label>
-        <label className="block">
-          <FieldLabel>Competitor name</FieldLabel>
+        </CopyField>
+        <CopyField label="Competitor name">
           <input
             type="text"
             disabled={disabled}
@@ -337,14 +320,17 @@ export function CopyFieldsEditor({
             onChange={(e) =>
               onChange({
                 ...copy,
-                comparison: { ...comparison, competitor_name: e.target.value },
+                comparison: {
+                  ...comparison,
+                  competitor_name: e.target.value,
+                },
               })
             }
-            className={INPUT_CLASS}
+            className={inputClass}
+            placeholder="Alternative or incumbent"
           />
-        </label>
-        <label className="block">
-          <FieldLabel>Our features (one per line)</FieldLabel>
+        </CopyField>
+        <CopyField label="Our strengths">
           <textarea
             disabled={disabled}
             value={ourFeaturesText}
@@ -360,14 +346,11 @@ export function CopyFieldsEditor({
                 },
               })
             }
-            className={TEXTAREA_CLASS}
+            className={textareaClass}
+            placeholder="One strength per line"
           />
-          <p className="mt-1 text-[12px] text-[var(--fv-text-dim)]">
-            Enter one feature per line
-          </p>
-        </label>
-        <label className="block">
-          <FieldLabel>Competitor features (one per line)</FieldLabel>
+        </CopyField>
+        <CopyField label="Their weaknesses">
           <textarea
             disabled={disabled}
             value={competitorFeaturesText}
@@ -383,17 +366,15 @@ export function CopyFieldsEditor({
                 },
               })
             }
-            className={TEXTAREA_CLASS}
+            className={textareaClass}
+            placeholder="One gap per line"
           />
-          <p className="mt-1 text-[12px] text-[var(--fv-text-dim)]">
-            Enter one feature per line
-          </p>
-        </label>
-      </AccordionSection>
-
-      <AccordionSection title="Proof">
-        <label className="block">
-          <FieldLabel>Headline</FieldLabel>
+        </CopyField>
+      </>
+    ),
+    proof: (
+      <>
+        <CopyField label="Headline">
           <input
             type="text"
             disabled={disabled}
@@ -404,11 +385,11 @@ export function CopyFieldsEditor({
                 proof: { ...proof, headline: e.target.value },
               })
             }
-            className={INPUT_CLASS}
+            className={inputClass}
+            placeholder="Why people trust this"
           />
-        </label>
-        <label className="block">
-          <FieldLabel>Proof points (one per line)</FieldLabel>
+        </CopyField>
+        <CopyField label="Proof points">
           <textarea
             disabled={disabled}
             value={proofElementsText}
@@ -424,17 +405,15 @@ export function CopyFieldsEditor({
                 },
               })
             }
-            className={TEXTAREA_CLASS}
+            className={textareaClass}
+            placeholder="One proof point per line"
           />
-          <p className="mt-1 text-[12px] text-[var(--fv-text-dim)]">
-            Enter one proof point per line
-          </p>
-        </label>
-      </AccordionSection>
-
-      <AccordionSection title="Objections">
-        <label className="block">
-          <FieldLabel>Section heading</FieldLabel>
+        </CopyField>
+      </>
+    ),
+    objections: (
+      <>
+        <CopyField label="Section heading">
           <input
             type="text"
             disabled={disabled}
@@ -445,45 +424,55 @@ export function CopyFieldsEditor({
                 objections: { ...objections, heading: e.target.value },
               })
             }
-            className={INPUT_CLASS}
+            className={inputClass}
+            placeholder="You might be wondering…"
           />
-        </label>
-        {objections.items.map((item, index) => (
-          <NestedItemCard
-            key={index}
-            title={`Objection ${index + 1}`}
+        </CopyField>
+        <div className="lp-copy-list">
+          {objections.items.map((item, index) => (
+            <ListItem
+              key={index}
+              title={`Objection ${index + 1}`}
+              disabled={disabled}
+              onRemove={() => removeObjection(index)}
+            >
+              <input
+                type="text"
+                disabled={disabled}
+                value={item.question}
+                onChange={(e) =>
+                  updateObjection(index, "question", e.target.value)
+                }
+                placeholder="Concern or doubt"
+                className={inputClass}
+              />
+              <textarea
+                disabled={disabled}
+                value={item.answer}
+                onChange={(e) =>
+                  updateObjection(index, "answer", e.target.value)
+                }
+                placeholder="Direct answer"
+                className={textareaClass}
+              />
+            </ListItem>
+          ))}
+          <button
+            type="button"
             disabled={disabled}
-            onRemove={() => removeObjection(index)}
+            onClick={addObjection}
+            className="lp-copy-add-btn"
           >
-            <input
-              type="text"
-              disabled={disabled}
-              value={item.question}
-              onChange={(e) =>
-                updateObjection(index, "question", e.target.value)
-              }
-              placeholder="Question"
-              className={INPUT_CLASS}
-            />
-            <textarea
-              disabled={disabled}
-              value={item.answer}
-              onChange={(e) => updateObjection(index, "answer", e.target.value)}
-              placeholder="Answer"
-              className={TEXTAREA_CLASS}
-            />
-          </NestedItemCard>
-        ))}
-        <AddItemButton
-          label="Add objection"
-          disabled={disabled}
-          onClick={addObjection}
-        />
-      </AccordionSection>
-
-      <AccordionSection title="FAQ">
+            <Plus className="h-3.5 w-3.5" />
+            Add objection
+          </button>
+        </div>
+      </>
+    ),
+    faq: (
+      <div className="lp-copy-list">
         {faq.map((item, index) => (
-          <NestedItemCard
+          <ListItem
             key={index}
             title={`Question ${index + 1}`}
             disabled={disabled}
@@ -495,23 +484,31 @@ export function CopyFieldsEditor({
               value={item.question}
               onChange={(e) => updateFaq(index, "question", e.target.value)}
               placeholder="Question"
-              className={INPUT_CLASS}
+              className={inputClass}
             />
             <textarea
               disabled={disabled}
               value={item.answer}
               onChange={(e) => updateFaq(index, "answer", e.target.value)}
               placeholder="Answer"
-              className={TEXTAREA_CLASS}
+              className={textareaClass}
             />
-          </NestedItemCard>
+          </ListItem>
         ))}
-        <AddItemButton label="Add FAQ" disabled={disabled} onClick={addFaq} />
-      </AccordionSection>
-
-      <AccordionSection title="CTA">
-        <label className="block">
-          <FieldLabel>Heading</FieldLabel>
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={addFaq}
+          className="lp-copy-add-btn"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add question
+        </button>
+      </div>
+    ),
+    cta: (
+      <>
+        <CopyField label="Heading">
           <input
             type="text"
             disabled={disabled}
@@ -522,11 +519,11 @@ export function CopyFieldsEditor({
                 cta: { ...cta, heading: e.target.value },
               })
             }
-            className={INPUT_CLASS}
+            className={inputClass}
+            placeholder="Ready to get started?"
           />
-        </label>
-        <label className="block">
-          <FieldLabel>Subheading</FieldLabel>
+        </CopyField>
+        <CopyField label="Subheading">
           <textarea
             disabled={disabled}
             value={cta.subheading}
@@ -536,11 +533,11 @@ export function CopyFieldsEditor({
                 cta: { ...cta, subheading: e.target.value },
               })
             }
-            className={TEXTAREA_CLASS}
+            className={textareaClass}
+            placeholder="Urgency or exclusivity"
           />
-        </label>
-        <label className="block">
-          <FieldLabel>Button text</FieldLabel>
+        </CopyField>
+        <CopyField label="Button text">
           <input
             type="text"
             disabled={disabled}
@@ -551,10 +548,59 @@ export function CopyFieldsEditor({
                 cta: { ...cta, button: e.target.value },
               })
             }
-            className={INPUT_CLASS}
+            className={inputClass}
+            placeholder="Join the waitlist"
           />
-        </label>
-      </AccordionSection>
+        </CopyField>
+      </>
+    ),
+  };
+
+  const activeMeta = SECTIONS.find((s) => s.id === activeSection) ?? SECTIONS[0];
+  const isRegenerating = regeneratingSection === activeSection;
+
+  return (
+    <div className="lp-copy-editor">
+      <div className="lp-copy-section-tabs" role="tablist" aria-label="Copy sections">
+        {SECTIONS.map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            role="tab"
+            aria-selected={activeSection === section.id}
+            disabled={disabled}
+            onClick={() => setActiveSection(section.id)}
+            className={`lp-copy-section-tab${
+              activeSection === section.id ? " lp-copy-section-tab-active" : ""
+            }`}
+          >
+            {section.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="lp-copy-panel" role="tabpanel">
+        <div className="lp-copy-panel-header">
+          <div>
+            <div className="lp-copy-panel-title">{activeMeta.label}</div>
+            <p className="lp-copy-panel-hint">{activeMeta.hint}</p>
+          </div>
+          {onRegenerateSection ? (
+            <button
+              type="button"
+              disabled={disabled || regeneratingSection !== null}
+              onClick={() => onRegenerateSection(activeSection)}
+              className="lp-copy-regen-btn"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${isRegenerating ? "animate-spin" : ""}`}
+              />
+              {isRegenerating ? "Regenerating…" : "Regenerate"}
+            </button>
+          ) : null}
+        </div>
+        <div className="lp-copy-fields">{sectionPanels[activeSection]}</div>
+      </div>
     </div>
   );
 }

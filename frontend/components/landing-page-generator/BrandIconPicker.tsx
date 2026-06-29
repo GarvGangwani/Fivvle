@@ -3,10 +3,11 @@
 import { useRef, useState } from "react";
 import type { PageJson } from "@/lib/types";
 import type { BrandIconMode, PageBranding } from "@/lib/branding";
-import { resolveBranding } from "@/lib/branding";
-import { uploadProjectLogo } from "@/lib/api";
+import { resolveBranding, clampLogoScale } from "@/lib/branding";
+import { ApiError, uploadProjectLogo } from "@/lib/api";
 import { BrandMark } from "@/components/landing-templates/BrandMark";
 import type { TemplateId } from "@/lib/templates";
+import { DesignSlider } from "@/components/landing-page-editor/DesignSlider";
 
 const MODES: { id: BrandIconMode; label: string; hint: string }[] = [
   { id: "initials", label: "Initials", hint: "Letters from your project name" },
@@ -96,7 +97,19 @@ export function BrandIconPicker({
       const { logo_url } = await uploadProjectLogo(projectId, file);
       applyLogoUrl(logo_url);
     } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Upload failed.");
+      if (err instanceof ApiError) {
+        const body = err.body;
+        const detail =
+          body &&
+          typeof body === "object" &&
+          "detail" in body &&
+          typeof (body as { detail?: unknown }).detail === "string"
+            ? (body as { detail: string }).detail
+            : null;
+        setUploadError(detail ?? `Upload failed (${err.status}).`);
+      } else {
+        setUploadError(err instanceof Error ? err.message : "Upload failed.");
+      }
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
@@ -137,20 +150,20 @@ export function BrandIconPicker({
             className={`rounded-lg border px-3 py-2 text-left transition-colors disabled:opacity-50 ${
               currentMode === m.id
                 ? "border-[var(--fv-accent)]/50 bg-[var(--fv-accent-muted)]"
-                : "border-white/10 hover:border-white/20"
+                : "border-[var(--fv-border)] hover:border-[var(--fv-border-strong)]"
             }`}
           >
-            <p className="text-sm font-medium text-zinc-200">{m.label}</p>
-            <p className="text-[10px] text-zinc-500">{m.hint}</p>
+            <p className="text-sm font-medium text-[var(--fv-text)]">{m.label}</p>
+            <p className="text-[10px] text-[var(--fv-text-muted)]">{m.hint}</p>
           </button>
         ))}
       </div>
 
       {currentMode === "url" && (
         <div className="space-y-4">
-          <div className="rounded-lg border border-dashed border-white/15 bg-black/20 p-4">
-            <p className="text-xs font-medium text-zinc-400">Upload logo</p>
-            <p className="mt-0.5 text-[10px] text-zinc-600">
+          <div className="rounded-lg border border-dashed border-[var(--fv-border)] bg-[color-mix(in_srgb,var(--fv-text)_3%,transparent)] p-4">
+            <p className="text-xs font-medium text-[var(--fv-text-soft)]">Upload logo</p>
+            <p className="mt-0.5 text-[10px] text-[var(--fv-text-muted)]">
               PNG, JPEG, or WebP · max {MAX_LOGO_MB} MB
             </p>
             <input
@@ -158,7 +171,7 @@ export function BrandIconPicker({
               type="file"
               accept={ACCEPTED_LOGO_TYPES}
               disabled={disabled || uploading}
-              className="mt-3 block w-full text-xs text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--fv-accent)] file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-fv-bg hover:file:bg-[var(--fv-accent-hover)] disabled:opacity-50"
+              className="mt-3 block w-full text-xs text-[var(--fv-text-soft)] file:mr-3 file:rounded-lg file:border-0 file:bg-[var(--fv-accent)] file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-fv-bg hover:file:bg-[var(--fv-accent-hover)] disabled:opacity-50"
               onChange={(e) => void handleFileSelect(e.target.files?.[0] ?? null)}
             />
             {uploading && (
@@ -170,7 +183,7 @@ export function BrandIconPicker({
           </div>
 
           <label className="flex flex-col gap-1.5">
-            <span className="text-xs text-zinc-500">Or paste image URL</span>
+            <span className="text-xs text-[var(--fv-text-muted)]">Or paste image URL</span>
             <input
               type="url"
               disabled={disabled}
@@ -179,7 +192,7 @@ export function BrandIconPicker({
               onChange={(e) => applyLogoUrl(e.target.value)}
               className="fv-input px-3 py-2 text-sm"
             />
-            <p className="text-[10px] text-zinc-600">
+            <p className="text-[10px] text-[var(--fv-text-dim)]">
               Square or horizontal logos on a transparent background work best.
             </p>
           </label>
@@ -188,7 +201,7 @@ export function BrandIconPicker({
 
       {currentMode === "emoji" && (
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs text-zinc-500">Emoji</span>
+          <span className="text-xs text-[var(--fv-text-muted)]">Emoji</span>
           <input
             type="text"
             disabled={disabled}
@@ -205,12 +218,26 @@ export function BrandIconPicker({
         </label>
       )}
 
-      <div className="rounded-lg border border-white/10 bg-black/30 px-4 py-3">
-        <p className="mb-2 text-[10px] uppercase tracking-wider text-zinc-600">
+      <DesignSlider
+        label="Logo size"
+        hint="Scales the mark in your landing page nav"
+        value={branding.logo_scale}
+        min={60}
+        max={160}
+        step={2}
+        disabled={disabled}
+        formatValue={(v) => `${v}%`}
+        onChange={(logo_scale) =>
+          apply({ branding: { logo_scale: clampLogoScale(logo_scale) } })
+        }
+      />
+
+      <div className="rounded-lg border border-[var(--fv-border)] bg-[color-mix(in_srgb,var(--fv-text)_3%,transparent)] px-4 py-3">
+        <p className="mb-2 text-[10px] uppercase tracking-wider text-[var(--fv-text-muted)]">
           Preview
         </p>
         <BrandMark
-          branding={resolveBranding(page, projectName)}
+          branding={branding}
           projectName={projectName}
           variant={previewVariant}
           showSplitName={previewVariant === "dark-premium"}

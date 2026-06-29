@@ -215,6 +215,7 @@ def _hydrate_draft(
                 question=qf_draft.question,
                 findings=hydrated_findings,
                 evidence_gap=qf_draft.evidence_gap,
+                score=qf_draft.score,
             )
         )
 
@@ -241,6 +242,8 @@ def _hydrate_draft(
         recommendation_rationale=draft.recommendation_rationale,
         research_limitations=draft.research_limitations,
         rubric_version_used=draft.rubric_version_used,
+        section_scores=draft.section_scores,
+        overall_score=draft.overall_score,
     )
 
 

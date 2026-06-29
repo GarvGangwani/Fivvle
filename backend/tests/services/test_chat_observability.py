@@ -20,6 +20,7 @@ from app.db.enums import (
 from app.db.models.chat_message import ChatMessage
 from app.db.models.chat_thread import ChatThread
 from app.db.models.experiment import Experiment
+from app.cost.category import resolve_cost_category_from_phase
 from app.db.models.llm_call import LLMCall
 from app.db.models.user import User
 from app.db.models.validation_report import ValidationReport
@@ -189,6 +190,7 @@ async def test_dispatch_to_completion_latency_stats(db_session: AsyncSession) ->
             cost_usd=Decimal("0.01"),
             latency_ms=500,
             phase="planner",
+            cost_category=resolve_cost_category_from_phase("planner").value,
             called_at=t0,
         )
     )

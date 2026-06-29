@@ -31,7 +31,7 @@ from app.llm.prompts.refinement import (
     PROMPT_NAME_V2_CHAT,
     build_refinement_v2_chat_user_prompt,
 )
-from app.schemas.refinement import RefinedIdea, RefinementTurnDecision
+from app.schemas.refinement import ClarifyingQuestion, RefinedIdea, RefinementTurnDecision
 from app.config import get_settings
 from app.services.experiment_service import create_experiment_with_refinement
 from app.services.refinement_service import (
@@ -509,11 +509,22 @@ def _make_experiment_for_run_turn(refinement_count: int = 0) -> Experiment:
     )
 
 
+def _sample_clarifying_questions() -> list[ClarifyingQuestion]:
+    return [
+        ClarifyingQuestion(
+            question="Who specifically feels this pain day to day?",
+            selection_mode="multiple",
+            options=["CrossFit coaches", "Personal trainers", "Gym owners"],
+        ),
+    ]
+
+
 def _make_clarify_decision(**overrides) -> RefinementTurnDecision:
     defaults = {
         "decision": "clarify",
-        "assistant_message": "What's the specific moment when they feel stuck?",
+        "assistant_message": "Got it — let's narrow the audience.",
         "clarifying_dimension": "problem",
+        "clarifying_questions": _sample_clarifying_questions(),
         "refined_idea": None,
         "reasoning_trace": "need problem grounding",
     }
@@ -654,8 +665,9 @@ def test_refinement_turn_decision_clarify_requires_dimension() -> None:
     with pytest.raises(ValidationError):
         RefinementTurnDecision(
             decision="clarify",
-            assistant_message="Who is your target user?",
+            assistant_message="Got it — let's narrow the audience.",
             clarifying_dimension=None,
+            clarifying_questions=_sample_clarifying_questions(),
             refined_idea=None,
         )
 
@@ -677,16 +689,18 @@ def test_refinement_turn_decision_rejects_banned_filler_phrase() -> None:
             decision="clarify",
             assistant_message="Great question — who is your target user?",
             clarifying_dimension="audience",
+            clarifying_questions=_sample_clarifying_questions(),
         )
 
 
-def test_refinement_turn_decision_clarify_requires_question_mark() -> None:
-    """Clarify assistant_message must end with '?'."""
+def test_refinement_turn_decision_clarify_requires_questions() -> None:
+    """Clarify must include at least one structured question."""
     with pytest.raises(ValidationError):
         RefinementTurnDecision(
             decision="clarify",
-            assistant_message="Tell me more about your target user",
+            assistant_message="Tell me more about your target user?",
             clarifying_dimension="audience",
+            clarifying_questions=[],
         )
 
 

@@ -10,7 +10,7 @@ Requires a working .env with at minimum:
     DATABASE_URL     (for LLMCall logging — the LLM client writes a row per call)
     GROQ_API_KEY     (required by Settings, even if not used here)
     FIREBASE_PROJECT_ID
-    GOOGLE_APPLICATION_CREDENTIALS
+    FIREBASE_SERVICE_ACCOUNT_PATH
     TAVILY_API_KEY
     REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET / REDDIT_USER_AGENT
 

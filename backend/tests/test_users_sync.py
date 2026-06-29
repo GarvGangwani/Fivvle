@@ -18,6 +18,7 @@ def test_sync_creates_new_user(client: TestClient, mock_firebase: None) -> None:
     assert body["name"] == "Test Founder"
     assert "id" in body
     assert "created_at" in body
+    assert body["is_admin"] is True
     assert "firebase_uid" not in body
 
 

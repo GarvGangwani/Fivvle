@@ -1,0 +1,87 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { AdminCouponsDashboard } from "@/components/admin/AdminCouponsDashboard";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { ApiError, syncUser } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+
+type AccessState = "loading" | "granted" | "denied" | "error";
+
+export default function AdminCouponsPageClient() {
+  const { user, loading: authLoading, refreshProfile } = useAuth();
+  const router = useRouter();
+  const [accessState, setAccessState] = useState<AccessState>("loading");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+
+    const currentUser = user;
+    let cancelled = false;
+
+    async function verifyAdminAccess() {
+      setAccessState("loading");
+      setErrorMessage(null);
+      try {
+        const profile = await syncUser(currentUser);
+        if (cancelled) return;
+        if (profile.is_admin) {
+          setAccessState("granted");
+          await refreshProfile();
+        } else {
+          setAccessState("denied");
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setAccessState("error");
+        if (err instanceof ApiError && err.status === 0) {
+          setErrorMessage(
+            "Could not reach the API. Start the backend and try again.",
+          );
+        } else {
+          setErrorMessage("Could not verify admin access.");
+        }
+      }
+    }
+
+    void verifyAdminAccess();
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, user, router, refreshProfile]);
+
+  useEffect(() => {
+    if (accessState === "denied") {
+      router.replace("/");
+    }
+  }, [accessState, router]);
+
+  if (authLoading || accessState === "loading") {
+    return (
+      <div className="p-6">
+        <LoadingState label="Checking admin access…" />
+      </div>
+    );
+  }
+
+  if (accessState === "error") {
+    return (
+      <div className="mx-auto max-w-lg p-6">
+        <ErrorBanner message={errorMessage ?? "Something went wrong."} />
+      </div>
+    );
+  }
+
+  if (accessState === "denied") {
+    return null;
+  }
+
+  return <AdminCouponsDashboard />;
+}

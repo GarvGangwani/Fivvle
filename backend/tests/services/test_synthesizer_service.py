@@ -32,6 +32,7 @@ from app.schemas.validation_report import (
     Citation,
     FindingDraft,
     QuestionFindingsDraft,
+    SectionScore,
     ValidationReport,
     ValidationReportDraft,
 )
@@ -153,6 +154,59 @@ def _make_finding_draft(question_id: str = "q1") -> FindingDraft:
     )
 
 
+def _default_section_scores() -> list[SectionScore]:
+    return [
+        SectionScore(
+            section_id="market",
+            label="Market demand",
+            score=62,
+            rationale="Demand signals are present but market-size data is limited.",
+            pros=["G2/review activity suggests buyer interest."],
+            cons=["No reliable TAM figure in search results."],
+        ),
+        SectionScore(
+            section_id="competition",
+            label="Competition",
+            score=55,
+            rationale="Named competitors overlap the core use case.",
+            pros=["Competitor Guru is well documented with citations."],
+            cons=["Differentiation gap appears narrow."],
+        ),
+        SectionScore(
+            section_id="distribution",
+            label="Distribution",
+            score=48,
+            rationale="Limited distribution evidence beyond generic channels.",
+            pros=["Slack App Directory noted as a channel."],
+            cons=["No validated acquisition playbook."],
+        ),
+        SectionScore(
+            section_id="regulatory",
+            label="Regulatory",
+            score=70,
+            rationale="No regulatory blockers surfaced for this category.",
+            pros=["Low apparent compliance burden."],
+            cons=["Regulatory depth was not fully investigated."],
+        ),
+        SectionScore(
+            section_id="risk",
+            label="Risk profile",
+            score=58,
+            rationale="Key risks are confirmed but not all are mitigated.",
+            pros=["Handbook-staleness risk is evidenced."],
+            cons=["Procurement complexity only partially confirmed."],
+        ),
+        SectionScore(
+            section_id="research",
+            label="Research depth",
+            score=72,
+            rationale="Most questions answered with cited findings.",
+            pros=["Five research questions with medium+ confidence."],
+            cons=["Some gaps on market sizing."],
+        ),
+    ]
+
+
 def _make_draft_report(question_count: int = 5) -> ValidationReportDraft:
     qids = [f"q{i}" for i in range(1, question_count + 1)]
     return ValidationReportDraft(
@@ -185,6 +239,8 @@ def _make_draft_report(question_count: int = 5) -> ValidationReportDraft:
         ),
         research_limitations="Market size data was not found in search results.",
         rubric_version_used="v1",
+        section_scores=_default_section_scores(),
+        overall_score=61,
     )
 
 

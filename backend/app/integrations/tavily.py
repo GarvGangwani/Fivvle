@@ -6,13 +6,12 @@ Direct tavily-python SDK imports anywhere else are a violation of
 
 The wrapper:
 - Runs the sync SDK in asyncio.to_thread so the event loop is never blocked.
-- Logs one ExternalAPICall row per operation (success and failure).
+- Logs one ExternalAPICall row per HTTP attempt (success and failure).
+- Uses Tavily ``include_usage=True`` when available for credit-accurate costs.
 - Never logs query text or scraped content — only metadata.
 
-Pricing verified 2026-05-11 against https://docs.tavily.com/documentation/api-credits
-and https://tavily.com/pricing:
-  - Basic search:    1 credit  = $0.008 (pay-as-you-go rate)
-  - Advanced search: 2 credits = $0.016
+Pricing: configure ``TAVILY_USD_PER_CREDIT`` to match your Tavily plan.
+Credit counts per search depth: https://docs.tavily.com/documentation/api-credits
 """
 
 from __future__ import annotations
@@ -27,6 +26,11 @@ from pydantic import BaseModel
 from tavily import TavilyClient
 
 from app.config import get_settings
+from app.cost.category import resolve_cost_category_from_external_provider
+from app.cost.tavily import (
+    resolve_tavily_credits_from_response,
+    tavily_cost_usd,
+)
 from app.db.models.external_api_call import ExternalAPICall
 from app.db.session_lock import lock_for
 from app.logging_config import get_logger
@@ -37,11 +41,6 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 _logger = get_logger(__name__)
-
-# Cost per Tavily search call (PAYG rate, verified 2026-05-11).
-# One credit = $0.008. Basic = 1 credit, Advanced = 2 credits.
-_COST_PER_BASIC: Decimal = Decimal("0.008")
-_COST_PER_ADVANCED: Decimal = Decimal("0.016")
 
 _TIMEOUT_SECONDS = 30  # per .cursorrules reliability section
 
@@ -73,15 +72,18 @@ async def _log_api_call(
     operation: str,
     latency_ms: int,
     cost_usd: Decimal,
+    api_credits: int | None,
     success: bool,
 ) -> None:
     """Persist one row to external_api_calls. Does NOT commit."""
     call = ExternalAPICall(
         experiment_id=experiment_id,
         provider="tavily",
+        cost_category=resolve_cost_category_from_external_provider("tavily").value,
         operation=operation,
         latency_ms=latency_ms,
         cost_usd=cost_usd,
+        api_credits=api_credits,
         success=success,
     )
     async with lock_for(db):
@@ -100,7 +102,7 @@ async def search(
     """Run a Tavily web search.
 
     Args:
-        db: caller's session. One ExternalAPICall row is written here.
+        db: caller's session. One ExternalAPICall row is written per HTTP attempt.
         query: search query string.
         experiment_id: optional FK for cost rollup.
         max_results: number of results to return (default 5).
@@ -111,24 +113,73 @@ async def search(
     Raises whatever the Tavily SDK raises on network/auth failure — but only
     after logging a zero-cost ExternalAPICall row with success=False.
     """
-    cost = _COST_PER_BASIC if search_depth == "basic" else _COST_PER_ADVANCED
+    settings = get_settings()
     started_at = time.perf_counter()
 
-    try:
-        async def _do_tavily_call():
-            return await asyncio.wait_for(
+    async def _perform_search_attempt() -> dict:
+        """One Tavily HTTP round-trip; logs audit row before returning."""
+        attempt_started = time.perf_counter()
+        try:
+            raw = await asyncio.wait_for(
                 asyncio.to_thread(
                     _get_client().search,
                     query,
                     max_results=max_results,
                     search_depth=search_depth,
+                    include_usage=True,
                 ),
                 timeout=_TIMEOUT_SECONDS,
             )
+            latency_ms = int((time.perf_counter() - attempt_started) * 1000)
+            credits = resolve_tavily_credits_from_response(
+                raw,
+                search_depth=search_depth,
+            )
+            cost = tavily_cost_usd(credits, settings.tavily_usd_per_credit)
+
+            await _log_api_call(
+                db,
+                experiment_id=experiment_id,
+                operation="search",
+                latency_ms=latency_ms,
+                cost_usd=cost,
+                api_credits=credits,
+                success=True,
+            )
+
+            _logger.info(
+                "tavily search completed",
+                num_results=len(raw.get("results", [])),
+                search_depth=search_depth,
+                latency_ms=latency_ms,
+                api_credits=credits,
+                cost_usd=str(cost),
+            )
+            return raw
+        except Exception:
+            latency_ms = int((time.perf_counter() - attempt_started) * 1000)
+            try:
+                await _log_api_call(
+                    db,
+                    experiment_id=experiment_id,
+                    operation="search",
+                    latency_ms=latency_ms,
+                    cost_usd=Decimal("0"),
+                    api_credits=None,
+                    success=False,
+                )
+            except Exception as log_exc:
+                _logger.warning(
+                    "failed to log failed tavily call",
+                    error=str(log_exc),
+                )
+            raise
+
+    try:
 
         @retry_async()
-        async def _call_tavily_with_retry():
-            return await get_breaker("tavily").call(_do_tavily_call)
+        async def _call_tavily_with_retry() -> dict:
+            return await get_breaker("tavily").call(_perform_search_attempt)
 
         raw = await _call_tavily_with_retry()
         latency_ms = int((time.perf_counter() - started_at) * 1000)
@@ -143,43 +194,13 @@ async def search(
             for r in raw.get("results", [])
         ]
 
-        await _log_api_call(
-            db,
-            experiment_id=experiment_id,
-            operation="search",
-            latency_ms=latency_ms,
-            cost_usd=cost,
-            success=True,
-        )
-
-        # Log only metadata — NEVER query text or result content.
-        _logger.info(
-            "tavily search completed",
-            num_results=len(results),
-            search_depth=search_depth,
-            latency_ms=latency_ms,
-            cost_usd=str(cost),
-        )
-
         return results
 
     except Exception as exc:
-        latency_ms = int((time.perf_counter() - started_at) * 1000)
-        try:
-            await _log_api_call(
-                db,
-                experiment_id=experiment_id,
-                operation="search",
-                latency_ms=latency_ms,
-                cost_usd=Decimal("0"),
-                success=False,
-            )
-        except Exception as log_exc:
-            _logger.warning("failed to log failed tavily call", error=str(log_exc))
-
         _logger.warning(
             "tavily search failed",
             search_depth=search_depth,
+            latency_ms=int((time.perf_counter() - started_at) * 1000),
             error_type=type(exc).__name__,
         )
         raise

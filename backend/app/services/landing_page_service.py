@@ -27,6 +27,7 @@ content, RefinedIdea content, or PII. Log only aggregate counts and flags
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Literal, cast
 from uuid import UUID, uuid4
@@ -50,6 +51,12 @@ from app.llm.prompts.landing_page import (
     build_lp_strategist_user_prompt,
 )
 from app.logging_config import get_logger
+from app.utils.experiment_naming import (
+    ensure_unique_landing_slug,
+    resolve_name_from_refined,
+    resolve_slug_base_from_experiment,
+    sync_landing_page_project_name,
+)
 from app.schemas.landing_page import (
     CopyOutput,
     LandingPageInputModel,
@@ -286,42 +293,16 @@ def _page_goal_to_cta_type(page_goal: str) -> LandingCtaType:
     return mapping.get(page_goal, LandingCtaType.WAITLIST)
 
 
-_SLUG_PATTERN = re.compile(r"^[a-z0-9-]{6,40}$")
-
-
-def _slugify(text: str, max_len: int = 35) -> str:
-    """Convert text to a URL-safe slug: lowercase, alphanumeric + hyphens only."""
-    s = text.lower().strip()
-    s = re.sub(r"[^a-z0-9\s-]", "", s)
-    s = re.sub(r"[\s-]+", "-", s)
-    s = s.strip("-")
-    s = s[:max_len].rstrip("-")
-    return s
-
-
 async def _generate_unique_slug(db: AsyncSession, experiment: Experiment) -> str:
-    """Derive a human-readable slug from refined_idea headline, with collision handling."""
-    base_slug = ""
-
-    if experiment.refined_idea and isinstance(experiment.refined_idea, dict):
-        headline = experiment.refined_idea.get("headline", "")
-        if headline:
-            base_slug = _slugify(headline)
-
+    """Derive a short slug from project name (user or AI), with collision handling."""
+    base_slug = resolve_slug_base_from_experiment(experiment)
     if len(base_slug) < 6:
         base_slug = f"lp-{experiment.id.hex[:12]}"
-
-    candidate = base_slug
-    for attempt in range(5):
-        existing = await db.execute(
-            select(LandingPage).where(LandingPage.slug == candidate)
-        )
-        if existing.scalar_one_or_none() is None:
-            return candidate
-        suffix = uuid4().hex[:4]
-        candidate = f"{base_slug[:35]}-{suffix}"
-
-    return f"lp-{uuid4().hex[:12]}"
+    return await ensure_unique_landing_slug(
+        db,
+        base_slug,
+        experiment_id=experiment.id,
+    )
 
 
 async def _fetch_validation_report(
@@ -409,6 +390,326 @@ def _scalar_fields_for_insert(
     }
 
 
+def _compact_text(value: str | None, fallback: str, max_len: int = 160) -> str:
+    text = (value or "").strip() or fallback.strip()
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1].rstrip() + "…"
+
+
+_GENERIC_COMPARISON_LABEL = "The old way"
+
+
+def _scrub_competitor_names_from_text(text: str, competitor_names: list[str]) -> str:
+    """Replace known competitor names with generic phrasing in public copy."""
+    cleaned = text
+    for name in competitor_names:
+        name = name.strip()
+        if len(name) < 2:
+            continue
+        pattern = re.compile(re.escape(name), re.IGNORECASE)
+        cleaned = pattern.sub(_GENERIC_COMPARISON_LABEL.lower(), cleaned)
+    return cleaned
+
+
+def _scrub_competitor_names_from_copy(
+    copy_json: dict[str, Any],
+    competitor_names: list[str],
+) -> dict[str, Any]:
+    """Defense-in-depth: strip research competitor names from published copy."""
+    if not competitor_names:
+        return copy_json
+
+    scrubbed: dict[str, Any] = {}
+    for section, payload in copy_json.items():
+        if section == "comparison" and isinstance(payload, dict):
+            comparison = dict(payload)
+            raw_name = str(comparison.get("competitor_name") or "").strip()
+            if any(
+                raw_name.lower() == name.strip().lower() for name in competitor_names if name.strip()
+            ):
+                comparison["competitor_name"] = _GENERIC_COMPARISON_LABEL
+            scrubbed[section] = comparison
+            continue
+
+        if isinstance(payload, str):
+            scrubbed[section] = _scrub_competitor_names_from_text(payload, competitor_names)
+        elif isinstance(payload, dict):
+            scrubbed[section] = {
+                key: _scrub_competitor_names_from_text(value, competitor_names)
+                if isinstance(value, str)
+                else [
+                    _scrub_competitor_names_from_text(item, competitor_names)
+                    if isinstance(item, str)
+                    else item
+                    for item in value
+                ]
+                if isinstance(value, list)
+                else value
+                for key, value in payload.items()
+            }
+        elif isinstance(payload, list):
+            scrubbed[section] = [
+                {
+                    key: _scrub_competitor_names_from_text(val, competitor_names)
+                    if isinstance(val, str)
+                    else val
+                    for key, val in item.items()
+                }
+                if isinstance(item, dict)
+                else _scrub_competitor_names_from_text(item, competitor_names)
+                if isinstance(item, str)
+                else item
+                for item in payload
+            ]
+        else:
+            scrubbed[section] = payload
+    return scrubbed
+
+
+def _fill_text(value: str | None, fallback: str, *, max_len: int = 200) -> str:
+    """Keep LLM/user copy intact; only compact synthesized fallbacks."""
+    text = (value or "").strip()
+    if text:
+        return text
+    return _compact_text(None, fallback, max_len)
+
+
+def _ensure_complete_copy_json(
+    *,
+    copy_json: dict[str, Any],
+    strategy: LandingPageStrategy,
+    input_model: LandingPageInputModel,
+    refined_idea: RefinedIdea,
+) -> dict[str, Any]:
+    """Guarantee a complete, concise section set for the chosen strategy order.
+
+    LLM output can occasionally omit a section or return sparse payloads. This
+    normalizer keeps section shapes complete and user-facing copy brief.
+    """
+    completed = dict(copy_json)
+    sequence = list(strategy.section_sequence)
+
+    hero_default = {
+        "headline": _compact_text(
+            refined_idea.headline,
+            input_model.offer_core.one_line_pitch,
+            max_len=200,
+        ),
+        "subheadline": _compact_text(
+            refined_idea.subheadline,
+            input_model.offer_core.transformation_promise,
+            max_len=480,
+        ),
+        "cta": _compact_text(refined_idea.cta_text, "Join the waitlist", max_len=80),
+    }
+    problem_default = {
+        "heading": _compact_text(
+            input_model.problem_intelligence.pain_points[0]
+            if input_model.problem_intelligence.pain_points
+            else "The old way is broken",
+            "The old way is broken",
+            max_len=90,
+        ),
+        "body": _compact_text(
+            input_model.problem_intelligence.urgency,
+            input_model.offer_core.transformation_promise,
+            max_len=200,
+        ),
+    }
+    cta_default = {
+        "heading": _compact_text(
+            input_model.offer_core.one_line_pitch,
+            refined_idea.headline,
+            max_len=90,
+        ),
+        "subheading": _compact_text(
+            input_model.offer_core.transformation_promise,
+            refined_idea.subheadline,
+            max_len=160,
+        ),
+        "button": _compact_text(refined_idea.cta_text, "Get early access", max_len=44),
+    }
+
+    for section in sequence:
+        existing = completed.get(section)
+        if section == "hero":
+            payload = existing if isinstance(existing, dict) else {}
+            completed[section] = {
+                "headline": _fill_text(
+                    str(payload.get("headline") or ""),
+                    hero_default["headline"],
+                    max_len=200,
+                ),
+                "subheadline": _fill_text(
+                    str(payload.get("subheadline") or ""),
+                    hero_default["subheadline"],
+                    max_len=480,
+                ),
+                "cta": _fill_text(
+                    str(payload.get("cta") or ""),
+                    hero_default["cta"],
+                    max_len=80,
+                ),
+            }
+            continue
+
+        if section == "problem":
+            payload = existing if isinstance(existing, dict) else {}
+            completed[section] = {
+                "heading": _fill_text(
+                    str(payload.get("heading") or ""),
+                    problem_default["heading"],
+                    max_len=200,
+                ),
+                "body": _fill_text(
+                    str(payload.get("body") or ""),
+                    problem_default["body"],
+                    max_len=600,
+                ),
+            }
+            continue
+
+        if section == "features":
+            items = existing if isinstance(existing, list) else []
+            if not items:
+                pain_points = input_model.problem_intelligence.pain_points[:3]
+                items = [
+                    {
+                        "title": _compact_text(point, "Clear user benefit", max_len=72),
+                        "description": _compact_text(
+                            input_model.offer_core.transformation_promise,
+                            "A concrete outcome your users care about.",
+                            max_len=150,
+                        ),
+                    }
+                    for point in pain_points
+                ]
+            completed[section] = items[:5]
+            continue
+
+        if section == "comparison":
+            payload = existing if isinstance(existing, dict) else {}
+            completed[section] = {
+                "metric_label": _fill_text(
+                    str(payload.get("metric_label") or ""),
+                    "What changes for you",
+                    max_len=120,
+                ),
+                "competitor_name": _fill_text(
+                    str(payload.get("competitor_name") or ""),
+                    _GENERIC_COMPARISON_LABEL,
+                    max_len=120,
+                ),
+                "our_features": list(payload.get("our_features") or [])[:4]
+                or [
+                    _compact_text(
+                        input_model.positioning_intelligence.differentiators,
+                        "A faster path to the outcome you want",
+                        max_len=200,
+                    )
+                ],
+                "competitor_features": list(payload.get("competitor_features") or [])[:4]
+                or [
+                    _compact_text(
+                        input_model.problem_intelligence.alternatives,
+                        "More manual steps and waiting",
+                        max_len=200,
+                    )
+                ],
+            }
+            continue
+
+        if section == "proof":
+            payload = existing if isinstance(existing, dict) else {}
+            elements = list(payload.get("elements") or [])[:5]
+            if not elements:
+                hooks = input_model.proof_intelligence.social_proof_hooks[:3]
+                elements = [
+                    _compact_text(
+                        hook,
+                        "Built around how you actually work today.",
+                        max_len=130,
+                    )
+                    for hook in hooks
+                ]
+                if not elements:
+                    elements = [
+                        _compact_text(
+                            input_model.offer_core.transformation_promise,
+                            "Designed to remove friction from day one.",
+                            max_len=130,
+                        )
+                    ]
+            completed[section] = {
+                "headline": _fill_text(
+                    str(payload.get("headline") or ""),
+                    "Why people trust this approach",
+                    max_len=200,
+                ),
+                "elements": elements,
+            }
+            continue
+
+        if section == "objections":
+            payload = existing if isinstance(existing, dict) else {}
+            items = list(payload.get("items") or [])[:4]
+            if not items:
+                top = input_model.proof_intelligence.top_objections[:3]
+                rebuttals = input_model.proof_intelligence.objection_rebuttals
+                items = [
+                    {
+                        "question": _compact_text(ob, "Is this really worth switching?", max_len=110),
+                        "answer": _compact_text(
+                            rebuttals.get(ob),
+                            input_model.positioning_intelligence.differentiators,
+                            max_len=170,
+                        ),
+                    }
+                    for ob in top
+                ]
+            completed[section] = {
+                "heading": _fill_text(
+                    str(payload.get("heading") or ""),
+                    "You might be wondering…",
+                    max_len=200,
+                ),
+                "items": items,
+            }
+            continue
+
+        if section == "faq":
+            items = existing if isinstance(existing, list) else []
+            completed[section] = items[:5]
+            continue
+
+        if section == "cta":
+            payload = existing if isinstance(existing, dict) else {}
+            completed[section] = {
+                "heading": _fill_text(
+                    str(payload.get("heading") or ""),
+                    cta_default["heading"],
+                    max_len=200,
+                ),
+                "subheading": _fill_text(
+                    str(payload.get("subheading") or ""),
+                    cta_default["subheading"],
+                    max_len=400,
+                ),
+                "button": _fill_text(
+                    str(payload.get("button") or ""),
+                    cta_default["button"],
+                    max_len=80,
+                ),
+            }
+            continue
+
+        if section == "pricing" and section not in completed:
+            completed[section] = {"plans": []}
+
+    return completed
+
+
 async def _persist_landing_page_row(
     db: AsyncSession,
     *,
@@ -423,6 +724,12 @@ async def _persist_landing_page_row(
     """UPDATE or INSERT LandingPage with copy_json and page_json."""
     existing = await _fetch_landing_page_row(db, experiment.id)
     resolved_tid = resolve_template_id(template_id)
+    display_name = (
+        experiment.name.strip()
+        if experiment.name and experiment.name.strip()
+        else resolve_name_from_refined(refined_idea)
+    )
+    page_json = sync_landing_page_project_name(page_json, display_name)
 
     if existing is not None:
         existing.copy_json = copy_json
@@ -457,6 +764,7 @@ async def generate_landing_page(
     experiment_id: UUID,
     page_goal: str = "waitlist",
     template_id: str = "dark-premium",
+    regeneration_hint: str | None = None,
 ) -> None:
     """Run the 2-LLM + 1-Python landing page pipeline for an experiment.
 
@@ -484,6 +792,7 @@ async def generate_landing_page(
     refined_idea = _parse_refined_idea(experiment)
 
     resolved_template_id = resolve_template_id(template_id)
+    is_regeneration = bool(regeneration_hint and regeneration_hint.strip())
 
     try:
         strategist_output, strategist_result = await llm_client.complete_structured(
@@ -492,13 +801,21 @@ async def generate_landing_page(
             model=model,
             prompt_name=LP_STRATEGIST_PROMPT_NAME,
             system=LP_STRATEGIST_SYSTEM_PROMPT,
-            user=build_lp_strategist_user_prompt(vr, refined_idea, page_goal),
+            user=build_lp_strategist_user_prompt(
+                vr,
+                refined_idea,
+                page_goal,
+                regeneration_hint=regeneration_hint,
+                for_cache=not is_regeneration,
+            ),
             response_model=StrategistOutput,
             max_tokens=_LP_STRATEGIST_MAX_TOKENS,
             temperature=_LP_TEMPERATURE,
             experiment_id=experiment_id,
             phase="landing_page",
-            cache_breakpoints=LP_STRATEGIST_CACHE_BREAKPOINTS,
+            cache_breakpoints=[]
+            if is_regeneration
+            else LP_STRATEGIST_CACHE_BREAKPOINTS,
         )
 
         copy_output, copy_result = await llm_client.complete_structured(
@@ -510,13 +827,15 @@ async def generate_landing_page(
             user=build_lp_copy_user_prompt(
                 strategist_output.input_model,
                 strategist_output.strategy,
+                regeneration_hint=regeneration_hint,
+                for_cache=not is_regeneration,
             ),
             response_model=CopyOutput,
             max_tokens=_LP_COPY_MAX_TOKENS,
             temperature=_LP_TEMPERATURE,
             experiment_id=experiment_id,
             phase="landing_page",
-            cache_breakpoints=LP_COPY_CACHE_BREAKPOINTS,
+            cache_breakpoints=[] if is_regeneration else LP_COPY_CACHE_BREAKPOINTS,
         )
     except LandingPageGenerationError:
         raise
@@ -531,8 +850,23 @@ async def generate_landing_page(
         strategist_output.strategy,
         resolved_template_id,
     )
+    page_json["meta"] = {
+        "generation_id": uuid4().hex,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "regeneration_hint": regeneration_hint,
+    }
 
     copy_json = copy_output.model_dump(mode="json")["copy_json"]
+    copy_json = _ensure_complete_copy_json(
+        copy_json=copy_json,
+        strategy=strategist_output.strategy,
+        input_model=strategist_output.input_model,
+        refined_idea=refined_idea,
+    )
+    copy_json = _scrub_competitor_names_from_copy(
+        copy_json,
+        strategist_output.input_model.positioning_intelligence.competitors,
+    )
 
     await _persist_landing_page_row(
         db,

@@ -2,104 +2,221 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Eye, Pencil } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  ExternalLink,
+  Eye,
+  RefreshCw,
+  Pencil,
+  Rocket,
+} from "lucide-react";
 import type { CopyJson, LandingPage, PageJson } from "@/lib/types";
 import {
   defaultColorModeForTemplate,
   PAGE_TEMPLATES,
   type TemplateId,
 } from "@/lib/templates";
-import { defaultPaletteForTemplate } from "@/lib/color-palettes";
-import { patchLandingPage } from "@/lib/api";
+import { defaultPaletteForTemplate, inferColorModeFromPalette, resolveColorPalette } from "@/lib/color-palettes";
+import { resolveBranding } from "@/lib/branding";
+import {
+  ApiError,
+  generateLandingPage,
+  getExperiment,
+  getLandingPage,
+  patchLandingPage,
+  publishProject,
+} from "@/lib/api";
 import {
   resolveLandingPageEditorData,
   syncPageJsonSections,
 } from "@/lib/landing-page-data";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
+import {
+  canEditLandingPage,
+  landingPageEditBlockedReason,
+} from "@/lib/landing-flow";
+import { EditableProjectName } from "@/components/experiment/EditableProjectName";
 import { LandingPagePreview } from "@/components/landing-page-generator/LandingPagePreview";
-import { PublishPanel } from "@/components/landing-page-generator/PublishPanel";
+import type { PreviewSaveStatus } from "@/components/landing-page-generator/PreviewSaveStatus";
 import { useToast } from "@/components/ui/ToastProvider";
-import { ShareLinksPanel } from "@/components/distribution/ShareLinksPanel";
-import { CopyFieldsEditor } from "./CopyFieldsEditor";
+import { ShareLinksPanel, SHARE_CHANNELS } from "@/components/distribution/ShareLinksPanel";
+import { getExperimentDisplayName } from "@/lib/experiment-name";
+import { CopyFieldsEditor, type CopySectionId } from "./CopyFieldsEditor";
+import { LandingPageSlugEditor } from "./LandingPageSlugEditor";
+import { SurfaceStylePicker } from "./SurfaceStylePicker";
+import { ColorThemePicker } from "@/components/landing-page-generator/ColorThemePicker";
+import { BrandIconPicker } from "@/components/landing-page-generator/BrandIconPicker";
+import { defaultSurfaceForTemplate, formatSurfaceSummary, resolveSurface } from "@/lib/surface";
+import { buildPageForTemplatePreview } from "@/lib/template-preview-page";
+import {
+  buildPublicLandingPageUrl,
+  formatPublicLandingHost,
+} from "@/lib/landing-host";
+import { CollapsibleSection } from "./CollapsibleSection";
+import { TemplatePreviewThumb } from "./TemplatePreviewThumb";
 import "./editor-panel.css";
 
+type EditorTab = "content" | "design" | "publish";
 type MobilePanel = "edit" | "preview";
 
 interface EditorLayoutProps {
   experimentId: string;
-  experimentName: string;
+  name: string | null | undefined;
+  rawIdea: string;
   experimentStatus: string;
   landingPage: LandingPage;
+  embedded?: boolean;
   onPublished?: () => void;
+  onExperimentRenamed?: (name: string) => void;
+  onRegenerateAll?: () => void;
 }
 
 export function EditorLayout({
   experimentId,
-  experimentName,
+  name,
+  rawIdea,
   experimentStatus,
   landingPage,
+  embedded = false,
   onPublished,
+  onExperimentRenamed,
+  onRegenerateAll,
 }: EditorLayoutProps) {
-  const resolved = resolveLandingPageEditorData(landingPage);
+  const displayName = getExperimentDisplayName({ name, raw_idea: rawIdea });
+  const resolved = resolveLandingPageEditorData(landingPage, displayName);
 
+  const [editorTab, setEditorTab] = useState<EditorTab>("design");
   const [mobilePanel, setMobilePanel] = useState<MobilePanel>("edit");
   const [copy, setCopy] = useState<CopyJson>(resolved.copy);
   const [page, setPage] = useState<PageJson>(resolved.page);
   const [templateId, setTemplateId] = useState<TemplateId>(resolved.templateId);
   const [publishedSlug, setPublishedSlug] = useState(landingPage.slug);
+  const [publishing, setPublishing] = useState(false);
+  const [regeneratingAll, setRegeneratingAll] = useState(false);
+  const [regeneratingSection, setRegeneratingSection] =
+    useState<CopySectionId | null>(null);
+  const [regenMessage, setRegenMessage] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveAbortRef = useRef<AbortController | null>(null);
+  const savedFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isRegeneratingRef = useRef(false);
+  const [saveStatus, setSaveStatus] = useState<PreviewSaveStatus>("idle");
+  const [saveErrorDetail, setSaveErrorDetail] = useState<string | null>(null);
   const { toast } = useToast();
 
   const projectName = resolved.projectName;
-  const templateMeta = PAGE_TEMPLATES.find((t) => t.id === templateId);
-  const isLive = experimentStatus === "LANDING_LIVE";
+  const isLive = landingPage.live_at != null;
+  const canEdit = canEditLandingPage(experimentStatus);
+  const editBlockedReason = canEdit
+    ? null
+    : landingPageEditBlockedReason(experimentStatus);
+  const publicUrl = publishedSlug
+    ? buildPublicLandingPageUrl(publishedSlug)
+    : null;
+  const publicHost = publishedSlug
+    ? formatPublicLandingHost(publishedSlug)
+    : null;
+  const isRegenerating = regeneratingAll || regeneratingSection !== null;
 
   useEffect(() => {
-    const next = resolveLandingPageEditorData(landingPage);
+    isRegeneratingRef.current = isRegenerating;
+  }, [isRegenerating]);
+
+  useEffect(() => {
+    if (isRegenerating) return;
+    const next = resolveLandingPageEditorData(landingPage, displayName);
     setCopy(next.copy);
     setPage(next.page);
     setTemplateId(next.templateId);
     setPublishedSlug(landingPage.slug);
-  }, [landingPage]);
+  }, [landingPage, displayName, isRegenerating]);
 
   const persistPatch = useCallback(
     (nextCopy: CopyJson, nextPage: PageJson, nextTemplateId: TemplateId) => {
+      if (isRegeneratingRef.current) return;
+      if (!canEditLandingPage(experimentStatus)) {
+        setSaveErrorDetail(landingPageEditBlockedReason(experimentStatus));
+        setSaveStatus("error");
+        return;
+      }
+      if (savedFadeTimerRef.current) {
+        clearTimeout(savedFadeTimerRef.current);
+        savedFadeTimerRef.current = null;
+      }
+      setSaveErrorDetail(null);
+      setSaveStatus("pending");
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
       saveTimerRef.current = setTimeout(() => {
-        void patchLandingPage(experimentId, {
-          copy_json: nextCopy,
-          page_json: nextPage,
-          template_id: nextTemplateId,
-        })
+        if (isRegeneratingRef.current) return;
+        if (!canEditLandingPage(experimentStatus)) {
+          setSaveErrorDetail(landingPageEditBlockedReason(experimentStatus));
+          setSaveStatus("error");
+          return;
+        }
+        setSaveStatus("saving");
+        saveAbortRef.current?.abort();
+        const controller = new AbortController();
+        saveAbortRef.current = controller;
+        void patchLandingPage(
+          experimentId,
+          {
+            copy_json: nextCopy,
+            page_json: nextPage,
+            template_id: nextTemplateId,
+          },
+          { signal: controller.signal },
+        )
           .then(() => {
-            toast("Changes saved", "success");
+            if (!controller.signal.aborted) {
+              setSaveErrorDetail(null);
+              setSaveStatus("saved");
+              if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
+              savedFadeTimerRef.current = setTimeout(() => {
+                setSaveStatus("idle");
+              }, 2500);
+            }
           })
-          .catch(() => {
-            toast("Could not save changes", "error");
+          .catch((err: unknown) => {
+            if (controller.signal.aborted) return;
+            if (err instanceof ApiError) {
+              const detail =
+                typeof err.body === "object" &&
+                err.body !== null &&
+                "detail" in err.body &&
+                typeof (err.body as { detail: unknown }).detail === "string"
+                  ? (err.body as { detail: string }).detail
+                  : null;
+              if (detail) {
+                setSaveErrorDetail(detail);
+              } else if (err.status === 0) {
+                setSaveErrorDetail(
+                  "Could not reach the server. Check your connection.",
+                );
+              } else {
+                setSaveErrorDetail("Could not save changes. Please try again.");
+              }
+            } else {
+              setSaveErrorDetail("Could not save changes. Please try again.");
+            }
+            setSaveStatus("error");
           });
       }, 500);
     },
-    [experimentId, toast],
+    [experimentId, experimentStatus],
   );
 
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (savedFadeTimerRef.current) clearTimeout(savedFadeTimerRef.current);
     };
   }, []);
 
   const handleTemplateSelect = (id: TemplateId) => {
     setTemplateId(id);
-    const nextPage: PageJson = syncPageJsonSections(
-      {
-        ...page,
-        template_id: id,
-        template_name: PAGE_TEMPLATES.find((t) => t.id === id)?.name,
-        color_mode: defaultColorModeForTemplate(id),
-        color_palette: defaultPaletteForTemplate(id),
-      },
-      copy,
-    );
+    const nextPage = buildPageForTemplatePreview(page, copy, id);
     setPage(nextPage);
     persistPatch(copy, nextPage, id);
   };
@@ -114,57 +231,430 @@ export function EditorLayout({
     persistPatch(nextCopy, nextPage, templateId);
   };
 
+  const handlePageDesignChange = (nextPage: PageJson) => {
+    const synced = syncPageJsonSections(
+      { ...nextPage, template_id: templateId },
+      copy,
+    );
+    setPage(synced);
+    persistPatch(copy, synced, templateId);
+  };
+
+  const handleSectionImageChange = (slotId: string, url: string | null) => {
+    const prev = page.section_images ?? {};
+    const nextImages = { ...prev };
+    if (url) {
+      nextImages[slotId] = url;
+    } else {
+      delete nextImages[slotId];
+    }
+    handlePageDesignChange({
+      ...page,
+      section_images: nextImages,
+    });
+  };
+
+  const handlePublish = async () => {
+    setPublishing(true);
+    try {
+      const res = await publishProject(experimentId, { cta_mode: "waitlist" });
+      setPublishedSlug(res.slug);
+      toast("Landing page is live", "success");
+      onPublished?.();
+    } catch {
+      toast("Publish failed — try again", "error");
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  const cancelPendingSave = () => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    saveAbortRef.current?.abort();
+    saveAbortRef.current = null;
+  };
+
+  const REGEN_POLL_INTERVAL_MS = 1000;
+  const REGEN_POLL_MAX_ATTEMPTS = 360;
+  const REGEN_IDLE_MAX_ATTEMPTS = 360;
+
+  const wait = (ms: number) =>
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, ms);
+    });
+
+  const wasGeneratedAfter = (
+    generatedAt: string | undefined,
+    pollStartedAt: number,
+  ) => {
+    if (!generatedAt) return false;
+    const parsed = Date.parse(generatedAt);
+    if (Number.isNaN(parsed)) return false;
+    return parsed >= pollStartedAt - 2_000;
+  };
+
+  const waitForLandingGenerationIdle = async () => {
+    for (let attempt = 0; attempt < REGEN_IDLE_MAX_ATTEMPTS; attempt += 1) {
+      const experiment = await getExperiment(experimentId);
+      if (experiment.status !== "LANDING_GENERATING") {
+        return;
+      }
+      await wait(REGEN_POLL_INTERVAL_MS);
+    }
+    throw new Error(
+      "Landing page generation is still running. Wait a moment and try again.",
+    );
+  };
+
+  const fetchRegeneratedLandingPage = async (options: {
+    expectedHint: string;
+    pollStartedAt: number;
+    section?: CopySectionId;
+    previousSectionJson?: string;
+    previousGenerationId?: string | null;
+  }) => {
+    const {
+      expectedHint,
+      pollStartedAt,
+      section,
+      previousSectionJson,
+      previousGenerationId,
+    } = options;
+
+    for (let attempt = 0; attempt < REGEN_POLL_MAX_ATTEMPTS; attempt += 1) {
+      const experiment = await getExperiment(experimentId);
+      let lp: LandingPage | null = null;
+
+      try {
+        lp = await getLandingPage(experimentId);
+      } catch (err) {
+        if (!(err instanceof ApiError && err.status === 404)) {
+          throw err;
+        }
+      }
+
+      if (lp) {
+        const nextHint = lp.page_json?.meta?.regeneration_hint;
+        const nextGenerationId = lp.page_json?.meta?.generation_id;
+        const generatedAt = lp.page_json?.meta?.generated_at;
+        const generatedAfterPoll = wasGeneratedAfter(generatedAt, pollStartedAt);
+
+        if (nextHint === expectedHint) {
+          return lp;
+        }
+
+        if (section && previousSectionJson != null && generatedAfterPoll) {
+          const nextSection = resolveLandingPageEditorData(lp, displayName).copy[
+            section
+          ];
+          if (JSON.stringify(nextSection ?? null) !== previousSectionJson) {
+            return lp;
+          }
+        }
+
+        if (
+          generatedAfterPoll &&
+          previousGenerationId &&
+          nextGenerationId &&
+          nextGenerationId !== previousGenerationId
+        ) {
+          return lp;
+        }
+      }
+
+      if (
+        experiment.status !== "LANDING_GENERATING" &&
+        experiment.status !== "LANDING_DRAFT" &&
+        experiment.status !== "LANDING_LIVE" &&
+        attempt >= 5
+      ) {
+        throw new Error("Landing page regeneration failed. Please try again.");
+      }
+
+      await wait(REGEN_POLL_INTERVAL_MS);
+    }
+
+    throw new Error("Regeneration timed out. Please try again.");
+  };
+
+  const handleRegenerateAll = async () => {
+    if (regeneratingAll || regeneratingSection) return;
+    cancelPendingSave();
+    setRegeneratingAll(true);
+    setRegenMessage("Regenerating all sections. Please wait…");
+    try {
+      const hint = `all:${Date.now()}:${crypto.randomUUID()}`;
+      const previousGenerationId = page?.meta?.generation_id ?? null;
+      await waitForLandingGenerationIdle();
+      const pollStartedAt = Date.now();
+      await generateLandingPage(experimentId, {
+        template_id: templateId,
+        page_goal: "waitlist",
+        regeneration_hint: hint,
+      });
+      const regeneratedLandingPage = await fetchRegeneratedLandingPage({
+        expectedHint: hint,
+        pollStartedAt,
+        previousGenerationId,
+      });
+      const resolved = resolveLandingPageEditorData(
+        regeneratedLandingPage,
+        displayName,
+      );
+      setCopy(resolved.copy);
+      setPage(resolved.page);
+      setTemplateId(resolved.templateId);
+      toast("All sections regenerated", "success");
+      onRegenerateAll?.();
+    } catch (err) {
+      const detail =
+        err instanceof ApiError &&
+        err.body &&
+        typeof err.body === "object" &&
+        "detail" in err.body
+          ? String((err.body as { detail?: unknown }).detail ?? "")
+          : err instanceof Error
+            ? err.message
+            : "";
+      toast(
+        detail ? `Failed to regenerate all sections: ${detail}` : "Failed to regenerate all sections",
+        "error",
+      );
+    } finally {
+      setRegeneratingAll(false);
+      setRegenMessage(null);
+    }
+  };
+
+  const handleRegenerateSection = async (section: CopySectionId) => {
+    if (regeneratingSection || regeneratingAll) return;
+
+    cancelPendingSave();
+    setRegeneratingSection(section);
+    const label = `${section.charAt(0).toUpperCase()}${section.slice(1)}`;
+    setRegenMessage(`Regenerating ${label}. Please wait…`);
+    try {
+      const regenerateOnce = async (hint: string) => {
+        const previousSectionJson = JSON.stringify(copy[section] ?? null);
+        const previousGenerationId = page?.meta?.generation_id ?? null;
+        await waitForLandingGenerationIdle();
+        const pollStartedAt = Date.now();
+        await generateLandingPage(experimentId, {
+          template_id: templateId,
+          page_goal: "waitlist",
+          regeneration_hint: hint,
+        });
+        return await fetchRegeneratedLandingPage({
+          expectedHint: hint,
+          pollStartedAt,
+          section,
+          previousSectionJson,
+          previousGenerationId,
+        });
+      };
+
+      let regeneratedLandingPage = await regenerateOnce(
+        `${section}:${Date.now()}:${crypto.randomUUID()}`,
+      );
+      let resolvedRegen = resolveLandingPageEditorData(
+        regeneratedLandingPage,
+        displayName,
+      );
+      let regeneratedSection = resolvedRegen.copy[section];
+      const currentSection = copy[section];
+
+      // If output is identical (cache/provider determinism), force one more variant attempt.
+      if (JSON.stringify(regeneratedSection) === JSON.stringify(currentSection)) {
+        regeneratedLandingPage = await regenerateOnce(
+          `${section}:${Date.now()}:${crypto.randomUUID()}:retry`,
+        );
+        resolvedRegen = resolveLandingPageEditorData(
+          regeneratedLandingPage,
+          displayName,
+        );
+        regeneratedSection = resolvedRegen.copy[section];
+      }
+
+      if (regeneratedSection == null) {
+        throw new Error(`Missing regenerated section: ${section}`);
+      }
+
+      const nextCopy: CopyJson = {
+        ...copy,
+        [section]: resolvedRegen.copy[section],
+      };
+      const nextPage = syncPageJsonSections(
+        {
+          ...page,
+          ...resolvedRegen.page,
+          template_id: templateId,
+          meta: resolvedRegen.page.meta ?? page.meta,
+        },
+        nextCopy,
+      );
+      setCopy(nextCopy);
+      setPage(nextPage);
+      persistPatch(nextCopy, nextPage, templateId);
+
+      toast(
+        `${section.charAt(0).toUpperCase()}${section.slice(1)} regenerated`,
+        "success",
+      );
+    } catch (err) {
+      const detail =
+        err instanceof ApiError &&
+        err.body &&
+        typeof err.body === "object" &&
+        "detail" in err.body
+          ? String((err.body as { detail?: unknown }).detail ?? "")
+          : err instanceof Error
+            ? err.message
+            : "";
+      toast(
+        detail ? `Could not regenerate ${section}: ${detail}` : `Could not regenerate ${section}`,
+        "error",
+      );
+    } finally {
+      setRegeneratingSection(null);
+      setRegenMessage(null);
+    }
+  };
+
+  const copyPublicUrl = () => {
+    if (!publicUrl) return;
+    void navigator.clipboard.writeText(publicUrl).then(() => {
+      toast("Link copied", "success");
+    });
+  };
+
+  const editorTabs: { id: EditorTab; label: string }[] = [
+    { id: "content", label: "Copy" },
+    { id: "design", label: "Design" },
+    { id: "publish", label: isLive ? "Share" : "Publish" },
+  ];
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[var(--fv-border)] bg-white/[0.02] px-4 py-3">
-        <div className="min-w-0">
-          <p className="truncate text-[15px] font-semibold text-[var(--fv-text)]">
-            {experimentName}
-          </p>
-          <p className="mt-0.5 text-[13px] text-[var(--fv-text-muted)]">
-            {templateMeta?.name ?? templateId}
-          </p>
+    <div
+      className={`lp-editor-root flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)] ${
+        embedded ? "h-full" : "h-[calc(100dvh-4.5rem)]"
+      }`}
+    >
+      {/* Toolbar */}
+      <div className="lp-editor-toolbar shrink-0">
+        {!embedded && (
+          <>
+            <Link
+              href={`/experiment/${experimentId}`}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] font-medium text-[var(--fv-text-muted)] no-underline transition-colors hover:bg-white/[0.04] hover:text-[var(--fv-text)]"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">Back</span>
+            </Link>
+
+            <div className="min-w-0 flex-1">
+              <EditableProjectName
+                experimentId={experimentId}
+                name={name}
+                rawIdea={rawIdea}
+                variant="inline"
+                onRenamed={onExperimentRenamed}
+              />
+            </div>
+
+            <StatusBadge status={experimentStatus} />
+          </>
+        )}
+
+        <div
+          className="lp-editor-tabs lp-editor-tabs--toolbar"
+          role="tablist"
+          aria-label="Editor sections"
+        >
+          {editorTabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={editorTab === tab.id}
+              onClick={() => setEditorTab(tab.id)}
+              className={`lp-editor-tab ${
+                editorTab === tab.id ? "lp-editor-tab-active" : ""
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
-        <StatusBadge status={experimentStatus} />
+
+        <div className="lp-editor-toolbar-actions">
+          {publicHost && (
+            <div className="lp-url-pill">
+              <span>{publicHost}</span>
+              <button
+                type="button"
+                onClick={copyPublicUrl}
+                className="shrink-0 rounded p-0.5 text-[var(--fv-text-muted)] hover:text-[var(--fv-accent)]"
+                aria-label="Copy public URL"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          )}
+
+          {isLive && publicUrl ? (
+            <a
+              href={publicUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="fv-btn-ghost inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-[13px] no-underline"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">View live</span>
+            </a>
+          ) : (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={regeneratingAll || publishing}
+                onClick={() => void handleRegenerateAll()}
+                className="fv-btn-ghost inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-[13px] disabled:opacity-60"
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${regeneratingAll ? "animate-spin" : ""}`}
+                />
+                <span className="hidden sm:inline">
+                  {regeneratingAll ? "Regenerating…" : "Regenerate all"}
+                </span>
+              </button>
+              <button
+                type="button"
+                disabled={publishing || regeneratingAll}
+                onClick={() => void handlePublish()}
+                className="fv-btn-primary inline-flex shrink-0 items-center gap-1.5 px-4 py-2 text-[13px] disabled:opacity-60"
+              >
+                <Rocket className="h-3.5 w-3.5" />
+                {publishing ? "Publishing…" : "Publish"}
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {isLive && publishedSlug && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[color-mix(in_srgb,var(--fv-success)_30%,transparent)] bg-[color-mix(in_srgb,var(--fv-success)_10%,transparent)] px-4 py-3">
-          <div className="min-w-0">
-            <span className="badge-proceed">Published</span>
-            <p className="mt-2 truncate text-[13px] text-[var(--fv-text-soft)]">
-              Your page is live at{" "}
-              <span className="font-medium text-[var(--fv-success)]">
-                fivvle.io/e/{publishedSlug}
-              </span>
-            </p>
-          </div>
-          <Link
-            href={`/e/${publishedSlug}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="fv-btn-ghost inline-flex shrink-0 items-center gap-1.5 px-3 py-2 text-sm no-underline transition-all duration-200"
-          >
-            View live
-            <ExternalLink className="h-4 w-4" />
-          </Link>
-        </div>
-      )}
+      {!canEdit && editBlockedReason ? (
+        <p className="shrink-0 border-b border-[var(--fv-border)] bg-[var(--fv-surface-2)] px-4 py-2.5 text-sm leading-relaxed text-[var(--fv-text-muted)]">
+          {editBlockedReason}
+        </p>
+      ) : null}
 
-      {isLive && publishedSlug && (
-        <div className="mb-4 rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)] p-4">
-          <ShareLinksPanel
-            slug={publishedSlug}
-            experimentName={experimentName}
-          />
-        </div>
-      )}
-
-      <div className="mb-4 flex gap-2 transition-opacity duration-200 lg:hidden">
+      {/* Mobile panel toggle */}
+      <div className="flex shrink-0 gap-2 border-b border-[var(--fv-border)] p-2 lg:hidden">
         <button
           type="button"
           onClick={() => setMobilePanel("edit")}
-          className={`fv-tab-pill inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 transition-all duration-200 ${
+          className={`fv-tab-pill inline-flex min-h-[40px] flex-1 items-center justify-center gap-1.5 text-[13px] ${
             mobilePanel === "edit" ? "fv-tab-pill-active" : ""
           }`}
         >
@@ -174,7 +664,7 @@ export function EditorLayout({
         <button
           type="button"
           onClick={() => setMobilePanel("preview")}
-          className={`fv-tab-pill inline-flex min-h-[44px] flex-1 items-center justify-center gap-1.5 transition-all duration-200 ${
+          className={`fv-tab-pill inline-flex min-h-[40px] flex-1 items-center justify-center gap-1.5 text-[13px] ${
             mobilePanel === "preview" ? "fv-tab-pill-active" : ""
           }`}
         >
@@ -183,110 +673,234 @@ export function EditorLayout({
         </button>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-6 lg:grid-cols-[minmax(300px,380px)_1fr]">
+      {/* Main split */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(360px,440px)_1fr] xl:grid-cols-[minmax(400px,480px)_1fr]">
+        {/* Left panel */}
         <div
-          className={`lp-editor-panel flex min-h-0 flex-col overflow-hidden rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)] ${
-            mobilePanel === "edit"
-              ? "flex max-h-[calc(100dvh-11rem)] lg:max-h-none"
-              : "hidden lg:flex"
+          className={`flex min-h-0 flex-col border-[var(--fv-border)] lg:border-r ${
+            mobilePanel === "edit" ? "flex" : "hidden lg:flex"
           }`}
         >
-          <div className="shrink-0 border-b border-[var(--fv-border)] p-4 pb-4 sm:p-6">
-            <h2 className="text-lg font-semibold text-[var(--fv-text)]">
-              Edit Landing Page
-            </h2>
-            <p className="mt-0.5 text-[13px] text-[var(--fv-text-muted)]">
-              {templateMeta?.name ?? templateId}
-            </p>
+          <div className="lp-editor-scroll p-4">
+            {editorTab === "content" && (
+              <CopyFieldsEditor
+                copy={copy}
+                onChange={handleCopyChange}
+                onRegenerateSection={handleRegenerateSection}
+                regeneratingSection={regeneratingSection}
+                disabled={isRegenerating}
+              />
+            )}
 
-            <div className="mt-4">
-              <p className="mb-2 text-[12px] font-medium text-[var(--fv-text-soft)]">
-                Template
-              </p>
-              <div className="flex flex-wrap gap-3">
-                {PAGE_TEMPLATES.map((tpl) => {
-                  const selected = templateId === tpl.id;
-                  return (
-                    <button
-                      key={tpl.id}
-                      type="button"
-                      onClick={() => handleTemplateSelect(tpl.id)}
-                      className={`flex flex-col items-center gap-1.5 rounded-lg p-1 transition-all duration-200 ${
-                        selected
-                          ? "ring-2 ring-[var(--fv-accent)]"
-                          : "hover:opacity-80"
-                      }`}
-                      aria-pressed={selected}
-                      aria-label={`Select ${tpl.name} template`}
-                    >
-                      <div
-                        className="h-12 w-16 rounded-lg"
-                        style={{
-                          background: `linear-gradient(135deg, ${tpl.preview.accent}, ${tpl.preview.bg})`,
-                        }}
-                      />
-                      <span className="max-w-[4.5rem] truncate text-center text-[11px] text-[var(--fv-text-muted)]">
-                        {tpl.name}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto p-4 pt-4 sm:p-6">
-            <CopyFieldsEditor copy={copy} onChange={handleCopyChange} />
-          </div>
-
-          <div className="shrink-0 border-t border-[var(--fv-border)] bg-[var(--fv-surface)] p-4 sm:p-6">
-            {isLive ? (
-              <div className="space-y-2 text-center">
-                <span className="badge-proceed">Published</span>
-                {publishedSlug && (
-                  <Link
-                    href={`/e/${publishedSlug}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="fv-btn-ghost flex w-full items-center justify-center gap-2 py-2.5 text-sm no-underline transition-all duration-200"
+            {editorTab === "design" && (
+              <div className="lp-collapse-stack">
+                <CollapsibleSection
+                  title="Template"
+                  summary={
+                    PAGE_TEMPLATES.find((t) => t.id === templateId)?.name ??
+                    "Choose layout"
+                  }
+                  defaultOpen
+                >
+                  <p className="mb-3 text-[12px] text-[var(--fv-text-muted)]">
+                    Pick a template — your copy stays the same.
+                  </p>
+                  <div
+                    className="grid grid-cols-2 gap-2"
+                    role="radiogroup"
+                    aria-label="Landing page template"
                   >
-                    View at /e/{publishedSlug}
-                    <ExternalLink className="h-4 w-4" />
-                  </Link>
+                    {PAGE_TEMPLATES.map((tpl) => {
+                      const selected = templateId === tpl.id;
+                      return (
+                        <div
+                          key={tpl.id}
+                          role="radio"
+                          tabIndex={0}
+                          aria-checked={selected}
+                          onClick={() => handleTemplateSelect(tpl.id)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter" || event.key === " ") {
+                              event.preventDefault();
+                              handleTemplateSelect(tpl.id);
+                            }
+                          }}
+                          className={`lp-template-chip ${
+                            selected ? "lp-template-chip-selected" : ""
+                          }`}
+                        >
+                          <TemplatePreviewThumb
+                            templateId={tpl.id}
+                            copy={copy}
+                            page={page}
+                            projectName={projectName}
+                          />
+                          <span className="truncate text-[11px] font-semibold text-[var(--fv-text-soft)]">
+                            {tpl.name}
+                          </span>
+                          {selected && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[var(--fv-accent)]">
+                              <Check className="h-3 w-3" />
+                              Active
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CollapsibleSection>
+
+                <CollapsibleSection
+                  title="Color theme"
+                  summary={`${inferColorModeFromPalette(resolveColorPalette(page, templateId))} · ${
+                    resolveColorPalette(page, templateId).preset
+                  }`}
+                >
+                  <ColorThemePicker
+                    templateId={templateId}
+                    page={page}
+                    copy={copy}
+                    projectName={projectName}
+                    disabled={isRegenerating}
+                    showExport={false}
+                    onChange={(_, nextPage) => handlePageDesignChange(nextPage)}
+                    onPersist={() => {}}
+                  />
+                </CollapsibleSection>
+
+                <CollapsibleSection
+                  title="Brand icon"
+                  summary={`${resolveBranding(page, projectName).icon_mode} · ${resolveBranding(page, projectName).logo_scale}%`}
+                >
+                  <BrandIconPicker
+                    projectId={experimentId}
+                    templateId={templateId}
+                    projectName={projectName}
+                    page={page}
+                    disabled={isRegenerating}
+                    onChange={(_, nextPage) => handlePageDesignChange(nextPage)}
+                    onPersist={() => {}}
+                  />
+                </CollapsibleSection>
+
+                <CollapsibleSection
+                  title="Surface & atmosphere"
+                  summary={formatSurfaceSummary(resolveSurface(page))}
+                >
+                  <SurfaceStylePicker
+                    page={page}
+                    disabled={isRegenerating}
+                    onChange={handlePageDesignChange}
+                  />
+                </CollapsibleSection>
+              </div>
+            )}
+
+            {editorTab === "publish" && (
+              <div className="lp-collapse-stack">
+                {publishedSlug && (
+                  <CollapsibleSection
+                    title="Startup URL"
+                    summary={publicHost ?? undefined}
+                    defaultOpen
+                  >
+                    <LandingPageSlugEditor
+                      experimentId={experimentId}
+                      currentSlug={publishedSlug}
+                      projectName={projectName}
+                      isLive={isLive}
+                      embedded
+                      onSlugSaved={(slug) => {
+                        setPublishedSlug(slug);
+                        toast("URL updated", "success");
+                      }}
+                    />
+                    {isLive && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={copyPublicUrl}
+                          className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px]"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                          Copy link
+                        </button>
+                        {publicUrl && (
+                          <a
+                            href={publicUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] no-underline"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5" />
+                            Open
+                          </a>
+                        )}
+                      </div>
+                    )}
+                  </CollapsibleSection>
+                )}
+
+                {isLive && publishedSlug && (
+                  <CollapsibleSection
+                    title="Share with tracking"
+                    summary={`${SHARE_CHANNELS.length} channel links`}
+                  >
+                    <ShareLinksPanel
+                      slug={publishedSlug}
+                      experimentName={displayName}
+                      showDescription={false}
+                    />
+                  </CollapsibleSection>
                 )}
               </div>
-            ) : (
-              <PublishPanel
-                projectId={experimentId}
-                projectName={projectName}
-                outputVersion={landingPage.output_version ?? 1}
-                fullWidth
-                disabled={false}
-                onPublished={(res) => {
-                  setPublishedSlug(res.slug);
-                  onPublished?.();
-                }}
-              />
             )}
           </div>
         </div>
 
+        {/* Preview */}
         <div
-          className={`min-h-0 w-full min-w-0 max-w-full overflow-x-hidden rounded-xl border border-[var(--fv-border)] bg-[var(--fv-bg)] transition-opacity duration-200 lg:min-h-[calc(100vh-14rem)] ${
-            mobilePanel === "preview"
-              ? "block min-h-[calc(100dvh-11rem)]"
-              : "hidden lg:block"
+          className={`min-h-0 overflow-hidden bg-[var(--fv-bg)] ${
+            mobilePanel === "preview" ? "flex flex-col" : "hidden lg:flex lg:flex-col"
           }`}
         >
-          <LandingPagePreview
-            copy={copy}
-            page={{ ...page, template_id: templateId }}
-            projectName={projectName}
-            templateId={templateId}
-            mobileFluid={mobilePanel === "preview"}
-          />
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <LandingPagePreview
+              copy={copy}
+              page={{ ...page, template_id: templateId }}
+              projectName={projectName}
+              templateId={templateId}
+              mobileFluid={mobilePanel === "preview"}
+              forEditor
+              isPublished={isLive}
+              publicationSlug={isLive ? publishedSlug : undefined}
+              ctaConfig={isLive ? { mode: "waitlist" } : undefined}
+              experimentId={experimentId}
+              onSectionImageChange={handleSectionImageChange}
+              onCopyChange={handleCopyChange}
+              saveStatus={saveStatus}
+              saveErrorDetail={saveErrorDetail}
+            />
+          </div>
         </div>
       </div>
+      {isRegenerating && (
+        <div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 backdrop-blur-[1px]">
+          <div className="w-[min(92vw,420px)] rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)] p-5 shadow-2xl">
+            <div className="flex items-start gap-3">
+              <RefreshCw className="mt-0.5 h-5 w-5 animate-spin text-[var(--fv-accent)]" />
+              <div>
+                <p className="text-sm font-semibold text-[var(--fv-text)]">
+                  Regenerating content
+                </p>
+                <p className="mt-1 text-sm text-[var(--fv-text-muted)]">
+                  {regenMessage ?? "Please wait while we regenerate your landing page copy."}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

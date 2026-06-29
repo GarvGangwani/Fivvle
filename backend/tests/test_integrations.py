@@ -104,7 +104,8 @@ async def test_tavily_search_success_logs_row(db_session):
         "results": [
             {"title": "Result 1", "url": "https://example.com/1", "content": "snippet 1", "score": 0.9},
             {"title": "Result 2", "url": "https://example.com/2", "content": "snippet 2", "score": 0.8},
-        ]
+        ],
+        "usage": {"credits": 1},
     }
 
     fake_client = MagicMock()
@@ -133,6 +134,7 @@ async def test_tavily_search_success_logs_row(db_session):
     assert rows[0].operation == "search"
     assert rows[0].success is True
     assert rows[0].cost_usd == Decimal("0.008")  # basic = 1 credit
+    assert rows[0].api_credits == 1
     for row in rows:
         await db_session.delete(row)
     await db_session.commit()
@@ -145,7 +147,10 @@ async def test_tavily_search_advanced_cost(db_session):
     tag = uuid4().hex[:8]
     isolation_query = f"isolation-tag-test_tavily_search_advanced_cost-{tag}"
 
-    fake_response = {"results": [{"title": "R", "url": "https://x.com", "content": "c"}]}
+    fake_response = {
+        "results": [{"title": "R", "url": "https://x.com", "content": "c"}],
+        "usage": {"credits": 2},
+    }
     fake_client = MagicMock()
     fake_client.search = MagicMock(return_value=fake_response)
 
@@ -159,6 +164,7 @@ async def test_tavily_search_advanced_cost(db_session):
     rows = (await db_session.execute(stmt)).scalars().all()
     assert len(rows) == 1
     assert rows[0].cost_usd == Decimal("0.016")
+    assert rows[0].api_credits == 2
     for row in rows:
         await db_session.delete(row)
     await db_session.commit()

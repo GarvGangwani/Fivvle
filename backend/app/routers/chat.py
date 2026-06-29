@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.dependencies import get_current_user
@@ -20,12 +20,18 @@ from app.dispatchers.protocol import ResearchDispatcher
 from app.logging_config import get_logger
 from app.reliability.rate_limit import AUTH_RATE_LIMIT, limiter, user_key
 from app.schemas.chat import (
+    ChatAttachmentsUploadResponse,
+    ChatAttachmentUploadItem,
     ChatEditTurnRequest,
     ChatEditTurnResponse,
     ChatMessageItem,
     ChatTurnRequest,
     ChatTurnResponse,
     ExperimentChatMessagesResponse,
+)
+from app.services.chat_attachment_service import (
+    ChatAttachmentAccessError,
+    create_chat_attachment,
 )
 from app.services.chat_service import (
     ChatAuthorizationError,
@@ -35,6 +41,10 @@ from app.services.chat_service import (
     list_experiment_chat_messages,
 )
 from app.services.experiment_service import InvalidExperimentState
+from app.utils.chat_attachment import (
+    MAX_ATTACHMENTS_PER_TURN,
+    ChatAttachmentValidationError,
+)
 
 _logger = get_logger(__name__)
 
@@ -68,12 +78,24 @@ async def chat_turn(
             body.experiment_id,
             body.idempotency_key,
             dispatcher,
+            body.name,
+            body.attachment_ids,
         )
         return ChatTurnResponse.from_result(result)
     except ChatAuthorizationError:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Forbidden",
+        ) from None
+    except ChatAttachmentValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from None
+    except ChatAttachmentAccessError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="One or more attachments are invalid or expired.",
         ) from None
     except InvalidExperimentState as exc:
         raise HTTPException(
@@ -134,6 +156,7 @@ async def chat_turn_edit(
             assistant_message=result.assistant_message,
             turn_kind=result.turn_kind,
             clarifying_dimension=result.clarifying_dimension,
+            clarifying_questions=list(result.clarifying_questions),
             pipeline_dispatched=result.pipeline_dispatched,
             dispatched_at=result.dispatched_at,
             experiment_status=result.experiment_status,
@@ -173,6 +196,77 @@ async def chat_turn_edit(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={"error": "Internal error", "request_id": request_id},
         ) from exc
+
+
+@router.post(
+    "/attachments",
+    response_model=ChatAttachmentsUploadResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def upload_chat_attachments(
+    request: Request,
+    response: Response,
+    files: Annotated[list[UploadFile], File(...)],
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ChatAttachmentsUploadResponse:
+    if get_settings().auto_fire_chat_enabled == "off":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    if not files:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one file is required.",
+        )
+    if len(files) > MAX_ATTACHMENTS_PER_TURN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"You can attach up to {MAX_ATTACHMENTS_PER_TURN} files per message.",
+        )
+
+    uploaded: list[ChatAttachmentUploadItem] = []
+    try:
+        for upload in files:
+            file_bytes = await upload.read()
+            filename = upload.filename or "attachment"
+            result = await create_chat_attachment(
+                db,
+                user=current_user,
+                filename=filename,
+                file_bytes=file_bytes,
+            )
+            uploaded.append(
+                ChatAttachmentUploadItem(
+                    id=result.id,
+                    filename=result.filename,
+                    content_kind=result.content_kind,
+                    excerpt=result.excerpt,
+                    char_count=result.char_count,
+                )
+            )
+        await db.commit()
+    except ChatAttachmentValidationError as exc:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        await db.rollback()
+        request_id: str = getattr(request.state, "request_id", "unknown")
+        _logger.error(
+            "chat attachment upload failed",
+            exc_info=exc,
+            error_type=type(exc).__name__,
+            user_id=str(current_user.id),
+            request_id=request_id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"error": "Internal error", "request_id": request_id},
+        ) from exc
+
+    return ChatAttachmentsUploadResponse(attachments=uploaded)
 
 
 @router.get(

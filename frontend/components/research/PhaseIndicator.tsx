@@ -19,6 +19,17 @@ export const RESEARCH_PHASE_LABELS: Record<
   RESEARCH_SYNTHESIZING: "Synthesizing validation report",
 };
 
+export const RESEARCH_PHASE_SHORT_LABELS: Record<
+  (typeof RESEARCH_PHASE_IDS)[number],
+  string
+> = {
+  RESEARCH_PLANNING: "Plan",
+  RESEARCH_SEARCHING: "Search",
+  RESEARCH_READING: "Read",
+  RESEARCH_REFLECTING: "Reflect",
+  RESEARCH_SYNTHESIZING: "Synthesize",
+};
+
 type PhaseState = "completed" | "active" | "pending";
 
 function resolvePhaseState(
@@ -26,6 +37,8 @@ function resolvePhaseState(
   currentPhase: string,
   phases: string[],
 ): PhaseState {
+  if (currentPhase === "RESEARCH_READY") return "completed";
+
   const phaseIdx = phases.indexOf(phaseId);
   if (phaseIdx === -1) return "pending";
 
@@ -39,10 +52,115 @@ function resolvePhaseState(
   return "pending";
 }
 
+function activePhaseIndex(currentPhase: string, phases: string[]): number {
+  if (currentPhase === "RESEARCH_READY") return phases.length;
+  if (currentPhase === "RESEARCHING") return -1;
+  const idx = phases.indexOf(currentPhase);
+  return idx === -1 ? -1 : idx;
+}
+
 interface PhaseIndicatorProps {
   currentPhase: string;
   phases: string[];
-  variant?: "default" | "inline";
+  variant?: "default" | "inline" | "horizontal";
+}
+
+function HorizontalPhaseBar({
+  currentPhase,
+  phases,
+}: {
+  currentPhase: string;
+  phases: string[];
+}) {
+  const activeIdx = activePhaseIndex(currentPhase, phases);
+  const progressPercent =
+    activeIdx < 0
+      ? 0
+      : activeIdx >= phases.length
+        ? 100
+        : ((activeIdx + 0.5) / phases.length) * 100;
+
+  const activePhaseId =
+    activeIdx >= 0 && activeIdx < phases.length ? phases[activeIdx] : null;
+  const activeLabel = activePhaseId
+    ? (RESEARCH_PHASE_LABELS[
+        activePhaseId as (typeof RESEARCH_PHASE_IDS)[number]
+      ] ?? activePhaseId)
+    : null;
+
+  return (
+    <div className="fv-phase-bar" role="group" aria-label="Research progress">
+      <div
+        className="fv-phase-bar-track"
+        role="progressbar"
+        aria-valuemin={0}
+        aria-valuemax={phases.length}
+        aria-valuenow={activeIdx < 0 ? 0 : Math.min(activeIdx + 1, phases.length)}
+        aria-valuetext={activeLabel ?? "Starting research"}
+      >
+        <div
+          className="fv-phase-bar-fill"
+          style={{ width: `${progressPercent}%` }}
+          aria-hidden
+        />
+        <ol className="fv-phase-bar-nodes">
+          {phases.map((phaseId, index) => {
+            const state = resolvePhaseState(phaseId, currentPhase, phases);
+            const shortLabel =
+              RESEARCH_PHASE_SHORT_LABELS[
+                phaseId as (typeof RESEARCH_PHASE_IDS)[number]
+              ] ?? `Step ${index + 1}`;
+
+            return (
+              <li
+                key={phaseId}
+                className="fv-phase-bar-node"
+                aria-current={state === "active" ? "step" : undefined}
+              >
+                <span
+                  className={`fv-phase-bar-dot fv-phase-bar-dot--${state}`}
+                  title={
+                    RESEARCH_PHASE_LABELS[
+                      phaseId as (typeof RESEARCH_PHASE_IDS)[number]
+                    ]
+                  }
+                >
+                  {state === "completed" ? (
+                    <Check className="h-3 w-3" strokeWidth={2.5} aria-hidden />
+                  ) : state === "active" ? (
+                    <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+                  ) : null}
+                </span>
+                <span
+                  className={`fv-phase-bar-node-label fv-phase-bar-node-label--${state}`}
+                >
+                  {shortLabel}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+
+      {activeLabel && activeIdx >= 0 && activeIdx < phases.length ? (
+        <p className="fv-phase-bar-caption">
+          <span className="font-medium text-[var(--fv-text)]">{activeLabel}</span>
+          <span className="text-[var(--fv-text-muted)]">
+            {" "}
+            · Step {activeIdx + 1} of {phases.length}
+          </span>
+        </p>
+      ) : activeIdx >= phases.length ? (
+        <p className="fv-phase-bar-caption font-medium text-[var(--fv-success)]">
+          All research phases complete
+        </p>
+      ) : (
+        <p className="fv-phase-bar-caption text-[var(--fv-text-muted)]">
+          Starting research pipeline…
+        </p>
+      )}
+    </div>
+  );
 }
 
 export function PhaseIndicator({
@@ -50,6 +168,10 @@ export function PhaseIndicator({
   phases,
   variant = "default",
 }: PhaseIndicatorProps) {
+  if (variant === "horizontal") {
+    return <HorizontalPhaseBar currentPhase={currentPhase} phases={phases} />;
+  }
+
   if (variant === "inline") {
     return (
       <div>

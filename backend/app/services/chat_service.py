@@ -36,11 +36,16 @@ from app.llm.prompts.chat_normal import (
     build_chat_normal_user_prompt,
 )
 from app.logging_config import get_logger
-from app.schemas.refinement import RefinementTurnDecision
+from app.schemas.refinement import ClarifyingQuestion, RefinementTurnDecision
+from app.services.chat_attachment_service import (
+    build_message_with_attachment_context,
+    resolve_chat_attachments,
+)
 from app.services.chat_discussion_context import build_experiment_discussion_context
-from app.services import dispatch_service, rollout
+from app.services import dispatch_service
 from app.services.error_translation import UserFacingError, translate_engineer_error
 from app.services.experiment_service import InvalidExperimentState
+from app.utils.experiment_naming import normalize_experiment_name
 
 _logger = get_logger(__name__)
 
@@ -87,6 +92,7 @@ class ChatEditTurnResult:
     assistant_message: str
     turn_kind: ChatTurnKind
     clarifying_dimension: str | None
+    clarifying_questions: tuple[ClarifyingQuestion, ...]
     pipeline_dispatched: bool
     dispatched_at: datetime | None
     experiment_status: ExperimentStatus | None
@@ -103,6 +109,7 @@ class ChatTurnResult:
     assistant_message: str
     turn_kind: ChatTurnKind
     clarifying_dimension: str | None
+    clarifying_questions: tuple[ClarifyingQuestion, ...]
     pipeline_dispatched: bool
     dispatched_at: datetime | None
     experiment_status: ExperimentStatus | None
@@ -119,6 +126,7 @@ class ChatTurnResult:
             "assistant_message": self.assistant_message,
             "turn_kind": self.turn_kind.value,
             "clarifying_dimension": self.clarifying_dimension,
+            "clarifying_questions": [q.model_dump() for q in self.clarifying_questions],
             "pipeline_dispatched": self.pipeline_dispatched,
             "dispatched_at": (
                 self.dispatched_at.isoformat() if self.dispatched_at is not None else None
@@ -164,6 +172,11 @@ class ChatTurnResult:
         if exp_raw is not None:
             experiment_id = UUID(str(exp_raw))
 
+        cq_raw = data.get("clarifying_questions") or []
+        clarifying_questions = tuple(
+            ClarifyingQuestion.model_validate(item) for item in cq_raw
+        )
+
         return cls(
             thread_id=UUID(str(data["thread_id"])),
             message_id=UUID(str(data["message_id"])),
@@ -171,12 +184,27 @@ class ChatTurnResult:
             assistant_message=str(data["assistant_message"]),
             turn_kind=ChatTurnKind(str(data["turn_kind"])),
             clarifying_dimension=data.get("clarifying_dimension"),
+            clarifying_questions=clarifying_questions,
             pipeline_dispatched=bool(data["pipeline_dispatched"]),
             dispatched_at=dispatched_at,
             experiment_status=experiment_status,
             research_error_detail=data.get("research_error_detail"),
             user_facing_error=user_facing_error,
         )
+
+
+def _questions_to_json(
+    questions: tuple[ClarifyingQuestion, ...] | list[ClarifyingQuestion],
+) -> list[dict[str, Any]] | None:
+    if not questions:
+        return None
+    return [q.model_dump() for q in questions]
+
+
+def _questions_tuple(
+    questions: list[ClarifyingQuestion],
+) -> tuple[ClarifyingQuestion, ...]:
+    return tuple(questions)
 
 
 def _sanitize_error_detail(phase: str, exc: BaseException) -> str:
@@ -442,6 +470,7 @@ async def _resolve_refinement_experiment(
     thread: ChatThread,
     message: str,
     experiment_id: UUID | None,
+    name: str | None = None,
 ) -> Experiment:
     if experiment_id is not None:
         result = await db.execute(
@@ -468,6 +497,7 @@ async def _resolve_refinement_experiment(
         user_id=user.id,
         thread_id=thread.id,
         raw_idea=message,
+        name=normalize_experiment_name(name),
         status=ExperimentStatus.REFINING,
         refinement_count=0,
     )
@@ -571,6 +601,41 @@ async def reply_discussion(
     return result.text
 
 
+def _build_user_display_content(
+    message: str,
+    filenames: list[str],
+) -> str:
+    display = message.strip()
+    if filenames:
+        names = ", ".join(filenames)
+        if display:
+            return f"{display}\n\n📎 {names}"
+        return f"📎 {names}"
+    return display
+
+
+async def _prepare_turn_messages(
+    db: AsyncSession,
+    *,
+    user: User,
+    message: str,
+    attachment_ids: list[UUID],
+) -> tuple[str, str]:
+    """Return (display_content for DB/UI, llm_message for model calls)."""
+    clean_message = _sanitize_user_message(message).strip()
+    attachments = await resolve_chat_attachments(
+        db,
+        user=user,
+        attachment_ids=attachment_ids,
+    )
+    filenames = [item.filename for item in attachments]
+    display = _build_user_display_content(clean_message, filenames)
+    llm_message = build_message_with_attachment_context(clean_message, attachments)
+    if not display:
+        raise ValueError("message or attachment_ids is required")
+    return display, llm_message
+
+
 async def handle_turn(
     db: AsyncSession,
     user: User,
@@ -580,23 +645,29 @@ async def handle_turn(
     experiment_id: UUID | None,
     idempotency_key: str | None,
     dispatcher: ResearchDispatcher,
+    name: str | None = None,
+    attachment_ids: list[UUID] | None = None,
 ) -> ChatTurnResult:
     """Top-level entry. Handles both DR and plain-chat paths."""
     message = _sanitize_user_message(message)
+    attachment_ids = attachment_ids or []
     if deep_research:
         return await _handle_deep_research_turn(
             db,
             user=user,
             message=message,
+            attachment_ids=attachment_ids,
             thread_id=thread_id,
             experiment_id=experiment_id,
             idempotency_key=idempotency_key,
             dispatcher=dispatcher,
+            name=name,
         )
     return await _handle_plain_chat_turn(
         db,
         user=user,
         message=message,
+        attachment_ids=attachment_ids,
         thread_id=thread_id,
         experiment_id=experiment_id,
     )
@@ -607,15 +678,23 @@ async def _handle_plain_chat_turn(
     *,
     user: User,
     message: str,
+    attachment_ids: list[UUID],
     thread_id: UUID | None,
     experiment_id: UUID | None,
     existing_user_message: ChatMessage | None = None,
 ) -> ChatTurnResult:
+    title_seed = message.strip() or ("Shared attachments" if attachment_ids else "")
+    display_content, llm_message = await _prepare_turn_messages(
+        db,
+        user=user,
+        message=message,
+        attachment_ids=attachment_ids,
+    )
     thread = await _resolve_thread(
         db,
         user,
         thread_id,
-        first_message_for_title=message if thread_id is None else None,
+        first_message_for_title=title_seed if thread_id is None else None,
     )
 
     experiment = await _resolve_experiment_for_plain_chat(
@@ -625,7 +704,8 @@ async def _handle_plain_chat_turn(
         assert experiment is not None
         return await _handle_discussion_turn(
             db,
-            message=message,
+            display_content=display_content,
+            llm_message=llm_message,
             thread=thread,
             experiment=experiment,
             existing_user_message=existing_user_message,
@@ -641,7 +721,7 @@ async def _handle_plain_chat_turn(
         user_msg = ChatMessage(
             thread_id=thread.id,
             role=ChatRole.USER,
-            content=message,
+            content=display_content,
             experiment_id=experiment.id if experiment is not None else None,
             turn_kind=None,
         )
@@ -651,7 +731,7 @@ async def _handle_plain_chat_turn(
     assistant_text = await reply_plain(
         db,
         chat_history,
-        message,
+        llm_message,
         experiment_id=experiment.id if experiment is not None else None,
     )
 
@@ -672,6 +752,7 @@ async def _handle_plain_chat_turn(
         assistant_message=assistant_text,
         turn_kind=ChatTurnKind.NORMAL_CHAT,
         clarifying_dimension=None,
+        clarifying_questions=(),
         pipeline_dispatched=False,
         dispatched_at=None,
         experiment_status=experiment.status if experiment is not None else None,
@@ -685,7 +766,8 @@ async def _handle_plain_chat_turn(
 async def _handle_discussion_turn(
     db: AsyncSession,
     *,
-    message: str,
+    display_content: str,
+    llm_message: str,
     thread: ChatThread,
     experiment: Experiment,
     existing_user_message: ChatMessage | None = None,
@@ -700,14 +782,14 @@ async def _handle_discussion_turn(
         user_msg = ChatMessage(
             thread_id=thread.id,
             role=ChatRole.USER,
-            content=message,
+            content=display_content,
             experiment_id=experiment.id,
             turn_kind=None,
         )
         db.add(user_msg)
         await db.flush()
 
-    assistant_text = await reply_discussion(db, experiment, chat_history, message)
+    assistant_text = await reply_discussion(db, experiment, chat_history, llm_message)
 
     assistant_msg = ChatMessage(
         thread_id=thread.id,
@@ -726,6 +808,7 @@ async def _handle_discussion_turn(
         assistant_message=assistant_text,
         turn_kind=ChatTurnKind.DISCUSS,
         clarifying_dimension=None,
+        clarifying_questions=(),
         pipeline_dispatched=False,
         dispatched_at=None,
         experiment_status=experiment.status,
@@ -739,20 +822,23 @@ async def _handle_deep_research_turn(
     *,
     user: User,
     message: str,
+    attachment_ids: list[UUID],
     thread_id: UUID | None,
     experiment_id: UUID | None,
     idempotency_key: str | None,
     dispatcher: ResearchDispatcher,
+    name: str | None = None,
     existing_user_message: ChatMessage | None = None,
 ) -> ChatTurnResult:
     if idempotency_key is None:
         raise ValueError("idempotency_key required for deep_research=true")
 
+    title_seed = message.strip() or ("Shared attachments" if attachment_ids else "")
     thread = await _resolve_thread(
         db,
         user,
         thread_id,
-        first_message_for_title=message if thread_id is None else None,
+        first_message_for_title=title_seed if thread_id is None else None,
     )
 
     if existing_user_message is None:
@@ -760,8 +846,15 @@ async def _handle_deep_research_turn(
         if cached is not None:
             return cached
 
+    display_content, llm_message = await _prepare_turn_messages(
+        db,
+        user=user,
+        message=message,
+        attachment_ids=attachment_ids,
+    )
+
     experiment = await _resolve_refinement_experiment(
-        db, user, thread, message, experiment_id
+        db, user, thread, display_content, experiment_id, name
     )
 
     if existing_user_message is not None:
@@ -774,7 +867,7 @@ async def _handle_deep_research_turn(
         user_msg = ChatMessage(
             thread_id=thread.id,
             role=ChatRole.USER,
-            content=message,
+            content=display_content,
             experiment_id=experiment.id,
             turn_kind=None,
         )
@@ -786,7 +879,7 @@ async def _handle_deep_research_turn(
             db,
             experiment,
             chat_history,
-            message,
+            llm_message,
         )
     except Exception as exc:
         user_error = translate_engineer_error(
@@ -810,6 +903,7 @@ async def _handle_deep_research_turn(
             assistant_message=user_error.message,
             turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
             clarifying_dimension=None,
+            clarifying_questions=(),
             pipeline_dispatched=False,
             dispatched_at=None,
             experiment_status=experiment.status,
@@ -820,9 +914,11 @@ async def _handle_deep_research_turn(
     if decision.decision == "finalize":
         turn_kind = ChatTurnKind.REFINEMENT_FINALIZE
         clarifying_dimension = None
+        clarifying_questions_tuple: tuple[ClarifyingQuestion, ...] = ()
     else:
         turn_kind = ChatTurnKind.REFINEMENT_CLARIFY
         clarifying_dimension = decision.clarifying_dimension
+        clarifying_questions_tuple = _questions_tuple(decision.clarifying_questions)
 
     assistant_msg = ChatMessage(
         thread_id=thread.id,
@@ -831,6 +927,7 @@ async def _handle_deep_research_turn(
         experiment_id=experiment.id,
         turn_kind=turn_kind,
         clarifying_dimension=clarifying_dimension,
+        clarifying_questions=_questions_to_json(clarifying_questions_tuple),
     )
     db.add(assistant_msg)
     await db.flush()
@@ -841,53 +938,15 @@ async def _handle_deep_research_turn(
     research_error_detail = experiment.research_error_detail
 
     if decision.decision == "finalize":
-        settings = get_settings()
-        if rollout.should_auto_fire(experiment.id, settings.auto_fire_chat_enabled):
-            try:
-                await dispatch_service.transition_to_researching_and_dispatch(
-                    db,
-                    experiment,
-                    DispatchTrigger.AUTO_FIRE,
-                    dispatcher,
-                )
-                pipeline_dispatched = True
-                dispatched_at = datetime.now(UTC)
-            except DispatchError as exc:
-                detail = _sanitize_error_detail("dispatch", exc)
-                experiment.status = ExperimentStatus.RESEARCH_FAILED
-                experiment.research_error_detail = detail
-                research_error_detail = detail
-                await db.commit()
-                user_facing_error = translate_engineer_error(
-                    "DispatchError",
-                    detail,
-                    experiment.status,
-                )
-                result = ChatTurnResult(
-                    thread_id=thread.id,
-                    message_id=assistant_msg.id,
-                    experiment_id=experiment.id,
-                    assistant_message=decision.assistant_message,
-                    turn_kind=turn_kind,
-                    clarifying_dimension=clarifying_dimension,
-                    pipeline_dispatched=False,
-                    dispatched_at=None,
-                    experiment_status=experiment.status,
-                    research_error_detail=research_error_detail,
-                    user_facing_error=user_facing_error,
-                )
-                await _store_idempotency(db, thread.id, idempotency_key, result)
-                await db.commit()
-                return result
-        else:
-            experiment.status = ExperimentStatus.REFINED
-            await db.commit()
-            _logger.info(
-                "auto_fire_gated",
-                experiment_id=str(experiment.id),
-                mode=settings.auto_fire_chat_enabled,
-                would_have_fired=True,
-            )
+        # Always stop at REFINED (Chapter 3). Research starts only via
+        # POST /experiments/{id}/confirm after the validation paywall.
+        experiment.status = ExperimentStatus.REFINED
+        await db.commit()
+        _logger.info(
+            "refinement_finalize_deferred",
+            experiment_id=str(experiment.id),
+            auto_fire_mode=get_settings().auto_fire_chat_enabled,
+        )
     else:
         await db.commit()
 
@@ -898,6 +957,7 @@ async def _handle_deep_research_turn(
         assistant_message=decision.assistant_message,
         turn_kind=turn_kind,
         clarifying_dimension=clarifying_dimension,
+        clarifying_questions=clarifying_questions_tuple,
         pipeline_dispatched=pipeline_dispatched,
         dispatched_at=dispatched_at,
         experiment_status=experiment.status,
@@ -952,6 +1012,7 @@ async def handle_edit_turn(
             db,
             user=user,
             message=new_content,
+            attachment_ids=[],
             thread_id=thread.id,
             experiment_id=experiment.id,
             idempotency_key=str(uuid4()),
@@ -963,6 +1024,7 @@ async def handle_edit_turn(
             db,
             user=user,
             message=new_content,
+            attachment_ids=[],
             thread_id=thread.id,
             experiment_id=edited_msg.experiment_id,
             existing_user_message=edited_msg,
@@ -978,6 +1040,7 @@ async def handle_edit_turn(
         assistant_message=turn_result.assistant_message,
         turn_kind=turn_result.turn_kind,
         clarifying_dimension=turn_result.clarifying_dimension,
+        clarifying_questions=turn_result.clarifying_questions,
         pipeline_dispatched=turn_result.pipeline_dispatched,
         dispatched_at=turn_result.dispatched_at,
         experiment_status=turn_result.experiment_status,

@@ -16,6 +16,7 @@ from firebase_admin import auth as firebase_auth
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.admin_access import is_admin_email
 from app.auth.firebase import verify_id_token
 from app.db.models.user import User
 from app.db.session import get_session
@@ -119,7 +120,7 @@ async def get_current_admin_user(
     admin role is determined server-side from the User.is_admin column;
     never from a header, JWT claim, or anything the client could spoof.
     """
-    if not current_user.is_admin:
+    if not is_admin_email(current_user.email):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",

@@ -32,6 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
+from app.cost.category import resolve_cost_category_from_phase
 from app.db.models.llm_call import LLMCall
 from app.db.session_lock import lock_for
 from app.llm.cost import compute_anthropic_cached_cost_usd, compute_cost_usd, is_known_model
@@ -354,6 +355,7 @@ async def _log_llm_call(
     call = LLMCall(
         experiment_id=experiment_id,
         phase=phase,
+        cost_category=resolve_cost_category_from_phase(phase).value,
         provider=provider,
         model=model,
         prompt_name=prompt_name,
@@ -561,6 +563,174 @@ async def complete(
 
         _logger.warning(
             "llm call failed",
+            provider=provider,
+            model=model,
+            prompt_name=prompt_name,
+            error_type=type(exc).__name__,
+        )
+        raise
+
+
+ImageMediaType = Literal["image/png", "image/jpeg", "image/webp"]
+
+
+async def complete_with_image(
+    db: AsyncSession,
+    *,
+    provider: ProviderName,
+    model: str,
+    prompt_name: str,
+    system: str,
+    user_text: str,
+    image_base64: str,
+    media_type: ImageMediaType,
+    max_tokens: int = 2048,
+    temperature: float = 0.2,
+    experiment_id: UUID | None = None,
+    phase: str | None = None,
+) -> LLMResult:
+    """Vision completion for a single image (Anthropic or Kimi/Moonshot)."""
+    if provider not in ("anthropic", "kimi"):
+        raise ValueError("complete_with_image supports anthropic and kimi only")
+
+    if not is_known_model(provider, model):
+        _logger.warning(
+            "llm vision call using unknown model",
+            provider=provider,
+            model=model,
+        )
+
+    started_at = time.perf_counter()
+
+    try:
+        if provider == "anthropic":
+            client = _get_anthropic_client()
+
+            async def _do_anthropic_call():
+                return await client.messages.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    system=system,
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": media_type,
+                                        "data": image_base64,
+                                    },
+                                },
+                                {"type": "text", "text": user_text},
+                            ],
+                        }
+                    ],
+                )
+
+            @retry_async()
+            async def _call_anthropic_with_retry():
+                return await get_breaker("anthropic").call(_do_anthropic_call)
+
+            response = await _call_anthropic_with_retry()
+            text = response.content[0].text  # type: ignore[union-attr]
+            prompt_tokens = response.usage.input_tokens
+            completion_tokens = response.usage.output_tokens
+            request_id: str | None = response.id
+        else:
+            client = _get_kimi_client()
+            data_url = f"data:{media_type};base64,{image_base64}"
+            user_content: list[dict[str, object]] = [
+                {"type": "image_url", "image_url": {"url": data_url}},
+                {"type": "text", "text": user_text},
+            ]
+            msgs: list[dict[str, object]] = []
+            if system and system.strip():
+                msgs.append({"role": "system", "content": system})
+            msgs.append({"role": "user", "content": user_content})
+
+            async def _do_kimi_call():
+                return await client.chat.completions.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=0.6,
+                    extra_body={"thinking": {"type": "disabled"}},
+                    messages=msgs,  # type: ignore[arg-type]
+                )
+
+            @retry_async()
+            async def _call_kimi_with_retry():
+                return await get_breaker("kimi").call(_do_kimi_call)
+
+            response = await _call_kimi_with_retry()
+            text = response.choices[0].message.content or ""
+            prompt_tokens = response.usage.prompt_tokens if response.usage else 0
+            completion_tokens = (
+                response.usage.completion_tokens if response.usage else 0
+            )
+            request_id = response.id
+
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+        cost_usd = compute_cost_usd(provider, model, prompt_tokens, completion_tokens)
+
+        await _log_llm_call(
+            db,
+            experiment_id=experiment_id,
+            phase=phase,
+            provider=provider,
+            model=model,
+            prompt_name=prompt_name,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cost_usd=cost_usd,
+            latency_ms=latency_ms,
+            request_id=request_id,
+        )
+
+        _logger.info(
+            "llm vision call completed",
+            provider=provider,
+            model=model,
+            prompt_name=prompt_name,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cost_usd=str(cost_usd),
+            latency_ms=latency_ms,
+        )
+
+        return LLMResult(
+            text=text,
+            provider=provider,
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cost_usd=cost_usd,
+            latency_ms=latency_ms,
+        )
+
+    except Exception as exc:
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+        try:
+            await _log_llm_call(
+                db,
+                experiment_id=experiment_id,
+                phase=phase,
+                provider=provider,
+                model=model,
+                prompt_name=prompt_name,
+                prompt_tokens=0,
+                completion_tokens=0,
+                cost_usd=Decimal("0"),
+                latency_ms=latency_ms,
+                request_id=None,
+            )
+        except Exception as log_exc:
+            _logger.warning("failed to log failed llm vision call", error=str(log_exc))
+
+        _logger.warning(
+            "llm vision call failed",
             provider=provider,
             model=model,
             prompt_name=prompt_name,

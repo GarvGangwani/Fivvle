@@ -46,6 +46,7 @@ from app.schemas.validation_report import (
     FindingDraft,
     QuestionFindings,
     QuestionFindingsDraft,
+    SectionScore,
     ValidationReport,
     ValidationReportDraft,
 )
@@ -814,6 +815,59 @@ def _make_question_findings_draft(
     return QuestionFindingsDraft(**defaults)
 
 
+def _default_section_scores() -> list[SectionScore]:
+    return [
+        SectionScore(
+            section_id="market",
+            label="Market demand",
+            score=62,
+            rationale="Demand signals are present but market-size data is limited.",
+            pros=["G2/review activity suggests buyer interest."],
+            cons=["No reliable TAM figure in search results."],
+        ),
+        SectionScore(
+            section_id="competition",
+            label="Competition",
+            score=55,
+            rationale="Named competitors overlap the core use case.",
+            pros=["Competitor Guru is well documented with citations."],
+            cons=["Differentiation gap appears narrow."],
+        ),
+        SectionScore(
+            section_id="distribution",
+            label="Distribution",
+            score=48,
+            rationale="Limited distribution evidence beyond generic channels.",
+            pros=["Slack App Directory noted as a channel."],
+            cons=["No validated acquisition playbook."],
+        ),
+        SectionScore(
+            section_id="regulatory",
+            label="Regulatory",
+            score=70,
+            rationale="No regulatory blockers surfaced for this category.",
+            pros=["Low apparent compliance burden."],
+            cons=["Regulatory depth was not fully investigated."],
+        ),
+        SectionScore(
+            section_id="risk",
+            label="Risk profile",
+            score=58,
+            rationale="Key risks are confirmed but not all are mitigated.",
+            pros=["Handbook-staleness risk is evidenced."],
+            cons=["Procurement complexity only partially confirmed."],
+        ),
+        SectionScore(
+            section_id="research",
+            label="Research depth",
+            score=72,
+            rationale="Most questions answered with cited findings.",
+            pros=["Five research questions with medium+ confidence."],
+            cons=["Some gaps on market sizing."],
+        ),
+    ]
+
+
 def _make_valid_draft_report(question_count: int = 5) -> ValidationReportDraft:
     """Build a valid ValidationReportDraft with question_count entries."""
     qids = [f"q{i}" for i in range(1, question_count + 1)]
@@ -842,6 +896,8 @@ def _make_valid_draft_report(question_count: int = 5) -> ValidationReportDraft:
         ),
         research_limitations="Market size data was not found in the search results.",
         rubric_version_used="v1",
+        section_scores=_default_section_scores(),
+        overall_score=61,
     )
 
 
@@ -887,6 +943,8 @@ def test_validation_report_draft_rejects_duplicate_question_ids() -> None:
             recommendation_rationale="Rationale with q1 reference for the test case here.",
             research_limitations="Limited by duplicate question ids in this test.",
             rubric_version_used="v1",
+            section_scores=_default_section_scores(),
+            overall_score=50,
         )
     errors = exc_info.value.errors()
     assert errors
@@ -910,6 +968,45 @@ def test_validation_report_draft_extra_fields_forbidden() -> None:
     base = _make_valid_draft_report()
     with pytest.raises(ValidationError):
         ValidationReportDraft(**{**base.model_dump(), "unknown_field": "value"})
+
+
+def test_question_findings_draft_backfills_missing_finding_question_id() -> None:
+    """Missing nested FindingDraft.question_id should inherit parent question_id."""
+    qf = QuestionFindingsDraft(
+        question_id="q3",
+        question="What is the strongest demand signal?",
+        findings=[
+            {
+                "claim": "Multiple buyers mention this pain weekly.",
+                "evidence_summary": "Reader evidence shows recurring mentions.",
+                "citations": ["https://example.com/article"],
+                "confidence": "medium",
+                "confidence_rationale": "Based on one corroborated source.",
+            }
+        ],
+        evidence_gap=None,
+    )
+    assert qf.findings[0].question_id == "q3"
+
+
+def test_question_findings_draft_rejects_mismatched_finding_question_id() -> None:
+    """Nested FindingDraft.question_id must match parent QuestionFindingsDraft.question_id."""
+    with pytest.raises(ValidationError, match="must match parent"):
+        QuestionFindingsDraft(
+            question_id="q2",
+            question="Who are the incumbent alternatives?",
+            findings=[
+                {
+                    "question_id": "q1",
+                    "claim": "Incumbents already serve this use case.",
+                    "evidence_summary": "Several sources list mature alternatives.",
+                    "citations": ["https://example.com/article"],
+                    "confidence": "high",
+                    "confidence_rationale": "Backed by multiple corroborating sources.",
+                }
+            ],
+            evidence_gap=None,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -1126,6 +1223,8 @@ def test_realistic_high_quality_draft_report_parses() -> None:
         recommendation_rationale=recommendation_rationale_full,
         research_limitations=research_limitations_full,
         rubric_version_used="v1",
+        section_scores=_default_section_scores(),
+        overall_score=64,
     )
 
     assert draft.overall_recommendation == "iterate"

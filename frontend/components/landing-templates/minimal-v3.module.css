@@ -230,19 +230,6 @@
   font-size: 12px;
 }
 
-.marginNote {
-  font-family: "JetBrains Mono", monospace;
-  font-size: 11px;
-  color: var(--fg-dim);
-  line-height: 1.6;
-  padding-top: 48px;
-  max-width: 260px;
-}
-
-.marginNote .k {
-  color: var(--fg);
-}
-
 .prose p {
   font-size: clamp(18px, 2vw, 21px);
   line-height: 1.55;
@@ -374,6 +361,7 @@
   line-height: 1.02;
   font-weight: 500;
   margin-bottom: 20px;
+  overflow-wrap: anywhere;
 }
 
 .ctaTitle em {
@@ -385,49 +373,65 @@
   font-size: 17px;
   color: var(--fg-dim);
   margin-bottom: 32px;
-  max-width: 480px;
+  max-width: 560px;
+  line-height: 1.55;
 }
 
-.signup {
+.signupWrap {
+  width: 100%;
+  max-width: min(100%, var(--col));
+}
+
+.signupPill {
   display: flex;
-  align-items: stretch;
-  flex-wrap: wrap;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 8px;
+  width: 100%;
   border: 1px solid var(--fg);
   border-radius: 100px;
-  padding: 6px 6px 6px 22px;
-  max-width: min(100%, 480px);
+  padding: 6px 6px 6px 20px;
+  background: color-mix(in oklab, var(--bg) 92%, var(--fg) 8%);
 }
 
-.signup input {
-  flex: 1;
+.signupInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
   border: none;
   outline: none;
   background: transparent;
-  min-width: 0;
   font-size: 16px;
+  padding: 10px 0;
+  color: var(--fg);
+  text-align: left;
 }
 
-.signup input::placeholder {
+.signupInput::placeholder {
   color: var(--fg-faint);
 }
 
-.signup button {
+.signupButton {
+  flex: 0 0 auto;
   padding: 12px 20px;
   font-size: 14px;
   font-weight: 500;
+  line-height: 1.2;
   background: var(--fg);
   color: var(--fg-on, var(--bg));
   border-radius: 100px;
   border: none;
-  max-width: 100%;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .formMeta {
-  margin-top: 16px;
+  margin-top: 12px;
   font-family: "JetBrains Mono", monospace;
   font-size: 12px;
   color: var(--fg-dim);
+  line-height: 1.5;
 }
 
 .footer {

@@ -38,6 +38,7 @@ service-account.json
 .mypy_cache/
 .ruff_cache/
 htmlcov/
+backend/var/
 .coverage
 .tox/
 

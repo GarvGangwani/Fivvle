@@ -1,179 +1,108 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
 import {
+  ArchiveRestore,
+  Archive,
   Loader2,
   RefreshCw,
-  ArchiveRestore,
-  Download,
-  Eye,
-  ExternalLink,
+  Trash2,
 } from "lucide-react";
 import {
   confirmExperiment,
-  exportWaitlistCsv,
   generateInsight,
   generateLandingPage,
   getExperiment,
   getLandingPage,
-  getWaitlistSignups,
   unarchiveExperiment,
   ApiError,
 } from "@/lib/api";
-import type { Experiment, FounderDecision, WaitlistSignupsResponse } from "@/lib/types";
+import { useWallet } from "@/lib/wallet-context";
+import type { Experiment, FounderDecision, LandingPage } from "@/lib/types";
 import { StatusBadge } from "@/components/dashboard/StatusBadge";
-import { ChatInterface } from "@/components/chat/ChatInterface";
-import { DecisionPanel } from "@/components/insight/DecisionPanel";
-import { InsightReportViewer } from "@/components/insight/InsightReportViewer";
-import { MetricsWidget } from "@/components/insight/MetricsWidget";
+import { RefineStagePanel } from "@/components/refinement/RefineStagePanel";
+import { InsightStagePanel } from "@/components/insight/InsightStagePanel";
+import { MetricsStagePanel } from "@/components/insight/MetricsStagePanel";
 import { LandingGenerationProgress } from "@/components/research/LandingGenerationProgress";
 import {
   TemplatePicker,
   type TemplateId,
 } from "@/components/research/TemplatePicker";
 import { ReportCanvas } from "@/components/research/ReportCanvas";
-import { DistributeSection } from "@/components/distribution/DistributeSection";
+import { EditorLayout } from "@/components/landing-page-editor/EditorLayout";
+import { EditorLoadingSkeleton } from "@/components/landing-page-editor/EditorLoadingSkeleton";
+import { ExperimentStageNav } from "@/components/experiment/ExperimentStageNav";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { LoadingState } from "@/components/ui/LoadingState";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EditableProjectName } from "@/components/experiment/EditableProjectName";
+import { ArchiveProjectDialog } from "@/components/experiment/ArchiveProjectDialog";
+import { DeleteProjectDialog } from "@/components/experiment/DeleteProjectDialog";
 import { getExperimentDisplayName } from "@/lib/experiment-name";
+import { notifyExperimentsChanged } from "@/lib/experiment-events";
+import { readPaidActionError } from "@/lib/wallet-errors";
+import { syncWalletAfterPaidAction } from "@/lib/wallet-sync";
+import {
+  INSIGHT_PAYWALL_CREDITS,
+  VALIDATION_PAYWALL_CREDITS,
+} from "@/lib/wallet-paywall";
+import {
+  defaultStageForStatus,
+  isStageUnlocked,
+  pollIntervalForStatus,
+  shouldPollExperimentStatus,
+  shouldShowExperimentStageNav,
+  type ExperimentStageId,
+} from "@/lib/experiment-stages";
+import { canViewLandingPageEditor } from "@/lib/landing-flow";
 
 const DISTRIBUTE_VISIBLE_STATUSES = new Set([
   "LANDING_LIVE",
   "INSIGHT_GENERATING",
   "INSIGHT_READY",
   "INSIGHT_FAILED",
-  "ANALYZING",
   "COMPLETED",
   "ARCHIVED",
 ]);
 
-const WAITLIST_VISIBLE_STATUSES = new Set([
-  "LANDING_LIVE",
-  "INSIGHT_GENERATING",
-  "INSIGHT_READY",
-  "INSIGHT_FAILED",
-  "COMPLETED",
-  "ARCHIVED",
-]);
+const LANDING_PAGE_LOAD_RETRIES = 8;
+const LANDING_PAGE_LOAD_RETRY_MS = 1500;
 
-function formatWaitlistDate(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+function templateStorageKey(experimentId: string): string {
+  return `fivvle_lp_template_${experimentId}`;
 }
 
-interface WaitlistSectionProps {
-  experimentId: string;
-}
-
-function WaitlistSection({ experimentId }: WaitlistSectionProps) {
-  const [waitlist, setWaitlist] = useState<WaitlistSignupsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [exporting, setExporting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadWaitlist() {
-      setLoading(true);
-      try {
-        const data = await getWaitlistSignups(experimentId);
-        if (!cancelled) {
-          setWaitlist(data);
-          setError(null);
-        }
-      } catch {
-        if (!cancelled) {
-          setError("Could not load waitlist signups.");
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadWaitlist();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [experimentId]);
-
-  async function handleExport() {
-    setExporting(true);
-    setError(null);
-    try {
-      await exportWaitlistCsv(experimentId);
-    } catch {
-      setError("Could not export waitlist. Please try again.");
-    } finally {
-      setExporting(false);
-    }
-  }
-
-  if (loading || !waitlist || waitlist.total === 0) {
+function readStoredTemplate(experimentId: string): TemplateId | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(templateStorageKey(experimentId));
+    if (!raw) return null;
+    return raw as TemplateId;
+  } catch {
     return null;
   }
+}
 
-  return (
-    <details className="fv-card mb-4 p-4">
-      <summary className="cursor-pointer text-sm font-semibold text-[var(--fv-text)]">
-        Waitlist ({waitlist.total} signup{waitlist.total === 1 ? "" : "s"})
-      </summary>
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => void handleExport()}
-          disabled={exporting}
-          className="fv-btn-ghost inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          {exporting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Download className="h-4 w-4" />
-          )}
-          Export CSV
-        </button>
-      </div>
-      {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
-      <div className="mt-4 overflow-x-auto">
-        <table className="min-w-full text-left text-sm">
-          <thead>
-            <tr className="border-b border-white/[0.08] text-[var(--fv-text-muted)]">
-              <th className="px-3 py-2 font-medium">Email</th>
-              <th className="px-3 py-2 font-medium">Source</th>
-              <th className="px-3 py-2 font-medium">Signed up</th>
-            </tr>
-          </thead>
-          <tbody>
-            {waitlist.signups.map((signup) => (
-              <tr
-                key={signup.id}
-                className="border-b border-white/[0.04] text-[var(--fv-text-soft)]"
-              >
-                <td className="px-3 py-3 text-[var(--fv-text)]">{signup.email}</td>
-                <td className="px-3 py-3">{signup.source_tag ?? "—"}</td>
-                <td className="px-3 py-3">{formatWaitlistDate(signup.created_at)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </details>
-  );
+function storeTemplate(experimentId: string, templateId: TemplateId): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(templateStorageKey(experimentId), templateId);
+  } catch {
+    /* ignore */
+  }
 }
 
 interface ExperimentDetailPanelProps {
   experimentId: string;
   rawIdea?: string;
   nameRefreshKey?: number;
+  initialStage?: ExperimentStageId;
 }
 
 export function ExperimentDetailPanel({
   experimentId,
   nameRefreshKey = 0,
+  initialStage,
 }: ExperimentDetailPanelProps) {
   const [experiment, setExperiment] = useState<Experiment | null>(null);
   const [loading, setLoading] = useState(true);
@@ -182,18 +111,31 @@ export function ExperimentDetailPanel({
   const [generatingLp, setGeneratingLp] = useState(false);
   const [retryingInsight, setRetryingInsight] = useState(false);
   const [unarchiving, setUnarchiving] = useState(false);
+  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateId | null>(null);
-  const [reportOpen, setReportOpen] = useState(false);
-  const [showInsight, setShowInsight] = useState(false);
-  const [showMetrics, setShowMetrics] = useState(false);
-  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [activeStage, setActiveStage] = useState<ExperimentStageId>(
+    initialStage ?? "refine",
+  );
   const [landingSlug, setLandingSlug] = useState<string | null>(null);
+  const [landingPage, setLandingPage] = useState<LandingPage | null>(null);
+  const [landingPageLoading, setLandingPageLoading] = useState(false);
+  const [landingPageError, setLandingPageError] = useState<string | null>(null);
+  const [refinementFinalized, setRefinementFinalized] = useState(false);
+  const { refresh: refreshWallet, applyWalletPatch } = useWallet();
 
   const loadExperiment = useCallback(async () => {
     try {
       const data = await getExperiment(experimentId);
       setExperiment(data);
       setError(null);
+      if (data.status === "REFINED" || data.validation_report != null) {
+        setRefinementFinalized(true);
+      }
+      setActiveStage((prev) => {
+        if (isStageUnlocked(prev, data.status)) return prev;
+        return defaultStageForStatus(data.status);
+      });
     } catch (err) {
       setError(
         err instanceof ApiError && err.status === 404
@@ -205,25 +147,56 @@ export function ExperimentDetailPanel({
     }
   }, [experimentId]);
 
+  const loadLandingPage = useCallback(
+    async (options: { retryOn404?: boolean } = {}) => {
+      const retryOn404 = options.retryOn404 ?? false;
+      setLandingPageLoading(true);
+      setLandingPageError(null);
+
+      const maxAttempts = retryOn404 ? LANDING_PAGE_LOAD_RETRIES : 1;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        try {
+          const lp = await getLandingPage(experimentId);
+          setLandingPage(lp);
+          if (lp.slug) setLandingSlug(lp.slug);
+          setLandingPageLoading(false);
+          return;
+        } catch (err) {
+          const is404 = err instanceof ApiError && err.status === 404;
+          const canRetry = retryOn404 && is404 && attempt < maxAttempts - 1;
+          if (canRetry) {
+            await new Promise((resolve) => {
+              setTimeout(resolve, LANDING_PAGE_LOAD_RETRY_MS);
+            });
+            continue;
+          }
+          setLandingPage(null);
+          if (is404) {
+            setLandingPageError(
+              "Landing page not found. It may still be generating.",
+            );
+          } else {
+            setLandingPageError("Could not load landing page.");
+          }
+          setLandingPageLoading(false);
+          return;
+        }
+      }
+    },
+    [experimentId],
+  );
+
   useEffect(() => {
     setLoading(true);
     void loadExperiment();
   }, [loadExperiment, nameRefreshKey]);
 
   useEffect(() => {
-    if (
-      experiment?.status !== "INSIGHT_GENERATING" &&
-      experiment?.status !== "LANDING_GENERATING"
-    ) {
+    if (!experiment || !shouldPollExperimentStatus(experiment.status)) {
       return;
     }
-
-    const intervalMs =
-      experiment.status === "LANDING_GENERATING" ? 5000 : 3000;
-    const intervalId = setInterval(() => {
-      void loadExperiment();
-    }, intervalMs);
-
+    const intervalMs = pollIntervalForStatus(experiment.status);
+    const intervalId = setInterval(() => void loadExperiment(), intervalMs);
     return () => clearInterval(intervalId);
   }, [experiment?.status, loadExperiment]);
 
@@ -232,36 +205,69 @@ export function ExperimentDetailPanel({
       setLandingSlug(null);
       return;
     }
-
     let cancelled = false;
-
     async function loadSlug() {
       try {
         const lp = await getLandingPage(experimentId);
-        if (!cancelled && lp.slug) {
-          setLandingSlug(lp.slug);
-        }
+        if (!cancelled && lp.slug) setLandingSlug(lp.slug);
       } catch {
-        if (!cancelled) {
-          setLandingSlug(null);
-        }
+        if (!cancelled) setLandingSlug(null);
       }
     }
-
     void loadSlug();
-
     return () => {
       cancelled = true;
     };
   }, [experiment, experimentId]);
 
+  useEffect(() => {
+    if (activeStage !== "landing") return;
+    if (!experiment || !canViewLandingPageEditor(experiment.status)) {
+      setLandingPage(null);
+      setLandingPageError(null);
+      return;
+    }
+    void loadLandingPage({ retryOn404: true });
+  }, [activeStage, experiment, loadLandingPage]);
+
+  useEffect(() => {
+    const stored = readStoredTemplate(experimentId);
+    if (stored) {
+      setSelectedTemplate(stored);
+    }
+  }, [experimentId]);
+
+  const handleLandingGenerationComplete = useCallback(() => {
+    void loadExperiment();
+    void loadLandingPage({ retryOn404: true });
+  }, [loadExperiment, loadLandingPage]);
+
+  const handleLandingGenerationFailed = useCallback(() => {
+    void loadExperiment();
+  }, [loadExperiment]);
+
   async function handleRetryResearch() {
     setRetrying(true);
+    setError(null);
     try {
-      await confirmExperiment(experimentId);
+      const result = await confirmExperiment(experimentId);
+      await syncWalletAfterPaidAction(
+        refreshWallet,
+        applyWalletPatch,
+        result.credits_balance,
+      );
       await loadExperiment();
-    } catch {
-      setError("Could not restart research. Please try again.");
+      setActiveStage("refine");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 502) {
+        await refreshWallet();
+      }
+      setError(
+        readPaidActionError(err, {
+          fallbackRequired: VALIDATION_PAYWALL_CREDITS,
+          fallback: "Could not restart research. Please try again.",
+        }),
+      );
     } finally {
       setRetrying(false);
     }
@@ -269,12 +275,29 @@ export function ExperimentDetailPanel({
 
   async function handleGenerateLandingPage() {
     if (!selectedTemplate) return;
+    storeTemplate(experimentId, selectedTemplate);
     setGeneratingLp(true);
     try {
       await generateLandingPage(experimentId, { template_id: selectedTemplate });
-      setShowTemplatePicker(false);
       await loadExperiment();
-    } catch {
+      setActiveStage("landing");
+    } catch (err) {
+      if (err instanceof ApiError) {
+        if (err.status === 0) {
+          setError("Could not reach the server. Check that the API is running.");
+          return;
+        }
+        const body = err.body;
+        if (
+          body &&
+          typeof body === "object" &&
+          "detail" in body &&
+          typeof (body as { detail: unknown }).detail === "string"
+        ) {
+          setError((body as { detail: string }).detail);
+          return;
+        }
+      }
       setError("Could not start landing page generation. Please try again.");
     } finally {
       setGeneratingLp(false);
@@ -282,25 +305,42 @@ export function ExperimentDetailPanel({
   }
 
   async function handleRetryInsight() {
+    if (retryingInsight) return;
     setRetryingInsight(true);
+    setError(null);
     try {
-      await generateInsight(experimentId);
+      const result = await generateInsight(experimentId);
+      await syncWalletAfterPaidAction(
+        refreshWallet,
+        applyWalletPatch,
+        result.credits_balance,
+      );
       await loadExperiment();
-    } catch {
-      setError("Could not restart insight generation. Please try again.");
+      setActiveStage("insight");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 502) {
+        await refreshWallet();
+        setError(
+          "Could not start insight generation. Your credits have been refunded — please try again.",
+        );
+        return;
+      }
+      setError(
+        readPaidActionError(err, {
+          fallbackRequired: INSIGHT_PAYWALL_CREDITS,
+          fallback: "Could not start insight generation. Please try again.",
+        }),
+      );
     } finally {
       setRetryingInsight(false);
     }
-  }
-
-  function handleDecision(_decision: FounderDecision) {
-    void loadExperiment();
   }
 
   async function handleUnarchive() {
     setUnarchiving(true);
     try {
       await unarchiveExperiment(experimentId);
+      notifyExperimentsChanged();
       await loadExperiment();
     } catch {
       setError("Could not restore experiment. Please try again.");
@@ -309,12 +349,15 @@ export function ExperimentDetailPanel({
     }
   }
 
+  function handleDecision(_decision: FounderDecision) {
+    notifyExperimentsChanged();
+    void loadExperiment();
+  }
+
   if (loading) {
     return (
-      <div className="flex h-full min-h-[400px] flex-col">
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <div className="fv-skeleton h-6 w-24 rounded-full" />
-        </div>
+      <div className="flex h-full min-h-0 flex-col p-3 sm:p-4">
+        <div className="fv-skeleton mb-3 h-9 w-64 rounded-lg" />
         <div className="fv-skeleton min-h-0 flex-1 rounded-xl" />
       </div>
     );
@@ -322,8 +365,8 @@ export function ExperimentDetailPanel({
 
   if (error && !experiment) {
     return (
-      <div className="py-16 text-center">
-        <p className="text-sm text-red-300">{error}</p>
+      <div className="flex items-center justify-center p-6 py-20">
+        <ErrorBanner message={error} className="max-w-md" />
       </div>
     );
   }
@@ -332,186 +375,277 @@ export function ExperimentDetailPanel({
 
   const status = experiment.status;
   const hasValidationReport = experiment.validation_report != null;
-  const showWaitlistSection = WAITLIST_VISIBLE_STATUSES.has(status);
-  const showDistributeSection =
+  const showStageNav = shouldShowExperimentStageNav(
+    status,
+    hasValidationReport,
+    refinementFinalized,
+  );
+  const experimentDisplayName = getExperimentDisplayName(experiment);
+  const showDistribute =
     DISTRIBUTE_VISIBLE_STATUSES.has(status) && landingSlug !== null;
-  const experimentDisplayName = experiment.name?.trim()
-    ? experiment.name.trim()
-    : getExperimentDisplayName({ name: null, raw_idea: "" });
+
+  const headerActions = (
+    <>
+      {status === "RESEARCH_FAILED" && (
+        <button
+          type="button"
+          onClick={() => void handleRetryResearch()}
+          disabled={retrying}
+          className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {retrying ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          Retry research
+        </button>
+      )}
+      {status === "INSIGHT_FAILED" && (
+        <button
+          type="button"
+          onClick={() => void handleRetryInsight()}
+          disabled={retryingInsight}
+          className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {retryingInsight ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <RefreshCw className="h-4 w-4" />
+          )}
+          Retry insight
+        </button>
+      )}
+      {status === "ARCHIVED" && (
+        <button
+          type="button"
+          onClick={() => void handleUnarchive()}
+          disabled={unarchiving}
+          className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {unarchiving ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <ArchiveRestore className="h-4 w-4" />
+          )}
+          Restore
+        </button>
+      )}
+      {status !== "ARCHIVED" && (
+        <button
+          type="button"
+          onClick={() => setArchiveDialogOpen(true)}
+          className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-[var(--fv-text-muted)] hover:text-[var(--fv-danger)]"
+        >
+          <Archive className="h-4 w-4" />
+          Archive
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={() => setDeleteDialogOpen(true)}
+        className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-[var(--fv-text-muted)] hover:text-[var(--fv-danger)]"
+      >
+        <Trash2 className="h-4 w-4" />
+        Delete
+      </button>
+    </>
+  );
+
+  function renderStageContent(exp: Experiment) {
+    const expStatus = exp.status;
+    const expDisplayName = getExperimentDisplayName(exp);
+
+    switch (activeStage) {
+      case "refine":
+        return (
+          <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+            <RefineStagePanel
+              experimentId={experimentId}
+              onExperimentChange={loadExperiment}
+              onRefinementFinalized={setRefinementFinalized}
+            />
+          </div>
+        );
+
+      case "report":
+        if (!exp.validation_report) {
+          return (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <LoadingState label="Research in progress — your report will appear here when ready." />
+            </div>
+          );
+        }
+        return (
+          <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[var(--fv-border)]">
+            <ReportCanvas
+              experimentId={experimentId}
+              embedded
+              projectName={expDisplayName}
+            />
+          </div>
+        );
+
+      case "landing":
+        if (expStatus === "LANDING_GENERATING") {
+          return (
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="fv-section-card">
+                <LandingGenerationProgress
+                  experimentId={experimentId}
+                  onComplete={handleLandingGenerationComplete}
+                  onFailed={handleLandingGenerationFailed}
+                />
+              </div>
+            </div>
+          );
+        }
+        if (canViewLandingPageEditor(expStatus)) {
+          if (landingPageLoading) {
+            return (
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <EditorLoadingSkeleton embedded />
+              </div>
+            );
+          }
+          if (landingPageError || !landingPage) {
+            return (
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <ErrorBanner
+                  message={landingPageError ?? "Landing page unavailable."}
+                  className="max-w-lg"
+                />
+              </div>
+            );
+          }
+          return (
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <EditorLayout
+                embedded
+                experimentId={experimentId}
+                name={exp.name}
+                rawIdea={exp.raw_idea ?? ""}
+                experimentStatus={expStatus}
+                landingPage={landingPage}
+                onPublished={() => {
+                  void loadExperiment();
+                  void loadLandingPage();
+                }}
+                onExperimentRenamed={(nextName) => {
+                  setExperiment((prev) =>
+                    prev ? { ...prev, name: nextName } : prev,
+                  );
+                }}
+                onRegenerateAll={() => {
+                  void loadLandingPage();
+                }}
+              />
+            </div>
+          );
+        }
+        return (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="fv-section-card">
+            <h3 className="text-lg font-semibold text-[var(--fv-text)]">
+              Choose a template
+            </h3>
+            <p className="mt-1 text-sm text-[var(--fv-text-muted)]">
+              Pick a design for your validation landing page. You can customize
+              all copy after generation.
+            </p>
+            <div className="mt-6">
+              <TemplatePicker
+                selectedId={selectedTemplate}
+                onSelect={setSelectedTemplate}
+                onGenerate={handleGenerateLandingPage}
+                generating={generatingLp}
+              />
+            </div>
+            </div>
+          </div>
+        );
+
+      case "metrics":
+        return (
+          <MetricsStagePanel
+            experimentId={experimentId}
+            experimentStatus={expStatus}
+            experimentName={expDisplayName}
+            landingSlug={landingSlug}
+            showDistribute={showDistribute}
+            onInsightStarted={() => {
+              setActiveStage("insight");
+              void loadExperiment();
+            }}
+          />
+        );
+
+      case "insight":
+        return (
+          <InsightStagePanel
+            experimentId={experimentId}
+            experimentStatus={expStatus}
+            onDecision={handleDecision}
+          />
+        );
+
+      default:
+        return null;
+    }
+  }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="mb-3 flex shrink-0 flex-wrap items-center gap-2">
-        <StatusBadge status={status} />
-
-        {hasValidationReport && (
-          <button
-            type="button"
-            onClick={() => setReportOpen(true)}
-            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold"
-          >
-            <Eye className="h-3.5 w-3.5" />
-            Validation report
-          </button>
-        )}
-
-        {status === "RESEARCH_READY" && (
-          <button
-            type="button"
-            onClick={() => setShowTemplatePicker((v) => !v)}
-            className="fv-btn-ghost px-3 py-1.5 text-xs font-semibold"
-          >
-            Generate landing page
-          </button>
-        )}
-
-        {(status === "LANDING_DRAFT" || status === "LANDING_LIVE") && (
-          <Link
-            href={`/experiment/${experimentId}/landing-page`}
-            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold no-underline"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            Landing page editor
-          </Link>
-        )}
-
-        {status === "LANDING_LIVE" && (
-          <button
-            type="button"
-            onClick={() => setShowMetrics((v) => !v)}
-            className="fv-btn-ghost px-3 py-1.5 text-xs font-semibold"
-          >
-            Live metrics
-          </button>
-        )}
-
-        {(status === "INSIGHT_READY" || status === "COMPLETED") && (
-          <button
-            type="button"
-            onClick={() => setShowInsight((v) => !v)}
-            className="fv-btn-ghost px-3 py-1.5 text-xs font-semibold"
-          >
-            Insight report
-          </button>
-        )}
-
-        {status === "RESEARCH_FAILED" && (
-          <button
-            type="button"
-            onClick={() => void handleRetryResearch()}
-            disabled={retrying}
-            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-300 disabled:opacity-50"
-          >
-            {retrying ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-            Retry research
-          </button>
-        )}
-
-        {status === "INSIGHT_FAILED" && (
-          <button
-            type="button"
-            onClick={() => void handleRetryInsight()}
-            disabled={retryingInsight}
-            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-red-300 disabled:opacity-50"
-          >
-            {retryingInsight ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="h-3.5 w-3.5" />
-            )}
-            Retry insight
-          </button>
-        )}
-
-        {status === "ARCHIVED" && (
-          <button
-            type="button"
-            onClick={() => void handleUnarchive()}
-            disabled={unarchiving}
-            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
-          >
-            {unarchiving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <ArchiveRestore className="h-3.5 w-3.5" />
-            )}
-            Unarchive
-          </button>
-        )}
-      </div>
+    <div className="flex h-full min-h-0 flex-col p-3 sm:p-4">
+      <PageHeader
+        compact
+        title={
+          <EditableProjectName
+            experimentId={experimentId}
+            name={experiment.name}
+            rawIdea={experiment.raw_idea ?? ""}
+            onRenamed={(nextName) => {
+              setExperiment((prev) =>
+                prev ? { ...prev, name: nextName } : prev,
+              );
+            }}
+          />
+        }
+        badge={<StatusBadge status={status} />}
+        actions={headerActions}
+      />
 
       {error && (
-        <div className="fv-error mb-3 shrink-0 px-4 py-2 text-sm">{error}</div>
-      )}
-
-      {showTemplatePicker && status === "RESEARCH_READY" && (
-        <div className="fv-card mb-4 shrink-0 p-4">
-          <TemplatePicker
-            selectedId={selectedTemplate}
-            onSelect={setSelectedTemplate}
-            onGenerate={handleGenerateLandingPage}
-            generating={generatingLp}
-          />
-        </div>
-      )}
-
-      {status === "LANDING_GENERATING" && (
-        <div className="mb-4 shrink-0">
-          <LandingGenerationProgress
-            experimentId={experimentId}
-            onComplete={loadExperiment}
-          />
-        </div>
-      )}
-
-      {showDistributeSection && landingSlug && (
-        <DistributeSection
-          experimentId={experimentId}
-          slug={landingSlug}
-          experimentName={experimentDisplayName}
+        <ErrorBanner
+          message={error}
+          onDismiss={() => setError(null)}
+          className="mb-4"
         />
       )}
 
-      {showMetrics && status === "LANDING_LIVE" && (
-        <div className="mb-4 shrink-0">
-          <MetricsWidget
-            experimentId={experimentId}
-            onInsightStarted={loadExperiment}
-          />
-        </div>
+      {showStageNav && (
+        <ExperimentStageNav
+          activeStage={activeStage}
+          status={status}
+          onStageChange={setActiveStage}
+        />
       )}
 
-      {showInsight && (status === "INSIGHT_READY" || status === "COMPLETED") && (
-        <div className="mb-4 max-h-[40vh] shrink-0 space-y-4 overflow-y-auto">
-          <InsightReportViewer experimentId={experimentId} />
-          <DecisionPanel
-            experimentId={experimentId}
-            onDecision={handleDecision}
-          />
-        </div>
-      )}
-
-      {showWaitlistSection && (
-        <WaitlistSection experimentId={experimentId} />
-      )}
-
-      <div className="min-h-0 flex-1 overflow-hidden rounded-xl border border-[var(--fv-border)]">
-        <ChatInterface experimentId={experimentId} />
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        {renderStageContent(experiment)}
       </div>
 
-      {reportOpen && (
-        <div className="fixed inset-0 z-50 bg-[var(--fv-bg)]">
-          <ReportCanvas
-            experimentId={experimentId}
-            onClose={() => setReportOpen(false)}
-            mobile
-          />
-        </div>
-      )}
+      <ArchiveProjectDialog
+        experimentId={experimentId}
+        projectName={experimentDisplayName}
+        open={archiveDialogOpen}
+        onClose={() => setArchiveDialogOpen(false)}
+      />
+      <DeleteProjectDialog
+        experimentId={experimentId}
+        projectName={experimentDisplayName}
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+      />
     </div>
   );
 }

@@ -3,6 +3,9 @@
   flex-direction: column;
   gap: 0;
   min-height: 420px;
+  height: 100%;
+  flex: 1;
+  min-height: 0;
   background: radial-gradient(
       ellipse at 50% 0%,
       color-mix(in srgb, var(--fv-accent) 10%, transparent),
@@ -11,6 +14,16 @@
     var(--fv-bg);
   border-radius: 1rem;
   overflow: hidden;
+  border: 1px solid var(--fv-border);
+}
+
+:global([data-theme="light"]) .stage {
+  background: radial-gradient(
+      ellipse at 50% 0%,
+      color-mix(in srgb, var(--fv-accent) 6%, transparent),
+      transparent 55%
+    ),
+    var(--fv-bg);
 }
 
 .stageFullscreen {
@@ -27,8 +40,137 @@
   align-items: center;
   gap: 8px;
   padding: 10px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(0, 0, 0, 0.35);
+  border-bottom: 1px solid var(--fv-border);
+  background: var(--fv-surface-2);
+}
+
+.editorToolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  border-bottom: 1px solid var(--fv-border);
+  background: var(--fv-surface-2);
+  padding: 4px 8px;
+}
+
+.editorToolbarStart {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  min-width: 0;
+}
+
+.editorToolbarCenter {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: center;
+}
+
+.editorDeviceSwitcher {
+  display: inline-flex;
+  border-radius: 0.5rem;
+  border: 1px solid var(--fv-border);
+  background: var(--fv-surface);
+  padding: 2px;
+}
+
+.editorDeviceSwitcher :global(.fv-tab-pill) {
+  padding: 3px 10px;
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.editorToolbarEnd {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+  margin-right: 4px;
+}
+
+.editDisclaimer {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--fv-text-muted);
+  white-space: nowrap;
+}
+
+.editorToolbar .iconBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.saveStatus {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.2;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+.saveStatusIcon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.saveStatusSaving .saveStatusIcon {
+  animation: previewSaveSpin 0.8s linear infinite;
+}
+
+@keyframes previewSaveSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.saveStatusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.saveStatusPending {
+  color: var(--fv-text-muted);
+  background: color-mix(in srgb, var(--fv-text-muted) 10%, transparent);
+}
+
+.saveStatusSaving {
+  color: var(--fv-text-muted);
+  background: color-mix(in srgb, var(--fv-text-muted) 10%, transparent);
+}
+
+.saveStatusSaved {
+  color: var(--fv-success);
+  background: color-mix(in srgb, var(--fv-success) 12%, transparent);
+}
+
+.saveStatusError {
+  color: var(--fv-danger);
+  background: color-mix(in srgb, var(--fv-danger) 12%, transparent);
+}
+
+.mobileSaveBar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 32px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--fv-border);
+  background: var(--fv-surface-2);
 }
 
 .categoryTabs {
@@ -43,7 +185,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: rgba(255, 255, 255, 0.45);
+  color: var(--fv-text-muted);
   border-radius: 6px;
   border: none;
   background: transparent;
@@ -51,8 +193,8 @@
 }
 
 .categoryTab:hover {
-  color: rgba(255, 255, 255, 0.75);
-  background: rgba(255, 255, 255, 0.06);
+  color: var(--fv-text-soft);
+  background: var(--fv-hover-overlay);
 }
 
 .categoryTabActive {
@@ -64,9 +206,9 @@
   min-width: 160px;
   padding: 6px 10px;
   font-size: 12px;
-  color: #e4e4e7;
-  background: rgba(0, 0, 0, 0.45);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: var(--fv-text);
+  background: var(--fv-surface);
+  border: 1px solid var(--fv-border-strong);
   border-radius: 8px;
   outline: none;
 }
@@ -89,16 +231,16 @@
   width: 32px;
   height: 32px;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.35);
-  color: rgba(255, 255, 255, 0.75);
+  border: 1px solid var(--fv-border-strong);
+  background: var(--fv-surface);
+  color: var(--fv-text-soft);
   cursor: pointer;
   font-size: 14px;
 }
 
 .iconBtn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  background: var(--fv-hover-overlay);
+  color: var(--fv-text);
 }
 
 .iconBtnActive {
@@ -110,48 +252,60 @@
 .viewportArea {
   flex: 1;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  padding: 24px 16px 32px;
-  overflow: auto;
-  min-height: 360px;
+  padding: 16px;
+  overflow: hidden;
+  min-height: 0;
+  width: 100%;
 }
 
 .viewportAreaFluid {
   padding: 0;
   align-items: stretch;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
-.sizeLabel {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.4);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.scaledWrap {
+.scaledClip {
   position: relative;
+  overflow: hidden;
   flex-shrink: 0;
 }
 
 .scaledInner {
-  transform-origin: top center;
-  overflow: hidden;
+  transform-origin: 0 0;
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 
 .fluidWrap {
   width: 100%;
-  max-height: 85vh;
-  overflow: auto;
+  max-width: 100%;
+  max-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
 }
 
-/* ── Device frames ── */
+.sizeLabel {
+  font-size: 11px;
+  color: var(--fv-text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ── Device frames (bezels stay dark — physical device chrome) ── */
 
 .frameNone {
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 24px 80px color-mix(in srgb, var(--fv-text) 14%, transparent);
+}
+
+:global([data-theme="light"]) .frameNone {
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.14);
 }
 
 .frameLaptop {
@@ -293,6 +447,64 @@
   isolation: isolate;
   width: 100%;
   height: 100%;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
+}
+
+.screenScroll:has(iframe) {
+  overflow: hidden;
+}
+
+.screenScroll iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+.previewScreenWrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+}
+
+.previewLoadingOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--fv-surface, #fff);
+  color: var(--fv-text-muted);
+}
+
+.previewLoadingOverlayContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transform: scale(var(--preview-inverse-scale, 1));
+  transform-origin: center center;
+}
+
+.previewLoadingSpinner {
+  width: 2.25rem;
+  height: 2.25rem;
+  stroke-width: 2.25px;
+  color: var(--fv-accent);
+  animation: lp-preview-spin 0.9s linear infinite;
+}
+
+@keyframes lp-preview-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

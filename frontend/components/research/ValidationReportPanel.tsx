@@ -16,6 +16,8 @@ import type {
   OverallRecommendation,
   ValidationReport,
 } from "@/lib/types";
+import { ReportScoreSection } from "@/components/research/ReportScoreSection";
+import { resolveReportScores } from "@/lib/validation-report-scores";
 
 const REPORT_TABS = [
   "Summary",
@@ -238,6 +240,7 @@ export function ValidationReportPanel({
   }, [open, onClose]);
 
   const citations = report ? collectAllCitations(report) : [];
+  const reportScores = report ? resolveReportScores(report) : null;
 
   if (!open) return null;
 
@@ -300,8 +303,15 @@ export function ValidationReportPanel({
             <div className="fv-error text-sm">{error}</div>
           )}
 
-          {report && !loading && activeTab === "Summary" && (
+          {report && !loading && activeTab === "Summary" && reportScores && (
             <div className="space-y-5">
+              <ReportScoreSection
+                report={report}
+                sections={reportScores.sections}
+                overall={reportScores.overall}
+                derived={reportScores.derived}
+              />
+
               <div>
                 <h3 className="fv-panel-label mb-3">Executive Summary</h3>
                 <p className="whitespace-pre-wrap text-[14px] leading-relaxed text-[var(--fv-text-soft)]">

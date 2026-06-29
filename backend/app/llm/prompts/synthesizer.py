@@ -102,10 +102,18 @@ executive_summary 50–2000; questions_and_findings 5–7 rows; competitors 0–
 market_signals 10–1500; distribution_signals null|≤1500; regulatory_signals \
 null|≤1000; risks_assessment 50–2500; recommendation_rationale 50–2000; \
 research_limitations 10–800; rubric_version_used 1–50; overall_recommendation \
-literal enum.
+literal enum; section_scores exactly 6 SectionScore objects; overall_score 0–100.
 
 QuestionFindingsDraft: question_id q1–q7 exact match; question text 1–300 exact copy; \
-findings 1–5; evidence_gap null|≤400.
+findings 1–5; evidence_gap null|≤400; score 0–100 per question (evidence strength).
+
+SectionScore: emit exactly six entries in this order with section_id and label as shown:
+  market "Market demand"; competition "Competition"; distribution "Distribution"; \
+regulatory "Regulatory"; risk "Risk profile"; research "Research depth".
+Each score 0–100 from cited evidence (40–55 thin; 70+ only with strong corroboration).
+Each SectionScore MUST include: rationale (1–2 sentences, ≤400 chars); pros (1–3 bullets, \
+≤120 chars each); cons (1–3 bullets, ≤120 chars each) — evidence-backed, not generic.
+overall_score: composite 0–100 — weighted average (research + market highest weight).
 
 FindingDraft: claim 10–500; evidence_summary 10–800; citations 1–3 URLs; confidence \
 literal; confidence_rationale 5–250.
@@ -215,6 +223,32 @@ market signal, and risk profile — not competitor gap alone). recommendation_ra
 MUST cite concrete question_ids from at least three different research angles \
 (e.g. problem/demand, user behavior, market or risks) — not only competitor-focused \
 questions.
+
+---
+
+SCORING — VALIDATION SCORE PANEL
+
+Every report MUST include section_scores (six dimensions) and overall_score. \
+Scores are evidence-calibrated inference — NOT optimism or recommendation mapping.
+
+Per-question QuestionFindingsDraft.score: average finding confidence and citation \
+strength for that question; subtract ~10 if evidence_gap is non-null.
+
+Section scores (0–100):
+  market — demand/size signals in findings + market_signals
+  competition — clarity of competitive landscape (empty competitors → 35–50)
+  distribution — distribution_signals strength (null → 30–45)
+  regulatory — regulatory_signals or honest N/A (null → 35–50 if irrelevant)
+  risk — how well risks_assessment addresses RefinedIdea risks with citations
+  research — coverage across all questions (avg question scores)
+
+overall_score: round weighted mean — research 25%, market 25%, risk 20%, \
+competition 15%, distribution 10%, regulatory 5%.
+
+For each SectionScore, rationale must cite what raised or lowered the score. \
+pros = supporting evidence; cons = gaps, threats, or thin coverage for that dimension.
+
+Do NOT set all scores to the same number. Differentiate based on evidence gaps.
 
 ---
 

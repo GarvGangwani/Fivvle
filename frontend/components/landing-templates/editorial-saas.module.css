@@ -21,7 +21,7 @@
   background: var(--bg);
   color: var(--text);
   line-height: 1.5;
-  font-size: 16px;
+  font-size: 15px;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -141,17 +141,17 @@
 .btn {
   font-family: var(--font-sans);
   font-weight: 500;
-  font-size: 0.92rem;
+  font-size: 0.875rem;
   border: 0;
   cursor: pointer;
   border-radius: 99px;
-  padding: 10px 22px;
+  padding: 8px 18px;
   display: inline-flex;
   align-items: center;
   gap: 8px;
   text-decoration: none;
   transition: transform 0.25s var(--ease), background 0.25s var(--ease);
-  height: 40px;
+  height: 36px;
 }
 
 .btnPrimary {
@@ -178,18 +178,18 @@
 
 /* Hero */
 .hero {
-  min-height: calc(100dvh - 64px);
+  min-height: calc(88dvh - 64px);
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
   position: relative;
-  padding: 40px 0 clamp(160px, 25vh, 280px);
+  padding: 32px 0 clamp(120px, 20vh, 220px);
   overflow: hidden;
 }
 
 .heroInner {
-  max-width: 800px;
+  max-width: 720px;
   margin-inline: auto;
   text-align: center;
   position: relative;
@@ -204,11 +204,11 @@
   display: block;
   width: 100%;
   font-family: var(--font-serif);
-  font-size: clamp(3.4rem, 7.5vw, 6rem);
-  line-height: 0.94;
-  letter-spacing: -0.025em;
+  font-size: clamp(2.65rem, 5.5vw, 4.5rem);
+  line-height: 1;
+  letter-spacing: -0.022em;
   font-weight: 300;
-  margin-bottom: 40px;
+  margin-bottom: 28px;
   text-wrap: balance;
 }
 
@@ -219,12 +219,12 @@
 .heroSub {
   display: block;
   width: 100%;
-  max-width: 55ch;
-  font-size: clamp(1.2rem, 1.8vw, 1.55rem);
+  max-width: 52ch;
+  font-size: clamp(1.05rem, 1.45vw, 1.25rem);
   font-weight: 300;
   color: var(--text-muted);
-  margin: 0 auto 40px;
-  line-height: 1.6;
+  margin: 0 auto 28px;
+  line-height: 1.55;
 }
 
 .heroActions {
@@ -242,7 +242,7 @@
   bottom: 0;
   left: 0;
   width: 100%;
-  height: clamp(160px, 25vh, 280px);
+  height: clamp(120px, 18vh, 220px);
   overflow: hidden;
   pointer-events: none;
 }
@@ -288,103 +288,45 @@
   }
 }
 
-/* Sticky features */
-.featuresSticky {
-  position: relative;
-  height: 450vh;
+/* Capabilities — alternating text / image rows */
+.capabilities {
+  padding-block: clamp(48px, 6vw, 96px);
 }
 
-.featuresTrack {
-  position: sticky;
-  top: 64px;
-  height: calc(100vh - 64px);
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-}
-
-.featuresInner {
+.capabilityRow {
   display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-  gap: 80px;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: clamp(32px, 5vw, 64px);
   align-items: center;
-  width: 100%;
+  padding-block: clamp(32px, 4vw, 56px);
 }
 
-.featuresLeft {
-  position: relative;
-  height: 480px;
-  display: flex;
-  align-items: center;
+.capabilityRow + .capabilityRow {
+  border-top: 1px solid var(--border);
 }
 
-.featureText {
-  position: absolute;
-  inset: 0;
+.capabilityText {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  opacity: 0;
-  transform: translateY(80px);
-  pointer-events: none;
-  transition: opacity 0.6s var(--ease), transform 0.6s var(--ease);
+  gap: 0;
 }
 
-.featureTextActive {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
-.featureTextPast {
-  opacity: 0;
-  transform: translateY(-80px);
-}
-
-.featuresRight {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.visualWrapper {
+.capabilityVisual {
   position: relative;
   width: 100%;
+  min-height: 240px;
   aspect-ratio: 1.2;
   border-radius: 20px;
   overflow: hidden;
   border: 1px solid var(--border);
 }
 
-.featureVisual {
-  position: absolute;
-  inset: 0;
-  opacity: 0;
-  transform: translateY(100%);
-  transition: transform 0.7s var(--ease-soft), opacity 0.7s var(--ease-soft);
-  border-radius: inherit;
-  overflow: hidden;
+.capabilityRowReverse .capabilityText {
+  order: 2;
 }
 
-.featureVisualActive {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.featureVisualPast {
-  opacity: 0;
-  transform: translateY(-100%);
-}
-
-.mobileVisual {
-  display: none;
-  width: 100%;
-  aspect-ratio: 1.6;
-  border-radius: 16px;
-  margin-bottom: 24px;
-  position: relative;
-  overflow: hidden;
-  border: 1px solid var(--border);
+.capabilityRowReverse .capabilityVisual {
+  order: 1;
 }
 
 .gradCard {
@@ -415,61 +357,30 @@
 
 .h2 {
   font-family: var(--font-serif);
-  font-size: clamp(2.2rem, 4.5vw, 3.8rem);
+  font-size: clamp(1.9rem, 3.5vw, 3rem);
   letter-spacing: -0.015em;
   font-weight: 500;
-  line-height: 1.1;
-  margin-bottom: 20px;
+  line-height: 1.12;
+  margin-bottom: 16px;
 }
 
 .lede {
-  font-size: clamp(1.06rem, 1.3vw, 1.25rem);
+  font-size: clamp(1rem, 1.15vw, 1.125rem);
   color: var(--text-muted);
-  line-height: 1.55;
-  margin-bottom: 30px;
-}
-
-.featureList {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
-.featureItem {
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--border);
-  opacity: 0.15;
-  transform: translateY(12px);
-  transition: opacity 0.5s var(--ease), transform 0.5s var(--ease);
-}
-
-.featureItemVisible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.featureItemTitle {
-  font-size: 1.05rem;
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-
-.featureItemBody {
-  color: var(--text-muted);
-  font-size: 0.93rem;
   line-height: 1.5;
+  margin-bottom: 0;
 }
 
 /* Workflow */
 .workflow {
-  padding-block: clamp(64px, 8vw, 130px);
+  padding-block: clamp(48px, 6vw, 100px);
   background: var(--bg-secondary);
 }
 
 .workflowGrid {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-  gap: 64px;
+  gap: 48px;
   align-items: center;
 }
 
@@ -477,8 +388,8 @@
   display: flex;
   flex-direction: column;
   position: relative;
-  margin-top: 40px;
-  gap: 36px;
+  margin-top: 32px;
+  gap: 28px;
 }
 
 .workflowSteps::before {
@@ -542,7 +453,7 @@
 
 /* Testimonial */
 .testimonial {
-  padding-block: clamp(64px, 8vw, 130px);
+  padding-block: clamp(48px, 6vw, 100px);
   border-bottom: 1px solid var(--border);
 }
 
@@ -553,9 +464,9 @@
 
 .testimonialQuote {
   font-family: var(--font-serif);
-  font-size: clamp(1.8rem, 3.8vw, 2.8rem);
-  line-height: 1.25;
-  margin-bottom: 40px;
+  font-size: clamp(1.55rem, 3.2vw, 2.35rem);
+  line-height: 1.28;
+  margin-bottom: 32px;
   font-weight: 400;
   transition: opacity 0.2s;
 }
@@ -610,12 +521,12 @@
 
 /* FAQ */
 .faqSection {
-  padding-block: clamp(64px, 8vw, 130px);
+  padding-block: clamp(48px, 6vw, 100px);
 }
 
 .faqHead {
   text-align: center;
-  margin-bottom: 48px;
+  margin-bottom: 36px;
 }
 
 .faqList {
@@ -635,9 +546,9 @@
   border: 0;
   color: var(--text);
   font-family: var(--font-serif);
-  font-size: clamp(1.3rem, 2.5vw, 1.8rem);
+  font-size: clamp(1.15rem, 2.1vw, 1.55rem);
   font-weight: 500;
-  padding: 24px 8px;
+  padding: 20px 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -676,7 +587,7 @@
 .cta {
   display: block;
   text-align: center;
-  padding-block: clamp(64px, 10vw, 160px);
+  padding-block: clamp(48px, 8vw, 120px);
   width: 100%;
 }
 
@@ -695,9 +606,9 @@
   display: block;
   width: 100%;
   font-family: var(--font-serif);
-  font-size: clamp(2.2rem, 4.5vw, 3.8rem);
-  line-height: 1.1;
-  margin-bottom: 24px;
+  font-size: clamp(1.9rem, 3.5vw, 3rem);
+  line-height: 1.12;
+  margin-bottom: 20px;
   text-wrap: balance;
 }
 
@@ -823,44 +734,18 @@
   .navMenu {
     display: block;
   }
-  .featuresSticky {
-    height: auto !important;
-  }
-  .featuresTrack {
-    position: relative !important;
-    top: 0 !important;
-    height: auto !important;
-    overflow: visible !important;
-    padding-block: 48px;
-  }
-  .featuresInner {
+  .capabilityRow {
     grid-template-columns: 1fr;
-    gap: 48px;
+    gap: 32px;
+    padding-block: 40px;
   }
-  .featuresLeft {
-    height: auto !important;
-    flex-direction: column;
-    gap: 64px;
-  }
-  .featureText {
-    position: relative !important;
-    opacity: 1 !important;
-    transform: none !important;
-    pointer-events: auto !important;
-  }
-  .featuresRight {
-    display: none;
-  }
-  .mobileVisual {
-    display: block;
+  .capabilityVisual {
+    min-height: 220px;
+    aspect-ratio: 1.6;
   }
   .workflowGrid {
     grid-template-columns: 1fr;
     gap: 48px;
-  }
-  .featureItem {
-    opacity: 1 !important;
-    transform: none !important;
   }
 }
 
@@ -878,9 +763,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .heroWave,
-  .reveal,
-  .featureText,
-  .featureVisual {
+  .reveal {
     animation: none !important;
     transition: none !important;
   }

@@ -17,23 +17,36 @@ import re
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from slowapi.util import get_remote_address
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.enums import ExperimentStatus, LandingCtaType
+from app.db.enums import LandingCtaType
 from app.db.models.experiment import Experiment
 from app.db.models.landing_page import LandingPage
+from app.utils.landing_page_public import PUBLIC_LANDING_PAGE_STATUSES
 from app.db.models.page_view import PageView
-from app.db.models.waitlist_signup import WaitlistSignup
 from app.db.session import get_session
 from app.logging_config import get_logger
 from app.reliability.rate_limit import PUBLIC_RATE_LIMIT, ip_key, limiter
+from app.services.logo_upload_service import (
+    local_logo_content_type,
+    local_section_image_content_type,
+    resolve_local_logo_path,
+    resolve_local_section_image_path,
+)
+from app.services.waitlist_service import record_waitlist_signup
 
 _logger = get_logger(__name__)
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]{6,40}$")
+_LOGO_FILENAME_RE = re.compile(r"^[0-9a-f-]{36}\.(png|jpe?g|webp)$", re.IGNORECASE)
+_UUID_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
 
 _CTA_TYPE_TO_MODE: dict[LandingCtaType, str] = {
     LandingCtaType.WAITLIST: "waitlist",
@@ -100,14 +113,14 @@ async def _fetch_live_landing_page(
     db: AsyncSession,
     slug: str,
 ) -> tuple[LandingPage, Experiment] | None:
-    """Return (LandingPage, Experiment) when slug is published and LANDING_LIVE."""
+    """Return (LandingPage, Experiment) when slug is published and still public."""
     stmt = (
         select(LandingPage, Experiment)
         .join(Experiment, LandingPage.experiment_id == Experiment.id)
         .where(
             LandingPage.slug == slug,
             LandingPage.live_at.is_not(None),
-            Experiment.status == ExperimentStatus.LANDING_LIVE,
+            Experiment.status.in_(PUBLIC_LANDING_PAGE_STATUSES),
         )
     )
     result = await db.execute(stmt)
@@ -133,7 +146,11 @@ def _landing_page_to_public_payload(
         "waitlist",
     )
     cta_url = publish_meta.get("cta_url")
-    project_name = publish_meta.get("project_name") or landing_page.headline
+    project_name = (
+        (experiment.name.strip() if experiment.name else None)
+        or publish_meta.get("project_name")
+        or landing_page.headline
+    )
 
     return PublicLandingPageResponse(
         slug=landing_page.slug,
@@ -190,13 +207,13 @@ async def submit_waitlist_signup(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
 
     landing_page, experiment = row
-    signup = WaitlistSignup(
+    await record_waitlist_signup(
+        db,
         experiment_id=experiment.id,
         email=str(body.email).strip().lower(),
         source_tag=body.source_tag,
+        client_ip=get_remote_address(request),
     )
-    db.add(signup)
-    await db.commit()
 
     _logger.info(
         "waitlist signup recorded",
@@ -245,3 +262,55 @@ async def record_page_view(
         experiment_id=str(experiment.id),
     )
     return PageViewResponse(status="recorded")
+
+
+@router.get("/uploads/landing-logos/{user_id}/{experiment_id}/{filename}")
+@limiter.limit(PUBLIC_RATE_LIMIT, key_func=ip_key)
+async def get_landing_page_logo_upload(
+    request: Request,
+    response: Response,
+    user_id: str,
+    experiment_id: str,
+    filename: str,
+) -> FileResponse:
+    """Serve locally stored landing-page logos (development / fallback storage)."""
+    if not _UUID_RE.match(user_id) or not _UUID_RE.match(experiment_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    if not _LOGO_FILENAME_RE.match(filename):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    path = resolve_local_logo_path(user_id, experiment_id, filename)
+    if not path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    return FileResponse(
+        path,
+        media_type=local_logo_content_type(path),
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
+@router.get("/uploads/landing-section-images/{user_id}/{experiment_id}/{filename}")
+@limiter.limit(PUBLIC_RATE_LIMIT, key_func=ip_key)
+async def get_landing_page_section_image_upload(
+    request: Request,
+    response: Response,
+    user_id: str,
+    experiment_id: str,
+    filename: str,
+) -> FileResponse:
+    """Serve locally stored landing-page section images (development / fallback storage)."""
+    if not _UUID_RE.match(user_id) or not _UUID_RE.match(experiment_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    if not _LOGO_FILENAME_RE.match(filename):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    path = resolve_local_section_image_path(user_id, experiment_id, filename)
+    if not path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    return FileResponse(
+        path,
+        media_type=local_section_image_content_type(path),
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )

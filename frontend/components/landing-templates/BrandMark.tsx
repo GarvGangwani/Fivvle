@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import type { ResolvedBranding } from "@/lib/branding";
 import { projectInitials } from "@/lib/branding";
 import styles from "./brand-mark.module.css";
@@ -32,28 +33,34 @@ export function BrandMark({
   const initials = projectInitials(projectName);
   const parts = projectName.trim().split(/\s+/);
   const first = parts[0] ?? projectName;
-  const rest = parts.slice(1).join(" ") || (variant === "dark-premium" ? "premium" : "");
+  const rest = parts.slice(1).join(" ");
+
+  const scaleStyle = {
+    "--brand-mark-scale": String(branding.logo_scale / 100),
+  } as CSSProperties;
 
   const mark = (() => {
     if (branding.icon_mode === "url" && branding.logo_url) {
       return (
-        <span className={`${styles.mark} ${styles.markImage}`}>
+        <span className={`${styles.mark} ${styles.markImage}`} style={scaleStyle}>
           <img src={branding.logo_url} alt="" />
         </span>
       );
     }
     if (branding.icon_mode === "emoji" && branding.logo_emoji) {
       return (
-        <span className={`${styles.mark} ${styles.markEmoji}`} aria-hidden>
+        <span className={`${styles.mark} ${styles.markEmoji}`} style={scaleStyle} aria-hidden>
           {branding.logo_emoji}
         </span>
       );
     }
     if (branding.icon_mode === "mark" && variant === "bold-v1") {
-      return <span className={`${styles.mark} ${styles.markDecor}`} aria-hidden />;
+      return (
+        <span className={`${styles.mark} ${styles.markDecor}`} style={scaleStyle} aria-hidden />
+      );
     }
     return (
-      <span className={`${styles.mark} ${styles.markInitials}`} aria-hidden>
+      <span className={`${styles.mark} ${styles.markInitials}`} style={scaleStyle} aria-hidden>
         {initials}
       </span>
     );

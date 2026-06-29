@@ -1,0 +1,199 @@
+.shell {
+  position: relative;
+  min-height: 100%;
+  --fv-texture-intensity: 1;
+  --fv-gradient-intensity: 1;
+  --fv-glow-intensity: 0;
+}
+
+.content {
+  position: relative;
+  z-index: 1;
+  min-height: inherit;
+}
+
+/* Overlays sit above template content (opaque template backgrounds hide layers below). */
+.overlayRoot {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.gradientLayer,
+.textureLayer,
+.glowLayer {
+  position: absolute;
+  inset: 0;
+}
+
+.gradientLayer[data-style="flat"],
+.gradientLayer[data-active="false"] {
+  display: none;
+}
+
+.textureLayer[data-texture="none"],
+.textureLayer[data-active="false"] {
+  display: none;
+}
+
+.glowLayer[data-active="false"] {
+  display: none;
+}
+
+/* --- Gradient atmosphere --- */
+.shell[data-color-mode="light"] .gradientLayer[data-style="radial"] {
+  background: radial-gradient(
+    ellipse 110% 60% at 50% -8%,
+    var(--fv-surface-accent-45) 0%,
+    transparent 68%
+  );
+  mix-blend-mode: multiply;
+  opacity: calc(0.85 * var(--fv-gradient-intensity, 1));
+}
+
+.shell[data-color-mode="dark"] .gradientLayer[data-style="radial"] {
+  background: radial-gradient(
+    ellipse 110% 60% at 50% -8%,
+    var(--fv-surface-accent-50) 0%,
+    transparent 68%
+  );
+  mix-blend-mode: screen;
+  opacity: calc(0.95 * var(--fv-gradient-intensity, 1));
+}
+
+.shell[data-color-mode="light"] .gradientLayer[data-style="mesh-warm"] {
+  background:
+    radial-gradient(
+      ellipse 75% 55% at 10% 5%,
+      var(--fv-surface-accent-40) 0%,
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 60% 50% at 90% 12%,
+      rgba(255, 190, 120, 0.35) 0%,
+      transparent 55%
+    );
+  mix-blend-mode: multiply;
+  opacity: calc(0.9 * var(--fv-gradient-intensity, 1));
+}
+
+.shell[data-color-mode="dark"] .gradientLayer[data-style="mesh-warm"] {
+  background:
+    radial-gradient(
+      ellipse 75% 55% at 10% 5%,
+      var(--fv-surface-accent-45) 0%,
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 60% 50% at 90% 12%,
+      rgba(255, 170, 90, 0.28) 0%,
+      transparent 55%
+    );
+  mix-blend-mode: screen;
+  opacity: calc(1 * var(--fv-gradient-intensity, 1));
+}
+
+.shell[data-color-mode="light"] .gradientLayer[data-style="mesh-cool"] {
+  background:
+    radial-gradient(
+      ellipse 75% 55% at 12% 8%,
+      var(--fv-surface-accent-38) 0%,
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 55% 48% at 88% 15%,
+      rgba(120, 190, 255, 0.32) 0%,
+      transparent 55%
+    );
+  mix-blend-mode: multiply;
+  opacity: calc(0.9 * var(--fv-gradient-intensity, 1));
+}
+
+.shell[data-color-mode="dark"] .gradientLayer[data-style="mesh-cool"] {
+  background:
+    radial-gradient(
+      ellipse 75% 55% at 12% 8%,
+      var(--fv-surface-accent-42) 0%,
+      transparent 58%
+    ),
+    radial-gradient(
+      ellipse 55% 48% at 88% 15%,
+      rgba(100, 180, 255, 0.26) 0%,
+      transparent 55%
+    );
+  mix-blend-mode: screen;
+  opacity: calc(1 * var(--fv-gradient-intensity, 1));
+}
+
+/* --- Textures --- */
+.textureLayer[data-texture="grain"] {
+  opacity: calc(0.28 * var(--fv-texture-intensity, 1));
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  background-size: 180px 180px;
+}
+
+.textureLayer[data-texture="paper"] {
+  opacity: calc(0.2 * var(--fv-texture-intensity, 1));
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='p'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.04' numOctaves='5'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23p)' opacity='0.45'/%3E%3C/svg%3E");
+  background-size: 220px 220px;
+}
+
+.textureLayer[data-texture="dot-grid"] {
+  opacity: calc(0.55 * var(--fv-texture-intensity, 1));
+  mix-blend-mode: multiply;
+  background-image: radial-gradient(
+    circle,
+    var(--fv-surface-ink) 0.9px,
+    transparent 0.9px
+  );
+  background-size: 18px 18px;
+}
+
+.shell[data-color-mode="dark"] .textureLayer[data-texture="dot-grid"] {
+  mix-blend-mode: screen;
+  opacity: calc(0.35 * var(--fv-texture-intensity, 1));
+}
+
+.textureLayer[data-texture="linen"] {
+  opacity: calc(0.22 * var(--fv-texture-intensity, 1));
+  mix-blend-mode: multiply;
+  background-image: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      var(--fv-surface-ink) 3px,
+      var(--fv-surface-ink) 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 3px,
+      var(--fv-surface-ink-soft) 3px,
+      var(--fv-surface-ink-soft) 4px
+    );
+}
+
+/* --- Hero glow (continuous intensity via --fv-glow-intensity 0–1) --- */
+.shell[data-color-mode="light"] .glowLayer[data-active="true"] {
+  background: radial-gradient(
+    ellipse calc(72% + var(--fv-glow-intensity) * 28%) calc(40% + var(--fv-glow-intensity) * 22%) at 50% 0%,
+    var(--fv-surface-accent-55) 0%,
+    transparent 72%
+  );
+  mix-blend-mode: soft-light;
+  opacity: calc(0.18 + var(--fv-glow-intensity) * 0.82);
+}
+
+.shell[data-color-mode="dark"] .glowLayer[data-active="true"] {
+  background: radial-gradient(
+    ellipse calc(72% + var(--fv-glow-intensity) * 28%) calc(40% + var(--fv-glow-intensity) * 22%) at 50% 0%,
+    var(--fv-surface-accent-60) 0%,
+    transparent 72%
+  );
+  mix-blend-mode: screen;
+  opacity: calc(0.22 + var(--fv-glow-intensity) * 0.78);
+}

@@ -97,6 +97,20 @@ class RefinedIdea(BaseModel):
         ),
     ]
 
+    project_name: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=60,
+            description=(
+                "Short display name for this project in dashboards, navigation, and the "
+                "landing page brand bar — 2–5 words, title case. A memorable product name "
+                "like 'Shift Handoff AI' or 'CFO Match', NOT a marketing headline or full "
+                "one-liner. Maximum 60 characters."
+            ),
+        ),
+    ] = None
+
     headline: Annotated[
         str,
         Field(
@@ -144,6 +158,45 @@ _BANNED_FILLER_PHRASES = (
     "i'd love to help",
 )
 
+_OptionStr = Annotated[str, Field(min_length=1, max_length=200)]
+
+
+class ClarifyingQuestion(BaseModel):
+    """Structured founder-facing question for the refinement question block UI."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    question: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=400,
+            description=(
+                "A specific, conversational question grounded in what the founder "
+                "already said — not a generic template."
+            ),
+        ),
+    ]
+    selection_mode: Literal["single", "multiple"] = Field(
+        default="multiple",
+        description=(
+            "Default to 'multiple' — the UI always lets founders pick several options. "
+            "Use 'single' only for a forced either/or (e.g. resolving a contradiction "
+            "between two mutually exclusive paths)."
+        ),
+    )
+    options: Annotated[
+        list[_OptionStr],
+        Field(
+            min_length=2,
+            description=(
+                "Concrete answer choices that help the founder understand the "
+                "problem space. Include every plausible option — no artificial cap. "
+                "The UI always adds a free-text 'Other' field."
+            ),
+        ),
+    ]
+
 
 class RefinementTurnDecision(BaseModel):
     """Per-turn structured output for chat-mode refinement (planning doc §2)."""
@@ -161,6 +214,16 @@ class RefinementTurnDecision(BaseModel):
         "pivot_resolution",
         "other",
     ] | None = None
+    clarifying_questions: Annotated[
+        list[ClarifyingQuestion],
+        Field(
+            default_factory=list,
+            description=(
+                "Required when decision is clarify. One or more structured questions "
+                "shown sequentially in the question-block UI."
+            ),
+        ),
+    ]
     refined_idea: RefinedIdea | None = None
     reasoning_trace: Annotated[str, Field(max_length=400)] = ""
 
@@ -178,11 +241,19 @@ class RefinementTurnDecision(BaseModel):
                 raise ValueError(
                     "clarifying_dimension must be set when decision is clarify"
                 )
+            if not self.clarifying_questions:
+                raise ValueError(
+                    "clarifying_questions must be non-empty when decision is clarify"
+                )
             if self.refined_idea is not None:
                 raise ValueError("refined_idea must be null when decision is clarify")
-            if not self.assistant_message.rstrip().endswith("?"):
+            if (
+                not self.clarifying_questions
+                and not self.assistant_message.rstrip().endswith("?")
+            ):
                 raise ValueError(
-                    "assistant_message must end with '?' when decision is clarify"
+                    "assistant_message must end with '?' when decision is clarify "
+                    "and clarifying_questions is empty"
                 )
         elif self.decision == "finalize":
             if self.refined_idea is None:

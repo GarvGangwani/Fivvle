@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Maximize2, X } from "lucide-react";
+import { Maximize2, Loader2, X } from "lucide-react";
 import {
   DEVICE_CATEGORIES,
   frameChromeSize,
@@ -20,15 +20,28 @@ import {
   type DevicePreset,
 } from "@/lib/device-presets";
 import styles from "./device-preview.module.css";
+import { DevicePreviewIframe } from "./DevicePreviewIframe";
+import type { DevicePreviewPayload } from "@/lib/device-preview-messages";
+import {
+  PreviewSaveStatusBadge,
+  type PreviewSaveStatus,
+} from "./PreviewSaveStatus";
 
 interface DevicePreviewProps {
-  children: ReactNode;
+  children?: ReactNode;
+  /** When set, phone/tablet previews render in an isolated iframe for accurate vw/media queries. */
+  previewPayload?: DevicePreviewPayload;
   /** When true, preview fills available width with no device chrome. */
   defaultDeviceId?: string;
   /** Simplified Desktop / Tablet / Mobile toolbar for the editor. */
   variant?: "full" | "editor";
   /** Use fluid full-width preview (mobile editor preview tab). */
   mobileFluid?: boolean;
+  /** Hint that inline copy/image editing works in desktop preview only. */
+  showInlineEditDisclaimer?: boolean;
+  /** Autosave state shown in the editor preview toolbar. */
+  saveStatus?: PreviewSaveStatus;
+  saveErrorDetail?: string | null;
 }
 
 const EDITOR_DEVICES = [
@@ -36,6 +49,59 @@ const EDITOR_DEVICES = [
   { id: "ipad-air", label: "Tablet" },
   { id: "iphone-15-pro", label: "Mobile" },
 ] as const;
+
+function previewLoadKey(
+  deviceId: string,
+  payload: DevicePreviewPayload | undefined,
+): string {
+  if (!payload) return deviceId;
+  const generationId = payload.page?.meta?.generation_id ?? "local";
+  return `${deviceId}:${payload.templateId}:${generationId}`;
+}
+
+function PreviewLoadingOverlay() {
+  return (
+    <div className={styles.previewLoadingOverlay} role="status" aria-live="polite">
+      <div className={styles.previewLoadingOverlayContent}>
+        <Loader2 className={styles.previewLoadingSpinner} aria-hidden />
+        <span>Loading…</span>
+      </div>
+    </div>
+  );
+}
+
+function InlinePreviewShell({
+  loadKey,
+  children,
+}: {
+  loadKey: string;
+  children: ReactNode;
+}) {
+  const [loading, setLoading] = useState(true);
+
+  useLayoutEffect(() => {
+    setLoading(true);
+    let cancelled = false;
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        if (!cancelled) setLoading(false);
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [loadKey]);
+
+  return (
+    <div className={styles.previewScreenWrap}>
+      {children}
+      {loading ? <PreviewLoadingOverlay /> : null}
+    </div>
+  );
+}
 
 function DeviceFrameShell({
   frame,
@@ -203,12 +269,14 @@ function ScaledPreview({
   device,
   landscape,
   isFullscreen,
+  previewPayload,
   children,
 }: {
   device: DevicePreset;
   landscape: boolean;
   isFullscreen: boolean;
-  children: ReactNode;
+  previewPayload?: DevicePreviewPayload;
+  children?: ReactNode;
 }) {
   const areaRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
@@ -218,17 +286,39 @@ function ScaledPreview({
   const totalW = (width ?? 0) + chrome.padX * 2;
   const totalH = (height ?? 0) + chrome.padTop + chrome.padBottom;
 
+  const useIsolatedViewport =
+    previewPayload != null &&
+    width != null &&
+    height != null &&
+    (device.category === "phone" ||
+      device.category === "tablet" ||
+      device.category === "foldable");
+
+  const loadKey = previewLoadKey(device.id, previewPayload);
+
+  const screenContent =
+    useIsolatedViewport && width != null && height != null ? (
+      <DevicePreviewIframe
+        width={width}
+        height={height}
+        payload={previewPayload}
+        loadKey={loadKey}
+      />
+    ) : (
+      <InlinePreviewShell loadKey={loadKey}>{children}</InlinePreviewShell>
+    );
+
   const updateScale = useCallback(() => {
     const area = areaRef.current;
     if (!area || width == null || height == null) {
       setScale(1);
       return;
     }
-    const pad = isFullscreen ? 48 : 32;
-    const availW = area.clientWidth - pad;
-    const availH = area.clientHeight - pad;
+    const pad = isFullscreen ? 48 : 24;
+    const availW = Math.max(0, area.clientWidth - pad);
+    const availH = Math.max(0, area.clientHeight - pad);
     const next = Math.min(1, availW / totalW, availH / totalH);
-    setScale(Math.max(0.2, next));
+    setScale(Math.max(0.15, next));
   }, [width, height, totalW, totalH, isFullscreen]);
 
   useLayoutEffect(() => {
@@ -249,7 +339,7 @@ function ScaledPreview({
         ref={areaRef}
         className={`${styles.viewportArea} ${styles.viewportAreaFluid}`}
       >
-        <div className={styles.fluidWrap}>{children}</div>
+        <div className={styles.fluidWrap}>{screenContent ?? children}</div>
       </div>
     );
   }
@@ -257,7 +347,7 @@ function ScaledPreview({
   return (
     <div ref={areaRef} className={styles.viewportArea}>
       <div
-        className={styles.scaledWrap}
+        className={styles.scaledClip}
         style={{ width: totalW * scale, height: totalH * scale }}
       >
         <div
@@ -266,6 +356,9 @@ function ScaledPreview({
             width: totalW,
             height: totalH,
             transform: `scale(${scale})`,
+            ["--preview-inverse-scale" as string]: String(
+              scale > 0 ? Math.min(3.5, 1 / scale) : 1,
+            ),
           }}
         >
           <DeviceFrameShell
@@ -273,7 +366,7 @@ function ScaledPreview({
             viewportWidth={width}
             viewportHeight={height}
           >
-            {children}
+            {screenContent}
           </DeviceFrameShell>
         </div>
       </div>
@@ -283,9 +376,13 @@ function ScaledPreview({
 
 export function DevicePreview({
   children,
+  previewPayload,
   defaultDeviceId = "fluid",
   variant = "full",
   mobileFluid = false,
+  showInlineEditDisclaimer = false,
+  saveStatus = "idle",
+  saveErrorDetail = null,
 }: DevicePreviewProps) {
   const isEditor = variant === "editor";
   const initialId = mobileFluid ? "fluid" : isEditor ? "desktop-1440" : defaultDeviceId;
@@ -344,6 +441,9 @@ export function DevicePreview({
       ? `${width} × ${height}${landscape ? " ↻" : ""}`
       : "Responsive";
 
+  const isDesktopEditorPreview =
+    deviceId === "desktop-1440" || deviceId === "desktop-full";
+
   useEffect(() => {
     if (!isFullscreen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -358,21 +458,16 @@ export function DevicePreview({
   }, [isFullscreen]);
 
   const editorToolbar = isEditor && !isFullscreen && !mobileFluid ? (
-    <div
-      className="flex items-center justify-between gap-3 border-b px-4 py-3"
-      style={{
-        borderColor: "rgba(255,255,255,0.07)",
-        background: "rgba(0,0,0,0.25)",
-      }}
-    >
-      <div className="flex flex-1 justify-center">
-        <div
-          className="inline-flex rounded-xl border p-1"
-          style={{
-            background: "rgba(255,255,255,0.04)",
-            borderColor: "rgba(255,255,255,0.08)",
-          }}
-        >
+    <div className={styles.editorToolbar}>
+      <div className={styles.editorToolbarStart}>
+        {showInlineEditDisclaimer && !isDesktopEditorPreview ? (
+          <p className={styles.editDisclaimer}>
+            Direct editing is only available in the desktop preview
+          </p>
+        ) : null}
+      </div>
+      <div className={styles.editorToolbarCenter}>
+        <div className={styles.editorDeviceSwitcher}>
           {EDITOR_DEVICES.map((preset) => (
             <button
               key={preset.id}
@@ -387,15 +482,18 @@ export function DevicePreview({
           ))}
         </div>
       </div>
-      <button
-        type="button"
-        className={styles.iconBtn}
-        onClick={() => setIsFullscreen(true)}
-        title="Full screen preview"
-        aria-label="Full screen preview"
-      >
-        <Maximize2 className="h-4 w-4" />
-      </button>
+      <div className={styles.editorToolbarEnd}>
+        <PreviewSaveStatusBadge status={saveStatus} errorDetail={saveErrorDetail} />
+        <button
+          type="button"
+          className={styles.iconBtn}
+          onClick={() => setIsFullscreen(true)}
+          title="Full screen preview"
+          aria-label="Full screen preview"
+        >
+          <Maximize2 className="h-4 w-4" />
+        </button>
+      </div>
     </div>
   ) : null;
 
@@ -420,6 +518,7 @@ export function DevicePreview({
       device={device}
       landscape={landscape}
       isFullscreen={isFullscreen}
+      previewPayload={previewPayload}
     >
       {children}
     </ScaledPreview>
@@ -436,7 +535,16 @@ export function DevicePreview({
         >
           <X className="h-4 w-4" />
         </button>
-        <div className="h-full w-full overflow-auto">{children}</div>
+        <div className="flex h-full min-h-0 flex-1 flex-col pt-14">
+          <ScaledPreview
+            device={device}
+            landscape={landscape}
+            isFullscreen
+            previewPayload={previewPayload}
+          >
+            {children}
+          </ScaledPreview>
+        </div>
       </div>
     );
   }
@@ -452,6 +560,11 @@ export function DevicePreview({
 
   return (
     <div className={styles.stage}>
+      {mobileFluid && saveStatus !== "idle" ? (
+        <div className={styles.mobileSaveBar}>
+          <PreviewSaveStatusBadge status={saveStatus} errorDetail={saveErrorDetail} />
+        </div>
+      ) : null}
       {editorToolbar}
       {toolbar}
       {preview}

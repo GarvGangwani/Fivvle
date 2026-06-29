@@ -105,9 +105,9 @@ headline
   GOOD: "Stop chasing invoices. Get paid on time."
 
 subheadline
-  Maximum 160 characters. Expands the headline with specifics. Answers either \
-  "how does it work?" or "exactly who is this for and what changes for them?". \
-  Adds the detail the headline can't fit at 80 characters.
+  Maximum 160 characters. Expands the headline with specifics. Answer "how does it work?" \
+or "what changes for the reader?" — concrete outcome or mechanism. Do NOT open with \
+demographic labels ("for nurses", "built for SMBs"). Landing pages sell outcomes, not audiences.
 
 cta_text
   Maximum 30 characters. Action-oriented, specific to the offer.
@@ -228,8 +228,8 @@ def build_refinement_user_prompt(
 
     # --- closing instruction ------------------------------------------------
     parts.append(
-        "\nProduce the structured output with all seven fields: "
-        "refined_one_liner, target_audience, value_proposition, risks, "
+        "\nProduce the structured output with all eight fields: "
+        "refined_one_liner, target_audience, value_proposition, risks, project_name, "
         "headline, subheadline, cta_text."
     )
 
@@ -281,18 +281,37 @@ Also use these tags when they apply (they take priority over the five above):
 
 ---
 
-HOW TO CLARIFY
+HOW TO CLARIFY (structured question block)
 
-- Ask about ONE exploration dimension per turn — never stack multiple dimensions \
-  in one question.
-- Each question must be conversational and specific to this founder's idea — not \
-  generic ("who is your target audience?"). Ground it in what they already said.
-- Start each clarify message with a brief acknowledgment of what the user just \
-  shared (one short sentence), then ask your single sharp question. Keep the \
-  full message UNDER 400 CHARACTERS.
-- End clarify messages with exactly one question mark.
-- Respect what's already specific. Don't re-ask what the user answered clearly.
-- Surface contradictions as the founder's choice between alternatives, not as flaws.
+When decision is clarify, you MUST populate clarifying_questions. The founder \
+answers in a structured UI — not free-form chat.
+
+Each ClarifyingQuestion object has:
+- question: one sharp question, specific to this founder's idea (max 400 chars).
+- selection_mode: DEFAULT "multiple". The UI always shows checkboxes and tells \
+  founders they may select multiple options. Use "multiple" for almost every \
+  question. Use "single" ONLY for a forced either/or (e.g. resolving a \
+  contradiction: "PLG vs enterprise-first").
+- options: concrete answer choices that help the founder understand the problem \
+  space. Include EVERY plausible option you can think of — there is no cap. \
+  Options must be distinct and realistic, never generic filler. Design options \
+  so several can legitimately apply together (tools used, pain points, segments).
+
+You may include 1–5 questions in clarifying_questions when they are tightly \
+related and should be answered in sequence (e.g. narrowing audience then pain). \
+Otherwise prefer one question per turn. Cover ONE exploration dimension per turn \
+— never stack unrelated dimensions.
+
+assistant_message: a brief acknowledgment of what the user just shared (one short \
+sentence, under 200 chars). Do NOT put the question in assistant_message — \
+questions live only in clarifying_questions.
+
+Default selection_mode to "multiple". The founder-facing UI always allows \
+multi-select. Only use "single" when the question is a strict either/or with \
+no valid multi-answer interpretation.
+
+Respect what's already specific. Don't re-ask what the user answered clearly.
+Surface contradictions as the founder's choice between alternatives, not as flaws.
 
 If multiple gaps exist, prioritize: contradiction > pivot_resolution > scope > \
 problem > audience > solution > alternatives/business model (use "other" and \
@@ -329,6 +348,7 @@ in the founder's framing. Then emit the RefinedIdea with every field within limi
 - target_audience: ≤ 300 chars
 - value_proposition: ≤ 400 chars
 - risks: EXACTLY 3 to 5 items, each ≤ 250 chars
+- project_name: ≤ 60 chars (short dashboard/brand name, 2–5 words, title case — not a headline)
 - headline: ≤ 80 chars (landing-page H1)
 - subheadline: ≤ 190 chars (one supporting sentence)
 - cta_text: ≤ 30 chars (e.g., "Get early access", "Join waitlist")

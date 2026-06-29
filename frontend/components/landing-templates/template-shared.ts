@@ -14,6 +14,13 @@ export interface TemplateProps {
   ctaConfig?: CtaConfig;
   publicationSlug?: string;
   scrollTarget?: string;
+  /** Editor preview — show full copy without template truncation caps. */
+  forEditor?: boolean;
+  /** Hosted section images keyed by slot id (see lib/section-images.ts). */
+  sectionImages?: Record<string, string>;
+  /** Required in editor when section image upload is enabled. */
+  experimentId?: string;
+  onSectionImageChange?: (slotId: string, url: string | null) => void;
 }
 
 export function splitHeadline(headline: string): { main: string; accent?: string } {

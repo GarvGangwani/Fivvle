@@ -198,6 +198,94 @@ class Finding(BaseModel):
     ]
 
 
+SectionScoreId = Literal[
+    "market", "competition", "distribution", "regulatory", "risk", "research"
+]
+
+
+class SectionScore(BaseModel):
+    """Evidence-calibrated score for one report dimension (0–100).
+
+    Produced by the synthesizer from Reader evidence strength, citation quality,
+    and explicit gaps — not a separate LLM call. Displayed in the validation
+    report scoring panel.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    section_id: SectionScoreId
+
+    label: Annotated[
+        str,
+        Field(
+            min_length=1,
+            max_length=80,
+            description="Founder-facing label for this dimension (e.g. 'Market demand').",
+        ),
+    ]
+
+    score: Annotated[
+        int,
+        Field(
+            ge=0,
+            le=100,
+            description=(
+                "0–100 score for this dimension. Higher = stronger evidence that "
+                "this dimension supports the idea. Use 40–55 when evidence is thin "
+                "or gaps are noted; 70+ only with multiple corroborating citations."
+            ),
+        ),
+    ]
+
+    rationale: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=400,
+            description=(
+                "1–2 sentences explaining why this score was assigned, anchored to "
+                "specific findings or explicit gaps. Shown when the founder clicks "
+                "the score card."
+            ),
+        ),
+    ]
+
+    pros: Annotated[
+        list[str],
+        Field(
+            default_factory=list,
+            max_length=4,
+            description=(
+                "1–3 evidence-backed positives for this dimension (each ≤120 chars). "
+                "Plain text only."
+            ),
+        ),
+    ]
+
+    cons: Annotated[
+        list[str],
+        Field(
+            default_factory=list,
+            max_length=4,
+            description=(
+                "1–3 evidence-backed negatives, gaps, or caveats (each ≤120 chars). "
+                "Plain text only."
+            ),
+        ),
+    ]
+
+
+    @field_validator("pros", "cons")
+    @classmethod
+    def _bullet_items_bounded(cls, items: list[str]) -> list[str]:
+        for item in items:
+            if len(item) > 120:
+                raise ValueError(
+                    f"SectionScore pros/cons items must be ≤120 characters; got {len(item)}"
+                )
+        return items
+
+
 class QuestionFindings(BaseModel):
     """All findings for one research question.
 
@@ -255,6 +343,20 @@ class QuestionFindings(BaseModel):
                 "available evidence, note it here in 1-2 sentences. Null if the question "
                 "is sufficiently covered by the findings. This is the per-question honesty "
                 "channel — use it rather than omitting the gap silently. Maximum 400 chars."
+            ),
+        ),
+    ]
+
+    score: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            le=100,
+            description=(
+                "Per-question evidence score (0–100). Reflects finding confidence, "
+                "citation strength, and whether evidence_gap is null. Optional for "
+                "legacy reports; synthesizer should populate for new reports."
             ),
         ),
     ]
@@ -493,6 +595,32 @@ class ValidationReport(BaseModel):
         ),
     ]
 
+    section_scores: Annotated[
+        list[SectionScore],
+        Field(
+            default_factory=list,
+            max_length=6,
+            description=(
+                "Six dimension scores for the report scoring panel: market, competition, "
+                "distribution, regulatory, risk, research. Empty for legacy reports; "
+                "synthesizer populates for new reports."
+            ),
+        ),
+    ]
+
+    overall_score: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            le=100,
+            description=(
+                "Composite validation score (0–100) — weighted average of section_scores "
+                "with research and market weighted highest. Null for legacy reports."
+            ),
+        ),
+    ]
+
     @model_validator(mode="after")
     def _validate_question_ids_unique(self) -> "ValidationReport":
         """Reject a ValidationReport where two QuestionFindings share the same question_id."""
@@ -540,10 +668,15 @@ class FindingDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     question_id: Annotated[
-        str,
+        str | None,
         Field(
+            default=None,
             pattern=r"^q[1-7]$",
-            description="The id of the ResearchQuestion this Finding answers (q1–q7).",
+            description=(
+                "The id of the ResearchQuestion this Finding answers (q1–q7). "
+                "Optional in draft output: if omitted by the LLM, it is backfilled "
+                "from parent QuestionFindingsDraft.question_id."
+            ),
         ),
     ]
 
@@ -715,6 +848,45 @@ class QuestionFindingsDraft(BaseModel):
         ),
     ]
 
+    score: Annotated[
+        int | None,
+        Field(
+            default=None,
+            ge=0,
+            le=100,
+            description="Per-question evidence score (0–100).",
+        ),
+    ]
+
+    @model_validator(mode="after")
+    def _backfill_and_validate_finding_question_ids(self) -> "QuestionFindingsDraft":
+        """Backfill omitted finding question_id from parent block and reject mismatches.
+
+        The synthesizer occasionally omits FindingDraft.question_id inside a
+        question-scoped block; allow that by inheriting from this block's
+        question_id. If the LLM emits a conflicting question_id, fail fast.
+        """
+        for idx, finding in enumerate(self.findings):
+            if finding.question_id is None:
+                finding.question_id = self.question_id
+            elif finding.question_id != self.question_id:
+                raise ValueError(
+                    "FindingDraft.question_id must match parent "
+                    f"QuestionFindingsDraft.question_id: findings[{idx}] has "
+                    f"{finding.question_id!r} but parent is {self.question_id!r}"
+                )
+        return self
+
+
+_EXPECTED_SECTION_SCORE_IDS: tuple[SectionScoreId, ...] = (
+    "market",
+    "competition",
+    "distribution",
+    "regulatory",
+    "risk",
+    "research",
+)
+
 
 class ValidationReportDraft(BaseModel):
     """LLM-facing shape for ValidationReport — citations are URL strings throughout.
@@ -817,6 +989,40 @@ class ValidationReportDraft(BaseModel):
         str,
         Field(min_length=1, max_length=50),
     ]
+
+    section_scores: Annotated[
+        list[SectionScore],
+        Field(
+            min_length=6,
+            max_length=6,
+            description=(
+                "Exactly six SectionScore entries — one per dimension: market, "
+                "competition, distribution, regulatory, risk, research (in that order)."
+            ),
+        ),
+    ]
+
+    overall_score: Annotated[
+        int,
+        Field(
+            ge=0,
+            le=100,
+            description=(
+                "Composite score (0–100). Should approximate a weighted average of "
+                "section_scores; research and market carry the most weight."
+            ),
+        ),
+    ]
+
+    @model_validator(mode="after")
+    def _validate_section_scores(self) -> "ValidationReportDraft":
+        ids = [s.section_id for s in self.section_scores]
+        expected = list(_EXPECTED_SECTION_SCORE_IDS)
+        if ids != expected:
+            raise ValueError(
+                f"section_scores must use section_id values {expected} in order; got {ids}"
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_question_ids_unique(self) -> "ValidationReportDraft":

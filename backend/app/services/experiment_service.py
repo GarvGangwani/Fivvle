@@ -23,6 +23,7 @@ from app.db.enums import ExperimentStatus
 from app.db.models.experiment import Experiment
 from app.db.models.user import User
 from app.logging_config import get_logger
+from app.utils.experiment_naming import apply_llm_name_if_unset, normalize_experiment_name
 from app.schemas.refinement import RefinedIdea
 from app.services.refinement_service import refine_idea
 
@@ -95,12 +96,7 @@ async def create_experiment_with_refinement(
     if len(raw_idea) > _RAW_IDEA_MAX_LEN:
         raise ValueError(f"raw_idea must be at most {_RAW_IDEA_MAX_LEN} characters")
 
-    stored_name: str | None = None
-    if name is not None:
-        stripped_name = name.strip()
-        if len(stripped_name) > _NAME_MAX_LEN:
-            raise ValueError(f"name must be at most {_NAME_MAX_LEN} characters")
-        stored_name = stripped_name or None
+    stored_name = normalize_experiment_name(name)
 
     experiment = Experiment(
         user_id=user.id,
@@ -146,6 +142,7 @@ async def create_experiment_with_refinement(
         raise
 
     experiment.refined_idea = refined.model_dump()
+    apply_llm_name_if_unset(experiment, refined)
     experiment.status = ExperimentStatus.REFINED
     experiment.refinement_count = 1
 
@@ -245,6 +242,7 @@ async def regenerate_refinement(
         raise
 
     experiment.refined_idea = refined.model_dump()
+    apply_llm_name_if_unset(experiment, refined)
     experiment.status = ExperimentStatus.REFINED
     experiment.refinement_count += 1
 
@@ -259,3 +257,46 @@ async def regenerate_refinement(
     )
 
     return experiment
+
+
+def infer_status_after_unarchive(experiment: Experiment) -> ExperimentStatus:
+    """Pick a sensible active status when restoring an archived experiment.
+
+    Previous status is not persisted on archive, so infer from related data.
+    """
+    if experiment.insight_report is not None:
+        return ExperimentStatus.COMPLETED
+    if experiment.landing_page is not None:
+        return ExperimentStatus.LANDING_DRAFT
+    if experiment.validation_report is not None:
+        return ExperimentStatus.RESEARCH_READY
+    if experiment.refined_idea is not None:
+        return ExperimentStatus.REFINED
+    return ExperimentStatus.DRAFT
+
+
+async def delete_experiment(db: AsyncSession, experiment: Experiment) -> None:
+    """Permanently delete an experiment and owned child data.
+
+    Cascades remove landing pages, reports, analytics, etc. LLM and external
+    API audit rows keep experiment_id NULL. Linked chat thread is removed when
+    present.
+    """
+    from app.db.models.chat_thread import ChatThread
+
+    thread_id = experiment.thread_id
+    if thread_id is not None:
+        thread = await db.get(ChatThread, thread_id)
+        if thread is not None:
+            await db.delete(thread)
+
+    experiment_id = experiment.id
+    user_id = experiment.user_id
+    await db.delete(experiment)
+    await db.flush()
+
+    _logger.info(
+        "experiment deleted",
+        experiment_id=str(experiment_id),
+        user_id=str(user_id),
+    )

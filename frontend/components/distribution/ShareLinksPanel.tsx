@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useToast } from "@/components/ui/ToastProvider";
+import { buildTrackedLandingPageUrl } from "@/lib/published-page";
 
 export const SHARE_CHANNELS = [
   { label: "Twitter / X", tag: "twitter" },
@@ -22,12 +22,7 @@ export function ShareLinksPanel({
   experimentName,
   showDescription = true,
 }: ShareLinksPanelProps) {
-  const [origin, setOrigin] = useState("");
   const { toast } = useToast();
-
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
 
   function handleCopy(url: string, channelLabel: string) {
     void navigator.clipboard.writeText(url).then(() => {
@@ -51,9 +46,7 @@ export function ShareLinksPanel({
       )}
       <div className="space-y-2">
         {SHARE_CHANNELS.map(({ label, tag }) => {
-          const url = origin
-            ? `${origin}/e/${slug}?ref=${tag}`
-            : `/e/${slug}?ref=${tag}`;
+          const url = buildTrackedLandingPageUrl(slug, tag);
           return (
             <div
               key={tag}

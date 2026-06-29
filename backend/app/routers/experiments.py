@@ -25,13 +25,14 @@ from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.auth.dependencies import get_current_user
+from app.config import get_settings
 from app.db.enums import DispatchTrigger, ExperimentStatus
 from app.db.models.experiment import Experiment
 from app.db.models.insight_report import InsightReport
@@ -40,8 +41,20 @@ from app.db.models.user import User
 from app.db.models.validation_report import ValidationReport
 from app.db.models.waitlist_signup import WaitlistSignup
 from app.db.session import get_session
-from app.dispatchers.dependencies import get_dispatcher_dep, get_insight_dispatcher_dep
-from app.dispatchers.factory import get_landing_page_dispatcher_dep
+from app.dispatchers.dependencies import (
+    get_dispatcher_dep,
+    get_insight_dispatcher_dep,
+    get_landing_page_dispatcher_dep,
+)
+from app.dispatchers.in_process_landing_page import landing_generation_in_progress
+from app.services.landing_page_revalidate import notify_live_landing_page_changed
+from app.utils.landing_page_public import is_landing_page_editable, is_public_landing_page_accessible
+from app.utils.landing_page_urls import build_public_landing_page_url
+from app.utils.wallet_http import debit_for_service_or_raise, refund_for_service
+from app.utils.experiment_naming import (
+    sync_landing_page_project_name,
+    validate_landing_slug,
+)
 from app.dispatchers.protocol import (
     DispatchError,
     InsightDispatcher,
@@ -49,16 +62,24 @@ from app.dispatchers.protocol import (
     ResearchDispatcher,
 )
 from app.logging_config import get_logger
+from app.pricing import SERVICE_PRICING
 from app.reliability.rate_limit import AUTH_RATE_LIMIT, limiter, user_key
 from app.schemas.api_responses import (
     AnalyticsResponse,
     ArchiveExperimentResponse,
     ArchiveRequest,
+    DeleteExperimentRequest,
+    DeleteExperimentResponse,
     InsightReportResponse,
     LandingPagePatchRequest,
     LandingPageResponse,
+    LandingPageSlugAvailabilityResponse,
+    LogoUploadResponse,
+    MetricsAccessResponse,
+    SectionImageUploadResponse,
     PublishLandingPageRequest,
     PublishResponse,
+    UnlockMetricsResponse,
     ValidationReportResponse,
     WaitlistSignupItem,
     WaitlistSignupsResponse,
@@ -66,6 +87,7 @@ from app.schemas.api_responses import (
 from app.schemas.experiment import (
     ConfirmResearchResponse,
     CreateExperimentRequest,
+    ExperimentListItemResponse,
     ExperimentResponse,
     RegenerateRefinementRequest,
     RenameExperimentRequest,
@@ -77,13 +99,28 @@ from app.services.analytics_aggregator import (
     build_analytics_aggregate,
 )
 from app.services.dispatch_service import transition_to_researching_and_dispatch
+from app.services.experiment_dashboard_stats import build_experiment_card_stats_map
 from app.services.experiment_service import (
     InvalidExperimentState,
     RefinementLimitExceeded,
     create_experiment_with_refinement,
+    delete_experiment,
+    infer_status_after_unarchive,
     regenerate_refinement,
 )
+from app.services.logo_upload_service import (
+    LogoUploadError,
+    upload_landing_page_logo,
+    upload_landing_page_section_image,
+)
 from app.services.research_phase_mapping import get_phase_label, get_phases_completed
+from app.services.wallet_service import (
+    InsufficientCredits,
+    get_or_create_wallet,
+    has_purchased_service_for_experiment,
+    purchase_service_for_experiment,
+)
+from app.utils.wallet_http import insufficient_credits_http
 
 _logger = get_logger(__name__)
 
@@ -91,6 +128,69 @@ _logger = get_logger(__name__)
 _RESEARCH_STATUS_RATE_LIMIT = "30/minute"
 
 _WAITLIST_EXPORT_FILENAME_RE = re.compile(r"[^a-zA-Z0-9._-]+")
+
+
+def _ensure_landing_page_editable(experiment: Experiment) -> None:
+    """Reject landing-page mutations when archived, generating, or pre-landing."""
+    if experiment.status == ExperimentStatus.LANDING_GENERATING:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Landing page is regenerating. Try again shortly.",
+        )
+    if experiment.status == ExperimentStatus.ARCHIVED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Archived projects cannot be edited.",
+        )
+    if not is_landing_page_editable(experiment.status):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Landing page cannot be edited in the current project stage.",
+        )
+
+
+def _ensure_metrics_access_allowed(experiment: Experiment) -> None:
+    if experiment.status == ExperimentStatus.ARCHIVED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Archived projects cannot unlock metrics.",
+        )
+    if not is_public_landing_page_accessible(experiment.status):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Metrics are available after your landing page is live.",
+        )
+
+
+_RESEARCH_ACTIVE_STATUSES: frozenset[ExperimentStatus] = frozenset(
+    {
+        ExperimentStatus.RESEARCHING,
+        ExperimentStatus.RESEARCH_PLANNING,
+        ExperimentStatus.RESEARCH_SEARCHING,
+        ExperimentStatus.RESEARCH_READING,
+        ExperimentStatus.RESEARCH_REFLECTING,
+        ExperimentStatus.RESEARCH_SYNTHESIZING,
+    }
+)
+
+
+async def _get_owned_experiment_for_update(
+    db: AsyncSession,
+    *,
+    experiment_id: UUID,
+    user_id: UUID,
+) -> Experiment:
+    """Load an experiment row with FOR UPDATE for billing-critical transitions."""
+    result = await db.execute(
+        select(Experiment).where(Experiment.id == experiment_id).with_for_update()
+    )
+    experiment = result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Experiment not found",
+        )
+    return experiment
 
 
 class ExperimentValidationReportSummary(BaseModel):
@@ -117,6 +217,7 @@ class GenerateInsightResponse(BaseModel):
     status: ExperimentStatus = Field(
         description="Set to INSIGHT_GENERATING by this endpoint immediately on dispatch."
     )
+    credits_balance: int = Field(ge=0)
 
 
 class GenerateLandingPageRequest(BaseModel):
@@ -131,6 +232,13 @@ class GenerateLandingPageRequest(BaseModel):
     template_id: str = Field(
         default="dark-premium",
         description="Designer template ID to apply (e.g. dark-premium, bold-v1).",
+    )
+    regeneration_hint: str | None = Field(
+        default=None,
+        description=(
+            "Optional nonce/hint to force a distinct regeneration output "
+            "(e.g. section name + timestamp)."
+        ),
     )
 
 
@@ -157,6 +265,7 @@ class GetExperimentDetailResponse(BaseModel):
 
     id: UUID
     name: str | None = None
+    raw_idea: str
     status: ExperimentStatus
     thread_id: UUID | None = None
     validation_report: ExperimentValidationReportSummary | None = None
@@ -188,20 +297,38 @@ router = APIRouter(prefix="/experiments", tags=["experiments"])
 # ---------------------------------------------------------------------------
 
 
-@router.get("", response_model=list[ExperimentResponse], status_code=status.HTTP_200_OK)
+@router.get("", response_model=list[ExperimentListItemResponse], status_code=status.HTTP_200_OK)
 @limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
 async def list_experiments(
     request: Request,
     response: Response,
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(get_current_user)],
-) -> list[Experiment]:
-    result = await db.execute(
-        select(Experiment)
-        .where(Experiment.user_id == current_user.id)
-        .order_by(Experiment.updated_at.desc()),
+    archived: Annotated[bool, Query(description="When true, return archived projects only")] = False,
+) -> list[ExperimentListItemResponse]:
+    query = select(Experiment).where(Experiment.user_id == current_user.id)
+    if archived:
+        query = query.where(Experiment.status == ExperimentStatus.ARCHIVED)
+    else:
+        query = query.where(Experiment.status != ExperimentStatus.ARCHIVED)
+    result = await db.execute(query.order_by(Experiment.updated_at.desc()))
+    experiments = list(result.scalars().all())
+    stats_map = await build_experiment_card_stats_map(
+        db,
+        experiments,
+        user_id=current_user.id,
     )
-    return list(result.scalars().all())
+
+    items: list[ExperimentListItemResponse] = []
+    for experiment in experiments:
+        base = ExperimentResponse.model_validate(experiment)
+        items.append(
+            ExperimentListItemResponse(
+                **base.model_dump(),
+                card_stats=stats_map.get(experiment.id),
+            )
+        )
+    return items
 
 
 @router.post("", response_model=ExperimentResponse, status_code=status.HTTP_201_CREATED)
@@ -292,10 +419,41 @@ async def confirm_research(
     current_user: Annotated[User, Depends(get_current_user)],
     dispatcher: Annotated[ResearchDispatcher, Depends(get_dispatcher_dep)],
 ) -> ConfirmResearchResponse:
-    result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
-    experiment = result.scalar_one_or_none()
-    if experiment is None or experiment.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+    experiment = await _get_owned_experiment_for_update(
+        db,
+        experiment_id=experiment_id,
+        user_id=current_user.id,
+    )
+
+    if experiment.status in _RESEARCH_ACTIVE_STATUSES:
+        status_url = str(request.url_for("get_research_status", experiment_id=experiment_id))
+        wallet = await get_or_create_wallet(db, current_user.id)
+        return ConfirmResearchResponse(
+            experiment_id=experiment_id,
+            status=experiment.status,
+            status_url=status_url,
+            credits_balance=wallet.credits_balance,
+        )
+
+    if experiment.status not in {
+        ExperimentStatus.REFINED,
+        ExperimentStatus.RESEARCH_FAILED,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Experiment must be in REFINED or RESEARCH_FAILED status to confirm "
+                f"research (current: {experiment.status})"
+            ),
+        )
+
+    await debit_for_service_or_raise(
+        db,
+        user_id=current_user.id,
+        service="fullValidationFlow",
+        experiment_id=experiment_id,
+    )
+    await db.commit()
 
     try:
         await transition_to_researching_and_dispatch(
@@ -305,6 +463,14 @@ async def confirm_research(
             dispatcher,
         )
     except InvalidExperimentState:
+        await refund_for_service(
+            db,
+            user_id=current_user.id,
+            service="fullValidationFlow",
+            reason="invalid experiment state",
+            experiment_id=experiment_id,
+        )
+        await db.commit()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -313,6 +479,14 @@ async def confirm_research(
             ),
         ) from None
     except DispatchError as exc:
+        await refund_for_service(
+            db,
+            user_id=current_user.id,
+            service="fullValidationFlow",
+            reason="research dispatch failed",
+            experiment_id=experiment_id,
+        )
+        await db.commit()
         _logger.error(
             "dispatch failed",
             error_type=type(exc).__name__,
@@ -324,10 +498,12 @@ async def confirm_research(
         ) from exc
 
     status_url = str(request.url_for("get_research_status", experiment_id=experiment_id))
+    wallet = await get_or_create_wallet(db, current_user.id)
     return ConfirmResearchResponse(
         experiment_id=experiment_id,
         status=ExperimentStatus.RESEARCHING,
         status_url=status_url,
+        credits_balance=wallet.credits_balance,
     )
 
 
@@ -404,15 +580,18 @@ async def generate_insight(
     (INSIGHT_READY or INSIGHT_FAILED) asynchronously. On DispatchError, rolls
     back to INSIGHT_FAILED and returns 502.
     """
-    result = await db.execute(
-        select(Experiment).where(Experiment.id == experiment_id)
+    experiment = await _get_owned_experiment_for_update(
+        db,
+        experiment_id=experiment_id,
+        user_id=current_user.id,
     )
-    experiment = result.scalar_one_or_none()
 
-    # 404 on missing OR not-owned — never reveal existence to a non-owner.
-    if experiment is None or experiment.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
+    if experiment.status == ExperimentStatus.INSIGHT_GENERATING:
+        wallet = await get_or_create_wallet(db, current_user.id)
+        return GenerateInsightResponse(
+            experiment_id=experiment_id,
+            status=ExperimentStatus.INSIGHT_GENERATING,
+            credits_balance=wallet.credits_balance,
         )
 
     allowed_source_statuses = {
@@ -446,6 +625,13 @@ async def generate_insight(
             ),
         )
 
+    await debit_for_service_or_raise(
+        db,
+        user_id=current_user.id,
+        service="insightReport",
+        experiment_id=experiment_id,
+    )
+
     experiment.status = ExperimentStatus.INSIGHT_GENERATING
     await db.commit()
 
@@ -457,17 +643,30 @@ async def generate_insight(
             experiment_id=str(experiment_id),
             error_type=type(exc).__name__,
         )
-        # Roll back to FAILED so the user sees an actionable state.
+        experiment = await _get_owned_experiment_for_update(
+            db,
+            experiment_id=experiment_id,
+            user_id=current_user.id,
+        )
         experiment.status = ExperimentStatus.INSIGHT_FAILED
+        await refund_for_service(
+            db,
+            user_id=current_user.id,
+            service="insightReport",
+            reason="insight dispatch failed",
+            experiment_id=experiment_id,
+        )
         await db.commit()
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Failed to start insight generation, please try again",
         ) from exc
 
+    wallet = await get_or_create_wallet(db, current_user.id)
     return GenerateInsightResponse(
         experiment_id=experiment_id,
         status=ExperimentStatus.INSIGHT_GENERATING,
+        credits_balance=wallet.credits_balance,
     )
 
 
@@ -491,7 +690,8 @@ async def generate_landing_page(
     """User-triggered landing page generation per ADR 0022.
 
     Allowed source statuses: RESEARCH_READY (first generation), LANDING_DRAFT
-    (regen). Any other status returns 409.
+    (regen). LANDING_GENERATING returns 202 idempotently. Any other status
+    returns 409.
 
     On dispatch, transitions status to LANDING_GENERATING and commits before
     awaiting the dispatcher. The dispatcher transitions to terminal state
@@ -508,19 +708,36 @@ async def generate_landing_page(
             status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
         )
 
+    stuck_generating = False
+    if experiment.status == ExperimentStatus.LANDING_GENERATING:
+        settings = get_settings()
+        stuck_generating = (
+            settings.dispatcher_mode == "in_process"
+            and not landing_generation_in_progress(experiment_id)
+        )
+        if not stuck_generating:
+            return GenerateLandingPageResponse(
+                experiment_id=experiment_id,
+                status=ExperimentStatus.LANDING_GENERATING,
+            )
+
     allowed_source_statuses = {
         ExperimentStatus.RESEARCH_READY,
         ExperimentStatus.LANDING_DRAFT,
+        ExperimentStatus.LANDING_LIVE,
     }
+    if stuck_generating:
+        allowed_source_statuses.add(ExperimentStatus.LANDING_GENERATING)
     if experiment.status not in allowed_source_statuses:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
-                "Experiment must be in RESEARCH_READY or LANDING_DRAFT status "
+                "Experiment must be in RESEARCH_READY, LANDING_DRAFT, or LANDING_LIVE status "
                 f"to generate landing page (current: {experiment.status.value})."
             ),
         )
 
+    was_live = experiment.status == ExperimentStatus.LANDING_LIVE
     experiment.status = ExperimentStatus.LANDING_GENERATING
     await db.commit()
 
@@ -529,6 +746,8 @@ async def generate_landing_page(
             experiment_id,
             body.page_goal,
             body.template_id,
+            body.regeneration_hint,
+            was_live,
         )
     except DispatchError as exc:
         _logger.error(
@@ -645,6 +864,181 @@ async def get_landing_page(
     return LandingPageResponse.model_validate(landing_page)
 
 
+@router.post(
+    "/{experiment_id}/landing-page/logo",
+    response_model=LogoUploadResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def upload_landing_page_logo_endpoint(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    file: Annotated[UploadFile, File(...)],
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> LogoUploadResponse:
+    exp_result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+    experiment = exp_result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+    _ensure_landing_page_editable(experiment)
+
+    lp_result = await db.execute(
+        select(LandingPage).where(LandingPage.experiment_id == experiment_id),
+    )
+    if lp_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Landing page not found")
+
+    file_bytes = await file.read()
+    try:
+        result = upload_landing_page_logo(
+            experiment_id=experiment_id,
+            user_id=current_user.id,
+            file_bytes=file_bytes,
+        )
+    except LogoUploadError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        _logger.error(
+            "logo upload failed",
+            experiment_id=str(experiment_id),
+            user_id=str(current_user.id),
+            error=str(exc),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Logo upload failed. Try again or paste an image URL.",
+        ) from exc
+
+    logo_url = result.logo_url
+    if logo_url.startswith("/"):
+        logo_url = str(request.base_url).rstrip("/") + logo_url
+
+    return LogoUploadResponse(logo_url=logo_url, filename=result.filename)
+
+
+@router.post(
+    "/{experiment_id}/landing-page/section-image",
+    response_model=SectionImageUploadResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def upload_landing_page_section_image_endpoint(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    file: Annotated[UploadFile, File(...)],
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> SectionImageUploadResponse:
+    exp_result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+    experiment = exp_result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+    _ensure_landing_page_editable(experiment)
+
+    lp_result = await db.execute(
+        select(LandingPage).where(LandingPage.experiment_id == experiment_id),
+    )
+    if lp_result.scalar_one_or_none() is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Landing page not found")
+
+    file_bytes = await file.read()
+    try:
+        result = upload_landing_page_section_image(
+            experiment_id=experiment_id,
+            user_id=current_user.id,
+            file_bytes=file_bytes,
+        )
+    except LogoUploadError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except Exception as exc:
+        _logger.error(
+            "section image upload failed",
+            experiment_id=str(experiment_id),
+            user_id=str(current_user.id),
+            error=str(exc),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Image upload failed. Try again with a smaller PNG, JPEG, or WebP file.",
+        ) from exc
+
+    image_url = result.image_url
+    if image_url.startswith("/"):
+        image_url = str(request.base_url).rstrip("/") + image_url
+
+    return SectionImageUploadResponse(image_url=image_url, filename=result.filename)
+
+
+@router.get(
+    "/{experiment_id}/landing-page/slug-availability",
+    response_model=LandingPageSlugAvailabilityResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def check_landing_page_slug_availability(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    slug: Annotated[str, Query(min_length=1, max_length=40)],
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> LandingPageSlugAvailabilityResponse:
+    """Check whether a slug is free for this landing page.
+
+    Compares against all landing pages in the database (unique constraint).
+    ``taken_by_live`` is true when another *published* page already uses the slug.
+    """
+    exp_result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+    experiment = exp_result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    lp_result = await db.execute(
+        select(LandingPage).where(LandingPage.experiment_id == experiment_id),
+    )
+    landing_page = lp_result.scalar_one_or_none()
+    if landing_page is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Landing page not found")
+
+    try:
+        normalized = validate_landing_slug(slug)
+    except ValueError as exc:
+        return LandingPageSlugAvailabilityResponse(
+            slug=slug.strip().lower(),
+            available=False,
+            taken_by_live=False,
+            message=str(exc),
+        )
+
+    existing_result = await db.execute(
+        select(LandingPage).where(LandingPage.slug == normalized),
+    )
+    existing = existing_result.scalar_one_or_none()
+    if existing is None or existing.id == landing_page.id:
+        return LandingPageSlugAvailabilityResponse(
+            slug=normalized,
+            available=True,
+            taken_by_live=False,
+            message="This URL is available.",
+        )
+
+    taken_by_live = existing.live_at is not None
+    message = (
+        "This URL is already used by a live published page."
+        if taken_by_live
+        else "This URL is already taken by another project."
+    )
+    return LandingPageSlugAvailabilityResponse(
+        slug=normalized,
+        available=False,
+        taken_by_live=taken_by_live,
+        message=message,
+    )
+
+
 @router.patch(
     "/{experiment_id}/landing-page",
     response_model=LandingPageResponse,
@@ -663,11 +1057,7 @@ async def patch_landing_page(
     experiment = exp_result.scalar_one_or_none()
     if experiment is None or experiment.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
-    if experiment.status != ExperimentStatus.LANDING_DRAFT:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Experiment must be in LANDING_DRAFT status to edit the landing page",
-        )
+    _ensure_landing_page_editable(experiment)
 
     lp_result = await db.execute(
         select(LandingPage).where(LandingPage.experiment_id == experiment_id),
@@ -676,15 +1066,46 @@ async def patch_landing_page(
     if landing_page is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Landing page not found")
 
+    previous_slug = landing_page.slug
+
     if body.template_id is not None:
         landing_page.template_id = body.template_id
     if body.copy_json is not None:
         landing_page.copy_json = body.copy_json
     if body.page_json is not None:
         landing_page.page_json = body.page_json
+    if body.slug is not None:
+        try:
+            normalized_slug = validate_landing_slug(body.slug)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+
+        conflict_result = await db.execute(
+            select(LandingPage).where(
+                LandingPage.slug == normalized_slug,
+                LandingPage.id != landing_page.id,
+            ),
+        )
+        if conflict_result.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This URL is already taken. Choose a different slug.",
+            )
+        landing_page.slug = normalized_slug
 
     await db.commit()
     await db.refresh(landing_page)
+
+    if landing_page.live_at is not None and experiment.status != ExperimentStatus.ARCHIVED:
+        await notify_live_landing_page_changed(
+            db,
+            landing_page,
+            previous_slug=previous_slug,
+        )
+
     return LandingPageResponse.model_validate(landing_page)
 
 
@@ -723,12 +1144,91 @@ async def publish_landing_page(
     landing_page.live_at = now
     experiment.status = ExperimentStatus.LANDING_LIVE
     await db.commit()
+    await db.refresh(landing_page)
 
-    public_url = f"/e/{landing_page.slug}"
+    await notify_live_landing_page_changed(db, landing_page)
+
+    public_url = build_public_landing_page_url(landing_page.slug)
     return PublishResponse(
         message="Landing page published",
         slug=landing_page.slug,
         public_url=public_url,
+    )
+
+
+@router.get(
+    "/{experiment_id}/metrics-access",
+    response_model=MetricsAccessResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def get_metrics_access(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> MetricsAccessResponse:
+    exp_result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+    experiment = exp_result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    unlocked = await has_purchased_service_for_experiment(
+        db,
+        user_id=current_user.id,
+        service="metricsAnalysis",
+        experiment_id=experiment_id,
+    )
+    return MetricsAccessResponse(unlocked=unlocked)
+
+
+@router.post(
+    "/{experiment_id}/unlock-metrics",
+    response_model=UnlockMetricsResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def unlock_metrics(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> UnlockMetricsResponse:
+    experiment = await _get_owned_experiment_for_update(
+        db,
+        experiment_id=experiment_id,
+        user_id=current_user.id,
+    )
+    _ensure_metrics_access_allowed(experiment)
+
+    lp_result = await db.execute(
+        select(LandingPage).where(LandingPage.experiment_id == experiment_id),
+    )
+    landing_page = lp_result.scalar_one_or_none()
+    if landing_page is None or landing_page.live_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Analytics not available until the landing page is published",
+        )
+
+    try:
+        _tx, already_unlocked = await purchase_service_for_experiment(
+            db,
+            user_id=current_user.id,
+            service="metricsAnalysis",
+            experiment_id=experiment_id,
+        )
+    except InsufficientCredits as exc:
+        raise insufficient_credits_http(exc) from exc
+
+    await db.commit()
+    wallet = await get_or_create_wallet(db, current_user.id)
+    return UnlockMetricsResponse(
+        unlocked=True,
+        already_unlocked=already_unlocked,
+        credits_balance=wallet.credits_balance,
     )
 
 
@@ -750,6 +1250,20 @@ async def get_experiment_analytics(
     if experiment is None or experiment.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
 
+    if not await has_purchased_service_for_experiment(
+        db,
+        user_id=current_user.id,
+        service="metricsAnalysis",
+        experiment_id=experiment_id,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "error": "metrics_not_unlocked",
+                "required": SERVICE_PRICING["metricsAnalysis"],
+            },
+        )
+
     try:
         aggregate = await build_analytics_aggregate(db, experiment_id)
     except LandingPageNotLiveError:
@@ -766,6 +1280,7 @@ async def get_experiment_analytics(
         views_by_source=aggregate.views_by_source,
         signups_by_source=aggregate.signups_by_source,
         conversion_rate_by_source=aggregate.conversion_rate_by_source,
+        signups_by_location=aggregate.signups_by_location,
         days_live=aggregate.days_live,
     )
 
@@ -802,12 +1317,15 @@ async def export_experiment_waitlist(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["email", "source_tag", "signed_up_at"])
+    writer.writerow(["email", "source_tag", "city", "region", "country", "signed_up_at"])
     for signup in signups:
         writer.writerow(
             [
                 signup.email,
                 signup.source_tag or "",
+                signup.geo_city or "",
+                signup.geo_region or "",
+                signup.geo_country or "",
                 signup.ts.isoformat(),
             ]
         )
@@ -851,6 +1369,9 @@ async def list_experiment_waitlist(
                 id=signup.id,
                 email=signup.email,
                 source_tag=signup.source_tag,
+                geo_city=signup.geo_city,
+                geo_region=signup.geo_region,
+                geo_country=signup.geo_country,
                 created_at=signup.ts,
             )
             for signup in signups
@@ -887,6 +1408,38 @@ async def get_insight_report(
     return InsightReportResponse.model_validate(report.raw_output)
 
 
+@router.delete(
+    "/{experiment_id}",
+    response_model=DeleteExperimentResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def delete_experiment_endpoint(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: DeleteExperimentRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> DeleteExperimentResponse:
+    """Permanently delete a project. Requires body ``{"confirmation": "CONFIRM"}``."""
+    if body.confirmation != "CONFIRM":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='Type "CONFIRM" exactly to delete this project',
+        )
+
+    exp_result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+    experiment = exp_result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    await delete_experiment(db, experiment)
+    await db.commit()
+
+    return DeleteExperimentResponse(experiment_id=experiment_id)
+
+
 @router.post(
     "/{experiment_id}/archive",
     response_model=ArchiveExperimentResponse,
@@ -905,6 +1458,12 @@ async def archive_experiment(
     experiment = exp_result.scalar_one_or_none()
     if experiment is None or experiment.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    if experiment.status == ExperimentStatus.ARCHIVED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Experiment is already archived",
+        )
 
     experiment.status = ExperimentStatus.ARCHIVED
     await db.commit()
@@ -930,7 +1489,11 @@ async def unarchive_experiment(
 ) -> GetExperimentDetailResponse:
     result = await db.execute(
         select(Experiment)
-        .options(selectinload(Experiment.validation_report))
+        .options(
+            selectinload(Experiment.validation_report),
+            selectinload(Experiment.landing_page),
+            selectinload(Experiment.insight_report),
+        )
         .where(Experiment.id == experiment_id),
     )
     experiment = result.scalar_one_or_none()
@@ -943,7 +1506,7 @@ async def unarchive_experiment(
             detail="Experiment is not archived",
         )
 
-    experiment.status = ExperimentStatus.COMPLETED
+    experiment.status = infer_status_after_unarchive(experiment)
     await db.commit()
 
     summary = None
@@ -953,6 +1516,7 @@ async def unarchive_experiment(
     return GetExperimentDetailResponse(
         id=experiment.id,
         name=experiment.name,
+        raw_idea=experiment.raw_idea,
         status=experiment.status,
         thread_id=experiment.thread_id,
         validation_report=summary,
@@ -990,6 +1554,17 @@ async def rename_experiment(
         )
 
     experiment.name = stripped
+
+    lp_result = await db.execute(
+        select(LandingPage).where(LandingPage.experiment_id == experiment_id),
+    )
+    landing_page = lp_result.scalar_one_or_none()
+    if landing_page is not None:
+        landing_page.page_json = sync_landing_page_project_name(
+            landing_page.page_json if isinstance(landing_page.page_json, dict) else {},
+            stripped,
+        )
+
     await db.commit()
 
     summary = None
@@ -999,6 +1574,7 @@ async def rename_experiment(
     return GetExperimentDetailResponse(
         id=experiment.id,
         name=experiment.name,
+        raw_idea=experiment.raw_idea,
         status=experiment.status,
         thread_id=experiment.thread_id,
         validation_report=summary,
@@ -1039,6 +1615,7 @@ async def get_experiment_detail(
     return GetExperimentDetailResponse(
         id=experiment.id,
         name=experiment.name,
+        raw_idea=experiment.raw_idea,
         status=experiment.status,
         thread_id=experiment.thread_id,
         validation_report=summary,

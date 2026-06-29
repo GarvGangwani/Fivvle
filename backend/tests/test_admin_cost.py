@@ -17,6 +17,10 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
+from app.cost.category import (
+    resolve_cost_category_from_external_provider,
+    resolve_cost_category_from_phase,
+)
 from app.db.models.experiment import Experiment
 from app.db.models.external_api_call import ExternalAPICall
 from app.db.models.llm_call import LLMCall
@@ -97,10 +101,12 @@ async def _seed_experiment_calls(
         cost_usd=llm_cost,
         latency_ms=500,
         phase=phase,
+        cost_category=resolve_cost_category_from_phase(phase).value,
     ))
     db_session.add(ExternalAPICall(
         experiment_id=experiment_id,
         provider="tavily",
+        cost_category=resolve_cost_category_from_external_provider("tavily").value,
         operation="search",
         latency_ms=300,
         cost_usd=ext_cost,
@@ -133,10 +139,9 @@ def test_unauthenticated_daily_cost_returns_401(client: TestClient) -> None:
 
 
 def test_non_admin_experiment_cost_returns_403(
-    client: TestClient, mock_firebase: None, db_session: AsyncSession
+    client: TestClient, mock_firebase_non_admin: None, db_session: AsyncSession
 ) -> None:
     """Authenticated non-admin user → 403 on experiment cost endpoint."""
-    # /users/sync creates the user with is_admin=False by default
     client.post("/users/sync", json={}, headers={"Authorization": "Bearer faketoken"})
 
     exp_id = uuid4()
@@ -149,7 +154,7 @@ def test_non_admin_experiment_cost_returns_403(
 
 
 def test_non_admin_user_cost_returns_403(
-    client: TestClient, mock_firebase: None
+    client: TestClient, mock_firebase_non_admin: None
 ) -> None:
     client.post("/users/sync", json={}, headers={"Authorization": "Bearer faketoken"})
     response = client.get(
@@ -160,7 +165,7 @@ def test_non_admin_user_cost_returns_403(
 
 
 def test_non_admin_daily_cost_returns_403(
-    client: TestClient, mock_firebase: None
+    client: TestClient, mock_firebase_non_admin: None
 ) -> None:
     client.post("/users/sync", json={}, headers={"Authorization": "Bearer faketoken"})
     response = client.get(
@@ -171,7 +176,7 @@ def test_non_admin_daily_cost_returns_403(
 
 
 def test_non_admin_per_phase_cost_returns_403(
-    client: TestClient, mock_firebase: None
+    client: TestClient, mock_firebase_non_admin: None
 ) -> None:
     client.post("/users/sync", json={}, headers={"Authorization": "Bearer faketoken"})
     response = client.get(
@@ -219,6 +224,13 @@ async def test_admin_experiment_cost_sums_correctly(
     assert Decimal(body["total_cost_usd"]) == Decimal("0.058")
     assert body["llm_call_count"] == 1
     assert body["external_api_call_count"] == 1
+    assert len(body["products"]) == 1
+    product = body["products"][0]
+    assert product["cost_category"] == "cognitive_validation"
+    assert product["label"] == "Validation report"
+    assert Decimal(product["llm_cost_usd"]) == Decimal("0.05")
+    assert Decimal(product["external_api_cost_usd"]) == Decimal("0.008")
+    assert Decimal(product["total_cost_usd"]) == Decimal("0.058")
 
     # Cleanup
     await db_session.execute(delete(LLMCall).where(LLMCall.experiment_id == exp.id))
@@ -338,6 +350,7 @@ async def test_admin_per_phase_groups_by_phase(
             cost_usd=Decimal("0.05"),
             latency_ms=400,
             phase="planner",
+            cost_category=resolve_cost_category_from_phase("planner").value,
         ))
     db_session.add(LLMCall(
         experiment_id=exp.id,
@@ -349,6 +362,7 @@ async def test_admin_per_phase_groups_by_phase(
         cost_usd=Decimal("0.02"),
         latency_ms=300,
         phase="reader",
+        cost_category=resolve_cost_category_from_phase("reader").value,
     ))
     await db_session.commit()
 
@@ -428,6 +442,7 @@ async def test_admin_per_phase_with_user_id_scopes_results(
             cost_usd=Decimal("0.05"),
             latency_ms=400,
             phase="planner",
+            cost_category=resolve_cost_category_from_phase("planner").value,
         ))
     for _ in range(3):
         db_session.add(LLMCall(
@@ -440,6 +455,7 @@ async def test_admin_per_phase_with_user_id_scopes_results(
             cost_usd=Decimal("0.05"),
             latency_ms=400,
             phase="planner",
+            cost_category=resolve_cost_category_from_phase("planner").value,
         ))
     await db_session.commit()
 
@@ -500,6 +516,7 @@ async def test_admin_per_phase_without_user_id_is_global(
             cost_usd=Decimal("0.01"),
             latency_ms=400,
             phase=unique_phase,
+            cost_category=resolve_cost_category_from_phase(unique_phase).value,
         ))
     await db_session.commit()
 
@@ -563,6 +580,7 @@ async def test_admin_daily_with_user_id_scopes_results(
             cost_usd=Decimal("0.07"),
             latency_ms=400,
             phase="daily-scope-test",
+            cost_category=resolve_cost_category_from_phase("daily-scope-test").value,
         ))
     await db_session.commit()
 
@@ -621,6 +639,7 @@ async def test_admin_daily_without_user_id_is_global(
             cost_usd=Decimal("0.03"),
             latency_ms=200,
             phase="daily-global-test",
+            cost_category=resolve_cost_category_from_phase("daily-global-test").value,
         ))
     await db_session.commit()
 
@@ -661,3 +680,233 @@ async def test_admin_experiment_cost_zeros_for_unknown_id(
     assert Decimal(body["total_cost_usd"]) == Decimal("0")
     assert body["llm_call_count"] == 0
     assert body["external_api_call_count"] == 0
+    assert body["products"] == []
+
+
+@pytest.mark.asyncio
+async def test_admin_per_product_groups_by_category(
+    client: TestClient, mock_firebase: None, db_session: AsyncSession
+) -> None:
+    """Per-product endpoint merges LLM and external API rows by cost_category."""
+    user = await _create_admin_user(db_session)
+
+    exp = Experiment(user_id=user.id, raw_idea="product idea", slug="test-slug-product")
+    db_session.add(exp)
+    await db_session.commit()
+    await db_session.refresh(exp)
+
+    db_session.add(LLMCall(
+        experiment_id=exp.id,
+        provider="anthropic",
+        model="claude-sonnet-4-5",
+        prompt_name="refinement",
+        prompt_tokens=100,
+        completion_tokens=50,
+        cost_usd=Decimal("0.04"),
+        latency_ms=400,
+        phase="refinement",
+        cost_category=resolve_cost_category_from_phase("refinement").value,
+    ))
+    db_session.add(LLMCall(
+        experiment_id=exp.id,
+        provider="anthropic",
+        model="claude-sonnet-4-5",
+        prompt_name="planner",
+        prompt_tokens=100,
+        completion_tokens=50,
+        cost_usd=Decimal("0.05"),
+        latency_ms=400,
+        phase="planner",
+        cost_category=resolve_cost_category_from_phase("planner").value,
+    ))
+    db_session.add(ExternalAPICall(
+        experiment_id=exp.id,
+        provider="tavily",
+        cost_category=resolve_cost_category_from_external_provider("tavily").value,
+        operation="search",
+        latency_ms=300,
+        cost_usd=Decimal("0.008"),
+        success=True,
+    ))
+    await db_session.commit()
+
+    response = client.get(
+        f"/admin/cost/per-product?days=1&user_id={user.id}",
+        headers={"Authorization": "Bearer faketoken"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    rows_by_category = {r["cost_category"]: r for r in body["rows"]}
+
+    assert rows_by_category["refinement"]["llm_call_count"] == 1
+    assert Decimal(rows_by_category["refinement"]["llm_cost_usd"]) == Decimal("0.04")
+
+    report = rows_by_category["cognitive_validation"]
+    assert report["llm_call_count"] == 1
+    assert report["external_api_call_count"] == 1
+    assert Decimal(report["llm_cost_usd"]) == Decimal("0.05")
+    assert Decimal(report["external_api_cost_usd"]) == Decimal("0.008")
+    assert Decimal(report["total_cost_usd"]) == Decimal("0.058")
+
+    await db_session.execute(delete(LLMCall).where(LLMCall.experiment_id == exp.id))
+    await db_session.execute(
+        delete(ExternalAPICall).where(ExternalAPICall.experiment_id == exp.id)
+    )
+    await db_session.delete(exp)
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_admin_cost_insights_includes_users_providers_and_stats(
+    client: TestClient, mock_firebase: None, db_session: AsyncSession
+) -> None:
+    """Insights endpoint bundles summary, per-user, Tavily, and experiment distribution."""
+    user = await _create_admin_user(db_session)
+
+    exp_cheap = Experiment(user_id=user.id, raw_idea="cheap idea", slug="slug-cheap")
+    exp_costly = Experiment(user_id=user.id, raw_idea="costly idea", slug="slug-costly")
+    db_session.add_all([exp_cheap, exp_costly])
+    await db_session.commit()
+    await db_session.refresh(exp_cheap)
+    await db_session.refresh(exp_costly)
+
+    await _seed_experiment_calls(
+        db_session,
+        exp_cheap.id,
+        llm_cost=Decimal("0.10"),
+        ext_cost=Decimal("0.02"),
+        phase="refinement",
+    )
+    await _seed_experiment_calls(
+        db_session,
+        exp_costly.id,
+        llm_cost=Decimal("0.80"),
+        ext_cost=Decimal("0.05"),
+        phase="planner",
+    )
+
+    response = client.get(
+        "/admin/cost/insights?days=1",
+        headers={"Authorization": "Bearer faketoken"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+
+    summary = body["summary"]
+    assert summary["active_user_count"] >= 1
+    assert summary["experiment_stats"]["experiment_count"] >= 2
+    assert Decimal(summary["tavily_logged_cost_usd"]) >= Decimal("0.07")
+
+    user_rows = [row for row in body["per_user"] if row["email"] == FAKE_EMAIL]
+    assert len(user_rows) == 1
+    assert Decimal(user_rows[0]["total_cost_usd"]) >= Decimal("0.97")
+
+    providers = {(r["provider"], r["source"]) for r in body["per_provider"]}
+    assert ("tavily", "external") in providers
+    assert ("anthropic", "llm") in providers
+
+    top_by_id = {row["experiment_id"]: row for row in body["top_experiments"]}
+    assert str(exp_costly.id) in top_by_id
+    assert str(exp_cheap.id) in top_by_id
+    assert Decimal(top_by_id[str(exp_costly.id)]["total_cost_usd"]) == Decimal("0.85")
+    assert Decimal(top_by_id[str(exp_cheap.id)]["total_cost_usd"]) == Decimal("0.12")
+    assert body["top_experiments"][0]["experiment_id"] == str(exp_costly.id)
+
+    for exp in (exp_cheap, exp_costly):
+        await db_session.execute(delete(LLMCall).where(LLMCall.experiment_id == exp.id))
+        await db_session.execute(
+            delete(ExternalAPICall).where(ExternalAPICall.experiment_id == exp.id)
+        )
+        await db_session.delete(exp)
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_admin_user_experiments_cost_returns_phase_breakdown(
+    client: TestClient, mock_firebase: None, db_session: AsyncSession
+) -> None:
+    """Admin can list a user's projects with per-phase LLM and external costs."""
+    user = await _create_admin_user(db_session)
+
+    exp1 = Experiment(
+        user_id=user.id,
+        raw_idea="refinement idea",
+        slug="test-slug-user-exp-1",
+        name="Refinement project",
+    )
+    exp2 = Experiment(
+        user_id=user.id,
+        raw_idea="planner idea",
+        slug="test-slug-user-exp-2",
+        name="Research project",
+    )
+    db_session.add_all([exp1, exp2])
+    await db_session.commit()
+    await db_session.refresh(exp1)
+    await db_session.refresh(exp2)
+
+    await _seed_experiment_calls(
+        db_session, exp1.id, llm_cost=Decimal("0.10"), ext_cost=Decimal("0.008"), phase="refinement"
+    )
+    await _seed_experiment_calls(
+        db_session, exp2.id, llm_cost=Decimal("0.20"), ext_cost=Decimal("0.016"), phase="planner"
+    )
+
+    response = client.get(
+        f"/admin/cost/user/{user.id}/experiments?days=1",
+        headers={"Authorization": "Bearer faketoken"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["user_id"] == str(user.id)
+    assert body["email"] == FAKE_EMAIL
+    assert len(body["experiments"]) == 2
+
+    by_id = {row["experiment_id"]: row for row in body["experiments"]}
+    exp1_row = by_id[str(exp1.id)]
+    assert exp1_row["name"] == "Refinement project"
+    assert Decimal(exp1_row["total_cost_usd"]) == Decimal("0.108")
+    assert Decimal(exp1_row["llm_cost_usd"]) == Decimal("0.10")
+    assert Decimal(exp1_row["external_api_cost_usd"]) == Decimal("0.008")
+
+    exp1_phases = {p["phase"]: p for p in exp1_row["phases"]}
+    assert "refinement" in exp1_phases
+    assert exp1_phases["refinement"]["source"] == "llm"
+    assert Decimal(exp1_phases["refinement"]["cost_usd"]) == Decimal("0.10")
+    assert "tavily" in exp1_phases
+    assert exp1_phases["tavily"]["source"] == "external"
+
+    exp2_row = by_id[str(exp2.id)]
+    assert Decimal(exp2_row["total_cost_usd"]) == Decimal("0.216")
+    exp2_phases = {p["phase"]: p for p in exp2_row["phases"]}
+    assert exp2_phases["planner"]["label"] == "Research — Planner"
+
+    for exp in [exp1, exp2]:
+        await db_session.execute(delete(LLMCall).where(LLMCall.experiment_id == exp.id))
+        await db_session.execute(
+            delete(ExternalAPICall).where(ExternalAPICall.experiment_id == exp.id)
+        )
+        await db_session.delete(exp)
+    await db_session.commit()
+
+
+def test_non_admin_user_experiments_cost_returns_403(
+    client: TestClient, mock_firebase_non_admin: None
+) -> None:
+    client.post("/users/sync", json={}, headers={"Authorization": "Bearer faketoken"})
+    response = client.get(
+        f"/admin/cost/user/{uuid4()}/experiments",
+        headers={"Authorization": "Bearer faketoken"},
+    )
+    assert response.status_code == 403
+
+
+def test_non_admin_insights_returns_403(
+    client: TestClient, mock_firebase_non_admin: None
+) -> None:
+    client.post("/users/sync", json={}, headers={"Authorization": "Bearer faketoken"})
+    response = client.get(
+        "/admin/cost/insights",
+        headers={"Authorization": "Bearer faketoken"},
+    )
+    assert response.status_code == 403

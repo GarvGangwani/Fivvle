@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import {
+  BarChart3,
+  Brain,
+  Lightbulb,
+  Loader2,
+  Sparkles,
+  TrendingUp,
+} from "lucide-react";
 import { getInsightReport, ApiError } from "@/lib/api";
 import type {
   InsightRecommendationType,
@@ -9,19 +16,19 @@ import type {
   ResearchTakeaway,
   TakeawaySourceType,
 } from "@/lib/types";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
+import { LoadingState } from "@/components/ui/LoadingState";
 
-function recommendationBadgeClass(
-  type: InsightRecommendationType,
-): string {
+function recommendationBadgeClass(type: InsightRecommendationType): string {
   switch (type) {
     case "proceed":
-      return "bg-[rgba(16,185,129,0.15)] text-[var(--fv-success)] ring-[rgba(16,185,129,0.3)]";
+      return "badge-proceed";
     case "iterate":
-      return "bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-[color-mix(in_srgb,var(--fv-accent)_30%,transparent)]";
+      return "badge-iterate";
     case "pivot":
-      return "bg-[rgba(245,158,11,0.15)] text-[var(--fv-warning)] ring-[rgba(245,158,11,0.3)]";
+      return "badge-pivot";
     case "kill":
-      return "bg-[rgba(239,68,68,0.15)] text-red-300 ring-[rgba(239,68,68,0.3)]";
+      return "badge-kill";
   }
 }
 
@@ -29,45 +36,44 @@ function formatRecommendation(type: InsightRecommendationType): string {
   return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
-function sourceTypeBadgeClass(type: TakeawaySourceType): string {
+function sourceTypeLabel(type: TakeawaySourceType): string {
   switch (type) {
     case "BEHAVIORAL":
-      return "bg-[rgba(168,85,247,0.15)] text-purple-300 ring-[rgba(168,85,247,0.3)]";
+      return "Behavioral";
+    case "COGNITIVE":
+      return "Research";
+    case "SYNTHESIZED":
+      return "Combined";
+  }
+}
+
+function sourceTypeClass(type: TakeawaySourceType): string {
+  switch (type) {
+    case "BEHAVIORAL":
+      return "bg-purple-500/15 text-purple-300 ring-purple-500/30";
     case "COGNITIVE":
       return "bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-[color-mix(in_srgb,var(--fv-accent)_30%,transparent)]";
     case "SYNTHESIZED":
-      return "bg-[rgba(99,102,241,0.15)] text-indigo-300 ring-[rgba(99,102,241,0.3)]";
+      return "bg-indigo-500/15 text-indigo-300 ring-indigo-500/30";
   }
 }
 
 function TakeawayCard({ takeaway }: { takeaway: ResearchTakeaway }) {
   return (
-    <div className="fv-card p-4">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
+    <div className="rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)] p-4">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ring-inset ${sourceTypeBadgeClass(takeaway.source_type)}`}
+          className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${sourceTypeClass(takeaway.source_type)}`}
         >
-          {takeaway.source_type}
+          {sourceTypeLabel(takeaway.source_type)}
         </span>
-        <span className="text-xs text-[var(--fv-text-muted)]">
+        <span className={`fv-confidence-badge ${takeaway.confidence === "high" ? "fv-confidence-high" : takeaway.confidence === "medium" ? "fv-confidence-medium" : "fv-confidence-low"}`}>
           {takeaway.confidence} confidence
         </span>
       </div>
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-[var(--fv-text)]">
+      <p className="text-sm leading-relaxed text-[var(--fv-text)]">
         {takeaway.claim}
       </p>
-      {takeaway.cited_finding_ids.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {takeaway.cited_finding_ids.map((id) => (
-            <span
-              key={id}
-              className="rounded-md bg-white/5 px-2 py-0.5 font-mono text-xs text-[var(--fv-text-muted)] ring-1 ring-[var(--fv-border)]"
-            >
-              {id}
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
@@ -83,25 +89,18 @@ export function InsightReportViewer({ experimentId }: InsightReportViewerProps) 
 
   useEffect(() => {
     let cancelled = false;
-
     async function load() {
       setLoading(true);
       setError(null);
       try {
         const data = await getInsightReport(experimentId);
         if (!cancelled) setReport(data);
-      } catch (err) {
-        if (cancelled) return;
-        setError(
-          err instanceof ApiError
-            ? "Could not load the insight report."
-            : "Could not load the insight report.",
-        );
+      } catch {
+        if (!cancelled) setError("Could not load the insight report.");
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
-
     load();
     return () => {
       cancelled = true;
@@ -109,110 +108,121 @@ export function InsightReportViewer({ experimentId }: InsightReportViewerProps) 
   }, [experimentId]);
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-[var(--fv-accent)]" />
-      </div>
-    );
+    return <LoadingState label="Loading insight report…" />;
   }
 
   if (error || !report) {
-    return (
-      <div className="fv-error px-6 py-8 text-center">
-        <p className="text-sm">
-          {error ?? "Insight report not available."}
-        </p>
-      </div>
-    );
+    return <ErrorBanner message={error ?? "Insight report not available."} />;
   }
 
   return (
-    <div className="space-y-8">
-      <section className="fv-card p-6 text-center sm:text-left">
-        <p className="text-sm font-medium uppercase tracking-wide text-[var(--fv-text-muted)]">
-          AI recommendation
-        </p>
-        <span
-          className={`mt-4 inline-flex rounded-full px-5 py-2 text-lg font-bold ring-2 ring-inset ${recommendationBadgeClass(report.recommendation_type)}`}
-        >
-          {formatRecommendation(report.recommendation_type)}
-        </span>
-        <p className="mt-4 whitespace-pre-wrap text-sm leading-relaxed text-[var(--fv-text-soft)]">
-          {report.recommendation}
-        </p>
-        <p className="mt-3 whitespace-pre-wrap text-xs text-[var(--fv-text-muted)]">
-          {report.recommendation_rationale}
-        </p>
-      </section>
+    <div className="space-y-6">
+      <div className="fv-section-card border-[color-mix(in_srgb,var(--fv-accent)_25%,transparent)] bg-gradient-to-br from-[color-mix(in_srgb,var(--fv-accent)_8%,transparent)] to-transparent">
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-[var(--fv-accent-muted)]">
+            <Sparkles className="h-6 w-6 text-[var(--fv-accent)]" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="fv-panel-label mb-2">AI recommendation</p>
+            <span
+              className={`inline-flex rounded-lg px-3 py-1 text-sm font-bold uppercase tracking-wide ${recommendationBadgeClass(report.recommendation_type)}`}
+            >
+              {formatRecommendation(report.recommendation_type)}
+            </span>
+            <p className="fv-prose mt-4 text-sm">{report.recommendation}</p>
+            {report.recommendation_rationale && (
+              <p className="mt-3 text-xs leading-relaxed text-[var(--fv-text-muted)]">
+                {report.recommendation_rationale}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
 
       {report.traffic_summary && (
-        <section className="fv-card p-6">
-          <h2 className="text-lg font-semibold text-[var(--fv-text)]">
-            Traffic summary
-          </h2>
-          <p className="mt-1 text-sm font-medium text-[var(--fv-text-soft)]">
+        <div className="fv-section-card">
+          <div className="mb-4 flex items-center gap-2">
+            <BarChart3 className="h-5 w-5 text-[var(--fv-accent)]" />
+            <h2 className="text-lg font-semibold text-[var(--fv-text)]">
+              Traffic summary
+            </h2>
+          </div>
+          <p className="text-2xl font-bold tracking-tight text-[var(--fv-text)]">
             {report.traffic_summary.headline_metric}
           </p>
-          <p className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-[var(--fv-text-soft)]">
+          <p className="fv-prose mt-3 text-sm whitespace-pre-wrap">
             {report.traffic_summary.narrative}
           </p>
-        </section>
+        </div>
       )}
 
-      <section className="fv-card p-6">
-        <h2 className="text-lg font-semibold text-[var(--fv-text)]">
-          Research takeaways
-        </h2>
-        <div className="mt-4 space-y-3">
+      <div>
+        <div className="mb-4 flex items-center gap-2">
+          <Lightbulb className="h-5 w-5 text-[var(--fv-accent)]" />
+          <h2 className="text-lg font-semibold text-[var(--fv-text)]">
+            Key takeaways
+          </h2>
+        </div>
+        <div className="space-y-3">
           {report.research_takeaways.map((takeaway) => (
             <TakeawayCard
-              key={`${takeaway.source_type}-${takeaway.claim.slice(0, 40)}`}
+              key={`${takeaway.source_type}-${takeaway.claim.slice(0, 48)}`}
               takeaway={takeaway}
             />
           ))}
         </div>
-      </section>
+      </div>
 
       {report.conversion_by_source?.per_source?.length > 0 && (
-        <section className="fv-card p-6">
-          <h2 className="text-lg font-semibold text-[var(--fv-text)]">
-            Conversion by source
-          </h2>
-          <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--fv-text-soft)]">
+        <div className="fv-section-card">
+          <div className="mb-4 flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-[var(--fv-accent)]" />
+            <h2 className="text-lg font-semibold text-[var(--fv-text)]">
+              Conversion by source
+            </h2>
+          </div>
+          <p className="text-sm text-[var(--fv-text-muted)]">
             {report.conversion_by_source.warm_network_bias_commentary}
           </p>
-          <ul className="mt-4 space-y-3">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {report.conversion_by_source.per_source.map((src) => (
-              <li
+              <div
                 key={src.source_name}
-                className="fv-card p-4"
+                className="rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)] p-4"
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center justify-between gap-2">
                   <span className="font-medium text-[var(--fv-text)]">
                     {src.source_name}
                   </span>
-                  <span className="text-xs text-[var(--fv-text-muted)]">
-                    {src.views} views · {src.signups} signups ·{" "}
+                  <span className="font-mono text-sm font-semibold text-[var(--fv-accent)]">
                     {(src.conversion_rate * 100).toFixed(1)}%
                   </span>
                 </div>
-                <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--fv-text-soft)]">
+                <p className="mt-1 text-xs text-[var(--fv-text-muted)]">
+                  {src.views} views · {src.signups} signups
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--fv-text-soft)]">
                   {src.commentary}
                 </p>
-              </li>
+              </div>
             ))}
-          </ul>
-        </section>
+          </div>
+        </div>
       )}
 
-      <section className="fv-card border-[rgba(245,158,11,0.3)] bg-[rgba(245,158,11,0.08)] p-6">
-        <h2 className="text-sm font-semibold text-[var(--fv-warning)]">
-          What would change this?
-        </h2>
-        <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--fv-text-soft)]">
-          {report.what_would_change_this}
-        </p>
-      </section>
+      <div className="rounded-xl border border-[color-mix(in_srgb,var(--fv-warning)_25%,transparent)] bg-[color-mix(in_srgb,var(--fv-warning)_8%,transparent)] p-5">
+        <div className="flex items-start gap-3">
+          <Brain className="mt-0.5 h-5 w-5 shrink-0 text-[var(--fv-warning)]" />
+          <div>
+            <h2 className="text-sm font-semibold text-[var(--fv-warning)]">
+              What would change this?
+            </h2>
+            <p className="fv-prose mt-2 text-sm whitespace-pre-wrap">
+              {report.what_would_change_this}
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

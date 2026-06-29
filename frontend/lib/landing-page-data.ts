@@ -115,11 +115,12 @@ export function resolvePageJson(landingPage: LandingPage): PageJson {
 export function resolveLandingPageCopy(
   copyJson: CopyJson | null | undefined,
   pageJson: PageJson,
+  options?: { forEditor?: boolean },
 ): CopyJson {
   const primary = copyJson ?? {};
   const fromSections = extractCopyFromPageSections(pageJson);
   const merged = mergeCopySources(primary, fromSections);
-  return normalizeCopyJson(merged);
+  return normalizeCopyJson(merged, options);
 }
 
 /** Keep page_json.sections in sync when the founder edits copy. */
@@ -180,9 +181,12 @@ export interface ResolvedLandingPageEditorData {
 
 export function resolveLandingPageEditorData(
   landingPage: LandingPage,
+  experimentName?: string | null,
 ): ResolvedLandingPageEditorData {
   const page = resolvePageJson(landingPage);
-  const copy = resolveLandingPageCopy(landingPage.copy_json, page);
+  const copy = resolveLandingPageCopy(landingPage.copy_json, page, {
+    forEditor: true,
+  });
   const templateId = resolveTemplateId(page.template_id ?? landingPage.template_id);
   const syncedPage = syncPageJsonSections(
     { ...page, template_id: templateId },
@@ -190,9 +194,10 @@ export function resolveLandingPageEditorData(
   );
 
   const projectName =
+    experimentName?.trim() ||
     landingPage.headline?.trim() ||
     copy.hero?.headline?.trim() ||
-    "My Startup";
+    "Untitled project";
 
   return {
     copy,
