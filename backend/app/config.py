@@ -29,7 +29,13 @@ class Settings(BaseSettings):
     # Use FIREBASE_SERVICE_ACCOUNT_PATH (not GOOGLE_APPLICATION_CREDENTIALS) so a
     # machine-wide GCP credential env var does not override backend/.env.
     firebase_service_account_path: str = Field(
+        default="./service-account.json",
         validation_alias="FIREBASE_SERVICE_ACCOUNT_PATH",
+    )
+    # Production (Railway/Cloud Run): paste JSON here instead of mounting a file.
+    firebase_service_account_json: str = Field(
+        default="",
+        validation_alias="FIREBASE_SERVICE_ACCOUNT_JSON",
     )
     firebase_storage_bucket: str = Field(
         default="",
