@@ -28,12 +28,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     if [ -f uv.lock ]; then uv sync --frozen --no-dev; else uv sync --no-dev; fi
 
 COPY app/ ./app/
+COPY scripts/railway_start.sh ./scripts/railway_start.sh
 
 RUN useradd --create-home --uid 1000 --shell /usr/sbin/nologin appuser \
+    && chmod +x ./scripts/railway_start.sh \
     && chown -R appuser:appuser /app
 
 USER appuser
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "exec gunicorn app.main:app -k uvicorn.workers.UvicornWorker -b 0.0.0.0:${PORT} --workers 2 --timeout 120 --access-logfile - --error-logfile -"]
+CMD ["./scripts/railway_start.sh"]
