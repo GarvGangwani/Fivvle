@@ -61,6 +61,11 @@ async def _tavily_external_api_ids_before(session: AsyncSession) -> set[UUID]:
     return set((await session.execute(stmt)).scalars().all())
 
 
+async def _reddit_external_api_ids_before(session: AsyncSession) -> set[UUID]:
+    stmt = select(ExternalAPICall.id).where(ExternalAPICall.provider == "reddit")
+    return set((await session.execute(stmt)).scalars().all())
+
+
 def _open_breaker(name: str) -> CircuitBreaker:
     """Create a breaker with threshold=1, cooldown=9999, then fail it once → OPEN."""
     import asyncio
@@ -173,6 +178,7 @@ async def test_tavily_retry_then_success_writes_one_row(db_session):
 
 @pytest.mark.asyncio
 async def test_reddit_open_breaker_logs_failure_row(db_session):
+    pre_ids = await _reddit_external_api_ids_before(db_session)
     breaker = CircuitBreaker(name="reddit", failure_threshold=1, cooldown_seconds=9999)
     _breakers["reddit"] = breaker
     with pytest.raises(httpx.ConnectError):
@@ -180,10 +186,7 @@ async def test_reddit_open_breaker_logs_failure_row(db_session):
 
     assert breaker._state.value == "open"
 
-    fake_reddit = MagicMock()
-    fake_reddit.subreddit = MagicMock(return_value=MagicMock())
-
-    with patch("app.integrations.reddit._reddit", fake_reddit):
+    with patch("app.integrations.reddit._search_subreddits_http", return_value=[]):
         with pytest.raises(CircuitOpenError):
             await search_subreddits(db_session, query="test", subreddits=["startups"])
         await db_session.commit()
@@ -192,6 +195,8 @@ async def test_reddit_open_breaker_logs_failure_row(db_session):
         ExternalAPICall.provider == "reddit",
         ExternalAPICall.success.is_(False),
     )
+    if pre_ids:
+        stmt = stmt.where(~ExternalAPICall.id.in_(pre_ids))
     rows = (await db_session.execute(stmt)).scalars().all()
     assert len(rows) == 1
     assert rows[0].cost_usd == Decimal("0")
@@ -206,34 +211,35 @@ async def test_reddit_open_breaker_logs_failure_row(db_session):
 
 @pytest.mark.asyncio
 async def test_reddit_retry_then_success_writes_one_row(db_session):
+    from app.integrations.reddit import RedditPost
+
+    pre_ids = await _reddit_external_api_ids_before(db_session)
     call_count = 0
 
-    fake_sub = MagicMock()
-    fake_post = MagicMock()
-    fake_post.id = "p1"
-    fake_post.title = "Title"
-    fake_post.url = "https://reddit.com/r/startups/p1"
-    fake_post.score = 10
-    fake_post.num_comments = 2
-    fake_post.created_utc = 1_700_000_000.0
-    fake_post.subreddit.display_name = "startups"
-    fake_post.selftext = ""
-
-    def _flaky_search(*args, **kwargs):
+    async def _flaky_search_http(*args, **kwargs):
         nonlocal call_count
         call_count += 1
         if call_count < 3:
-            # Updated for Bug B: allow-list classifier requires an explicit transient exception type.
             raise httpx.ConnectError("connection refused by remote host")
-        return iter([fake_post])
-
-    fake_sub.search = MagicMock(side_effect=_flaky_search)
-    fake_reddit = MagicMock()
-    fake_reddit.subreddit = MagicMock(return_value=fake_sub)
+        return [
+            RedditPost(
+                id="p1",
+                title="Title",
+                url="https://www.reddit.com/r/startups/comments/p1/t/",
+                score=10,
+                num_comments=2,
+                created_utc=1_700_000_000.0,
+                subreddit_name="startups",
+                selftext="",
+            )
+        ]
 
     with (
         patch("app.reliability.retry.asyncio.sleep", new_callable=AsyncMock),
-        patch("app.integrations.reddit._reddit", fake_reddit),
+        patch(
+            "app.integrations.reddit._search_subreddits_http",
+            side_effect=_flaky_search_http,
+        ),
     ):
         posts = await search_subreddits(db_session, query="test", subreddits=["startups"])
         await db_session.commit()
@@ -245,6 +251,8 @@ async def test_reddit_retry_then_success_writes_one_row(db_session):
         ExternalAPICall.provider == "reddit",
         ExternalAPICall.success.is_(True),
     )
+    if pre_ids:
+        stmt = stmt.where(~ExternalAPICall.id.in_(pre_ids))
     rows = (await db_session.execute(stmt)).scalars().all()
     assert len(rows) == 1
     for row in rows:

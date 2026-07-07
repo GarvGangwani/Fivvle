@@ -1,0 +1,16 @@
+{
+  "refined_one_liner": "An AI-powered platform that guides founders through a milestone-based workflow from idea to launch, replacing scattered tools with structured validation.",
+  "target_audience": "First-time and solo founders globally who struggle to validate startup ideas, currently piecing together free resources, AI chatbots, and scattered tools with no clear signal on when they're ready to launch.",
+  "value_proposition": "Replaces fragmented validation workflows with a single guided system that helps founders make evidence-based decisions, complete research and customer discovery faster, and know exactly when they have enough validation to build and launch.",
+  "risks": [
+    "Can a milestone-based system retain founders who want flexibility rather than a rigid sequence?",
+    "Will founders pay for a subscription when they already use free AI chatbots and scattered tools for validation?",
+    "Is the competitive intelligence and customer discovery data quality strong enough to differentiate from standalone tools like Crunchbase and survey platforms?",
+    "Does the global-from-day-one positioning dilute messaging and make it harder to build trust with any single founder segment?",
+    "How sticky is the product after a founder completes one idea's validation \u2014 will they churn or stay for the next idea?"
+  ],
+  "project_name": "Fivvle",
+  "headline": "Validate your startup idea with a guided, step-by-step system",
+  "subheadline": "Replace scattered tools and guesswork with structured research, competitive intelligence, and customer discovery \u2014 all in one milestone-based workflow.",
+  "cta_text": "Start validating free"
+}

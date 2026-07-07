@@ -1,0 +1,551 @@
+{
+  "q1": {
+    "question_id": "q1",
+    "extracted_evidence": [
+      {
+        "source_url": "https://www.indiehackers.com/post/i-built-a-business-idea-validator-now-im-scared-mine-is-the-bad-idea-21b3b3cc3c",
+        "relevance": "high",
+        "verbatim_quote": null,
+        "paraphrase": "An Indie Hackers founder building an idea validator got zero conversions at \u20ac19. Commenters identified that founders can get similar feedback for free from Claude/ChatGPT by typing 'brutally roast my startup,' making \u20ac19 a steep ask. One user noted: 'Free feels like a toy. \u20ac19 feels like a gamble. \u20ac49 feels like a decision.' The core hurdle cited is the 'ChatGPT Wrapper' objection \u2014 to charge, the tool must sell authority, not just text generation.",
+        "named_entities": [
+          "\u20ac19",
+          "Claude",
+          "ChatGPT",
+          "\u20ac49",
+          "ChatGPT Wrapper",
+          ".netlify.app",
+          "Y-Combinator",
+          "Paul Graham Simulator"
+        ]
+      },
+      {
+        "source_url": "https://www.indiehackers.com/post/idea-validation-founder-accountability-partners-tinder-for-indie-hackers-who-actually-execute-62eceb3c36",
+        "relevance": "medium",
+        "verbatim_quote": null,
+        "paraphrase": "An Indie Hackers post about founder accountability partners asked whether users would pay $19/month for matched accountability. The post cited common founder confessions on Indie Hackers: 'I have 10 half-built projects collecting digital dust,' 'Lost all motivation after week 3,' and 'Working alone is destroying my productivity.' The founder's background was a 'graveyard of unfinished projects' problem.",
+        "named_entities": [
+          "$19/month",
+          "Indie Hackers",
+          "Pratham Naik",
+          "Surat",
+          "Typeform",
+          "Slack"
+        ]
+      },
+      {
+        "source_url": "https://www.reddit.com/r/Startup_Validation/comments/1ntdn7c/validating_a_business_idea_is_so_damn_tough",
+        "relevance": "medium",
+        "verbatim_quote": null,
+        "paraphrase": "A Reddit r/Startup_Validation thread titled 'Validating a business idea is so damn tough' contained founder comments about validation friction. One user said 'idea validation is way harder than people make it sound.' Another noted 'half of entrepreneurship is just talking to people you'd rather not talk to. Validation part sucks for sure.' On willingness to pay, one commenter said: 'not sure how big of a problem it is and if people would be willing to pay for it.'",
+        "named_entities": [
+          "r/Startup_Validation",
+          "Docuyond"
+        ]
+      },
+      {
+        "source_url": "https://www.indiehackers.com/post/from-idea-to-validation-in-24-hours-69dd90c310",
+        "relevance": "medium",
+        "verbatim_quote": null,
+        "paraphrase": "An Indie Hackers post about rapid validation in 24 hours included a comment from a user who said 'I would have potentially paid for that service and yet your validation process didn't reach me,' indicating some willingness to pay exists but distribution/reach is a barrier. The founder was nervous about pricing, with original paywall thought at $100 for a marketing plan creator for techy founding teams.",
+        "named_entities": [
+          "$100",
+          "Tangram",
+          "Webflow",
+          "Twitter"
+        ]
+      },
+      {
+        "source_url": "https://www.indiehackers.com/post/i-made-an-app-for-indie-hackers-that-helps-to-find-and-validate-business-ideas-bf4e6325a4",
+        "relevance": "medium",
+        "verbatim_quote": null,
+        "paraphrase": "An Indie Hackers post about 'Idea Spark,' an app for solopreneurs to discover and validate business ideas, described the founder's origin problem: using a spreadsheet to store and pre-validate ideas with a score system was 'hard to use the spreadsheet on the phone.' The app enhanced validation with 'clear indicators that allow us to extract only the best ideas' and added deadlines after pre-validation.",
+        "named_entities": [
+          "Idea Spark",
+          "Rares Cruceat"
+        ]
+      }
+    ],
+    "evidence_gap_note": null
+  },
+  "q2": {
+    "question_id": "q2",
+    "extracted_evidence": [
+      {
+        "source_url": "https://www.ohblimey.com/blog/how-to-validate-your-startups-idea-how-to-stop-delusional-thinking-kicking-in",
+        "relevance": "medium",
+        "verbatim_quote": "You grab a copy of the Mom Test, get a few friends to sign up, job done, right?",
+        "paraphrase": "Lucy Heskins' guide outlines a validation sequence starting with terminology (problem vs product validation), then audience research, and problem severity assessment. She references The Mom Test as a tool founders use and offers a downloadable guide with frameworks.",
+        "named_entities": [
+          "Lucy Heskins",
+          "The Mom Test",
+          "The Startup Founder's Guide to Validating An Idea",
+          "Oh Blimey"
+        ]
+      },
+      {
+        "source_url": "https://www.koji.so/blog/best-customer-discovery-tools-2026",
+        "relevance": "high",
+        "verbatim_quote": "For a founder or small product team starting today, the minimum stack is three tools: 1. Mixpanel/Amplitude (free tier) \u2014 to spot what to ask about. 2. Koji (\u20ac29/mo) \u2014 to run the interviews and analyze them. 3. Notion (existing workspace) \u2014 to store and tag.",
+        "paraphrase": "Koji's 2026 customer discovery stack for founders consists of three tools: Mixpanel/Amplitude (free tier) to spot what to ask about, Koji (\u20ac29/mo) to run and analyze interviews, and Notion (existing workspace) to store and tag. The workflow involves five steps: run interview, recruit participant, analyze data, synthesize insight, and activate decision. Teams winning at discovery use 78% AI in workflows vs 34% in 2024.",
+        "named_entities": [
+          "Koji",
+          "Mixpanel",
+          "Amplitude",
+          "Notion",
+          "\u20ac29/mo",
+          "78%",
+          "2024",
+          "2026",
+          "Slack",
+          "Linear"
+        ]
+      },
+      {
+        "source_url": "https://www.lennysnewsletter.com/p/validating-your-startup-idea",
+        "relevance": "high",
+        "verbatim_quote": "Initially their interview script was open-ended around financial planning, but conversations consistently steered to the problematic topic of leave.",
+        "paraphrase": "Lenny's newsletter by Todd Jackson describes founders' validation sequences: market-first, experience-ripe-for-improvement, or problem-first approaches. Example from Mahima and co-founders at a parenting startup shows they started with open-ended interviews around financial planning, but conversations consistently steered to leave challenges, requiring iteration of their interview script.",
+        "named_entities": [
+          "Todd Jackson",
+          "Lenny's Newsletter",
+          "Mahima",
+          "Amber Feng",
+          "Lauren Dai",
+          "Mom Test"
+        ]
+      },
+      {
+        "source_url": "https://www.nucamp.co/blog/solo-ai-tech-entrepreneur-2025-validating-your-solo-ai-startup-idea-before-development",
+        "relevance": "high",
+        "verbatim_quote": "Solo AI founders can dramatically increase their chances of product-market fit by following a focused validation checklist with clear timelines. Begin by ensuring there's a real, significant problem - conduct at least 10-20 customer discovery interviews and document the pain points that matter most.",
+        "paraphrase": "Nucamp's guide for solo AI founders prescribes a validation sequence: define validation goals, outline target audience with buyer personas, apply frameworks (Lean Startup, Effectuation, Disciplined Entrepreneurship), use AI-driven validation platforms, and conduct 10-20 customer discovery interviews.",
+        "named_entities": [
+          "Nucamp",
+          "Lean Startup",
+          "Effectuation",
+          "Disciplined Entrepreneurship",
+          "10-20 customer discovery interviews"
+        ]
+      },
+      {
+        "source_url": "https://www.ad-vertly.ai/post/saas-idea-validation-for-solo-founders",
+        "relevance": "high",
+        "verbatim_quote": "Evening 1: write the problem statement and search for competitors. Evening 2: read 20 bad reviews of the top 3 competitors. Weekend 1: build the landing page. Week 1: post in 3 Reddit communities and DM 10 people on LinkedIn each evening. Weekend 2: run 5 customer calls. Week 2 evenings: run the remaining 5 calls and tally the signal.",
+        "paraphrase": "Ad-vertly's structured sequence for solo founders: Evening 1 - write problem statement and search competitors; Evening 2 - read 20 bad reviews of top 3 competitors; Weekend 1 - build landing page; Week 1 - post in 3 Reddit communities and DM 10 LinkedIn people each evening; Weekend 2 - run 5 customer calls; Week 2 - remaining 5 calls and tally signal. Identifies two failure modes: building immediately or spending three weeks reading frameworks without validating.",
+        "named_entities": [
+          "Reddit",
+          "LinkedIn",
+          "The Mom Test"
+        ]
+      },
+      {
+        "source_url": "https://fi.co/insight/how-to-validate-a-startup-idea-a-step-by-step-guide-for-founders",
+        "relevance": "high",
+        "verbatim_quote": null,
+        "paraphrase": "Founder Institute's 5-step validation sequence: 1) Define problem and assumptions (who is customer, how painful, current solution), 2) Talk to 20-30 target customers about current process, frustrations, tools used, 3) Test willingness to pay via landing page/waitlist/pre-order, 4) Look for evidence not encouragement (signed pre-order vs polite enthusiasm), 5) Decide to proceed, pivot, or pass.",
+        "named_entities": [
+          "Founder Institute",
+          "20 to 30 target customers",
+          "MVP"
+        ]
+      },
+      {
+        "source_url": "https://medium.com/@isabellapennington/startup-idea-validation-basics-how-i-test-my-next-big-idea-before-i-build-d706d3f3397b",
+        "relevance": "high",
+        "verbatim_quote": "Get totally clear on the problem and who has it. Spend 2 hours on research and sanity checks. Validate with conversations and/or quick landing pages (20 hours). Only build an MVP when I see strong signals (200 hours). Keep iterating, learning, and listening to my future customers.",
+        "paraphrase": "Isabella Pennington's personal validation sequence: 1) Get clear on problem and who has it, 2) 2 hours research and sanity checks, 3) Validate with conversations and/or quick landing pages (20 hours), 4) Only build MVP with strong signals (200 hours), 5) Keep iterating. Uses MegaSynapse as an AI-powered cofounder tool for brand positioning, market research, and mentorship.",
+        "named_entities": [
+          "Isabella Pennington",
+          "MegaSynapse",
+          "20 hours",
+          "200 hours",
+          "2 hours"
+        ]
+      },
+      {
+        "source_url": "https://validatorai.com",
+        "relevance": "medium",
+        "verbatim_quote": "ValidatorAI helps you validate your startup idea using behavioral data from 300,000 founders \u2014 measuring what actually moves people from idea to action before companies are built.",
+        "paraphrase": "ValidatorAI is used by 300,000+ founders for idea validation. The tool scores and grades ideas, analyzes competition, finds customers, and provides a clear next-step prompt for building a landing page or site. Measures founder momentum before companies are built.",
+        "named_entities": [
+          "ValidatorAI",
+          "300,000 founders",
+          "4.85 out of 5 rating",
+          "SaaS 20%",
+          "Platforms 17.9%"
+        ]
+      }
+    ],
+    "evidence_gap_note": null
+  },
+  "q3": {
+    "question_id": "q3",
+    "extracted_evidence": [
+      {
+        "source_url": "https://www.wiseguyreports.com/reports/idea-generation-and-validation-tool-market",
+        "relevance": "high",
+        "verbatim_quote": "The Global Idea Generation and Validation Tool Market is projected to witness a robust growth with a CAGR of 7.6% from 2025 to 2035",
+        "paraphrase": "The Global Idea Generation and Validation Tool Market is projected to grow at a 7.6% CAGR from 2025 to 2035. The Brainstorming Software segment reached $773 million in 2024 and is projected to grow to $1,759 million by 2035.",
+        "named_entities": [
+          "Global Idea Generation and Validation Tool Market",
+          "7.6% CAGR",
+          "2025",
+          "2035",
+          "Brainstorming Software",
+          "773 USD Million",
+          "2024",
+          "1,759 USD Million",
+          "North America",
+          "Asia-Pacific"
+        ]
+      },
+      {
+        "source_url": "https://carta.com/data/state-of-pre-seed-2024",
+        "relevance": "medium",
+        "verbatim_quote": "Companies brought in a total of $716 million in the final quarter of the year, dropping a striking 25% from Q3's $965 million",
+        "paraphrase": "U.S. pre-seed startups raised $4 billion total in 2024 through over 25,000 convertible instruments on Carta, essentially flat from 2023. Q4 2024 saw $716 million invested, down 25% from Q3's $965 million.",
+        "named_entities": [
+          "Carta",
+          "$4 billion",
+          "2024",
+          "25,000",
+          "$716 million",
+          "Q4 2024",
+          "$965 million",
+          "Q3 2024",
+          "California",
+          "New York"
+        ]
+      },
+      {
+        "source_url": "https://carta.com/data/state-of-pre-seed-q3-2024",
+        "relevance": "medium",
+        "verbatim_quote": "The median post-money SAFE in the past year raised $275K at a $10M market cap",
+        "paraphrase": "Startups on Carta raised more than 17,000 pre-seed rounds in 2024. The median post-money SAFE in the past year raised $275K at a $10M market cap. Total capital raised in pre-priced rounds was $728 million for Q3, down 36% from Q2.",
+        "named_entities": [
+          "Carta",
+          "17,000",
+          "$275K",
+          "$10M",
+          "$728 million",
+          "Q3 2024"
+        ]
+      },
+      {
+        "source_url": "https://www.equidam.com/startup-valuation-delta-q4-2024",
+        "relevance": "medium",
+        "verbatim_quote": "Pre-seed startup valuations have shown notable stability across 2024, with the global median continuing a slight upward trend from $4.3 million in Q1 to $4.6 million in Q4",
+        "paraphrase": "Global pre-seed startup valuations showed stability in 2024, with median rising from $4.3 million in Q1 to $4.6 million in Q4. AI accounted for 37% of venture funding, an all-time high, per CB Insights. Total global VC capital raised dropped to $169.7 billion in 2024.",
+        "named_entities": [
+          "Equidam",
+          "$4.3 million",
+          "Q1 2024",
+          "$4.6 million",
+          "Q4 2024",
+          "CB Insights",
+          "37%",
+          "$169.7 billion",
+          "2024",
+          "PitchBook"
+        ]
+      },
+      {
+        "source_url": "https://growthlist.co/pre-seed-startups",
+        "relevance": "medium",
+        "verbatim_quote": "Our database shows pre-seed startups raised over $1.5 billion in 2024, with deal volume remaining relatively stable despite broader market volatility",
+        "paraphrase": "Pre-seed startups raised over $1.5 billion in 2024 according to Growth List database, with early 2025 funding at $300 million. Investors remain confident in early-stage opportunities, particularly in B2B software and AI infrastructure.",
+        "named_entities": [
+          "Growth List",
+          "$1.5 billion",
+          "2024",
+          "$300 million",
+          "2025",
+          "B2B software",
+          "AI infrastructure"
+        ]
+      },
+      {
+        "source_url": "https://www.forumvc.com/research/state-of-the-vc-market-pre-seed-and-seed-2024",
+        "relevance": "medium",
+        "verbatim_quote": "Our survey shows 52% of pre-seed and seed stage companies raised between $1-4M",
+        "paraphrase": "52% of pre-seed and seed stage companies raised between $1-4M. Crunchbase reported average seed round size was $1M in H1 2024, while Pitchbook reported average seed deal size was $3M in Q3 2024. 38% of pre-product companies secured valuations below $10M.",
+        "named_entities": [
+          "ForumVC",
+          "52%",
+          "$1-4M",
+          "Crunchbase",
+          "$1M",
+          "Pitchbook",
+          "$3M",
+          "Q3 2024",
+          "38%",
+          "$10M"
+        ]
+      }
+    ],
+    "evidence_gap_note": null
+  },
+  "q4": {
+    "question_id": "q4",
+    "extracted_evidence": [
+      {
+        "source_url": "https://preuve.ai/compare/crunchbase",
+        "relevance": "high",
+        "verbatim_quote": "Crunchbase is great for researching companies, founders, and investors that already exist, and for mapping who is funded in a space. It is not built to validate a new idea: it indexes companies that already exist rather than scoring whether your own pre-launch idea is viable.",
+        "paraphrase": "Preuve AI's comparison page states Crunchbase is built to look up existing companies, funding, and investors \u2014 not to validate pre-launch ideas. It indexes existing companies rather than scoring viability of new ideas. Crunchbase's strengths are authoritative company data, competitor/investor discovery with filters, and list/CSV exports.",
+        "named_entities": [
+          "Crunchbase",
+          "Preuve AI",
+          "50+ live sources",
+          "10 parallel agents",
+          "60 seconds",
+          "CSV exports"
+        ]
+      },
+      {
+        "source_url": "https://crustdata.com/blog/crunchbase-alternatives",
+        "relevance": "high",
+        "verbatim_quote": "One buyer we spoke with told us their platform stopped using Crunchbase as a data source because customers kept flagging errors. Independent research found a 15 to 40 percent accuracy gap between Crunchbase valuations and actual term sheets on Series B deals.",
+        "paraphrase": "Crustdata's analysis of Crunchbase alternatives found data quality issues: 15-40% accuracy gap between Crunchbase valuations and actual Series B term sheets. One data platform stopped using Crunchbase because customers kept flagging errors. The interface is also criticized as not built for focused workflows.",
+        "named_entities": [
+          "Crunchbase",
+          "Crustdata",
+          "15 to 40 percent",
+          "Series B",
+          "ZoomInfo",
+          "Apollo",
+          "Harmonic",
+          "Tracxn",
+          "600,000 contributors"
+        ]
+      },
+      {
+        "source_url": "https://customergauge.com/blog/surveymonkey-vs-getfeedback",
+        "relevance": "high",
+        "verbatim_quote": "Many of the features that make it easy to do simple things, make it difficult/impossible to do more advanced things. There is very little room for customization. Also, they have been scaling the features back so you need an enterprise account to use them.",
+        "paraphrase": "User reviews of SurveyMonkey cited in CustomerGauge's comparison describe it as a 'basic tool for basic needs' with limited customization. Andrew L. gave 3 stars, noting features that make simple tasks easy make advanced tasks difficult/impossible, and enterprise accounts are now required for previously available features like email branding customization.",
+        "named_entities": [
+          "SurveyMonkey",
+          "GetFeedback",
+          "Qualtrics",
+          "Andrew L.",
+          "Richard C.",
+          "3 stars",
+          "4 stars",
+          "enterprise account"
+        ]
+      },
+      {
+        "source_url": "https://www.trustpilot.com/review/surveymonkey.com?page=8",
+        "relevance": "medium",
+        "verbatim_quote": "Survey Monkey was my go -to survey tool for some time. But over time, I have notice",
+        "paraphrase": "Trustpilot reviews for SurveyMonkey show mixed sentiment with a 2.9/5 overall rating. Positive reviews praise ease of use and AI-assisted survey building. Negative feedback includes billing/account access issues and declining satisfaction over time. However, no founder-specific validation workflow complaints are visible in this excerpt.",
+        "named_entities": [
+          "SurveyMonkey",
+          "Trustpilot",
+          "2.9 / 5",
+          "4 out of 5 stars",
+          "3 out of 5 stars"
+        ]
+      },
+      {
+        "source_url": "https://www.youtube.com/watch?v=9jIbsTLyC0c",
+        "relevance": "medium",
+        "verbatim_quote": "I break down how to validate your startup or app idea in just one prompt with ChatGPT or whatever AI tool you use. This prompt covers a proven formula of validating startup ideas and helps you figure out your ideal customer persona, clear pain points to solve, how to increase the value of your idea before building and a step by step build plan along with the tools you need to get started.",
+        "paraphrase": "A YouTube tutorial demonstrates how founders use AI chatbots (ChatGPT) for idea validation through a 7-step structured prompt process including reverse engineering, founder-market fit assessment, Reddit problem validation, and build planning. This shows the DIY Notion/AI chatbot combination approach founders currently use.",
+        "named_entities": [
+          "ChatGPT",
+          "Reddit",
+          "7-step process"
+        ]
+      },
+      {
+        "source_url": "https://validatorai.com",
+        "relevance": "medium",
+        "verbatim_quote": "ValidatorAI is the leading startup idea validation platform, helping founders with business idea validation, startup viability analysis, market size estimation, and go-to-market strategy \u2014 all free.",
+        "paraphrase": "ValidatorAI is an AI-powered startup idea validation platform used by 300K+ founders. It offers features like AI scoring, market viability stress-testing, customer feedback simulation, and founder readiness evaluation \u2014 positioning itself as a specialized alternative to generic tools. This represents an emerging competitor in the structured validation space.",
+        "named_entities": [
+          "ValidatorAI",
+          "300K+ founders",
+          "4.85 out of 5 rating",
+          "AI-powered score"
+        ]
+      }
+    ],
+    "evidence_gap_note": null
+  },
+  "q5": {
+    "question_id": "q5",
+    "extracted_evidence": [
+      {
+        "source_url": "https://er.educause.edu/articles/2014/12/mooc-completion-and-retention-in-the-context-of-student-intent",
+        "relevance": "medium",
+        "verbatim_quote": "For non-respondents to the survey, the median lifetime occurs before 1 percent of the course is complete. For intended browsers, the median lifetime is 10 percent of the course, while for intended completers it is 35 percent of the course.",
+        "paraphrase": "MOOC research shows sharp initial dropout spikes across all student cohorts. Intended completers have a median lifetime of 35% of the course, versus 10% for browsers and under 1% for non-respondents. After the initial drop, decline rates are fairly similar across groups, suggesting early engagement is critical.",
+        "named_entities": [
+          "EDUCAUSE",
+          "35%",
+          "10%",
+          "1%"
+        ]
+      },
+      {
+        "source_url": "https://deepdive.headline.com/learn/resources/cohorts-retention-101-for-startups",
+        "relevance": "medium",
+        "verbatim_quote": "For a Cohort that starts with 100 active customers in Life-month 1, 50 in Life-month 2, and 30 in Life-month 3, the Cohort\u2019s Customer Retention would be 100% in Life-month One, 50% in Life-month Two and 30% in Life-month 3.",
+        "paraphrase": "A startup cohort retention example shows a cohort starting with 100 customers drops to 50 by month 2 (50% retention) and 30 by month 3 (30% retention), with the asymptote stabilizing around 30% by month 10. This illustrates how cohort-based products lose most users early and plateau.",
+        "named_entities": [
+          "Headline",
+          "30%",
+          "month 10",
+          "100 customers"
+        ]
+      },
+      {
+        "source_url": "https://doi.org/10.59350/fkzy8-6p459",
+        "relevance": "medium",
+        "verbatim_quote": "In an international online professional development program for teachers, for example, adding personalized support such as short one-to-one sessions and encouragement messages increased completion rates by about ten percent for some groups.",
+        "paraphrase": "In an international online professional development program for teachers, adding personalized support such as short one-to-one sessions and encouragement messages increased completion rates by about ten percent for some groups. Weak instructor presence is linked to withdrawal in online courses.",
+        "named_entities": [
+          "Reda Sadki",
+          "ten percent"
+        ]
+      },
+      {
+        "source_url": "https://www.crv.com/content/churn-rate",
+        "relevance": "medium",
+        "verbatim_quote": "Redesigning the onboarding journey based on customer insights produced a 21 percent reduction within that early period.",
+        "paraphrase": "For SaaS companies, the first stretch after signup is the highest-risk window for churn. Redesigning onboarding based on customer insights produced a 21% reduction in early-period churn. Small teams can improve retention by defining 3-5 key \"first value\" actions and deploying automated milestone emails.",
+        "named_entities": [
+          "CRV",
+          "21 percent",
+          "Series A"
+        ]
+      },
+      {
+        "source_url": "https://hyperengage.io/blog/10-proven-ways-to-improve-customer-retention-in-b2b-saas",
+        "relevance": "low",
+        "verbatim_quote": null,
+        "paraphrase": "Cohort analysis in B2B SaaS reveals that retention patterns are hidden by company-wide averages. Onboarding is where retention is won or lost, with clear training and early wins raising new customer retention by significant margins.",
+        "named_entities": [
+          "Everstage",
+          "Onboard.io",
+          "Kelly McGuire",
+          "William Stevenson"
+        ]
+      }
+    ],
+    "evidence_gap_note": "No direct evidence found on churn/retention for accelerator-style platforms, online course cohorts, or founder communities after a single project completes. Results cover adjacent domains (MOOCs, college accelerators, general SaaS cohort retention) but lack founder-specific guided workflow data."
+  },
+  "q6": {
+    "question_id": "q6",
+    "extracted_evidence": [
+      {
+        "source_url": "https://www.linkedin.com/posts/retentionadam_most-first-time-startup-founders-i-talk-to-activity-7245889257481871360-jMYx",
+        "relevance": "high",
+        "verbatim_quote": "You spend too much money on things you don't really need People love getting offices, hiring salespeople, getting VA's, expensive video equipment, software, and even setting up an entity pre-revenue.",
+        "paraphrase": "First-time founders commonly overspend on unnecessary items like office space, VAs, expensive software, and corporate entities before generating any revenue. A founder recounts buying a VoIP phone system in 2013 a year and a half before having any customers or product to sell.",
+        "named_entities": [
+          "VoIP",
+          "2013",
+          "$1m ARR",
+          "Klaviyo"
+        ]
+      },
+      {
+        "source_url": "https://f3fundit.com/saas-pricing-strategy-for-solopreneurs-flat-tiered-or-usage-based",
+        "relevance": "medium",
+        "verbatim_quote": "If you are charging under $20 for a B2B tool, you are likely underpriced. Business customers who find genuine value in your product will pay $29, $49, or $79 without hesitation.",
+        "paraphrase": "Solo founders often underprice B2B tools below $20. The article suggests business customers who find genuine value will pay $29, $49, or $79 without hesitation, and low pricing attracts price-sensitive customers who churn faster.",
+        "named_entities": [
+          "$20",
+          "$29",
+          "$49",
+          "$79",
+          "30-60 days"
+        ]
+      },
+      {
+        "source_url": "https://www.ad-vertly.ai/post/saas-pricing-strategy-for-solo-founders",
+        "relevance": "medium",
+        "verbatim_quote": "The most reliable shortcut: take whatever number you first thought of and double it. First-time founders underprice almost by reflex. If your instinct says $19 per month, start testing at $39. If your trial-to-paid conversion rate stays above 25 percent, your price is too low.",
+        "paraphrase": "First-time founders underprice almost by reflex. The advice is to double the initial price instinct \u2014 e.g., test $39 instead of $19/month. A trial-to-paid conversion rate above 25% signals the price is too low and founders should raise it.",
+        "named_entities": [
+          "$19",
+          "$39",
+          "25 percent",
+          "Patrick Campbell",
+          "ProfitWell",
+          "Paddle",
+          "$200 million",
+          "5 percent"
+        ]
+      },
+      {
+        "source_url": "https://saasclub.io/podcast/saas-pricing-patrick-campbell-price-intelligently",
+        "relevance": "low",
+        "verbatim_quote": "Patrick cashed out his 401k and spent nine months as a solo founder building deep pricing content. Inbound leads from blog posts drove $130,000 in first-half revenue, and organic growth funded every hire without outside investment.",
+        "paraphrase": "Patrick Campbell bootstrapped Price Intelligently as a solo founder by cashing out his 401k, generating $130,000 in first-half revenue from inbound content leads before hiring. Shows pre-revenue solo founder capital constraints and content-as-acquisition strategy.",
+        "named_entities": [
+          "Patrick Campbell",
+          "Price Intelligently",
+          "$130,000",
+          "401k",
+          "$30,000"
+        ]
+      },
+      {
+        "source_url": "https://www.hubspot.com/startups/tech-startup-budget",
+        "relevance": "medium",
+        "verbatim_quote": "One common area where I see tech startups tend to allocate too much of their budget is Public Relations (PR),\" White said. \"While visibility is key, excessive spending on PR in the early stages can quickly deplete capital.",
+        "paraphrase": "Tech startups commonly overspend on PR in early stages, which can quickly deplete capital. Startups may want to use AI tools for marketing materials at lower costs before hiring teams.",
+        "named_entities": [
+          "15%",
+          "25% to 45%",
+          "11.2%",
+          "HelpLama",
+          "Vendux"
+        ]
+      }
+    ],
+    "evidence_gap_note": null
+  },
+  "q7": {
+    "question_id": "q7",
+    "extracted_evidence": [
+      {
+        "source_url": "https://journeyengine.com/eat-the-big-fish",
+        "relevance": "medium",
+        "verbatim_quote": "Without it, you'll often end up with multiple ICP variations, which can lead to scattered messaging and diluted marketing efforts.",
+        "paraphrase": "For early-stage startups, having multiple ICP variations leads to scattered messaging and diluted marketing efforts. A clear definition of the 'Current Way' is essential to avoid this dilution.",
+        "named_entities": [
+          "Anthony Pierri",
+          "ICP"
+        ]
+      },
+      {
+        "source_url": "https://www.vendep.com/post/from-local-to-global-a-strategic-expansion-guide-for-saas-founders",
+        "relevance": "high",
+        "verbatim_quote": "That kind of trust doesn't scale \u2013 and when you go international, you'll need a more structured, testable approach.",
+        "paraphrase": "B2B SaaS founders typically build from personal experience with early adopters who are former colleagues or partners. That kind of trust doesn't scale internationally, requiring a more structured approach. Copy-pasting a domestic GTM model abroad often fails due to varying selling cycles, buyer behavior, and procurement processes.",
+        "named_entities": [
+          "Vendep",
+          "Finland",
+          "UK"
+        ]
+      },
+      {
+        "source_url": "https://www.qualtrics.com/articles/strategy-research/geographic-segmentation",
+        "relevance": "medium",
+        "verbatim_quote": "The reality is that people's interests can be wildly different even if they live in the same neighborhood.",
+        "paraphrase": "Geographic segmentation risks missing the right people because people's interests can be wildly different even within the same neighborhood. Unless a geographic area is entirely homogeneous, focusing purely on geography may not reach genuinely interested audiences.",
+        "named_entities": [
+          "Qualtrics",
+          "Will Webster",
+          "Karen Goldstein"
+        ]
+      }
+    ],
+    "evidence_gap_note": null
+  }
+}

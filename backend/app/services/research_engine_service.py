@@ -36,6 +36,7 @@ from app.db.enums import ExperimentStatus
 from app.db.models.experiment import Experiment
 from app.db.models.validation_report import ValidationReport
 from app.logging_config import get_logger
+from app.services.research_dev_capture import dev_capture_write
 
 _logger = get_logger(__name__)
 _slog = structlog.get_logger(__name__)
@@ -244,6 +245,8 @@ async def run_research_engine_pipeline(
             from app.schemas.targeting import ExperimentTargeting  # noqa: PLC0415
             refined_idea = RefinedIdea.model_validate(experiment.refined_idea)
             targeting = ExperimentTargeting.from_experiment(experiment)
+            dev_capture_write("refined_idea.json", refined_idea)
+            dev_capture_write("targeting.json", targeting)
 
             # ------------------------------------------------------------------
             # 1. RESEARCH_PLANNING — planner generates research questions.
@@ -274,6 +277,7 @@ async def run_research_engine_pipeline(
                 phase="planner",
                 question_count=len(research_plan.questions),
             )
+            dev_capture_write("research_plan.json", research_plan)
 
             # ------------------------------------------------------------------
             # 2. RESEARCH_SEARCHING — searcher executes the research plan.
@@ -316,6 +320,7 @@ async def run_research_engine_pipeline(
                 phase="searcher",
                 total_tavily_results=total_results,
             )
+            dev_capture_write("search_results.json", search_results)
 
             # ------------------------------------------------------------------
             # 3. RESEARCH_READING — reader extracts structured evidence per question.
@@ -376,6 +381,7 @@ async def run_research_engine_pipeline(
                 experiment_id=str(experiment_id),
                 total_extracted_evidence=total_extracted_evidence,
             )
+            dev_capture_write("reader_outputs.json", reader_outputs)
 
             # ------------------------------------------------------------------
             # 4. RESEARCH_REFLECTING — evidence sufficiency + optional re-search/re-read.
@@ -397,6 +403,9 @@ async def run_research_engine_pipeline(
             )
 
             await session.commit()
+
+            dev_capture_write("reflected_outputs.json", reader_outputs)
+            dev_capture_write("evidence_analysis.json", reflector_summary.evidence_analysis)
 
             # ------------------------------------------------------------------
             # 4c. RESEARCH_VOICES — Reddit-based qualitative evidence.
@@ -451,6 +460,7 @@ async def run_research_engine_pipeline(
                     refined_idea=refined_idea,
                     evidence_analysis=evidence_analysis,
                 )
+            dev_capture_write("reasoning_output.json", reasoning_output)
 
             # ------------------------------------------------------------------
             # 5. RESEARCH_SYNTHESIZING — synthesizer communicates reasoning → report.

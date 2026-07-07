@@ -34,7 +34,7 @@ from app.cost.tavily import (
 from app.db.models.external_api_call import ExternalAPICall
 from app.db.session_lock import lock_for
 from app.logging_config import get_logger
-from app.reliability.circuit_breakers import get_breaker
+from app.reliability.circuit_breakers import CircuitOpenError, get_breaker
 from app.reliability.retry import retry_async
 
 if TYPE_CHECKING:
@@ -202,6 +202,30 @@ async def search(
 
         return results
 
+    except CircuitOpenError:
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+        try:
+            await _log_api_call(
+                db,
+                experiment_id=experiment_id,
+                operation="search",
+                latency_ms=latency_ms,
+                cost_usd=Decimal("0"),
+                api_credits=None,
+                success=False,
+            )
+        except Exception as log_exc:
+            _logger.warning(
+                "failed to log failed tavily call",
+                error=str(log_exc),
+            )
+        _logger.warning(
+            "tavily search failed",
+            search_depth=search_depth,
+            latency_ms=latency_ms,
+            error_type="CircuitOpenError",
+        )
+        raise
     except Exception as exc:
         _logger.warning(
             "tavily search failed",

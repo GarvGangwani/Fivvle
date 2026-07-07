@@ -37,7 +37,7 @@ async def test_concurrent_failing_reddit_calls_all_log_failure_rows(
     await db_session.commit()
 
     with patch(
-        "app.integrations.reddit._fetch_subreddit_posts",
+        "app.integrations.reddit._search_subreddits_http",
         side_effect=RuntimeError("simulated reddit failure"),
     ):
         await asyncio.gather(

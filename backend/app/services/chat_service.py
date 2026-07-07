@@ -258,7 +258,7 @@ async def _load_dr_chat_history(
     result = await db.execute(
         select(ChatMessage)
         .where(ChatMessage.thread_id == thread_id)
-        .order_by(ChatMessage.created_at.asc())
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
     )
     history: list[tuple[str, str]] = []
     for row in result.scalars().all():
@@ -288,7 +288,7 @@ async def _load_history_before_message(
                 ),
             ),
         )
-        .order_by(ChatMessage.created_at.asc())
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
     )
     history: list[tuple[str, str]] = []
     for row in result.scalars().all():
@@ -334,7 +334,7 @@ async def _list_thread_messages_after_edit(
     result = await db.execute(
         select(ChatMessage)
         .where(ChatMessage.thread_id == thread_id)
-        .order_by(ChatMessage.created_at.asc())
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
     )
     messages: list[ChatMessage] = []
     for row in result.scalars().all():
@@ -351,7 +351,7 @@ async def _load_plain_chat_history(
     result = await db.execute(
         select(ChatMessage)
         .where(ChatMessage.thread_id == thread_id)
-        .order_by(ChatMessage.created_at.asc())
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
     )
     history: list[tuple[str, str]] = []
     for row in result.scalars().all():
@@ -417,7 +417,7 @@ async def list_thread_messages(
     result = await db.execute(
         select(ChatMessage)
         .where(ChatMessage.thread_id == thread.id)
-        .order_by(ChatMessage.created_at.asc())
+        .order_by(ChatMessage.created_at.asc(), ChatMessage.id.asc())
     )
     messages: list[ChatMessage] = []
     for row in result.scalars().all():

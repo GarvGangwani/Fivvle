@@ -65,11 +65,11 @@ async def user_reply_length_stats(
     """Median / p90 / count / max char length of user replies to clarifying questions."""
     prev_role = func.lag(ChatMessage.role).over(
         partition_by=ChatMessage.thread_id,
-        order_by=ChatMessage.created_at,
+        order_by=(ChatMessage.created_at.asc(), ChatMessage.id.asc()),
     )
     prev_turn_kind = func.lag(ChatMessage.turn_kind).over(
         partition_by=ChatMessage.thread_id,
-        order_by=ChatMessage.created_at,
+        order_by=(ChatMessage.created_at.asc(), ChatMessage.id.asc()),
     )
     content_len = func.length(ChatMessage.content)
 
@@ -214,7 +214,7 @@ async def first_turn_dimension_distribution(
     """Distribution of clarifying_dimension on the first refinement_clarify turn per experiment."""
     row_num = func.row_number().over(
         partition_by=ChatMessage.experiment_id,
-        order_by=ChatMessage.created_at,
+        order_by=(ChatMessage.created_at.asc(), ChatMessage.id.asc()),
     )
     ranked = (
         select(

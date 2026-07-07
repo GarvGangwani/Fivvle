@@ -12,13 +12,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from instructor.core.exceptions import InstructorRetryException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.integrations.tavily import TavilyResult
 from app.llm.client import USER_CACHE_ZONE_BOUNDARY
 from app.llm.prompts.synthesizer import (
     PROMPT_NAME_V2_CACHED,
-    PROMPT_NAME_V7_CACHED,
     build_synthesizer_user_prompt,
     build_synthesizer_v3_user_prompt,
     synthesizer_v2_legacy_flat_user_and_system,
@@ -44,10 +44,12 @@ from app.services.synthesizer_input import (
     build_synthesizer_input,
 )
 from app.services.synthesizer_service import (
+    _SYNTHESIZER_MAX_RETRIES,
     _SYNTHESIZER_MAX_TOKENS,
     _SYNTHESIZER_TEMPERATURE,
     SYNTHESIZER_CACHE_BREAKPOINTS,
     SynthesizerHallucinatedCitation,
+    _hydrate_draft,
     synthesize_report,
 )
 
@@ -253,12 +255,39 @@ def _make_mock_llm_meta() -> MagicMock:
     return meta
 
 
+def _json_instructor_retry_exc() -> InstructorRetryException:
+    return InstructorRetryException(
+        "1 validation error for ValidationReportDraft\n  Invalid JSON: json_invalid",
+        n_attempts=3,
+        total_usage=MagicMock(prompt_tokens=25000, completion_tokens=8000),
+        failed_attempts=[],
+    )
+
+
+def _rate_limit_instructor_retry_exc() -> InstructorRetryException:
+    return InstructorRetryException(
+        "rate limit exceeded",
+        n_attempts=3,
+        total_usage=0,
+        failed_attempts=[],
+    )
+
+
 def test_synthesizer_service_constants() -> None:
     settings = get_settings()
     assert settings.synthesizer_model == "kimi-k2.6"
     assert settings.synthesizer_provider == "kimi"
     assert _SYNTHESIZER_MAX_TOKENS == 16384
     assert _SYNTHESIZER_TEMPERATURE == 0.3
+
+
+def test_hydrate_draft_preserves_voices_field() -> None:
+    absence = (
+        "Reddit fetching failed for this run. No community voices are included in this report."
+    )
+    draft = _make_draft_report().model_copy(update={"voices": absence})
+    report = _hydrate_draft(draft, _hydration_index())
+    assert report.voices == absence
 
 
 @pytest.mark.asyncio
@@ -281,7 +310,6 @@ async def test_synthesize_report_calls_complete_structured_with_synthesizer_v3()
         )
 
     _, call_kwargs = mock_complete.call_args
-    assert call_kwargs["prompt_name"] == PROMPT_NAME_V7_CACHED
     assert call_kwargs["prompt_name"] == PROMPT_NAME
     settings = get_settings()
     assert call_kwargs["provider"] == settings.synthesizer_provider
@@ -450,7 +478,7 @@ async def test_synthesize_report_emits_synthesizer_complete_info_log() -> None:
     ]
     assert len(complete_calls) == 1
     kwargs = complete_calls[0].kwargs
-    assert kwargs["prompt_name"] == PROMPT_NAME_V7_CACHED
+    assert kwargs["prompt_name"] == PROMPT_NAME
     assert kwargs["experiment_id"] == str(exp_id)
     assert kwargs["total_extracted_evidence_in_input"] == 5
     assert kwargs["finding_count"] == 5
@@ -689,3 +717,128 @@ async def test_synthesizer_falls_back_when_cache_breakpoints_none() -> None:
 
     assert captured["cache_breakpoints"] is None
     assert USER_CACHE_ZONE_BOUNDARY not in captured["user"]
+
+
+@pytest.mark.asyncio
+async def test_synthesizer_uses_max_retries_3() -> None:
+    db = AsyncMock(spec=AsyncSession)
+    synth_input = _make_synth_input()
+    mock_complete = AsyncMock(return_value=(_make_draft_report(), _make_mock_llm_meta()))
+
+    with patch(
+        "app.services.synthesizer_service.llm_client.complete_structured",
+        mock_complete,
+    ):
+        await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=_hydration_index(),
+        )
+
+    assert mock_complete.await_args.kwargs["max_retries"] == _SYNTHESIZER_MAX_RETRIES
+    assert _SYNTHESIZER_MAX_RETRIES == 3
+
+
+@pytest.mark.asyncio
+async def test_synthesizer_json_error_triggers_anthropic_fallback() -> None:
+    db = AsyncMock(spec=AsyncSession)
+    synth_input = _make_synth_input()
+    mock_draft = _make_draft_report()
+    mock_meta = _make_mock_llm_meta()
+    providers_seen: list[str] = []
+
+    async def _side_effect(*_args: object, **kwargs: object) -> tuple[ValidationReportDraft, MagicMock]:
+        provider = str(kwargs["provider"])
+        providers_seen.append(provider)
+        if provider == "kimi":
+            raise _json_instructor_retry_exc()
+        return mock_draft, mock_meta
+
+    mock_complete = AsyncMock(side_effect=_side_effect)
+
+    with patch(
+        "app.services.synthesizer_service.llm_client.complete_structured",
+        mock_complete,
+    ):
+        result = await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=_hydration_index(),
+        )
+
+    assert providers_seen == ["kimi", "anthropic"]
+    assert mock_complete.await_count == 2
+    anthropic_kwargs = mock_complete.await_args_list[1].kwargs
+    assert anthropic_kwargs["prompt_name"] == PROMPT_NAME
+    assert anthropic_kwargs["provider"] == "anthropic"
+    assert isinstance(result, ValidationReport)
+
+
+@pytest.mark.asyncio
+async def test_synthesizer_non_json_error_does_not_fallback() -> None:
+    db = AsyncMock(spec=AsyncSession)
+    synth_input = _make_synth_input()
+    mock_complete = AsyncMock(side_effect=_rate_limit_instructor_retry_exc())
+
+    with patch(
+        "app.services.synthesizer_service.llm_client.complete_structured",
+        mock_complete,
+    ), pytest.raises(InstructorRetryException, match="rate limit"):
+        await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=_hydration_index(),
+        )
+
+    mock_complete.assert_awaited_once()
+    assert mock_complete.await_args.kwargs["provider"] == "kimi"
+
+
+@pytest.mark.asyncio
+async def test_synthesizer_anthropic_fallback_failure_reraises_original() -> None:
+    db = AsyncMock(spec=AsyncSession)
+    synth_input = _make_synth_input()
+    kimi_exc = _json_instructor_retry_exc()
+
+    async def _side_effect(*_args: object, **kwargs: object) -> tuple[ValidationReportDraft, MagicMock]:
+        if kwargs["provider"] == "kimi":
+            raise kimi_exc
+        raise RuntimeError("anthropic also failed")
+
+    mock_complete = AsyncMock(side_effect=_side_effect)
+
+    with patch(
+        "app.services.synthesizer_service.llm_client.complete_structured",
+        mock_complete,
+    ), pytest.raises(InstructorRetryException) as exc_info:
+        await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=_hydration_index(),
+        )
+
+    assert exc_info.value is kimi_exc
+
+
+@pytest.mark.asyncio
+async def test_synthesizer_fallback_disabled_by_config() -> None:
+    db = AsyncMock(spec=AsyncSession)
+    synth_input = _make_synth_input()
+    kimi_exc = _json_instructor_retry_exc()
+    mock_complete = AsyncMock(side_effect=kimi_exc)
+    settings = get_settings().model_copy(update={"synthesizer_fallback_enabled": False})
+
+    with patch(
+        "app.services.synthesizer_service.llm_client.complete_structured",
+        mock_complete,
+    ), patch(
+        "app.services.synthesizer_service.get_settings",
+        return_value=settings,
+    ), pytest.raises(InstructorRetryException):
+        await synthesize_report(
+            db=db,
+            synth_input=synth_input,
+            citation_hydration_index=_hydration_index(),
+        )
+
+    mock_complete.assert_awaited_once()

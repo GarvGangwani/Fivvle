@@ -61,6 +61,10 @@ class Settings(BaseSettings):
     )
 
     # --- Reddit (read-only research) ---
+    # DEPRECATED: PRAW OAuth is no longer used. Reddit disabled self-serve
+    # API app creation in late 2025. We now use public JSON endpoints via
+    # httpx. See integrations/reddit.py. These settings are kept for one
+    # migration cycle in case we revert.
     reddit_client_id: str
     reddit_client_secret: str
     reddit_user_agent: str
@@ -116,6 +120,15 @@ class Settings(BaseSettings):
     reflector_query_model: str = Field(default="claude-sonnet-4-6")
     synthesizer_provider: str = Field(default="anthropic")
     synthesizer_model: str = Field(default="claude-sonnet-4-6")
+    synthesizer_fallback_enabled: bool = Field(
+        default=True,
+        description=(
+            "When True and synthesizer_provider is kimi, retry once on Anthropic "
+            "after Kimi exhausts Instructor retries with a JSON-shape error."
+        ),
+    )
+    synthesizer_fallback_provider: str = Field(default="anthropic")
+    synthesizer_fallback_model: str = Field(default="claude-sonnet-4-6")
     searcher_hints_provider: str = Field(default="anthropic")
     searcher_hints_model: str = Field(default="claude-haiku-4-5")
 

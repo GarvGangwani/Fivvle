@@ -1,0 +1,75 @@
+{
+  "questions": [
+    {
+      "id": "q1",
+      "question": "What do Reddit r/startups, r/entrepreneur, and Indie Hackers threads identify as the top friction when first-time founders validate ideas, and do they express willingness to pay for a structured system versus free AI chatbots?",
+      "rationale": "This directly investigates Risk 2 (willingness to pay vs free alternatives) and satisfies the demand validation quota. Founder forums contain searchable complaints about fragmented validation workflows and spending intent.",
+      "search_queries": [
+        "founders frustrated validating startup ideas Reddit",
+        "Indie Hackers pay for idea validation tool",
+        "free AI chatbot vs structured founder workflow"
+      ]
+    },
+    {
+      "id": "q2",
+      "question": "How do first-time and solo founders currently sequence their validation work today \u2014 what specific tools, templates, and steps do they use, and where do they drop off or loop back?",
+      "rationale": "This satisfies the user behavior quota and addresses Risk 1 (flexibility vs rigid sequence) by revealing actual jobs-to-be-done. Public founder journey posts, build-in-public blogs, and YC/techstars guides are investigable sources.",
+      "search_queries": [
+        "solo founder validation process step by step",
+        "how first time founders validate startup ideas",
+        "founder customer discovery workflow tools used"
+      ]
+    },
+    {
+      "id": "q3",
+      "question": "What is the estimated market size and growth rate for founder enablement, idea validation, and pre-seed startup intelligence tools, and what do analyst reports or venture data say about spend at the earliest stages?",
+      "rationale": "Satisfies the market size quota. Early-stage founder tooling is a niche segment; reports from PitchBook, Gartner for SMB SaaS, and venture funding trend data can surface quantified estimates.",
+      "search_queries": [
+        "pre seed founder tools market size 2024",
+        "startup idea validation software market growth",
+        "early stage founder enablement spending trends"
+      ]
+    },
+    {
+      "id": "q4",
+      "question": "How do existing platforms like Crunchbase, Similarweb, SurveyMonkey, and Notion/AI chatbot combinations already serve founder validation workflows, and what gaps do user reviews cite?",
+      "rationale": "This is the primary competitor question (within the 2-slot cap) and directly investigates Risk 3 (data quality differentiation). Public reviews on G2, Capterra, and founder forum comparisons are searchable.",
+      "search_queries": [
+        "Crunchbase vs founder validation workflow gaps",
+        "SurveyMonkey customer discovery founder reviews",
+        "Notion AI chatbot validate startup idea limitations"
+      ]
+    },
+    {
+      "id": "q5",
+      "question": "What does churn and retention data from adjacent guided-workflow products \u2014 such as accelerator-style platforms, online course cohorts, and founder communities \u2014 reveal about engagement after a single project or idea is completed?",
+      "rationale": "Directly investigates Risk 5 (stickiness after one idea) and contributes to the risks/barriers quota. Public case studies, platform testimonials, and ed-tech/cohort retention benchmarks are investigable.",
+      "search_queries": [
+        "founder platform churn after first idea",
+        "accelerator cohort completion retention rates",
+        "guided workflow SaaS retention single project"
+      ]
+    },
+    {
+      "id": "q6",
+      "question": "What procurement and spending patterns do first-time and non-technical founders exhibit for paid tools before revenue, and what price points trigger hesitation or abandonment during onboarding?",
+      "rationale": "Addresses Risk 2 (payment willingness) from a pricing/barrier angle and contributes to willingness-to-pay evidence. Public pricing page analyses, founder spending surveys, and pre-revenue founder threads are searchable sources.",
+      "search_queries": [
+        "first time founder spend on tools before revenue",
+        "pre revenue founder subscription price sensitivity",
+        "solo founder SaaS pricing hesitation surveys"
+      ]
+    },
+    {
+      "id": "q7",
+      "question": "Does a global-from-day-one positioning weaken trust or conversion for early-stage founder tools, and what evidence do comparable platforms show about segmenting by geography versus founder experience level?",
+      "rationale": "Directly investigates Risk 4 (global positioning dilution) and satisfies the risks/barriers quota. Public go-to-market case studies, localization ROI reports, and founder tool landing page tests are investigable.",
+      "search_queries": [
+        "global vs local founder tool trust conversion",
+        "early stage SaaS global positioning messaging dilution",
+        "founder platform segment by geography case study"
+      ]
+    }
+  ],
+  "notes_for_synthesizer": null
+}

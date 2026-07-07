@@ -852,3 +852,79 @@ async def test_edit_user_message_truncates_downstream_and_replays(
     assert len(rows) == 2
     assert all(row.content != "Follow-up" for row in rows)
     assert all(row.content != "Old answer" for row in rows)
+
+
+# ---------------------------------------------------------------------------
+# Message ordering (created_at ties)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_list_thread_messages_returns_deterministic_order_on_created_at_tie(
+    db_session: AsyncSession,
+) -> None:
+    """When user answer and assistant follow-up share created_at, id tiebreaker
+    must return user before assistant regardless of insert order."""
+    user = await _persist_user(db_session)
+    thread = await _persist_thread(db_session, user)
+    tie_time = datetime(2026, 7, 7, 12, 0, 0, tzinfo=UTC)
+
+    user_msg = ChatMessage(
+        id=UUID("00000000-0000-4000-8000-000000000001"),
+        thread_id=thread.id,
+        role=ChatRole.USER,
+        content="Q1 answer",
+        created_at=tie_time,
+    )
+    assistant_msg = ChatMessage(
+        id=UUID("00000000-0000-4000-8000-000000000010"),
+        thread_id=thread.id,
+        role=ChatRole.ASSISTANT,
+        content="Q2 question",
+        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+        clarifying_dimension="audience",
+        created_at=tie_time,
+    )
+    # Insert assistant first — without id tiebreaker PG may return this order.
+    db_session.add_all([assistant_msg, user_msg])
+    await db_session.commit()
+
+    from app.services.chat_service import list_thread_messages
+
+    messages = await list_thread_messages(db_session, user, thread.id)
+    assert len(messages) == 2
+    assert messages[0].role == ChatRole.USER
+    assert messages[1].role == ChatRole.ASSISTANT
+
+
+@pytest.mark.asyncio
+async def test_chat_message_writes_get_distinct_created_at_in_same_transaction(
+    db_session: AsyncSession,
+) -> None:
+    """Two ChatMessage writes in one transaction get distinct created_at values."""
+    if "postgresql" not in get_settings().database_url:
+        pytest.skip("clock_timestamp() server default requires PostgreSQL")
+
+    user = await _persist_user(db_session)
+    thread = await _persist_thread(db_session, user)
+
+    first = ChatMessage(
+        thread_id=thread.id,
+        role=ChatRole.USER,
+        content="first",
+    )
+    second = ChatMessage(
+        thread_id=thread.id,
+        role=ChatRole.ASSISTANT,
+        content="second",
+        turn_kind=ChatTurnKind.NORMAL_CHAT,
+    )
+    db_session.add(first)
+    await db_session.flush()
+    await db_session.refresh(first)
+    db_session.add(second)
+    await db_session.flush()
+    await db_session.refresh(second)
+    await db_session.commit()
+
+    assert first.created_at != second.created_at

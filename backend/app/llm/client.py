@@ -283,6 +283,117 @@ def _extract_kimi_cached_tokens(usage: object) -> int:
     return getattr(details, "cached_tokens", 0) or 0
 
 
+def _request_id_from_response(response: object | None) -> str | None:
+    if response is None:
+        return None
+    rid = getattr(response, "id", None)
+    if rid is None:
+        return None
+    return str(rid)
+
+
+def _failure_metrics_for_structured_call(
+    *,
+    provider: ProviderName,
+    model: str,
+    exc: Exception,
+    usage_state: dict[str, Any],
+    cache_breakpoints: list[CacheBreakpoint] | None,
+) -> tuple[int, int, Decimal, int | None, int | None, str | None]:
+    """Best-effort token/cost extraction when ``complete_structured`` fails."""
+    from instructor.core.exceptions import InstructorRetryException
+
+    prompt_tokens = 0
+    completion_tokens = 0
+    cached_in: int | None = None
+    cached_create: int | None = None
+    request_id: str | None = None
+    cost_usd = Decimal("0")
+
+    kind = usage_state.get("kind")
+    acc = usage_state.get("acc")
+    if isinstance(acc, dict) and acc.get("attempts", 0) > 0:
+        if kind == "anthropic":
+            unc_t = acc["uncached_tail"]
+            cread = acc["cache_read"]
+            c5 = acc["create_5m"]
+            c1 = acc["create_1h"]
+            ctot = acc["create_total"]
+            completion_tokens = acc["completion_tokens"]
+            prompt_tokens = unc_t + cread + ctot
+            cost_usd = compute_anthropic_cached_cost_usd(
+                model,
+                uncached_tail_input_tokens=unc_t,
+                cache_read_input_tokens=cread,
+                cache_creation_ephemeral_5m=c5,
+                cache_creation_ephemeral_1h=c1,
+                completion_tokens=completion_tokens,
+            )
+            if cache_breakpoints is not None or cread > 0 or ctot > 0:
+                cached_in = cread
+                cached_create = ctot
+        elif kind in ("groq", "kimi"):
+            prompt_tokens = acc["prompt_tokens"]
+            completion_tokens = acc["completion_tokens"]
+            if kind == "kimi":
+                kimi_cached = acc.get("cached_input_tokens", 0)
+                cached_in = kimi_cached if kimi_cached else None
+                cost_usd = compute_cost_usd(
+                    provider,
+                    model,
+                    prompt_tokens,
+                    completion_tokens,
+                    cached_input_tokens=cached_in,
+                )
+            else:
+                cost_usd = compute_cost_usd(
+                    provider, model, prompt_tokens, completion_tokens
+                )
+        request_id = usage_state.get("request_id")
+        if request_id is not None:
+            request_id = str(request_id)
+        return prompt_tokens, completion_tokens, cost_usd, cached_in, cached_create, request_id
+
+    if isinstance(exc, InstructorRetryException):
+        request_id = _request_id_from_response(exc.last_completion)
+        usage = exc.total_usage
+        if usage is not None:
+            if provider == "anthropic":
+                unc_t, cread, ctot, c5, c1 = _anthropic_usage_accumulator_fields(usage)
+                completion_tokens = _usage_int_attr(usage, "output_tokens")
+                prompt_tokens = unc_t + cread + ctot
+                cost_usd = compute_anthropic_cached_cost_usd(
+                    model,
+                    uncached_tail_input_tokens=unc_t,
+                    cache_read_input_tokens=cread,
+                    cache_creation_ephemeral_5m=c5,
+                    cache_creation_ephemeral_1h=c1,
+                    completion_tokens=completion_tokens,
+                )
+                if cache_breakpoints is not None or cread > 0 or ctot > 0:
+                    cached_in = cread
+                    cached_create = ctot
+            else:
+                prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+                completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+                if provider == "kimi":
+                    kimi_cached = _extract_kimi_cached_tokens(usage)
+                    cached_in = kimi_cached if kimi_cached else None
+                    cost_usd = compute_cost_usd(
+                        provider,
+                        model,
+                        prompt_tokens,
+                        completion_tokens,
+                        cached_input_tokens=cached_in,
+                    )
+                else:
+                    cost_usd = compute_cost_usd(
+                        provider, model, prompt_tokens, completion_tokens
+                    )
+
+    return prompt_tokens, completion_tokens, cost_usd, cached_in, cached_create, request_id
+
+
 class LLMResult(BaseModel):
     """Result envelope for an LLM call.
 
@@ -843,6 +954,7 @@ async def complete_structured(
 
     logged_cached_in: int | None = None
     logged_cached_create: int | None = None
+    usage_state: dict[str, Any] = {}
 
     try:
         if provider == "anthropic":
@@ -865,9 +977,14 @@ async def complete_structured(
                 "completion_tokens": 0,
                 "attempts": 0,
             }
+            usage_state["kind"] = "anthropic"
+            usage_state["acc"] = _usage_acc
 
             def _accumulate_anthropic_usage(response: object) -> None:
                 _usage_acc["attempts"] += 1
+                rid = getattr(response, "id", None)
+                if rid is not None:
+                    usage_state["request_id"] = rid
                 usage = getattr(response, "usage", None)
                 if usage is None:
                     return
@@ -929,6 +1046,7 @@ async def complete_structured(
                 logged_cached_create = ctot
 
             request_id: str | None = raw.id
+            usage_state["request_id"] = request_id
             instructor_attempts = _usage_acc["attempts"]
 
         elif provider == "groq":
@@ -939,9 +1057,14 @@ async def complete_structured(
                 "completion_tokens": 0,
                 "attempts": 0,
             }
+            usage_state["kind"] = "groq"
+            usage_state["acc"] = _usage_acc
 
             def _accumulate_groq_usage(response: object) -> None:
                 _usage_acc["attempts"] += 1
+                rid = getattr(response, "id", None)
+                if rid is not None:
+                    usage_state["request_id"] = rid
                 usage = getattr(response, "usage", None)
                 if usage is not None:
                     _usage_acc["prompt_tokens"] += getattr(usage, "prompt_tokens", 0)
@@ -979,6 +1102,7 @@ async def complete_structured(
                 completion_tokens = raw.usage.completion_tokens if raw.usage else 0
             cost_usd = compute_cost_usd(provider, model, prompt_tokens, completion_tokens)
             request_id = raw.id
+            usage_state["request_id"] = request_id
             instructor_attempts = _usage_acc["attempts"]
 
         elif provider == "kimi":
@@ -990,9 +1114,14 @@ async def complete_structured(
                 "cached_input_tokens": 0,
                 "attempts": 0,
             }
+            usage_state["kind"] = "kimi"
+            usage_state["acc"] = _usage_acc
 
             def _accumulate_kimi_usage(response: object) -> None:
                 _usage_acc["attempts"] += 1
+                rid = getattr(response, "id", None)
+                if rid is not None:
+                    usage_state["request_id"] = rid
                 usage = getattr(response, "usage", None)
                 if usage is not None:
                     _usage_acc["prompt_tokens"] += getattr(usage, "prompt_tokens", 0)
@@ -1051,6 +1180,7 @@ async def complete_structured(
                 cached_input_tokens=logged_cached_in,
             )
             request_id = raw.id
+            usage_state["request_id"] = request_id
             instructor_attempts = _usage_acc["attempts"]
 
         else:
@@ -1101,6 +1231,20 @@ async def complete_structured(
 
     except Exception as exc:
         latency_ms = int((time.perf_counter() - started_at) * 1000)
+        (
+            fail_prompt_tokens,
+            fail_completion_tokens,
+            fail_cost_usd,
+            fail_cached_in,
+            fail_cached_create,
+            fail_request_id,
+        ) = _failure_metrics_for_structured_call(
+            provider=provider,
+            model=model,
+            exc=exc,
+            usage_state=usage_state,
+            cache_breakpoints=cache_breakpoints,
+        )
         try:
             await _log_llm_call(
                 db,
@@ -1109,11 +1253,13 @@ async def complete_structured(
                 provider=provider,
                 model=model,
                 prompt_name=prompt_name,
-                prompt_tokens=0,
-                completion_tokens=0,
-                cost_usd=Decimal("0"),
+                prompt_tokens=fail_prompt_tokens,
+                completion_tokens=fail_completion_tokens,
+                cost_usd=fail_cost_usd,
                 latency_ms=latency_ms,
-                request_id=None,
+                request_id=fail_request_id,
+                cached_input_tokens=fail_cached_in,
+                cache_creation_input_tokens=fail_cached_create,
             )
         except Exception as log_exc:
             _logger.warning("failed to log failed llm call", error=str(log_exc))
@@ -1125,5 +1271,8 @@ async def complete_structured(
             prompt_name=prompt_name,
             response_model=response_model.__name__,
             error_type=type(exc).__name__,
+            prompt_tokens=fail_prompt_tokens,
+            completion_tokens=fail_completion_tokens,
+            cost_usd=str(fail_cost_usd),
         )
         raise
