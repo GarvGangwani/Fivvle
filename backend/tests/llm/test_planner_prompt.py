@@ -6,7 +6,7 @@ etc.), these tests catch the regression before the change ships.
 
 Tests:
   1. PLANNER_ZONE_A_INSTRUCTIONS is non-empty and contains specific required markers
-  2. PROMPT_NAME == "planner_v1_cached"
+  2. PROMPT_NAME == "planner_v2_cached"
   3. build_planner_user_prompt() output contains <refined_idea> XML tags
   4. build_planner_user_prompt() output contains the untrusted-data framing line
 
@@ -98,13 +98,13 @@ def test_planner_zone_a_instructions_contains_required_marker(marker: str) -> No
 
 
 # ---------------------------------------------------------------------------
-# 2. PROMPT_NAME == "planner_v1_cached"
+# 2. PROMPT_NAME == "planner_v2_cached"
 # ---------------------------------------------------------------------------
 
 
-def test_prompt_name_is_planner_v1_cached() -> None:
-    """PROMPT_NAME must be 'planner_v1_cached' — LLMCall logs + cache layout suffix."""
-    assert PROMPT_NAME == "planner_v1_cached"
+def test_prompt_name_is_planner_v3_cached() -> None:
+    """PROMPT_NAME must be 'planner_v3_cached' — LLMCall logs + cache layout suffix."""
+    assert PROMPT_NAME == "planner_v3_cached"
 
 
 # ---------------------------------------------------------------------------

@@ -39,20 +39,22 @@ NOTE on max_tokens:
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import cast
 from urllib.parse import urlparse
 from uuid import UUID
 
+from instructor.core.exceptions import InstructorRetryException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.llm.client as llm_client
 from app.config import get_settings
 from app.llm.prompts.synthesizer import (
-    PROMPT_NAME_V3_CACHED,
+    PROMPT_NAME_V8_CACHED,
     SYNTHESIZER_SYSTEM_PROMPT,
-    build_synthesizer_v3_user_prompt,
+    build_synthesizer_v8_user_prompt,
 )
 
-PROMPT_NAME = PROMPT_NAME_V3_CACHED
+PROMPT_NAME = PROMPT_NAME_V8_CACHED
 from app.logging_config import get_logger
 from app.schemas.validation_report import (
     Citation,
@@ -62,6 +64,7 @@ from app.schemas.validation_report import (
     ValidationReport,
     ValidationReportDraft,
 )
+from app.schemas.business_construction import BusinessConstructionArtifact
 from app.services.synthesizer_input import CitationHydrationEntry, SynthesizerInput
 
 _logger = get_logger(__name__)
@@ -85,6 +88,40 @@ _SYNTHESIZER_MAX_TOKENS = 16384
 # Low temperature reduces hallucination drift while leaving enough for
 # natural language variation in the narrative fields.
 _SYNTHESIZER_TEMPERATURE = 0.3
+
+# 3 total attempts — Kimi K2.6 tool-mode JSON can produce malformed output
+# on large payloads (>25K chars). One extra retry over the default gives
+# the model another shot before invoking the Anthropic fallback (Fix 3).
+_SYNTHESIZER_MAX_RETRIES = 3
+
+
+def _is_json_shape_error(exc: InstructorRetryException) -> bool:
+    """True if the retry exception was caused by malformed JSON output."""
+    msg = str(exc).lower()
+    return any(
+        marker in msg
+        for marker in (
+            "json_invalid",
+            "invalid json",
+            "jsondecodeerror",
+            "key must be a string",
+            "expecting value",
+            "expecting property name",
+        )
+    )
+
+
+def _kimi_attempt_prompt_tokens(exc: InstructorRetryException) -> int | None:
+    usage = exc.total_usage
+    if usage is None:
+        return None
+    prompt_tokens = getattr(usage, "prompt_tokens", None)
+    if isinstance(prompt_tokens, int):
+        return prompt_tokens
+    input_tokens = getattr(usage, "input_tokens", None)
+    if isinstance(input_tokens, int):
+        return input_tokens
+    return None
 
 
 class SynthesizerHallucinatedCitation(Exception):  # noqa: N818
@@ -241,6 +278,7 @@ def _hydrate_draft(
         overall_recommendation=draft.overall_recommendation,
         recommendation_rationale=draft.recommendation_rationale,
         research_limitations=draft.research_limitations,
+        voices=draft.voices,
         rubric_version_used=draft.rubric_version_used,
         section_scores=draft.section_scores,
         overall_score=draft.overall_score,
@@ -323,30 +361,87 @@ async def synthesize_report(
     else:
         breakpoints = cache_breakpoints  # type: ignore[assignment]
     use_cache = breakpoints is not None
-    user_prompt = build_synthesizer_v3_user_prompt(synth_input, for_cache=use_cache)
+    user_prompt = build_synthesizer_v8_user_prompt(synth_input, for_cache=use_cache)
     cache_breakpoints_used = len(breakpoints) if breakpoints else 0
 
     settings = get_settings()
 
-    draft, meta = await llm_client.complete_structured(
-        db,
-        provider=settings.synthesizer_provider,
-        model=settings.synthesizer_model,
-        prompt_name=PROMPT_NAME,
-        system=SYNTHESIZER_SYSTEM_PROMPT,
-        user=user_prompt,
-        response_model=ValidationReportDraft,
-        max_tokens=_SYNTHESIZER_MAX_TOKENS,
-        temperature=_SYNTHESIZER_TEMPERATURE,
-        max_retries=2,
-        experiment_id=experiment_id,
-        phase="synthesizer",
-        cache_breakpoints=breakpoints,
-    )
+    async def _complete_draft(
+        provider: llm_client.ProviderName,
+        model: str,
+    ) -> tuple[ValidationReportDraft, llm_client.LLMResult]:
+        return await llm_client.complete_structured(
+            db,
+            provider=provider,
+            model=model,
+            prompt_name=PROMPT_NAME,
+            system=SYNTHESIZER_SYSTEM_PROMPT,
+            user=user_prompt,
+            response_model=ValidationReportDraft,
+            max_tokens=_SYNTHESIZER_MAX_TOKENS,
+            temperature=_SYNTHESIZER_TEMPERATURE,
+            max_retries=_SYNTHESIZER_MAX_RETRIES,
+            experiment_id=experiment_id,
+            phase="synthesizer",
+            cache_breakpoints=breakpoints,
+        )
+
+    kimi_exc: InstructorRetryException | None = None
+    draft: ValidationReportDraft
+    meta: llm_client.LLMResult
+    try:
+        draft, meta = await _complete_draft(
+            cast(llm_client.ProviderName, settings.synthesizer_provider),
+            settings.synthesizer_model,
+        )
+    except InstructorRetryException as exc:
+        kimi_exc = exc
+        should_fallback = (
+            settings.synthesizer_provider == "kimi"
+            and settings.synthesizer_fallback_enabled
+            and _is_json_shape_error(exc)
+        )
+        if not should_fallback:
+            raise
+
+        _logger.warning(
+            "synthesizer kimi failed with JSON error, falling back to Anthropic",
+            experiment_id=str(experiment_id) if experiment_id else None,
+            error_type=type(exc).__name__,
+            kimi_prompt_tokens_attempted=_kimi_attempt_prompt_tokens(exc),
+        )
+
+        try:
+            draft, meta = await _complete_draft(
+                cast(llm_client.ProviderName, settings.synthesizer_fallback_provider),
+                settings.synthesizer_fallback_model,
+            )
+        except Exception:
+            raise kimi_exc from None
+
+        _logger.info(
+            "synthesizer anthropic fallback succeeded",
+            experiment_id=str(experiment_id) if experiment_id else None,
+            provider=settings.synthesizer_fallback_provider,
+            completion_tokens=meta.completion_tokens,
+        )
 
     _assert_draft_citations_allowlisted(draft, allowed_urls, experiment_id)
 
     report = _hydrate_draft(draft, citation_hydration_index)
+
+    if (
+        synth_input.reasoning_output is not None
+        and synth_input.evidence_analysis is not None
+    ):
+        report = report.model_copy(
+            update={
+                "business_construction": BusinessConstructionArtifact(
+                    reasoning=synth_input.reasoning_output,
+                    evidence_analysis=synth_input.evidence_analysis,
+                )
+            }
+        )
 
     _logger.debug(
         "synthesizer field length distribution",

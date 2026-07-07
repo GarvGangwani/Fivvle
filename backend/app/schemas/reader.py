@@ -1,9 +1,13 @@
 """Reader schema — per-question evidence extraction output contract.
 
-The Reader phase sits between the Searcher and Synthesizer. Given raw Tavily
-results for one research question, the Reader LLM extracts structured evidence
-atoms (ExtractedEvidence) that the Synthesizer can trust and cite without
-re-reading raw web content.
+The Reader phase sits between the Searcher and Reasoning Engine. Given raw
+Tavily results for one research question, the Reader LLM extracts structured
+evidence atoms (ExtractedEvidence) that downstream analysis and reasoning
+consume. Reader owns evidence only — no recommendations or summaries.
+
+Evidence atoms are normalized to :class:`~app.schemas.business_construction.EvidenceAtom`
+via :func:`~app.services.evidence_atoms.collect_evidence_atoms` before Reflector
+analysis and Reasoning Engine stages.
 
 Two-tier design (mirrors the Draft-vs-Final pattern in validation_report.py,
 per planning doc §4.5 and ADR 0010):

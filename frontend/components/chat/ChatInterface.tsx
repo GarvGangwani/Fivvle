@@ -23,6 +23,7 @@ import {
   formatClarifyingAnswers,
 } from "@/lib/clarifying-questions";
 import {
+  collectPastClarifyingTurns,
   collectSourcedClarityBlocks,
   parseClarifyingAnswerContent,
 } from "@/lib/refinement-thread";
@@ -401,16 +402,24 @@ export function ChatInterface({
         setExperimentStatus(response.experiment_status);
       }
 
-      const assistantMessage: ChatMessageType = {
-        id: response.message_id,
-        role: "assistant",
-        content: response.assistant_message,
-        timestamp: new Date().toISOString(),
-        turnKind: response.turn_kind,
-        clarifyingQuestions: response.clarifying_questions,
-      };
+      if (deepResearch && response.experiment_id) {
+        const chatData = await getExperimentChatMessages(response.experiment_id);
+        setMessages(mapApiMessages(chatData.messages));
+        if (chatData.thread_id) {
+          setThreadId(chatData.thread_id);
+        }
+      } else {
+        const assistantMessage: ChatMessageType = {
+          id: response.message_id,
+          role: "assistant",
+          content: response.assistant_message,
+          timestamp: new Date().toISOString(),
+          turnKind: response.turn_kind,
+          clarifyingQuestions: response.clarifying_questions,
+        };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
 
       if (
         response.turn_kind === "refinement_finalize" &&
@@ -521,62 +530,89 @@ export function ChatInterface({
     });
   }
 
-  async function handleEditMessage(messageId: string, newContent: string) {
-    if (!threadId) return;
-
-    const editIndex = messages.findIndex((msg) => msg.id === messageId);
-    if (editIndex === -1) return;
-
-    forceScrollRef.current = true;
-    setMessages((prev) =>
-      prev
-        .slice(0, editIndex + 1)
-        .map((msg, idx) =>
-          idx === editIndex ? { ...msg, content: newContent } : msg,
-        ),
-    );
-    setLoading(true);
-
-    try {
-      const response = await editChatMessage(threadId, messageId, newContent);
-
-      setThreadId(response.thread_id);
-      if (response.experiment_id) {
-        setResolvedExperimentId(response.experiment_id);
-      }
-      if (response.experiment_status) {
-        setExperimentStatus(response.experiment_status);
+  const handleEditMessageInternal = useCallback(
+    async (
+      messageId: string,
+      newContent: string,
+      options?: { rethrowOnly?: boolean },
+    ) => {
+      if (!threadId) {
+        if (options?.rethrowOnly) {
+          throw new Error("Chat thread not ready");
+        }
+        return;
       }
 
-      setMessages(mapApiMessages(response.messages));
-
-      if (
-        isResearchUnderway(
-          response.pipeline_dispatched,
-          response.experiment_status,
-        )
-      ) {
-        setResearchStarted(true);
+      const editIndex = messages.findIndex((msg) => msg.id === messageId);
+      if (editIndex === -1) {
+        if (options?.rethrowOnly) {
+          throw new Error("Message not found");
+        }
+        return;
       }
-    } catch (err) {
-      const message =
-        err instanceof ApiError
-          ? apiErrorMessage(err)
-          : "Something went wrong. Please try again.";
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: nextMessageId(),
-          role: "assistant",
-          content: message,
-          timestamp: new Date().toISOString(),
-        },
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  }
+      forceScrollRef.current = true;
+      setMessages((prev) =>
+        prev
+          .slice(0, editIndex + 1)
+          .map((msg, idx) =>
+            idx === editIndex ? { ...msg, content: newContent } : msg,
+          ),
+      );
+      setLoading(true);
+
+      try {
+        const response = await editChatMessage(threadId, messageId, newContent);
+
+        setThreadId(response.thread_id);
+        if (response.experiment_id) {
+          setResolvedExperimentId(response.experiment_id);
+        }
+        if (response.experiment_status) {
+          setExperimentStatus(response.experiment_status);
+        }
+
+        setMessages(mapApiMessages(response.messages));
+
+        if (
+          isResearchUnderway(
+            response.pipeline_dispatched,
+            response.experiment_status,
+          )
+        ) {
+          setResearchStarted(true);
+        }
+      } catch (err) {
+        const message =
+          err instanceof ApiError
+            ? apiErrorMessage(err)
+            : "Something went wrong. Please try again.";
+
+        if (!options?.rethrowOnly) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: nextMessageId(),
+              role: "assistant",
+              content: message,
+              timestamp: new Date().toISOString(),
+            },
+          ]);
+        }
+        throw err;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [threadId, messages, nextMessageId],
+  );
+
+  const handleEditMessage = useCallback(
+    async (messageId: string, newContent: string) => {
+      await handleEditMessageInternal(messageId, newContent);
+    },
+    [handleEditMessageInternal],
+  );
 
   const chatDisabled =
     loading || historyLoading || experimentStatus === "ARCHIVED";
@@ -595,6 +631,60 @@ export function ChatInterface({
   const allClarityBlocks = useMemo(
     () => collectSourcedClarityBlocks(messages, firstUserMessageId ?? null),
     [messages, firstUserMessageId],
+  );
+  const pastClarifyingTurns = useMemo(
+    () => collectPastClarifyingTurns(messages, firstUserMessageId ?? null),
+    [messages, firstUserMessageId],
+  );
+  const handleEditPastClarifyingAnswer = useCallback(
+    async (messageId: string, answer: ClarifyingQuestionAnswer) => {
+      const turnIndex = pastClarifyingTurns.findIndex(
+        (turn) => turn.answerMessageId === messageId,
+      );
+      const pastTurn =
+        turnIndex >= 0 ? pastClarifyingTurns[turnIndex] : undefined;
+      if (!pastTurn) return;
+
+      let resolvedMessageId = messageId;
+      let question = pastTurn.question;
+
+      if (!isPersistedMessageId(messageId)) {
+        const expId = resolvedExperimentId ?? experimentId;
+        if (!expId) {
+          throw new Error("Experiment not ready");
+        }
+        const chatData = await getExperimentChatMessages(expId);
+        const freshMessages = mapApiMessages(chatData.messages);
+        setMessages(freshMessages);
+        if (chatData.thread_id) {
+          setThreadId(chatData.thread_id);
+        }
+        const firstUserId =
+          freshMessages.find((m) => m.role === "user")?.id ?? null;
+        const freshPastTurns = collectPastClarifyingTurns(
+          freshMessages,
+          firstUserId,
+        );
+        const freshTurn =
+          turnIndex >= 0 ? freshPastTurns[turnIndex] : undefined;
+        if (!freshTurn || !isPersistedMessageId(freshTurn.answerMessageId)) {
+          throw new Error("Could not resolve saved answer");
+        }
+        resolvedMessageId = freshTurn.answerMessageId;
+        question = freshTurn.question;
+      }
+
+      const newContent = formatClarifyingAnswers([question], [answer]);
+      await handleEditMessageInternal(resolvedMessageId, newContent, {
+        rethrowOnly: true,
+      });
+    },
+    [
+      pastClarifyingTurns,
+      resolvedExperimentId,
+      experimentId,
+      handleEditMessageInternal,
+    ],
   );
   const clarityContentKey = useMemo(
     () =>
@@ -932,6 +1022,8 @@ export function ChatInterface({
                       questions={pendingQuestionBlock.questions}
                       questionNumberStart={allClarityBlocks.length + 1}
                       submitting={loading}
+                      pastTurns={pastClarifyingTurns}
+                      onEditPast={handleEditPastClarifyingAnswer}
                       onSubmit={(answers) => void handleQuestionSubmit(answers)}
                     />
                   )}

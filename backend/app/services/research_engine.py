@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.logging_config import get_logger
 from app.schemas.refinement import RefinedIdea
+from app.schemas.targeting import ExperimentTargeting
 from app.schemas.validation_report import ValidationReport
 from app.services.planner_service import plan_research
 from app.services.reader_service import ReaderTotalFailure, execute_reader
@@ -75,6 +76,7 @@ async def run_research_engine(
     refined_idea: RefinedIdea,
     rubric_version: str = RUBRIC_VERSION_DEFAULT,
     experiment_id: UUID | None = None,
+    targeting: ExperimentTargeting | None = None,
 ) -> ValidationReport:
     """Run Planner → Searcher → Reader → Reflector → Synthesizer; return ValidationReport.
 
@@ -114,6 +116,7 @@ async def run_research_engine(
             db=db,
             refined_idea=refined_idea,
             experiment_id=experiment_id,
+            targeting=targeting,
         )
     except Exception as exc:
         raise ResearchEngineFailure(phase="planner", cause=exc) from exc
@@ -134,6 +137,8 @@ async def run_research_engine(
             db=db,
             research_plan=research_plan,
             experiment_id=experiment_id,
+            refined_idea=refined_idea,
+            targeting=targeting,
         )
     except SearcherFailure as exc:
         raise ResearchEngineFailure(phase="searcher", cause=exc) from exc
@@ -181,7 +186,7 @@ async def run_research_engine(
     # -------------------------------------------------------------------------
     # Phase 4: Reflector (no status writes — mirrors research_engine_service)
     # -------------------------------------------------------------------------
-    reader_outputs, search_results, _reflector_summary = await execute_reflector(
+    reader_outputs, search_results, reflector_summary = await execute_reflector(
         experiment_id=experiment_id,
         research_plan=research_plan,
         reader_outputs=reader_outputs,
@@ -191,7 +196,20 @@ async def run_research_engine(
     )
 
     # -------------------------------------------------------------------------
-    # Phase 5: Synthesizer
+    # Phase 4b: Reasoning Engine (deterministic business construction)
+    # -------------------------------------------------------------------------
+    from app.services.reasoning_engine_service import execute_reasoning_engine
+
+    evidence_analysis = reflector_summary.evidence_analysis
+    reasoning_output = None
+    if evidence_analysis is not None:
+        reasoning_output = execute_reasoning_engine(
+            refined_idea=refined_idea,
+            evidence_analysis=evidence_analysis,
+        )
+
+    # -------------------------------------------------------------------------
+    # Phase 5: Synthesizer (communication layer)
     # -------------------------------------------------------------------------
     synth_input = build_synthesizer_input(
         refined_idea=refined_idea,
@@ -199,6 +217,10 @@ async def run_research_engine(
         reader_outputs=reader_outputs,
         rubric_version=rubric_version,
         trends_signals=trends_signals,
+        evidence_analysis=evidence_analysis,
+        reasoning_output=reasoning_output,
+        targeting=targeting,
+        experiment_id=experiment_id,
     )
     citation_hydration_index = build_citation_hydration_index(search_results)
 

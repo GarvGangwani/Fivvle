@@ -11,6 +11,11 @@ import pytest
 from app.llm.prompts.synthesizer import (
     PROMPT_NAME_V2_CACHED,
     PROMPT_NAME_V3_CACHED,
+    PROMPT_NAME_V4_CACHED,
+    PROMPT_NAME_V4_CACHED_LEGACY,
+    PROMPT_NAME_V5_CACHED,
+    PROMPT_NAME_V6_CACHED,
+    PROMPT_NAME_V7_CACHED,
     SYNTHESIZER_SYSTEM_PROMPT,
     SYNTHESIZER_ZONE_A_INSTRUCTIONS,
     build_synthesizer_user_prompt,
@@ -102,6 +107,25 @@ def test_prompt_name_v2_cached_unchanged_for_regression() -> None:
 
 def test_prompt_name_v3_cached() -> None:
     assert PROMPT_NAME_V3_CACHED == "synthesizer_v3_cached"
+
+
+def test_prompt_name_v8_cached() -> None:
+    from app.llm.prompts.synthesizer import PROMPT_NAME_V8_CACHED
+
+    assert PROMPT_NAME_V8_CACHED == "synthesizer_v8_cached"
+
+
+def test_prompt_name_v7_cached() -> None:
+    assert PROMPT_NAME_V7_CACHED == "synthesizer_v7_cached"
+
+
+def test_prompt_name_v6_cached_legacy_preserved() -> None:
+    assert PROMPT_NAME_V6_CACHED == "synthesizer_v6_cached"
+
+
+def test_prompt_name_v4_cached_legacy() -> None:
+    assert PROMPT_NAME_V4_CACHED == "synthesizer_v4_cached"
+    assert PROMPT_NAME_V4_CACHED_LEGACY == "synthesizer_v4_cached"
 
 
 # ---------------------------------------------------------------------------

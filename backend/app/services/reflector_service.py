@@ -456,6 +456,25 @@ def _zero_phase_summary() -> ReflectorPhaseSummary:
     )
 
 
+def _finalize_reflector_summary(
+    summary: ReflectorPhaseSummary,
+    *,
+    reader_outputs: dict[str, ReaderOutput],
+    research_plan: ResearchPlan,
+) -> ReflectorPhaseSummary:
+    """Attach deterministic evidence analysis (expanded Reflector responsibility)."""
+    from app.services.evidence_analysis_service import analyze_evidence
+    from app.services.evidence_atoms import collect_evidence_atoms
+
+    atoms = collect_evidence_atoms(reader_outputs, research_plan)
+    analysis = analyze_evidence(
+        atoms,
+        reader_outputs=reader_outputs,
+        research_plan=research_plan,
+    )
+    return summary.model_copy(update={"evidence_analysis": analysis})
+
+
 async def execute_reflector(
     *,
     experiment_id: UUID,
@@ -477,7 +496,16 @@ async def execute_reflector(
             "reflector disabled (max_refinement_waves <= 0)",
             experiment_id=str(experiment_id),
         )
-        return reader_outputs, search_results, _zero_phase_summary()
+        try:
+            summary = _finalize_reflector_summary(
+                _zero_phase_summary(),
+                reader_outputs=reader_outputs,
+                research_plan=research_plan,
+            )
+        except Exception:
+            _logger.exception("reflector.finalize_failed_disabled_path")
+            summary = _zero_phase_summary()
+        return reader_outputs, search_results, summary
 
     _t_phase0 = time.perf_counter()
     total_cost_delta = Decimal("0")
@@ -667,6 +695,12 @@ async def execute_reflector(
             ),
         )
 
+        summary = _finalize_reflector_summary(
+            summary,
+            reader_outputs=current_reader_outputs,
+            research_plan=research_plan,
+        )
+
         return current_reader_outputs, current_search_results, summary
 
     except Exception as exc:  # noqa: BLE001
@@ -679,4 +713,13 @@ async def execute_reflector(
             error_type=type(exc).__name__,
             exc_info=True,
         )
-        return reader_outputs, search_results, _zero_phase_summary()
+        try:
+            summary = _finalize_reflector_summary(
+                _zero_phase_summary(),
+                reader_outputs=reader_outputs,
+                research_plan=research_plan,
+            )
+        except Exception:
+            _logger.exception("reflector.finalize_failed_in_handler")
+            summary = _zero_phase_summary()
+        return reader_outputs, search_results, summary

@@ -7,7 +7,6 @@ import {
   BookOpen,
   Building2,
   ChevronDown,
-  Download,
   ExternalLink,
   FileText,
   Maximize2,
@@ -21,11 +20,11 @@ import {
   questionDisplayIndex,
   splitReadableParagraphs,
 } from "@/lib/report-text";
-import { downloadValidationReportHtml } from "@/lib/validation-report-export";
 import {
   resolveQuestionScore,
   resolveReportScores,
 } from "@/lib/validation-report-scores";
+import { ValidationReportExportMenu } from "@/components/research/ValidationReportExportMenu";
 import type {
   Citation,
   Finding,
@@ -388,11 +387,6 @@ export function ReportCanvas({
       expandedQuestions.has(qf.question_id),
     );
 
-  function handleDownload() {
-    if (!report) return;
-    downloadValidationReportHtml(report, projectName);
-  }
-
   function toggleQuestion(qid: string) {
     setExpandedQuestions((prev) => {
       const next = new Set(prev);
@@ -426,14 +420,11 @@ export function ReportCanvas({
     >
       {showEmbeddedToolbar && (
         <div className="flex shrink-0 items-center justify-end gap-2 border-b border-[var(--fv-border)] bg-[var(--fv-surface)]/80 px-4 py-2 backdrop-blur-sm">
-          <button
-            type="button"
-            onClick={handleDownload}
-            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px]"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Download
-          </button>
+          <ValidationReportExportMenu
+            report={report}
+            projectName={projectName}
+            variant="ghost"
+          />
           <button
             type="button"
             onClick={() => setFullscreen(true)}
@@ -465,15 +456,11 @@ export function ReportCanvas({
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {report && (
-              <button
-                type="button"
-                onClick={handleDownload}
-                className="fv-btn-ghost inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] sm:px-3"
-                aria-label="Download report"
-              >
-                <Download className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Download</span>
-              </button>
+              <ValidationReportExportMenu
+                report={report}
+                projectName={projectName}
+                variant="ghost"
+              />
             )}
             {fullscreen ? (
               <button

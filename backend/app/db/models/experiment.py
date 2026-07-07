@@ -14,12 +14,13 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.enums import DispatchTrigger, ExperimentStatus
+from app.db.enums import DispatchTrigger, ExperimentStage, ExperimentStatus
 
 if TYPE_CHECKING:
     from app.db.models.external_api_call import ExternalAPICall
     from app.db.models.insight_report import InsightReport
     from app.db.models.landing_page import LandingPage
+    from app.db.models.landing_page_v2 import LandingPageV2Spec
     from app.db.models.llm_call import LLMCall
     from app.db.models.page_view import PageView
     from app.db.models.user import User
@@ -61,6 +62,32 @@ class Experiment(Base):
         nullable=False,
         default=0,
         server_default=sa.text("0"),
+    )
+    target_geography: Mapped[str | None] = mapped_column(
+        String(200),
+        nullable=True,
+    )
+    # Founder-declared audience bracket (coarse, e.g. "urban middle-class families
+    # in tier-1 cities"). Distinct from RefinedIdea.target_audience which is an
+    # LLM-generated vivid portrait produced during refinement. Both flow into
+    # Planner/Synthesizer as complementary signals — the bracket anchors geography
+    # and demographics; the portrait anchors context and behavior.
+    audience_bracket: Mapped[str | None] = mapped_column(
+        String(300),
+        nullable=True,
+    )
+    stage: Mapped[ExperimentStage | None] = mapped_column(
+        SQLEnum(
+            ExperimentStage,
+            name="experiment_stage",
+            native_enum=False,
+            length=20,
+        ),
+        nullable=True,
+    )
+    why_now: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
     )
     status: Mapped[ExperimentStatus] = mapped_column(
         SQLEnum(
@@ -117,6 +144,11 @@ class Experiment(Base):
         uselist=False,
     )
     landing_page: Mapped[LandingPage | None] = relationship(
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    landing_page_v2: Mapped[LandingPageV2Spec | None] = relationship(
         back_populates="experiment",
         cascade="all, delete-orphan",
         uselist=False,

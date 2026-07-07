@@ -18,6 +18,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from instructor.core.exceptions import InstructorRetryException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -27,6 +28,7 @@ from app.db.models.llm_call import LLMCall
 from app.llm.client import (
     USER_CACHE_ZONE_BOUNDARY,
     CacheBreakpoint,
+    _extract_kimi_cached_tokens,
     complete_structured,
 )
 from app.llm.cost import compute_anthropic_cached_cost_usd, compute_cost_usd
@@ -514,3 +516,232 @@ def test_cost_calculation_with_cache_write_1h():
         completion_tokens=0,
     )
     assert cost == Decimal("6.000000")
+
+
+# ---------------------------------------------------------------------------
+# Kimi cache token extraction (Moonshot prompt caching)
+# ---------------------------------------------------------------------------
+
+
+def test_extract_kimi_cached_tokens_returns_zero_when_details_missing() -> None:
+    usage = MagicMock(prompt_tokens_details=None)
+    assert _extract_kimi_cached_tokens(usage) == 0
+
+
+def test_extract_kimi_cached_tokens_returns_zero_when_field_missing() -> None:
+    usage = MagicMock(prompt_tokens_details=MagicMock(spec=[]))
+    assert _extract_kimi_cached_tokens(usage) == 0
+
+
+def test_extract_kimi_cached_tokens_returns_value_when_present() -> None:
+    usage = MagicMock(
+        prompt_tokens_details=MagicMock(cached_tokens=1225),
+    )
+    assert _extract_kimi_cached_tokens(usage) == 1225
+
+
+def test_extract_kimi_cached_tokens_returns_zero_when_field_is_none() -> None:
+    usage = MagicMock(
+        prompt_tokens_details=MagicMock(cached_tokens=None),
+    )
+    assert _extract_kimi_cached_tokens(usage) == 0
+
+
+@pytest.mark.asyncio
+async def test_accumulate_kimi_usage_persists_cached_tokens(mock_firebase, db_session):
+    parsed_instance = _Reply(message="cached")
+
+    req_id = f"kimi_cache_persist_{uuid4()}"
+    fake_raw = MagicMock()
+    fake_raw.id = req_id
+    fake_raw.usage = MagicMock(
+        prompt_tokens=1225,
+        completion_tokens=4,
+        prompt_tokens_details=MagicMock(cached_tokens=1225),
+    )
+
+    async def _fake_create_with_completion(**kwargs):
+        hooks = kwargs.get("hooks")
+        if hooks is not None:
+            hooks.emit_completion_response(fake_raw)
+        return (parsed_instance, fake_raw)
+
+    fake_instructor = MagicMock()
+    fake_instructor.create_with_completion = _fake_create_with_completion
+
+    with patch("app.llm.client._instructor_kimi_client", fake_instructor):
+        await complete_structured(
+            db_session,
+            provider="kimi",
+            model="kimi-k2.6",
+            prompt_name="kimi_cache_persist",
+            system="sys",
+            user="user",
+            response_model=_Reply,
+        )
+        await db_session.commit()
+
+    row = (
+        (await db_session.execute(select(LLMCall).where(LLMCall.request_id == req_id)))
+        .scalars()
+        .first()
+    )
+    assert row is not None
+    assert row.cached_input_tokens == 1225
+    assert row.cache_creation_input_tokens is None
+    assert row.cost_usd < compute_cost_usd("kimi", "kimi-k2.6", 1225, 4)
+    await db_session.delete(row)
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_accumulate_kimi_usage_zero_cache_persists_as_null(mock_firebase, db_session):
+    parsed_instance = _Reply(message="miss")
+
+    req_id = f"kimi_cache_miss_{uuid4()}"
+    fake_raw = MagicMock()
+    fake_raw.id = req_id
+    fake_raw.usage = MagicMock(
+        prompt_tokens=1225,
+        completion_tokens=4,
+        prompt_tokens_details=None,
+    )
+
+    async def _fake_create_with_completion(**kwargs):
+        hooks = kwargs.get("hooks")
+        if hooks is not None:
+            hooks.emit_completion_response(fake_raw)
+        return (parsed_instance, fake_raw)
+
+    fake_instructor = MagicMock()
+    fake_instructor.create_with_completion = _fake_create_with_completion
+
+    with patch("app.llm.client._instructor_kimi_client", fake_instructor):
+        await complete_structured(
+            db_session,
+            provider="kimi",
+            model="kimi-k2.6",
+            prompt_name="kimi_cache_miss",
+            system="sys",
+            user="user",
+            response_model=_Reply,
+        )
+        await db_session.commit()
+
+    row = (
+        (await db_session.execute(select(LLMCall).where(LLMCall.request_id == req_id)))
+        .scalars()
+        .first()
+    )
+    assert row is not None
+    assert row.cached_input_tokens is None
+    assert row.cache_creation_input_tokens is None
+    await db_session.delete(row)
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_complete_structured_failure_persists_usage_not_zero(
+    mock_firebase, db_session
+):
+    """Failed Instructor call logs accumulated hook usage instead of zero tokens."""
+    req_id = f"kimi_fail_usage_{uuid4()}"
+    fake_raw = MagicMock()
+    fake_raw.id = req_id
+    fake_raw.usage = MagicMock(
+        prompt_tokens=5000,
+        completion_tokens=3000,
+        prompt_tokens_details=None,
+    )
+
+    async def _fake_create_with_completion(**kwargs):
+        hooks = kwargs.get("hooks")
+        if hooks is not None:
+            hooks.emit_completion_response(fake_raw)
+        raise InstructorRetryException(
+            "json_invalid",
+            n_attempts=3,
+            total_usage=fake_raw.usage,
+            failed_attempts=[],
+        )
+
+    fake_instructor = MagicMock()
+    fake_instructor.create_with_completion = _fake_create_with_completion
+
+    with patch("app.llm.client._instructor_kimi_client", fake_instructor):
+        with pytest.raises(InstructorRetryException):
+            await complete_structured(
+                db_session,
+                provider="kimi",
+                model="kimi-k2.6",
+                prompt_name="fail_usage_test",
+                system="sys",
+                user="user",
+                response_model=_Reply,
+            )
+        await db_session.commit()
+
+    row = (
+        (await db_session.execute(select(LLMCall).where(LLMCall.prompt_name == "fail_usage_test")))
+        .scalars()
+        .first()
+    )
+    assert row is not None
+    assert row.prompt_tokens == 5000
+    assert row.completion_tokens == 3000
+    assert row.cost_usd > Decimal("0")
+    await db_session.delete(row)
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_complete_structured_kimi_failure_persists_cached_tokens(
+    mock_firebase, db_session
+):
+    req_id = f"kimi_fail_cache_{uuid4()}"
+    fake_raw = MagicMock()
+    fake_raw.id = req_id
+    fake_raw.usage = MagicMock(
+        prompt_tokens=1225,
+        completion_tokens=400,
+        prompt_tokens_details=MagicMock(cached_tokens=1225),
+    )
+
+    async def _fake_create_with_completion(**kwargs):
+        hooks = kwargs.get("hooks")
+        if hooks is not None:
+            hooks.emit_completion_response(fake_raw)
+        raise InstructorRetryException(
+            "json_invalid",
+            n_attempts=3,
+            total_usage=fake_raw.usage,
+            failed_attempts=[],
+        )
+
+    fake_instructor = MagicMock()
+    fake_instructor.create_with_completion = _fake_create_with_completion
+
+    with patch("app.llm.client._instructor_kimi_client", fake_instructor):
+        with pytest.raises(InstructorRetryException):
+            await complete_structured(
+                db_session,
+                provider="kimi",
+                model="kimi-k2.6",
+                prompt_name="fail_cache_test",
+                system="sys",
+                user="user",
+                response_model=_Reply,
+            )
+        await db_session.commit()
+
+    row = (
+        (await db_session.execute(select(LLMCall).where(LLMCall.prompt_name == "fail_cache_test")))
+        .scalars()
+        .first()
+    )
+    assert row is not None
+    assert row.cached_input_tokens == 1225
+    assert row.prompt_tokens == 1225
+    assert row.completion_tokens == 400
+    await db_session.delete(row)
+    await db_session.commit()

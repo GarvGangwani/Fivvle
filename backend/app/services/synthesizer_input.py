@@ -12,13 +12,81 @@ The index is never serialized into the LLM user prompt.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.integrations.tavily import TavilyResult
+from app.logging_config import get_logger
+from app.schemas.business_construction import EvidenceAnalysisResult, ReasoningEngineOutput
 from app.schemas.planner import ResearchPlan
-from app.schemas.reader import ReaderOutput
+from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.schemas.refinement import RefinedIdea
 from app.schemas.search import TrendsSeries
+from app.schemas.targeting import ExperimentTargeting
+from app.schemas.voices import VoicesOutput
+
+_logger = get_logger(__name__)
+
+# Cap on evidence atoms per research question passed to the Synthesizer.
+#
+# Set from recent production distribution (27 question buckets across 4 recent
+# reports): average ~=6.1 atoms/question, median=6, max=10.
+#
+# Rationale: the Synthesizer's per-question section is concise and does not
+# materially improve with long evidence tails. Trimming only the tail on
+# high-evidence buckets reduces token variance while leaving most questions
+# untouched.
+#
+# Selection policy keeps the top-K by Reader's existing relevance label
+# (high > medium > low). Ties preserve original Reader order.
+SYNTHESIZER_EVIDENCE_ATOMS_PER_QUESTION_CAP: int = 8
+
+
+def _relevance_rank(relevance: str) -> int:
+    if relevance == "high":
+        return 3
+    if relevance == "medium":
+        return 2
+    return 1
+
+
+def _cap_evidence_list(
+    evidence: list[ExtractedEvidence],
+    cap: int,
+) -> list[ExtractedEvidence]:
+    if len(evidence) <= cap:
+        return list(evidence)
+    indexed = list(enumerate(evidence))
+    top = sorted(
+        indexed,
+        key=lambda pair: (-_relevance_rank(pair[1].relevance), pair[0]),
+    )[:cap]
+    top_idx = {idx for idx, _ in top}
+    return [ev for idx, ev in indexed if idx in top_idx]
+
+
+def _cap_reader_evidence(
+    reader_outputs: dict[str, ReaderOutput],
+    cap: int,
+) -> dict[str, ReaderOutput]:
+    """Return reader_outputs with per-question evidence lists capped at ``cap``.
+
+    Selection keeps the top-``cap`` atoms by Reader's relevance signal
+    (high > medium > low), preserving original order among retained atoms.
+    Never mutates input.
+    """
+    capped: dict[str, ReaderOutput] = {}
+    for question_id, output in reader_outputs.items():
+        capped[question_id] = output.model_copy(
+            update={
+                "extracted_evidence": _cap_evidence_list(
+                    output.extracted_evidence,
+                    cap=cap,
+                )
+            }
+        )
+    return capped
 
 
 class TavilyResultForPrompt(BaseModel):
@@ -153,6 +221,39 @@ class SynthesizerInput(BaseModel):
         ),
     )
 
+    evidence_analysis: EvidenceAnalysisResult | None = Field(
+        default=None,
+        description=(
+            "Reflector evidence quality analysis. Passed to Reasoning-aware "
+            "synthesizer prompts; not re-derived in Synthesizer."
+        ),
+    )
+
+    reasoning_output: ReasoningEngineOutput | None = Field(
+        default=None,
+        description=(
+            "Structured business intelligence from Reasoning Engine. Synthesizer "
+            "communicates this into the founder-facing report — reasoning happens "
+            "upstream, not in Synthesizer."
+        ),
+    )
+
+    targeting: ExperimentTargeting | None = Field(
+        default=None,
+        description=(
+            "Founder-declared targeting signals (geography, audience bracket, stage, "
+            "why_now). Null signals unscoped default behavior in the synthesizer prompt."
+        ),
+    )
+
+    voices_output: VoicesOutput | None = Field(
+        default=None,
+        description=(
+            "Reddit Voices phase output. Passed to synthesizer for voices section "
+            "generation. Null when Voices was not run (legacy paths)."
+        ),
+    )
+
 
 def build_synthesizer_input(
     *,
@@ -161,18 +262,57 @@ def build_synthesizer_input(
     reader_outputs: dict[str, ReaderOutput],
     rubric_version: str,
     trends_signals: dict[str, TrendsSeries] | None = None,
+    evidence_analysis: EvidenceAnalysisResult | None = None,
+    reasoning_output: ReasoningEngineOutput | None = None,
+    targeting: ExperimentTargeting | None = None,
+    voices_output: VoicesOutput | None = None,
+    experiment_id: UUID | None = None,
 ) -> SynthesizerInput:
     """Build SynthesizerInput for the Synthesizer prompt.
 
     citation_hydration_index is built separately by the orchestrator from
     Searcher results. See build_citation_hydration_index().
     """
+    capped_reader_outputs = _cap_reader_evidence(
+        reader_outputs,
+        cap=SYNTHESIZER_EVIDENCE_ATOMS_PER_QUESTION_CAP,
+    )
+    per_question_before = [
+        (qid, len(output.extracted_evidence))
+        for qid, output in reader_outputs.items()
+    ]
+    per_question_after = [
+        (qid, len(output.extracted_evidence))
+        for qid, output in capped_reader_outputs.items()
+    ]
+    total_atoms_before = sum(count for _, count in per_question_before)
+    total_atoms_after = sum(count for _, count in per_question_after)
+    capped_questions_count = sum(
+        1
+        for (_, before), (_, after) in zip(per_question_before, per_question_after)
+        if after < before
+    )
+    _logger.info(
+        "synthesizer evidence capped",
+        experiment_id=str(experiment_id) if experiment_id else None,
+        total_atoms_before=total_atoms_before,
+        total_atoms_after=total_atoms_after,
+        per_question_before=per_question_before,
+        per_question_after=per_question_after,
+        capped_questions_count=capped_questions_count,
+        cap=SYNTHESIZER_EVIDENCE_ATOMS_PER_QUESTION_CAP,
+    )
+
     return SynthesizerInput(
         refined_idea=refined_idea,
         research_plan=research_plan,
-        reader_outputs=reader_outputs,
+        reader_outputs=capped_reader_outputs,
         rubric_version=rubric_version,
         trends_signals=trends_signals,
+        evidence_analysis=evidence_analysis,
+        reasoning_output=reasoning_output,
+        targeting=targeting,
+        voices_output=voices_output,
     )
 
 

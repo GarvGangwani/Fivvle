@@ -117,7 +117,7 @@ async def test_execute_search_plan_happy_path() -> None:
 
     call_count = 0
 
-    async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
+    async def _mock_search(db, *, query, experiment_id, max_results, search_depth, include_domains=None):
         nonlocal call_count
         call_count += 1
         # Return unique URL per call so dedup has nothing to do
@@ -142,7 +142,7 @@ async def test_execute_search_plan_passes_correct_args() -> None:
 
     call_args_list: list[dict] = []
 
-    async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
+    async def _mock_search(db, *, query, experiment_id, max_results, search_depth, include_domains=None):
         call_args_list.append({"max_results": max_results, "search_depth": search_depth})
         return [_make_tavily_result("https://example.com/result")]
 
@@ -179,7 +179,7 @@ async def test_execute_search_plan_deduplicates_by_url() -> None:
     unique_url_base = "https://example.com/unique"
     call_idx = 0
 
-    async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
+    async def _mock_search(db, *, query, experiment_id, max_results, search_depth, include_domains=None):
         nonlocal call_idx
         call_idx += 1
         if "q1" in query:
@@ -212,7 +212,7 @@ async def test_execute_search_plan_no_dedup_across_questions() -> None:
 
     shared_url = "https://example.com/shared-article"
 
-    async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
+    async def _mock_search(db, *, query, experiment_id, max_results, search_depth, include_domains=None):
         return [_make_tavily_result(shared_url)]
 
     with _patch_searcher_integrations(_mock_search):
@@ -237,7 +237,7 @@ async def test_execute_search_plan_partial_failure() -> None:
 
     call_count = 0
 
-    async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
+    async def _mock_search(db, *, query, experiment_id, max_results, search_depth, include_domains=None):
         nonlocal call_count
         call_count += 1
         # Fail on calls 3 and 7 (2 failures out of 14)
@@ -267,7 +267,7 @@ async def test_execute_search_plan_total_failure_raises() -> None:
     db = AsyncMock(spec=AsyncSession)
     plan = _make_plan(question_count=5, queries_per_question=2)
 
-    async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
+    async def _mock_search(db, *, query, experiment_id, max_results, search_depth, include_domains=None):
         raise RuntimeError("Tavily completely down")
 
     with _patch_searcher_integrations(_mock_search):
@@ -294,7 +294,7 @@ async def test_execute_search_plan_forwards_experiment_id() -> None:
 
     seen_experiment_ids: list = []
 
-    async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
+    async def _mock_search(db, *, query, experiment_id, max_results, search_depth, include_domains=None):
         seen_experiment_ids.append(experiment_id)
         return [_make_tavily_result("https://example.com/r")]
 
@@ -313,7 +313,7 @@ async def test_execute_search_plan_forwards_none_experiment_id() -> None:
 
     seen_experiment_ids: list = []
 
-    async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
+    async def _mock_search(db, *, query, experiment_id, max_results, search_depth, include_domains=None):
         seen_experiment_ids.append(experiment_id)
         return [_make_tavily_result("https://example.com/r")]
 
@@ -339,7 +339,7 @@ async def test_execute_search_plan_keeps_top_10_by_score() -> None:
     # We generate 15 unique results per question (3 calls × 5 results).
     call_count = 0
 
-    async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
+    async def _mock_search(db, *, query, experiment_id, max_results, search_depth, include_domains=None):
         nonlocal call_count
         call_count += 1
         # Extract the question prefix from the query string (e.g. "q1 query 1" → "q1")
@@ -396,7 +396,7 @@ async def test_execute_search_plan_top10_sorted_by_score_descending() -> None:
     q1_results_generated: list[TavilyResult] = []
     call_idx = 0
 
-    async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
+    async def _mock_search(db, *, query, experiment_id, max_results, search_depth, include_domains=None):
         nonlocal call_idx
         call_idx += 1
         if "q1" in query:
@@ -450,7 +450,7 @@ async def test_execute_search_plan_none_score_sorted_to_bottom() -> None:
     none_score_urls: list[str] = []
     call_idx = 0
 
-    async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
+    async def _mock_search(db, *, query, experiment_id, max_results, search_depth, include_domains=None):
         nonlocal call_idx
         call_idx += 1
         if "q1" in query:
@@ -493,7 +493,7 @@ def _make_trends_series(keyword: str) -> TrendsSeries:
 
 
 def _minimal_tavily_mock():
-    async def _mock_search(db, *, query, experiment_id, max_results, search_depth):
+    async def _mock_search(db, *, query, experiment_id, max_results, search_depth, include_domains=None):
         return [_make_tavily_result("https://example.com/r")]
 
     return _mock_search

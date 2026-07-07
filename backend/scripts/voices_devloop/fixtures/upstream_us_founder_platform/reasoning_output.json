@@ -1,0 +1,794 @@
+{
+  "engine_version": "v1",
+  "clusters": [
+    {
+      "cluster_id": "cl-1",
+      "theme": "customer",
+      "label": "Customer signals",
+      "atom_ids": [
+        "q1-a1",
+        "q1-a2",
+        "q1-a3",
+        "q1-a4",
+        "q1-a5",
+        "q2-a1",
+        "q2-a2",
+        "q2-a4",
+        "q2-a5",
+        "q2-a6",
+        "q4-a3",
+        "q4-a4",
+        "q6-a1",
+        "q6-a4",
+        "q7-a1",
+        "q7-a2",
+        "q7-a3"
+      ],
+      "dominant_confidence": "medium"
+    },
+    {
+      "cluster_id": "cl-2",
+      "theme": "market",
+      "label": "Market signals",
+      "atom_ids": [
+        "q2-a3",
+        "q2-a7",
+        "q3-a1",
+        "q3-a2",
+        "q3-a3",
+        "q3-a4",
+        "q3-a5",
+        "q3-a6",
+        "q4-a5"
+      ],
+      "dominant_confidence": "medium"
+    },
+    {
+      "cluster_id": "cl-3",
+      "theme": "competition",
+      "label": "Competition signals",
+      "atom_ids": [
+        "q2-a8",
+        "q4-a1",
+        "q4-a6"
+      ],
+      "dominant_confidence": "medium"
+    },
+    {
+      "cluster_id": "cl-4",
+      "theme": "general",
+      "label": "General signals",
+      "atom_ids": [
+        "q4-a2",
+        "q6-a2",
+        "q6-a3"
+      ],
+      "dominant_confidence": "medium"
+    },
+    {
+      "cluster_id": "cl-5",
+      "theme": "product",
+      "label": "Product signals",
+      "atom_ids": [
+        "q5-a1",
+        "q5-a2",
+        "q5-a3",
+        "q5-a4",
+        "q5-a5"
+      ],
+      "dominant_confidence": "medium"
+    },
+    {
+      "cluster_id": "cl-6",
+      "theme": "distribution",
+      "label": "Distribution signals",
+      "atom_ids": [
+        "q6-a5"
+      ],
+      "dominant_confidence": "medium"
+    }
+  ],
+  "mechanisms": [
+    {
+      "mechanism_id": "m-1",
+      "cluster_id": "cl-1",
+      "statement": "Across 17 source(s), customer evidence suggests: An Indie Hackers founder building an idea validator got zero conversions at \u20ac19. Commenters identified that founders can get similar feedback for free from Claude/ChatGPT by typing 'brutally roast my startup,' making \u20ac19 a steep ask. One us",
+      "supporting_atom_ids": [
+        "q1-a1",
+        "q1-a2",
+        "q1-a3",
+        "q1-a4",
+        "q1-a5",
+        "q2-a1",
+        "q2-a2",
+        "q2-a4",
+        "q2-a5",
+        "q2-a6"
+      ],
+      "confidence": "medium"
+    },
+    {
+      "mechanism_id": "m-2",
+      "cluster_id": "cl-2",
+      "statement": "Across 9 source(s), market evidence suggests: Lenny's newsletter by Todd Jackson describes founders' validation sequences: market-first, experience-ripe-for-improvement, or problem-first approaches. Example from Mahima and co-founders at a parenting startup shows they started with open",
+      "supporting_atom_ids": [
+        "q2-a3",
+        "q2-a7",
+        "q3-a1",
+        "q3-a2",
+        "q3-a3",
+        "q3-a4",
+        "q3-a5",
+        "q3-a6",
+        "q4-a5"
+      ],
+      "confidence": "medium"
+    },
+    {
+      "mechanism_id": "m-3",
+      "cluster_id": "cl-3",
+      "statement": "Across 3 source(s), competition evidence suggests: ValidatorAI is used by 300,000+ founders for idea validation. The tool scores and grades ideas, analyzes competition, finds customers, and provides a clear next-step prompt for building a landing page or site. Measures founder momentum befo",
+      "supporting_atom_ids": [
+        "q2-a8",
+        "q4-a1",
+        "q4-a6"
+      ],
+      "confidence": "medium"
+    },
+    {
+      "mechanism_id": "m-4",
+      "cluster_id": "cl-4",
+      "statement": "Across 3 source(s), general evidence suggests: Crustdata's analysis of Crunchbase alternatives found data quality issues: 15-40% accuracy gap between Crunchbase valuations and actual Series B term sheets. One data platform stopped using Crunchbase because customers kept flagging errors.",
+      "supporting_atom_ids": [
+        "q4-a2",
+        "q6-a2",
+        "q6-a3"
+      ],
+      "confidence": "medium"
+    },
+    {
+      "mechanism_id": "m-5",
+      "cluster_id": "cl-5",
+      "statement": "Across 5 source(s), product evidence suggests: MOOC research shows sharp initial dropout spikes across all student cohorts. Intended completers have a median lifetime of 35% of the course, versus 10% for browsers and under 1% for non-respondents. After the initial drop, decline rates ar",
+      "supporting_atom_ids": [
+        "q5-a1",
+        "q5-a2",
+        "q5-a3",
+        "q5-a4",
+        "q5-a5"
+      ],
+      "confidence": "medium"
+    },
+    {
+      "mechanism_id": "m-6",
+      "cluster_id": "cl-6",
+      "statement": "Across 1 source(s), distribution evidence suggests: Tech startups commonly overspend on PR in early stages, which can quickly deplete capital. Startups may want to use AI tools for marketing materials at lower costs before hiring teams.",
+      "supporting_atom_ids": [
+        "q6-a5"
+      ],
+      "confidence": "medium"
+    }
+  ],
+  "hypotheses": [
+    {
+      "hypothesis_id": "h-cl-1-1",
+      "cluster_id": "cl-1",
+      "label": "A",
+      "statement": "The stated buyer is not the actual economic decision-maker.",
+      "mechanism_id": "m-1"
+    },
+    {
+      "hypothesis_id": "h-cl-1-2",
+      "cluster_id": "cl-1",
+      "label": "B",
+      "statement": "Pain is real but not urgent enough to drive switching.",
+      "mechanism_id": "m-1"
+    },
+    {
+      "hypothesis_id": "h-cl-1-3",
+      "cluster_id": "cl-1",
+      "label": "C",
+      "statement": "Customers need trust and proof before adopting a new vendor.",
+      "mechanism_id": "m-1"
+    },
+    {
+      "hypothesis_id": "h-cl-2-1",
+      "cluster_id": "cl-2",
+      "label": "A",
+      "statement": "Demand for this category is weaker than the founder assumes.",
+      "mechanism_id": "m-2"
+    },
+    {
+      "hypothesis_id": "h-cl-2-2",
+      "cluster_id": "cl-2",
+      "label": "B",
+      "statement": "Demand exists but is concentrated in a narrower wedge than planned.",
+      "mechanism_id": "m-2"
+    },
+    {
+      "hypothesis_id": "h-cl-2-3",
+      "cluster_id": "cl-2",
+      "label": "C",
+      "statement": "Market timing is favorable but only for a specific sub-segment.",
+      "mechanism_id": "m-2"
+    },
+    {
+      "hypothesis_id": "h-cl-3-1",
+      "cluster_id": "cl-3",
+      "label": "A",
+      "statement": "Incumbents already satisfy the core job-to-be-done.",
+      "mechanism_id": "m-3"
+    },
+    {
+      "hypothesis_id": "h-cl-3-2",
+      "cluster_id": "cl-3",
+      "label": "B",
+      "statement": "Competition is fragmented \u2014 a focused wedge can win.",
+      "mechanism_id": "m-3"
+    },
+    {
+      "hypothesis_id": "h-cl-3-3",
+      "cluster_id": "cl-3",
+      "label": "C",
+      "statement": "Competitors failed due to structural retention issues, not lack of demand.",
+      "mechanism_id": "m-3"
+    },
+    {
+      "hypothesis_id": "h-cl-4-1",
+      "cluster_id": "cl-4",
+      "label": "A",
+      "statement": "The idea needs sharper positioning before scaling distribution.",
+      "mechanism_id": "m-4"
+    },
+    {
+      "hypothesis_id": "h-cl-4-2",
+      "cluster_id": "cl-4",
+      "label": "B",
+      "statement": "Evidence is too thin to commit \u2014 run focused validation experiments first.",
+      "mechanism_id": "m-4"
+    },
+    {
+      "hypothesis_id": "h-cl-4-3",
+      "cluster_id": "cl-4",
+      "label": "C",
+      "statement": "A pivot toward a narrower ICP would improve signal quality.",
+      "mechanism_id": "m-4"
+    },
+    {
+      "hypothesis_id": "h-cl-5-1",
+      "cluster_id": "cl-5",
+      "label": "A",
+      "statement": "Retention is structurally difficult without recurring engagement loops.",
+      "mechanism_id": "m-5"
+    },
+    {
+      "hypothesis_id": "h-cl-5-2",
+      "cluster_id": "cl-5",
+      "label": "B",
+      "statement": "Onboarding friction is the dominant activation blocker.",
+      "mechanism_id": "m-5"
+    },
+    {
+      "hypothesis_id": "h-cl-5-3",
+      "cluster_id": "cl-5",
+      "label": "C",
+      "statement": "The MVP scope is too broad for the first validation cycle.",
+      "mechanism_id": "m-5"
+    },
+    {
+      "hypothesis_id": "h-cl-6-1",
+      "cluster_id": "cl-6",
+      "label": "A",
+      "statement": "Distribution is the primary bottleneck, not product quality.",
+      "mechanism_id": "m-6"
+    },
+    {
+      "hypothesis_id": "h-cl-6-2",
+      "cluster_id": "cl-6",
+      "label": "B",
+      "statement": "A single channel (community or partnerships) must anchor GTM.",
+      "mechanism_id": "m-6"
+    },
+    {
+      "hypothesis_id": "h-cl-6-3",
+      "cluster_id": "cl-6",
+      "label": "C",
+      "statement": "Self-serve acquisition will underperform without social proof.",
+      "mechanism_id": "m-6"
+    }
+  ],
+  "debates": [
+    {
+      "hypothesis_id": "h-cl-1-1",
+      "supporting_atom_ids": [
+        "q1-a1",
+        "q1-a2",
+        "q1-a3",
+        "q1-a4",
+        "q1-a5"
+      ],
+      "contradicting_atom_ids": [],
+      "confidence": "high",
+      "prediction_if_true": "If true, The stated buyer is not the actual economic decision-maker. the founder should prioritize validation experiments targeting A-class risks.",
+      "prediction_if_false": "If false, alternative explanations in cluster cl-1 likely dominate \u2014 revisit positioning and ICP assumptions.",
+      "selected": true
+    },
+    {
+      "hypothesis_id": "h-cl-1-2",
+      "supporting_atom_ids": [],
+      "contradicting_atom_ids": [],
+      "confidence": "low",
+      "prediction_if_true": "Hold B as a secondary explanation.",
+      "prediction_if_false": "Deprioritize B if validation contradicts it.",
+      "selected": false
+    },
+    {
+      "hypothesis_id": "h-cl-1-3",
+      "supporting_atom_ids": [],
+      "contradicting_atom_ids": [],
+      "confidence": "low",
+      "prediction_if_true": "Hold C as a secondary explanation.",
+      "prediction_if_false": "Deprioritize C if validation contradicts it.",
+      "selected": false
+    },
+    {
+      "hypothesis_id": "h-cl-2-1",
+      "supporting_atom_ids": [
+        "q2-a3",
+        "q2-a7",
+        "q3-a1",
+        "q3-a2",
+        "q3-a3"
+      ],
+      "contradicting_atom_ids": [],
+      "confidence": "high",
+      "prediction_if_true": "If true, Demand for this category is weaker than the founder assumes. the founder should prioritize validation experiments targeting A-class risks.",
+      "prediction_if_false": "If false, alternative explanations in cluster cl-2 likely dominate \u2014 revisit positioning and ICP assumptions.",
+      "selected": true
+    },
+    {
+      "hypothesis_id": "h-cl-2-2",
+      "supporting_atom_ids": [],
+      "contradicting_atom_ids": [],
+      "confidence": "low",
+      "prediction_if_true": "Hold B as a secondary explanation.",
+      "prediction_if_false": "Deprioritize B if validation contradicts it.",
+      "selected": false
+    },
+    {
+      "hypothesis_id": "h-cl-2-3",
+      "supporting_atom_ids": [],
+      "contradicting_atom_ids": [],
+      "confidence": "low",
+      "prediction_if_true": "Hold C as a secondary explanation.",
+      "prediction_if_false": "Deprioritize C if validation contradicts it.",
+      "selected": false
+    },
+    {
+      "hypothesis_id": "h-cl-3-1",
+      "supporting_atom_ids": [
+        "q2-a8",
+        "q4-a1",
+        "q4-a6"
+      ],
+      "contradicting_atom_ids": [],
+      "confidence": "high",
+      "prediction_if_true": "If true, Incumbents already satisfy the core job-to-be-done. the founder should prioritize validation experiments targeting A-class risks.",
+      "prediction_if_false": "If false, alternative explanations in cluster cl-3 likely dominate \u2014 revisit positioning and ICP assumptions.",
+      "selected": true
+    },
+    {
+      "hypothesis_id": "h-cl-3-2",
+      "supporting_atom_ids": [],
+      "contradicting_atom_ids": [],
+      "confidence": "low",
+      "prediction_if_true": "Hold B as a secondary explanation.",
+      "prediction_if_false": "Deprioritize B if validation contradicts it.",
+      "selected": false
+    },
+    {
+      "hypothesis_id": "h-cl-3-3",
+      "supporting_atom_ids": [],
+      "contradicting_atom_ids": [],
+      "confidence": "low",
+      "prediction_if_true": "Hold C as a secondary explanation.",
+      "prediction_if_false": "Deprioritize C if validation contradicts it.",
+      "selected": false
+    },
+    {
+      "hypothesis_id": "h-cl-4-1",
+      "supporting_atom_ids": [
+        "q4-a2",
+        "q6-a2",
+        "q6-a3"
+      ],
+      "contradicting_atom_ids": [],
+      "confidence": "high",
+      "prediction_if_true": "If true, The idea needs sharper positioning before scaling distribution. the founder should prioritize validation experiments targeting A-class risks.",
+      "prediction_if_false": "If false, alternative explanations in cluster cl-4 likely dominate \u2014 revisit positioning and ICP assumptions.",
+      "selected": true
+    },
+    {
+      "hypothesis_id": "h-cl-4-2",
+      "supporting_atom_ids": [],
+      "contradicting_atom_ids": [],
+      "confidence": "low",
+      "prediction_if_true": "Hold B as a secondary explanation.",
+      "prediction_if_false": "Deprioritize B if validation contradicts it.",
+      "selected": false
+    },
+    {
+      "hypothesis_id": "h-cl-4-3",
+      "supporting_atom_ids": [],
+      "contradicting_atom_ids": [],
+      "confidence": "low",
+      "prediction_if_true": "Hold C as a secondary explanation.",
+      "prediction_if_false": "Deprioritize C if validation contradicts it.",
+      "selected": false
+    },
+    {
+      "hypothesis_id": "h-cl-5-1",
+      "supporting_atom_ids": [
+        "q5-a1",
+        "q5-a2",
+        "q5-a3",
+        "q5-a4",
+        "q5-a5"
+      ],
+      "contradicting_atom_ids": [],
+      "confidence": "high",
+      "prediction_if_true": "If true, Retention is structurally difficult without recurring engagement loops. the founder should prioritize validation experiments targeting A-class risks.",
+      "prediction_if_false": "If false, alternative explanations in cluster cl-5 likely dominate \u2014 revisit positioning and ICP assumptions.",
+      "selected": true
+    },
+    {
+      "hypothesis_id": "h-cl-5-2",
+      "supporting_atom_ids": [],
+      "contradicting_atom_ids": [],
+      "confidence": "low",
+      "prediction_if_true": "Hold B as a secondary explanation.",
+      "prediction_if_false": "Deprioritize B if validation contradicts it.",
+      "selected": false
+    },
+    {
+      "hypothesis_id": "h-cl-5-3",
+      "supporting_atom_ids": [],
+      "contradicting_atom_ids": [],
+      "confidence": "low",
+      "prediction_if_true": "Hold C as a secondary explanation.",
+      "prediction_if_false": "Deprioritize C if validation contradicts it.",
+      "selected": false
+    },
+    {
+      "hypothesis_id": "h-cl-6-1",
+      "supporting_atom_ids": [
+        "q6-a5"
+      ],
+      "contradicting_atom_ids": [],
+      "confidence": "medium",
+      "prediction_if_true": "If true, Distribution is the primary bottleneck, not product quality. the founder should prioritize validation experiments targeting A-class risks.",
+      "prediction_if_false": "If false, alternative explanations in cluster cl-6 likely dominate \u2014 revisit positioning and ICP assumptions.",
+      "selected": true
+    },
+    {
+      "hypothesis_id": "h-cl-6-2",
+      "supporting_atom_ids": [],
+      "contradicting_atom_ids": [],
+      "confidence": "low",
+      "prediction_if_true": "Hold B as a secondary explanation.",
+      "prediction_if_false": "Deprioritize B if validation contradicts it.",
+      "selected": false
+    },
+    {
+      "hypothesis_id": "h-cl-6-3",
+      "supporting_atom_ids": [],
+      "contradicting_atom_ids": [],
+      "confidence": "low",
+      "prediction_if_true": "Hold C as a secondary explanation.",
+      "prediction_if_false": "Deprioritize C if validation contradicts it.",
+      "selected": false
+    }
+  ],
+  "predictions": [
+    {
+      "prediction_id": "p-1",
+      "mechanism_id": "m-1",
+      "statement": "Unless the founder addresses the mechanism above, similar startups in this space will repeat the same across 17 source(s), customer evidence suggests: an indie hackers founder building an idea validator got zero conversion pattern.",
+      "horizon": "12-24 months",
+      "confidence": "medium"
+    },
+    {
+      "prediction_id": "p-2",
+      "mechanism_id": "m-2",
+      "statement": "Unless the founder addresses the mechanism above, similar startups in this space will repeat the same across 9 source(s), market evidence suggests: lenny's newsletter by todd jackson describes founders' validation sequence pattern.",
+      "horizon": "12-24 months",
+      "confidence": "medium"
+    },
+    {
+      "prediction_id": "p-3",
+      "mechanism_id": "m-3",
+      "statement": "Unless the founder addresses the mechanism above, similar startups in this space will repeat the same across 3 source(s), competition evidence suggests: validatorai is used by 300,000+ founders for idea validation. the too pattern.",
+      "horizon": "12-24 months",
+      "confidence": "medium"
+    },
+    {
+      "prediction_id": "p-4",
+      "mechanism_id": "m-4",
+      "statement": "Unless the founder addresses the mechanism above, similar startups in this space will repeat the same across 3 source(s), general evidence suggests: crustdata's analysis of crunchbase alternatives found data quality issues pattern.",
+      "horizon": "12-24 months",
+      "confidence": "medium"
+    },
+    {
+      "prediction_id": "p-5",
+      "mechanism_id": "m-5",
+      "statement": "Unless the founder addresses the mechanism above, similar startups in this space will repeat the same across 5 source(s), product evidence suggests: mooc research shows sharp initial dropout spikes across all student cohor pattern.",
+      "horizon": "12-24 months",
+      "confidence": "medium"
+    },
+    {
+      "prediction_id": "p-6",
+      "mechanism_id": "m-6",
+      "statement": "Unless the founder addresses the mechanism above, similar startups in this space will repeat the same across 1 source(s), distribution evidence suggests: tech startups commonly overspend on pr in early stages, which can qu pattern.",
+      "horizon": "12-24 months",
+      "confidence": "medium"
+    }
+  ],
+  "founder_decisions": [
+    {
+      "decision_id": "d-1",
+      "insight": "The stated buyer is not the actual economic decision-maker.",
+      "business_implication": "Across 17 source(s), customer evidence suggests: An Indie Hackers founder building an idea validator got zero conversions at \u20ac19. Commenters identified that founders can get similar feedback for free from Claude/ChatGPT by typing 'brutally roast my startup,' making \u20ac19 a steep ask. One us",
+      "action": "Interview 8\u201312 ICP buyers and map the real budget holder before finalizing packaging.",
+      "related_hypothesis_id": "h-cl-1-1",
+      "related_mechanism_id": "m-1",
+      "confidence": "high"
+    },
+    {
+      "decision_id": "d-2",
+      "insight": "Demand for this category is weaker than the founder assumes.",
+      "business_implication": "Across 9 source(s), market evidence suggests: Lenny's newsletter by Todd Jackson describes founders' validation sequences: market-first, experience-ripe-for-improvement, or problem-first approaches. Example from Mahima and co-founders at a parenting startup shows they started with open",
+      "action": "Define a measurable demand proxy and validate it before building full product scope.",
+      "related_hypothesis_id": "h-cl-2-1",
+      "related_mechanism_id": "m-2",
+      "confidence": "high"
+    },
+    {
+      "decision_id": "d-3",
+      "insight": "Incumbents already satisfy the core job-to-be-done.",
+      "business_implication": "Across 3 source(s), competition evidence suggests: ValidatorAI is used by 300,000+ founders for idea validation. The tool scores and grades ideas, analyzes competition, finds customers, and provides a clear next-step prompt for building a landing page or site. Measures founder momentum befo",
+      "action": "Position against the weakest incumbent substitute with a concrete differentiation claim.",
+      "related_hypothesis_id": "h-cl-3-1",
+      "related_mechanism_id": "m-3",
+      "confidence": "high"
+    },
+    {
+      "decision_id": "d-4",
+      "insight": "The idea needs sharper positioning before scaling distribution.",
+      "business_implication": "Across 3 source(s), general evidence suggests: Crustdata's analysis of Crunchbase alternatives found data quality issues: 15-40% accuracy gap between Crunchbase valuations and actual Series B term sheets. One data platform stopped using Crunchbase because customers kept flagging errors.",
+      "action": "Ship a narrow validation experiment that tests the riskiest assumption first.",
+      "related_hypothesis_id": "h-cl-4-1",
+      "related_mechanism_id": "m-4",
+      "confidence": "high"
+    },
+    {
+      "decision_id": "d-5",
+      "insight": "Retention is structurally difficult without recurring engagement loops.",
+      "business_implication": "Across 5 source(s), product evidence suggests: MOOC research shows sharp initial dropout spikes across all student cohorts. Intended completers have a median lifetime of 35% of the course, versus 10% for browsers and under 1% for non-respondents. After the initial drop, decline rates ar",
+      "action": "Design onboarding for time-to-value under 10 minutes with a single hero workflow.",
+      "related_hypothesis_id": "h-cl-5-1",
+      "related_mechanism_id": "m-5",
+      "confidence": "high"
+    },
+    {
+      "decision_id": "d-6",
+      "insight": "Distribution is the primary bottleneck, not product quality.",
+      "business_implication": "Across 1 source(s), distribution evidence suggests: Tech startups commonly overspend on PR in early stages, which can quickly deplete capital. Startups may want to use AI tools for marketing materials at lower costs before hiring teams.",
+      "action": "Pick one primary acquisition channel and run a 2-week distribution experiment.",
+      "related_hypothesis_id": "h-cl-6-1",
+      "related_mechanism_id": "m-6",
+      "confidence": "medium"
+    }
+  ],
+  "business_components": [
+    {
+      "component_type": "customer_definition",
+      "title": "Customer definition",
+      "content": "First-time and solo founders globally who struggle to validate startup ideas, currently piecing together free resources, AI chatbots, and scattered tools with no clear signal on when they're ready to launch.",
+      "supporting_decision_ids": [
+        "d-1",
+        "d-2",
+        "d-3",
+        "d-4",
+        "d-5"
+      ],
+      "supporting_mechanism_ids": [
+        "m-1",
+        "m-2",
+        "m-3",
+        "m-4",
+        "m-5"
+      ],
+      "confidence": "high"
+    },
+    {
+      "component_type": "positioning",
+      "title": "Positioning",
+      "content": "An AI-powered platform that guides founders through a milestone-based workflow from idea to launch, replacing scattered tools with structured validation.",
+      "supporting_decision_ids": [
+        "d-1",
+        "d-2",
+        "d-3",
+        "d-4",
+        "d-5"
+      ],
+      "supporting_mechanism_ids": [
+        "m-1",
+        "m-2",
+        "m-3",
+        "m-4",
+        "m-5"
+      ],
+      "confidence": "high"
+    },
+    {
+      "component_type": "value_proposition",
+      "title": "Value proposition",
+      "content": "Replaces fragmented validation workflows with a single guided system that helps founders make evidence-based decisions, complete research and customer discovery faster, and know exactly when they have enough validation to build and launch.",
+      "supporting_decision_ids": [
+        "d-1",
+        "d-2",
+        "d-3",
+        "d-4",
+        "d-5"
+      ],
+      "supporting_mechanism_ids": [
+        "m-1",
+        "m-2",
+        "m-3",
+        "m-4",
+        "m-5"
+      ],
+      "confidence": "high"
+    },
+    {
+      "component_type": "distribution_strategy",
+      "title": "Distribution strategy",
+      "content": "Interview 8\u201312 ICP buyers and map the real budget holder before finalizing packaging.",
+      "supporting_decision_ids": [
+        "d-1",
+        "d-2",
+        "d-3",
+        "d-4",
+        "d-5"
+      ],
+      "supporting_mechanism_ids": [
+        "m-1",
+        "m-2",
+        "m-3",
+        "m-4",
+        "m-5"
+      ],
+      "confidence": "high"
+    },
+    {
+      "component_type": "market_wedge",
+      "title": "Market wedge",
+      "content": "Across 17 source(s), customer evidence suggests: An Indie Hackers founder building an idea validator got zero conversions at \u20ac19. Commenters identified that founders can get similar feedback for free from Claude/ChatGPT by typing 'brutally roast my startup,' making \u20ac19 a steep ask. One us",
+      "supporting_decision_ids": [
+        "d-1",
+        "d-2",
+        "d-3",
+        "d-4",
+        "d-5"
+      ],
+      "supporting_mechanism_ids": [
+        "m-1",
+        "m-2",
+        "m-3",
+        "m-4",
+        "m-5"
+      ],
+      "confidence": "high"
+    },
+    {
+      "component_type": "pricing_logic",
+      "title": "Pricing logic",
+      "content": "Anchor pricing to validated willingness-to-pay from ICP interviews \u2014 not competitor list prices alone.",
+      "supporting_decision_ids": [
+        "d-1",
+        "d-2",
+        "d-3",
+        "d-4",
+        "d-5"
+      ],
+      "supporting_mechanism_ids": [
+        "m-1",
+        "m-2",
+        "m-3",
+        "m-4",
+        "m-5"
+      ],
+      "confidence": "high"
+    },
+    {
+      "component_type": "business_model",
+      "title": "Business model",
+      "content": "Deliver An AI-powered platform that guides founders through a milestone-based workflow from idea to launch, replacing scattered tools with structured validation. with measurable activation and retention milestones.",
+      "supporting_decision_ids": [
+        "d-1",
+        "d-2",
+        "d-3",
+        "d-4",
+        "d-5"
+      ],
+      "supporting_mechanism_ids": [
+        "m-1",
+        "m-2",
+        "m-3",
+        "m-4",
+        "m-5"
+      ],
+      "confidence": "high"
+    },
+    {
+      "component_type": "competitive_differentiation",
+      "title": "Competitive differentiation",
+      "content": "Across 9 source(s), market evidence suggests: Lenny's newsletter by Todd Jackson describes founders' validation sequences: market-first, experience-ripe-for-improvement, or problem-first approaches. Example from Mahima and co-founders at a parenting startup shows they started with open",
+      "supporting_decision_ids": [
+        "d-1",
+        "d-2",
+        "d-3",
+        "d-4",
+        "d-5"
+      ],
+      "supporting_mechanism_ids": [
+        "m-1",
+        "m-2",
+        "m-3",
+        "m-4",
+        "m-5"
+      ],
+      "confidence": "high"
+    },
+    {
+      "component_type": "validation_experiments",
+      "title": "Validation experiments",
+      "content": "Interview 8\u201312 ICP buyers and map the real budget holder before finalizing packaging.; Define a measurable demand proxy and validate it before building full product scope.; Position against the weakest incumbent substitute with a concrete differentiation claim.",
+      "supporting_decision_ids": [
+        "d-1",
+        "d-2",
+        "d-3",
+        "d-4",
+        "d-5"
+      ],
+      "supporting_mechanism_ids": [
+        "m-1",
+        "m-2",
+        "m-3",
+        "m-4",
+        "m-5"
+      ],
+      "confidence": "high"
+    },
+    {
+      "component_type": "execution_priorities",
+      "title": "Execution priorities",
+      "content": "The stated buyer is not the actual economic decision-maker.; Demand for this category is weaker than the founder assumes.; Incumbents already satisfy the core job-to-be-done.",
+      "supporting_decision_ids": [
+        "d-1",
+        "d-2",
+        "d-3",
+        "d-4",
+        "d-5"
+      ],
+      "supporting_mechanism_ids": [
+        "m-1",
+        "m-2",
+        "m-3",
+        "m-4",
+        "m-5"
+      ],
+      "confidence": "high"
+    }
+  ]
+}

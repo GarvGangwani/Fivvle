@@ -25,6 +25,9 @@ def test_research_phases_map_to_cognitive_validation() -> None:
         "reader",
         "reflector",
         "synthesizer",
+        "geography_hint",
+        "voices_subreddit_selection",
+        "voices_extraction",
     ):
         assert resolve_cost_category_from_phase(phase) is CostCategory.COGNITIVE_VALIDATION
 

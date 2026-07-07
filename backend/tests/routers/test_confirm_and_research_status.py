@@ -613,8 +613,9 @@ def test_research_status_wrong_owner_returns_404_matching_nonexistent_response(
         (ExperimentStatus.RESEARCH_SEARCHING, 2),
         (ExperimentStatus.RESEARCH_READING, 3),
         (ExperimentStatus.RESEARCH_REFLECTING, 4),
-        (ExperimentStatus.RESEARCH_SYNTHESIZING, 5),
-        (ExperimentStatus.RESEARCH_READY, 6),
+        (ExperimentStatus.RESEARCH_VOICES, 5),
+        (ExperimentStatus.RESEARCH_SYNTHESIZING, 6),
+        (ExperimentStatus.RESEARCH_READY, 7),
     ],
     ids=lambda x: x.value if isinstance(x, ExperimentStatus) else str(x),
 )

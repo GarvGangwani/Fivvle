@@ -11,6 +11,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.schemas.business_construction import EvidenceAnalysisResult
+
 ReflectorDecisionMethod = Literal["rule_v1"]
 """Type alias for the Reflector decision method.
 
@@ -140,6 +142,14 @@ class ReflectorPhaseSummary(BaseModel):
         description=(
             "Refinement waves with at least one successful Tavily re-search that "
             "returned new hits (maps to ValidationReport.reflection_loops_used)."
+        ),
+    )
+
+    evidence_analysis: EvidenceAnalysisResult | None = Field(
+        default=None,
+        description=(
+            "Deterministic evidence quality analysis (contradictions, clusters, gaps). "
+            "Produced at end of Reflector phase; feeds Reasoning Engine."
         ),
     )
 

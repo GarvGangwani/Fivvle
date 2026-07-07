@@ -17,6 +17,7 @@ class ModelPricing:
 
     input_per_1m: Decimal
     output_per_1m: Decimal
+    cached_input_per_1m: Decimal | None = None
 
 
 # Format: (provider, model_id) -> ModelPricing
@@ -82,12 +83,15 @@ _PRICING: dict[tuple[str, str], ModelPricing] = {
         output_per_1m=Decimal("0.08"),
     ),
     # -----------------------------------------------------------------------
-    # Kimi K2.6 via Moonshot direct — verify against Moonshot dashboard;
-    # cached input ~$0.16 not yet modeled.
+    # Kimi K2.6 via Moonshot direct (Moonshot docs, ADR 0018):
+    #   Uncached input: $0.95 / 1M
+    #   Cached input:   $0.16 / 1M
+    #   Output:         $4.00 / 1M
     # -----------------------------------------------------------------------
     ("kimi", "kimi-k2.6"): ModelPricing(
         input_per_1m=Decimal("0.95"),
         output_per_1m=Decimal("4.00"),
+        cached_input_per_1m=Decimal("0.16"),
     ),
 }
 
@@ -135,6 +139,7 @@ def compute_cost_usd(
     model: str,
     prompt_tokens: int,
     completion_tokens: int,
+    cached_input_tokens: int | None = None,
 ) -> Decimal:
     """Compute cost in USD for a single LLM call.
 
@@ -143,11 +148,18 @@ def compute_cost_usd(
     rows in LLMCall to find pricing gaps. The wrapper emits a warning log
     when this happens.
 
+    For Kimi models with ``cached_input_per_1m`` pricing, pass
+    ``cached_input_tokens`` from ``usage.prompt_tokens_details.cached_tokens``
+    so cache hits are billed at the discounted input rate. Anthropic caching
+    uses ``compute_anthropic_cached_cost_usd`` instead — this parameter is
+    ignored for non-Kimi providers.
+
     Args:
         provider: lowercase provider id (e.g. "anthropic", "groq")
         model: model identifier as used in the SDK call
         prompt_tokens: input token count from the API response
         completion_tokens: output token count from the API response
+        cached_input_tokens: cache-read input tokens (Kimi only)
 
     Returns:
         Cost in USD, with up to 6 decimal places (matches Numeric(10,6) column).
@@ -156,8 +168,16 @@ def compute_cost_usd(
     if pricing is None:
         return Decimal("0")
 
-    input_cost = (Decimal(prompt_tokens) / Decimal("1000000")) * pricing.input_per_1m
-    output_cost = (Decimal(completion_tokens) / Decimal("1000000")) * pricing.output_per_1m
+    per_m = Decimal("1000000")
+    cached = cached_input_tokens or 0
+    if pricing.cached_input_per_1m is not None and cached > 0:
+        uncached = max(0, prompt_tokens - cached)
+        input_cost = (Decimal(uncached) / per_m) * pricing.input_per_1m + (
+            Decimal(cached) / per_m
+        ) * pricing.cached_input_per_1m
+    else:
+        input_cost = (Decimal(prompt_tokens) / per_m) * pricing.input_per_1m
+    output_cost = (Decimal(completion_tokens) / per_m) * pricing.output_per_1m
     return (input_cost + output_cost).quantize(Decimal("0.000001"))
 
 

@@ -502,7 +502,7 @@ def test_planner_planner_v1_cached_semantically_equivalent_to_v1(
         "coverage quotas",
     ):
         assert anchor in flat
-    assert PROMPT_NAME == "planner_v1_cached"
+    assert PROMPT_NAME == "planner_v3_cached"
 
 
 @pytest.mark.asyncio

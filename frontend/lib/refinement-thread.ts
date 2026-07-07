@@ -1,3 +1,9 @@
+import type {
+  ChatMessage,
+  ClarifyingQuestionAnswer,
+  PastClarifyingTurn,
+} from "@/lib/types";
+
 export interface ClarityQaBlock {
   question: string;
   answers: string[];
@@ -48,6 +54,65 @@ export function parseClarifyingAnswerContent(
   }
 
   return result.length > 0 ? result : null;
+}
+
+function clarityBlockToAnswer(block: ClarityQaBlock): ClarifyingQuestionAnswer {
+  const selectedOptions: string[] = [];
+  let otherText = "";
+  for (const part of block.answers) {
+    if (part.startsWith("Other: ")) {
+      otherText = part.slice("Other: ".length);
+    } else {
+      selectedOptions.push(part);
+    }
+  }
+  return { selectedOptions, otherText };
+}
+
+/**
+ * Walk the thread and collect completed clarifying-question turns (excluding
+ * the current pending batch and the founder's original idea message).
+ */
+export function collectPastClarifyingTurns(
+  messages: ChatMessage[],
+  firstUserMessageId: string | null,
+): PastClarifyingTurn[] {
+  const result: PastClarifyingTurn[] = [];
+  let globalQuestionNumber = 0;
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.role !== "assistant" || msg.turnKind !== "refinement_clarify") {
+      continue;
+    }
+    const questions = msg.clarifyingQuestions;
+    if (!questions?.length) continue;
+
+    const next = messages[i + 1];
+    if (!next || next.role !== "user") continue;
+    if (next.id === firstUserMessageId) continue;
+
+    const parsed = parseClarifyingAnswerContent(next.content);
+    if (!parsed) continue;
+
+    for (let qIdx = 0; qIdx < questions.length; qIdx++) {
+      const question = questions[qIdx];
+      const block =
+        parsed.find((item) => item.question === question.question) ??
+        parsed[qIdx];
+      if (!block) continue;
+
+      globalQuestionNumber += 1;
+      result.push({
+        question,
+        answer: clarityBlockToAnswer(block),
+        answerMessageId: next.id,
+        globalQuestionNumber,
+      });
+    }
+  }
+
+  return result;
 }
 
 /** Assistant finalize message — "Researching: …" */

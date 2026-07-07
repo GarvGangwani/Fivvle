@@ -16,9 +16,12 @@ even without reading the full system prompt.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+if TYPE_CHECKING:
+    from app.schemas.targeting import ExperimentTargeting
 
 # Per-item constraint for the risks list: each risk is a single sentence, max 200 chars.
 _RiskStr = Annotated[str, Field(min_length=1, max_length=250)]
@@ -212,6 +215,8 @@ class RefinementTurnDecision(BaseModel):
         "scope",
         "contradiction",
         "pivot_resolution",
+        "geography",
+        "stage",
         "other",
     ] | None = None
     clarifying_questions: Annotated[
@@ -225,6 +230,7 @@ class RefinementTurnDecision(BaseModel):
         ),
     ]
     refined_idea: RefinedIdea | None = None
+    targeting: ExperimentTargeting | None = None
     reasoning_trace: Annotated[str, Field(max_length=400)] = ""
 
     @model_validator(mode="after")
@@ -247,6 +253,8 @@ class RefinementTurnDecision(BaseModel):
                 )
             if self.refined_idea is not None:
                 raise ValueError("refined_idea must be null when decision is clarify")
+            if self.targeting is not None:
+                raise ValueError("targeting must be null when decision is clarify")
             if (
                 not self.clarifying_questions
                 and not self.assistant_message.rstrip().endswith("?")
@@ -267,3 +275,8 @@ class RefinementTurnDecision(BaseModel):
                     "assistant_message must start with 'Researching:' when decision is finalize"
                 )
         return self
+
+
+from app.schemas.targeting import ExperimentTargeting  # noqa: E402
+
+RefinementTurnDecision.model_rebuild()

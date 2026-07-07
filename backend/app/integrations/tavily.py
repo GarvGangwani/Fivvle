@@ -34,7 +34,7 @@ from app.cost.tavily import (
 from app.db.models.external_api_call import ExternalAPICall
 from app.db.session_lock import lock_for
 from app.logging_config import get_logger
-from app.reliability.circuit_breakers import get_breaker
+from app.reliability.circuit_breakers import CircuitOpenError, get_breaker
 from app.reliability.retry import retry_async
 
 if TYPE_CHECKING:
@@ -98,6 +98,7 @@ async def search(
     experiment_id: UUID | None = None,
     max_results: int = 5,
     search_depth: Literal["basic", "advanced"] = "basic",
+    include_domains: list[str] | None = None,
 ) -> list[TavilyResult]:
     """Run a Tavily web search.
 
@@ -107,6 +108,7 @@ async def search(
         experiment_id: optional FK for cost rollup.
         max_results: number of results to return (default 5).
         search_depth: "basic" (1 credit) or "advanced" (2 credits).
+        include_domains: optional Tavily domain bias list (soft signal).
 
     Returns a list of TavilyResult (title, url, content snippet, score).
 
@@ -120,13 +122,18 @@ async def search(
         """One Tavily HTTP round-trip; logs audit row before returning."""
         attempt_started = time.perf_counter()
         try:
+            search_kwargs: dict[str, object] = {
+                "max_results": max_results,
+                "search_depth": search_depth,
+                "include_usage": True,
+            }
+            if include_domains:
+                search_kwargs["include_domains"] = include_domains
             raw = await asyncio.wait_for(
                 asyncio.to_thread(
                     _get_client().search,
                     query,
-                    max_results=max_results,
-                    search_depth=search_depth,
-                    include_usage=True,
+                    **search_kwargs,
                 ),
                 timeout=_TIMEOUT_SECONDS,
             )
@@ -182,7 +189,6 @@ async def search(
             return await get_breaker("tavily").call(_perform_search_attempt)
 
         raw = await _call_tavily_with_retry()
-        latency_ms = int((time.perf_counter() - started_at) * 1000)
 
         results = [
             TavilyResult(
@@ -196,6 +202,30 @@ async def search(
 
         return results
 
+    except CircuitOpenError:
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+        try:
+            await _log_api_call(
+                db,
+                experiment_id=experiment_id,
+                operation="search",
+                latency_ms=latency_ms,
+                cost_usd=Decimal("0"),
+                api_credits=None,
+                success=False,
+            )
+        except Exception as log_exc:
+            _logger.warning(
+                "failed to log failed tavily call",
+                error=str(log_exc),
+            )
+        _logger.warning(
+            "tavily search failed",
+            search_depth=search_depth,
+            latency_ms=latency_ms,
+            error_type="CircuitOpenError",
+        )
+        raise
     except Exception as exc:
         _logger.warning(
             "tavily search failed",

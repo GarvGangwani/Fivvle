@@ -42,6 +42,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.business_construction import BusinessConstructionArtifact
+
 
 class Citation(BaseModel):
     """A single source cited by a Finding or CompetitorMention.
@@ -454,13 +456,13 @@ class ValidationReport(BaseModel):
         str,
         Field(
             min_length=50,
-            max_length=2000,
+            max_length=3000,
             description=(
                 "3-5 sentences summarizing the key findings, competitive reality, and "
                 "recommendation. Evidence-led — no fluff. Opens with the most important "
                 "finding, not a restatement of the idea. Founders should be able to read "
                 "this alone and know whether to proceed, iterate, pivot, or kill. "
-                "Maximum 2000 characters."
+                "Maximum 3000 characters."
             ),
         ),
     ]
@@ -482,9 +484,9 @@ class ValidationReport(BaseModel):
         list[CompetitorMention],
         Field(
             min_length=0,
-            max_length=6,
+            max_length=10,
             description=(
-                "0-6 named competitors or substitutes surfaced across all findings. "
+                "0-10 named competitors or substitutes surfaced across all findings. "
                 "Aggregated from the findings — only include companies that appeared "
                 "in the Tavily results with at least one citation. An empty list is "
                 "valid and preferred over fabricating competitors."
@@ -496,13 +498,13 @@ class ValidationReport(BaseModel):
         str,
         Field(
             min_length=10,
-            max_length=1500,
+            max_length=2400,
             description=(
                 "2-4 sentences on market size, growth rate, or demand signals from the "
                 "research. Cite specific figures or sources when they exist in the findings. "
                 "If no meaningful market-size evidence was found, say so explicitly: "
                 "'The searches returned no reliable market-size data for this niche.' "
-                "Do NOT fabricate TAM figures. Maximum 1500 characters."
+                "Do NOT fabricate TAM figures. Maximum 2400 characters."
             ),
         ),
     ]
@@ -538,12 +540,12 @@ class ValidationReport(BaseModel):
         str,
         Field(
             min_length=50,
-            max_length=2500,
+            max_length=3500,
             description=(
                 "3-5 sentences that explicitly address each of the 3-5 risks listed in "
                 "the RefinedIdea — confirmed, refuted, or unaddressed by the findings. "
                 "Reference the question_ids that investigated each risk. This is the "
-                "direct answer to what the founder was most worried about. Maximum 2500 chars."
+                "direct answer to what the founder was most worried about. Maximum 3500 chars."
             ),
         ),
     ]
@@ -556,12 +558,12 @@ class ValidationReport(BaseModel):
         str,
         Field(
             min_length=50,
-            max_length=2000,
+            max_length=2800,
             description=(
                 "3-5 sentences explaining the recommendation, anchored to specific findings "
                 "by question_id and evidence. Not 'the market looks good' but 'q4 findings "
                 "cite NerdWallet's $X ARR alongside subscriber count data showing WTP in the "
-                "personal finance newsletter category'. Maximum 2000 characters."
+                "personal finance newsletter category'. Maximum 2800 characters."
             ),
         ),
     ]
@@ -570,13 +572,28 @@ class ValidationReport(BaseModel):
         str,
         Field(
             min_length=10,
-            max_length=800,
+            max_length=1200,
             description=(
                 "1-3 sentences on what couldn't be answered and why. If certain dimensions "
                 "were investigated but evidence was thin, say so. If certain dimensions "
                 "weren't investigated at all, say so. This is the synthesizer's honesty "
                 "channel. For too_vague_to_recommend reports, this field is the primary "
-                "content — the whole report IS a limitations note. Maximum 800 characters."
+                "content — the whole report IS a limitations note. Maximum 1200 characters."
+            ),
+        ),
+    ]
+
+    voices: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=2500,
+            description=(
+                "Reddit-sourced qualitative signals for the founder's idea, "
+                "extracted by the Voices phase. Null when Voices was skipped "
+                "or produced no atoms; otherwise a 4-8 sentence narrative "
+                "synthesizing patterns and preserving verbatim quotes with "
+                "subreddit attribution."
             ),
         ),
     ]
@@ -617,6 +634,18 @@ class ValidationReport(BaseModel):
             description=(
                 "Composite validation score (0–100) — weighted average of section_scores "
                 "with research and market weighted highest. Null for legacy reports."
+            ),
+        ),
+    ]
+
+    business_construction: Annotated[
+        BusinessConstructionArtifact | None,
+        Field(
+            default=None,
+            description=(
+                "Structured business construction intelligence from the Reasoning Engine. "
+                "Null for legacy reports generated before the Business Construction Engine. "
+                "Contains mechanisms, hypotheses, founder decisions, and business components."
             ),
         ),
     ]
@@ -907,8 +936,11 @@ class ValidationReportDraft(BaseModel):
         str,
         Field(
             min_length=50,
-            max_length=2000,
-            description="3-5 sentences summarizing findings and recommendation. Maximum 2000 chars.",
+            max_length=3000,
+            description=(
+                "3-5 sentences summarizing findings and recommendation. "
+                "Maximum 3000 chars."
+            ),
         ),
     ]
 
@@ -925,9 +957,9 @@ class ValidationReportDraft(BaseModel):
         list[CompetitorMentionDraft],
         Field(
             min_length=0,
-            max_length=6,
+            max_length=10,
             description=(
-                "0-6 named competitors from the Tavily results. "
+                "0-10 named competitors from the Tavily results. "
                 "An empty list is preferred over fabricated competitors."
             ),
         ),
@@ -937,8 +969,8 @@ class ValidationReportDraft(BaseModel):
         str,
         Field(
             min_length=10,
-            max_length=1500,
-            description="2-4 sentences on market size or demand signals. Maximum 1500 chars.",
+            max_length=2400,
+            description="2-4 sentences on market size or demand signals. Maximum 2400 chars.",
         ),
     ]
 
@@ -956,9 +988,9 @@ class ValidationReportDraft(BaseModel):
         str,
         Field(
             min_length=50,
-            max_length=2500,
+            max_length=3500,
             description=(
-                "3-5 sentences addressing each RefinedIdea risk. Maximum 2500 chars."
+                "3-5 sentences addressing each RefinedIdea risk. Maximum 3500 chars."
             ),
         ),
     ]
@@ -971,8 +1003,8 @@ class ValidationReportDraft(BaseModel):
         str,
         Field(
             min_length=50,
-            max_length=2000,
-            description="3-5 sentences anchored to specific question_ids. Maximum 2000 chars.",
+            max_length=2800,
+            description="3-5 sentences anchored to specific question_ids. Maximum 2800 chars.",
         ),
     ]
 
@@ -980,8 +1012,20 @@ class ValidationReportDraft(BaseModel):
         str,
         Field(
             min_length=10,
-            max_length=800,
-            description="1-3 sentences on what couldn't be answered. Maximum 800 chars.",
+            max_length=1200,
+            description="1-3 sentences on what couldn't be answered. Maximum 1200 chars.",
+        ),
+    ]
+
+    voices: Annotated[
+        str | None,
+        Field(
+            default=None,
+            max_length=2500,
+            description=(
+                "Reddit-sourced qualitative signals (Voices phase). "
+                "Null when skipped; otherwise 4-8 sentences with verbatim quotes."
+            ),
         ),
     ]
 

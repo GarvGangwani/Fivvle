@@ -46,8 +46,32 @@ from app.logging_config import get_logger
 from app.schemas.planner import ResearchPlan
 from app.schemas.refinement import RefinedIdea
 from app.schemas.search import MergedSearchResults, TrendsSeries
+from app.schemas.targeting import ExperimentTargeting
 
 _logger = get_logger(__name__)
+
+GEO_SENSITIVE_KEYWORDS: frozenset[str] = frozenset({
+    "market",
+    "market size",
+    "tam",
+    "sam",
+    "competitor",
+    "regulat",
+    "law",
+    "compliance",
+    "distribution",
+    "channel",
+    "pricing",
+    "willingness to pay",
+    "adoption",
+    "cac",
+})
+
+
+def _is_geo_sensitive(query: str) -> bool:
+    q = query.lower()
+    return any(kw in q for kw in GEO_SENSITIVE_KEYWORDS)
+
 
 # Per the spec: search_depth="advanced", max_results=5 per query.
 # Advanced = 2 credits ($0.016) per call vs basic = 1 credit ($0.008).
@@ -184,6 +208,7 @@ async def execute_search_plan(
     research_plan: ResearchPlan,
     experiment_id: UUID | None = None,
     refined_idea: RefinedIdea | None = None,
+    targeting: ExperimentTargeting | None = None,
 ) -> MergedSearchResults:
     """Run all Tavily searches for a ResearchPlan in parallel, then Google Trends once.
 
@@ -228,23 +253,59 @@ async def execute_search_plan(
     # Build a flat list of (question_id, query) pairs for parallel dispatch.
     # Maintaining the question_id alongside lets us re-assemble results into
     # the per-question dict after gather completes.
-    task_pairs: list[tuple[str, str]] = [
-        (q.id, query)
-        for q in questions
-        for query in q.search_queries
-    ]
+    geo: str | None = None
+    if (
+        targeting is not None
+        and targeting.has_geography()
+        and targeting.target_geography is not None
+    ):
+        geo = targeting.target_geography.strip()
+
+    geo_include_domains: list[str] = []
+    if geo is not None:
+        from app.services.geography_hint_service import (  # noqa: PLC0415
+            get_include_domains_for_geography,
+        )
+
+        geo_include_domains = await get_include_domains_for_geography(
+            db,
+            raw_geography=geo,
+            experiment_id=experiment_id,
+        )
+
+    task_pairs: list[tuple[str, str]] = []
+    for q in questions:
+        for query in q.search_queries:
+            effective_query = query
+            if (
+                geo is not None
+                and _is_geo_sensitive(query)
+                and geo.lower() not in query.lower()
+            ):
+                effective_query = f"{query} {geo}"
+            task_pairs.append((q.id, effective_query))
 
     async def _run_single_search(
         question_id: str, query: str
     ) -> tuple[str, list[TavilyResult] | Exception]:
         """Run one Tavily search. Returns (question_id, results|exception)."""
+        search_kwargs: dict[str, object] = {
+            "max_results": _MAX_RESULTS_PER_QUERY,
+            "search_depth": _SEARCH_DEPTH,
+        }
+        if (
+            targeting is not None
+            and targeting.has_geography()
+            and _is_geo_sensitive(query)
+            and geo_include_domains
+        ):
+            search_kwargs["include_domains"] = geo_include_domains
         try:
             results = await tavily_client.search(
                 db,
                 query=query,
                 experiment_id=experiment_id,
-                max_results=_MAX_RESULTS_PER_QUERY,
-                search_depth=_SEARCH_DEPTH,
+                **search_kwargs,
             )
             return question_id, results
         except Exception as exc:  # noqa: BLE001

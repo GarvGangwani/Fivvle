@@ -461,3 +461,58 @@ async def test_logging_is_hygienic(db_session: AsyncSession) -> None:
     assert "ip_address" not in log_entry
     assert "source_tag" not in log_entry
     assert "twitter" not in str(log_entry)
+
+
+# ---------------------------------------------------------------------------
+# 13–14. Conversion rate denominator uses total page views (not unique visitors)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_build_analytics_aggregate_conversion_rate_uses_total_views_not_unique_visitors(
+    db_session: AsyncSession,
+) -> None:
+    """Regression: CineFund case — 4 views from 1 IP + 1 signup → 25%, not 100%."""
+    now = _utc_now()
+    live_at = now - timedelta(days=1)
+    experiment = await _persist_experiment(db_session)
+    await _persist_landing_page(db_session, experiment.id, live_at=live_at)
+
+    shared_ip = "203.0.113.42"
+    for i in range(4):
+        await _add_page_view(
+            db_session,
+            experiment_id=experiment.id,
+            ts=live_at + timedelta(minutes=i),
+            source_tag="twitter",
+            ip_address=shared_ip,
+        )
+    await _add_signup(
+        db_session,
+        experiment_id=experiment.id,
+        ts=live_at + timedelta(hours=1),
+        source_tag="twitter",
+    )
+    await db_session.commit()
+
+    result = await build_analytics_aggregate(db_session, experiment.id)
+
+    assert result.total_page_views == 4
+    assert result.unique_visitors == 1
+    assert result.total_signups == 1
+    assert result.conversion_rate == pytest.approx(0.25)
+
+
+@pytest.mark.asyncio
+async def test_build_analytics_aggregate_conversion_rate_zero_views_no_division_error(
+    db_session: AsyncSession,
+) -> None:
+    now = _utc_now()
+    experiment = await _persist_experiment(db_session)
+    await _persist_landing_page(db_session, experiment.id, live_at=now)
+
+    result = await build_analytics_aggregate(db_session, experiment.id)
+
+    assert result.total_page_views == 0
+    assert result.total_signups == 0
+    assert result.conversion_rate == 0.0

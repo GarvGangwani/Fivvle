@@ -15,15 +15,19 @@ from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
+import httpx
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
 from app.db.models.external_api_call import ExternalAPICall
-from app.integrations.reddit import RedditComment, RedditPost, fetch_post_comments, search_subreddits
+from app.integrations.reddit import (
+    RedditNotFoundException,
+    fetch_post_comments,
+    search_subreddits,
+)
 from app.integrations.tavily import TavilyResult, search
-
 
 # ---------------------------------------------------------------------------
 # Standalone DB session fixture — avoids disposed-engine ordering problem
@@ -45,46 +49,259 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_praw_submission(
+# ===========================================================================
+# Reddit tests (public JSON / httpx)
+# ===========================================================================
+
+
+def _reddit_post_data(
     *,
-    sid: str = "abc123",
+    pid: str = "abc123",
     title: str = "Test post",
-    url: str = "https://reddit.com/r/test/abc123",
+    permalink: str = "/r/startups/comments/abc123/test/",
     score: int = 42,
     num_comments: int = 7,
     created_utc: float = 1_700_000_000.0,
-    display_name: str = "startups",
-    selftext: str = "",
-) -> MagicMock:
-    sub = MagicMock()
-    sub.id = sid
-    sub.title = title
-    sub.url = url
-    sub.score = score
-    sub.num_comments = num_comments
-    sub.created_utc = created_utc
-    sub.subreddit.display_name = display_name
-    sub.selftext = selftext
-    return sub
+    subreddit: str = "startups",
+    selftext: str = "body",
+) -> dict:
+    return {
+        "id": pid,
+        "title": title,
+        "url": f"https://www.reddit.com{permalink}",
+        "permalink": permalink,
+        "score": score,
+        "num_comments": num_comments,
+        "created_utc": created_utc,
+        "subreddit": subreddit,
+        "selftext": selftext,
+    }
 
 
-def _make_praw_comment(
-    *,
-    cid: str = "c1",
-    body: str = "Great idea!",
-    score: int = 15,
-    created_utc: float = 1_700_001_000.0,
-) -> MagicMock:
-    comment = MagicMock()
-    comment.id = cid
-    comment.body = body
-    comment.score = score
-    comment.created_utc = created_utc
-    return comment
+def _reddit_search_payload(*posts: dict) -> dict:
+    return {
+        "data": {
+            "children": [{"kind": "t3", "data": post} for post in posts],
+        }
+    }
+
+
+def _reddit_comments_payload(*comments: dict) -> list:
+    return [
+        {"kind": "Listing", "data": {"children": []}},
+        {
+            "kind": "Listing",
+            "data": {
+                "children": [
+                    {"kind": "t1", "data": comment} for comment in comments
+                ]
+                + [{"kind": "more", "data": {"count": 1}}],
+            },
+        },
+    ]
+
+
+def _http_status_error(status: int) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://www.reddit.com/r/startups/search.json")
+    response = httpx.Response(status_code=status, request=request)
+    return httpx.HTTPStatusError("http error", request=request, response=response)
+
+
+@pytest.mark.asyncio
+async def test_search_subreddits_parses_public_json_response(db_session):
+    payload = _reddit_search_payload(
+        _reddit_post_data(pid="post1", title="Title 1"),
+        _reddit_post_data(pid="post2", title="Title 2", score=10),
+    )
+
+    with patch(
+        "app.integrations.reddit._http_get_json",
+        new_callable=AsyncMock,
+        return_value=payload,
+    ):
+        posts = await search_subreddits(
+            db_session,
+            query="startup ideas",
+            subreddits=["startups"],
+            limit=25,
+        )
+        await db_session.commit()
+
+    assert len(posts) == 2
+    assert posts[0].id == "post1"
+    assert posts[0].title == "Title 1"
+    assert posts[0].url == "https://www.reddit.com/r/startups/comments/abc123/test/"
+    assert posts[0].subreddit_name == "startups"
+
+
+@pytest.mark.asyncio
+async def test_fetch_post_comments_parses_two_element_response(db_session):
+    payload = _reddit_comments_payload(
+        {
+            "id": "c1",
+            "body": "Good point",
+            "score": 5,
+            "created_utc": 1_700_001_000.0,
+        },
+        {
+            "id": "c2",
+            "body": "Agree",
+            "score": 3,
+            "created_utc": 1_700_002_000.0,
+        },
+    )
+
+    with patch(
+        "app.integrations.reddit._http_get_json",
+        new_callable=AsyncMock,
+        return_value=payload,
+    ):
+        comments = await fetch_post_comments(db_session, post_id="abc123", limit=25)
+        await db_session.commit()
+
+    assert len(comments) == 2
+    assert comments[0].id == "c1"
+    assert comments[1].body == "Agree"
+
+
+@pytest.mark.asyncio
+async def test_search_subreddits_404_raises_specific_exception(db_session):
+    pre_ids = await _reddit_external_api_ids_before(db_session)
+    with patch(
+        "app.integrations.reddit._http_get_json",
+        new_callable=AsyncMock,
+        side_effect=RedditNotFoundException("reddit HTTP 404", status_code=404),
+    ):
+        with pytest.raises(RedditNotFoundException):
+            await search_subreddits(
+                db_session,
+                query="fail",
+                subreddits=["nonexistent"],
+            )
+        await db_session.commit()
+
+    stmt = select(ExternalAPICall).where(
+        ExternalAPICall.provider == "reddit",
+        ExternalAPICall.operation == "search_subreddits",
+    )
+    if pre_ids:
+        stmt = stmt.where(~ExternalAPICall.id.in_(pre_ids))
+    rows = (await db_session.execute(stmt)).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].success is False
+    for row in rows:
+        await db_session.delete(row)
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_search_subreddits_429_retries_and_logs(db_session):
+    payload = _reddit_search_payload(_reddit_post_data(pid="post1"))
+    call_count = 0
+
+    async def _flaky(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count < 2:
+            raise _http_status_error(429)
+        return payload
+
+    with (
+        patch("app.reliability.retry.asyncio.sleep", new_callable=AsyncMock),
+        patch("app.integrations.reddit._http_get_json", side_effect=_flaky),
+    ):
+        posts = await search_subreddits(
+            db_session,
+            query="pricing",
+            subreddits=["startups"],
+        )
+        await db_session.commit()
+
+    assert len(posts) == 1
+    assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_reddit_user_agent_sent_on_every_request(db_session):
+    settings = get_settings()
+    mock_client = MagicMock()
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = _reddit_search_payload(_reddit_post_data())
+    mock_client.get = AsyncMock(return_value=mock_response)
+    mock_client.headers = {"User-Agent": settings.reddit_user_agent}
+
+    with patch("app.integrations.reddit._get_http_client", return_value=mock_client):
+        await search_subreddits(db_session, query="test", subreddits=["startups"])
+        await db_session.commit()
+
+    mock_client.get.assert_awaited()
+    assert mock_client.headers["User-Agent"] == settings.reddit_user_agent
+
+
+@pytest.mark.asyncio
+async def test_ExternalAPICall_persisted_with_reddit_provider_zero_cost(db_session):
+    pre_ids = await _reddit_external_api_ids_before(db_session)
+    payload = _reddit_search_payload(_reddit_post_data())
+
+    with patch(
+        "app.integrations.reddit._http_get_json",
+        new_callable=AsyncMock,
+        return_value=payload,
+    ):
+        await search_subreddits(db_session, query="test", subreddits=["startups"])
+        await db_session.commit()
+
+    stmt = select(ExternalAPICall).where(
+        ExternalAPICall.provider == "reddit",
+        ExternalAPICall.operation == "search_subreddits",
+        ExternalAPICall.success.is_(True),
+    )
+    if pre_ids:
+        stmt = stmt.where(~ExternalAPICall.id.in_(pre_ids))
+    rows = (await db_session.execute(stmt)).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].operation == "search_subreddits"
+    assert rows[0].success is True
+    assert rows[0].cost_usd == Decimal("0")
+    for row in rows:
+        await db_session.delete(row)
+    await db_session.commit()
+
+
+@pytest.mark.asyncio
+async def test_reddit_fetch_post_comments_failure_logs_row(db_session):
+    pre_ids = await _reddit_external_api_ids_before(db_session)
+    with patch(
+        "app.integrations.reddit._http_get_json",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("reddit down"),
+    ):
+        with pytest.raises(RuntimeError, match="reddit down"):
+            await fetch_post_comments(db_session, post_id="abc123")
+        await db_session.commit()
+
+    stmt = select(ExternalAPICall).where(
+        ExternalAPICall.provider == "reddit",
+        ExternalAPICall.operation == "fetch_post_comments",
+    )
+    if pre_ids:
+        stmt = stmt.where(~ExternalAPICall.id.in_(pre_ids))
+    rows = (await db_session.execute(stmt)).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].success is False
+    for row in rows:
+        await db_session.delete(row)
+    await db_session.commit()
 
 
 async def _tavily_external_api_ids_before(session: AsyncSession) -> set[UUID]:
     stmt = select(ExternalAPICall.id).where(ExternalAPICall.provider == "tavily")
+    return set((await session.execute(stmt)).scalars().all())
+
+
+async def _reddit_external_api_ids_before(session: AsyncSession) -> set[UUID]:
+    stmt = select(ExternalAPICall.id).where(ExternalAPICall.provider == "reddit")
     return set((await session.execute(stmt)).scalars().all())
 
 
@@ -197,127 +414,3 @@ async def test_tavily_search_failure_logs_zero_cost_row(db_session):
     await db_session.commit()
 
 
-# ===========================================================================
-# Reddit tests
-# ===========================================================================
-
-
-@pytest.mark.asyncio
-async def test_reddit_search_subreddits_success(db_session):
-    """Successful Reddit search writes one ExternalAPICall row with $0 cost."""
-    fake_submissions = [
-        _make_praw_submission(sid="post1", title="Title 1"),
-        _make_praw_submission(sid="post2", title="Title 2"),
-    ]
-
-    fake_subreddit = MagicMock()
-    fake_subreddit.search = MagicMock(return_value=iter(fake_submissions))
-
-    fake_reddit = MagicMock()
-    fake_reddit.subreddit = MagicMock(return_value=fake_subreddit)
-
-    with patch("app.integrations.reddit._reddit", fake_reddit):
-        posts = await search_subreddits(
-            db_session,
-            query="startup ideas",
-            subreddits=["startups", "Entrepreneur"],
-        )
-        await db_session.commit()
-
-    assert len(posts) == 2
-    assert all(isinstance(p, RedditPost) for p in posts)
-    assert posts[0].id == "post1"
-    assert posts[0].title == "Title 1"
-
-    stmt = select(ExternalAPICall).where(ExternalAPICall.provider == "reddit")
-    rows = (await db_session.execute(stmt)).scalars().all()
-    assert len(rows) == 1
-    assert rows[0].operation == "search_subreddits"
-    assert rows[0].success is True
-    assert rows[0].cost_usd == Decimal("0")
-    for row in rows:
-        await db_session.delete(row)
-    await db_session.commit()
-
-
-@pytest.mark.asyncio
-async def test_reddit_search_subreddits_failure_logs_row(db_session):
-    """When PRAW raises, logs a failure row and re-raises."""
-    fake_reddit = MagicMock()
-    fake_reddit.subreddit = MagicMock(side_effect=Exception("praw error"))
-
-    with patch("app.integrations.reddit._reddit", fake_reddit):
-        with pytest.raises(Exception, match="praw error"):
-            await search_subreddits(
-                db_session,
-                query="fail",
-                subreddits=["startups"],
-            )
-        await db_session.commit()
-
-    stmt = select(ExternalAPICall).where(ExternalAPICall.provider == "reddit")
-    rows = (await db_session.execute(stmt)).scalars().all()
-    assert len(rows) == 1
-    assert rows[0].success is False
-    assert rows[0].cost_usd == Decimal("0")
-    for row in rows:
-        await db_session.delete(row)
-    await db_session.commit()
-
-
-@pytest.mark.asyncio
-async def test_reddit_fetch_post_comments_success(db_session):
-    """Successful comment fetch writes one ExternalAPICall row."""
-    fake_comments = [
-        _make_praw_comment(cid="c1", body="Good point"),
-        _make_praw_comment(cid="c2", body="Agree"),
-    ]
-
-    fake_submission = MagicMock()
-    fake_submission.comments.replace_more = MagicMock()
-    fake_submission.comments.list = MagicMock(return_value=fake_comments)
-
-    fake_reddit = MagicMock()
-    fake_reddit.submission = MagicMock(return_value=fake_submission)
-
-    with patch("app.integrations.reddit._reddit", fake_reddit):
-        comments = await fetch_post_comments(db_session, post_id="abc123", limit=25)
-        await db_session.commit()
-
-    assert len(comments) == 2
-    assert all(isinstance(c, RedditComment) for c in comments)
-    assert comments[0].id == "c1"
-
-    stmt = select(ExternalAPICall).where(
-        ExternalAPICall.provider == "reddit",
-        ExternalAPICall.operation == "fetch_post_comments",
-    )
-    rows = (await db_session.execute(stmt)).scalars().all()
-    assert len(rows) == 1
-    assert rows[0].success is True
-    for row in rows:
-        await db_session.delete(row)
-    await db_session.commit()
-
-
-@pytest.mark.asyncio
-async def test_reddit_fetch_post_comments_failure_logs_row(db_session):
-    """When PRAW raises during comment fetch, logs failure and re-raises."""
-    fake_reddit = MagicMock()
-    fake_reddit.submission = MagicMock(side_effect=Exception("reddit down"))
-
-    with patch("app.integrations.reddit._reddit", fake_reddit):
-        with pytest.raises(Exception, match="reddit down"):
-            await fetch_post_comments(db_session, post_id="abc123")
-        await db_session.commit()
-
-    stmt = select(ExternalAPICall).where(
-        ExternalAPICall.provider == "reddit",
-        ExternalAPICall.operation == "fetch_post_comments",
-    )
-    rows = (await db_session.execute(stmt)).scalars().all()
-    assert len(rows) == 1
-    assert rows[0].success is False
-    for row in rows:
-        await db_session.delete(row)
-    await db_session.commit()
