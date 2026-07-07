@@ -5,8 +5,8 @@ import { notFound } from "next/navigation";
 import { PublishedLandingPage } from "@/components/published/PublishedLandingPage";
 import { fetchPublishedPage } from "@/lib/published-page";
 
-/** ISR fallback window in production; dev uses immediate refresh. */
-export const revalidate = process.env.NODE_ENV === "development" ? 0 : 60;
+/** ISR fallback window (seconds). Must be a static literal — Next.js rejects conditionals here. */
+export const revalidate = 60;
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
