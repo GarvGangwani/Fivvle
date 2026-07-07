@@ -13,8 +13,20 @@ const isDev = process.env.NODE_ENV !== "production";
 //    opens a WebSocket to itself for HMR, and the app calls the FastAPI backend
 //    at localhost:8000 during local development. Neither origin exists in
 //    production, so both are dev-only allowlist entries.
-//    TODO: Once the production API domain is confirmed (e.g. https://api.fivvle.io),
-//    add it to the production connect-src below.
+// Production connect-src includes NEXT_PUBLIC_API_BASE_URL when set at build time.
+
+function apiConnectSrc() {
+  const raw = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  if (!raw) return "";
+  try {
+    const { protocol, host } = new URL(raw);
+    return `${protocol}//${host}`;
+  } catch {
+    return "";
+  }
+}
+
+const productionApiConnectSrc = apiConnectSrc();
 
 // Google Sign-In (Firebase popup/redirect) requires these origins in CSP.
 const googleAuthScriptSrc =
@@ -40,7 +52,7 @@ const csp = isDev
     "style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data: https: https://firebasestorage.googleapis.com; " +
     `frame-src 'self' ${googleAuthFrameSrc} ${razorpayFrameSrc}; ` +
-    `connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://*.firebaseio.com ${googleAuthConnectSrc}`;
+    `connect-src 'self'${productionApiConnectSrc ? ` ${productionApiConnectSrc}` : ""} https://*.googleapis.com https://*.firebaseapp.com https://*.firebaseio.com ${googleAuthConnectSrc}`;
 
 const securityHeaders = [
   { key: "Content-Security-Policy", value: csp },
