@@ -8,6 +8,7 @@ Design decisions:
 - verify_id_token is a thin wrapper so tests can patch one location.
 """
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -51,17 +52,21 @@ def init_firebase(settings: Settings) -> None:
     if _initialized:
         return
 
-    cred_path = _resolve_service_account_path(settings)
-    if not cred_path.is_file():
-        raise FileNotFoundError(
-            f"Firebase service account file not found: {cred_path}. "
-            "Set FIREBASE_SERVICE_ACCOUNT_PATH in backend/.env "
-            "(e.g. ./service-account.json). "
-            "If you use a Windows GOOGLE_APPLICATION_CREDENTIALS variable, "
-            "it no longer overrides Fivvle — use FIREBASE_SERVICE_ACCOUNT_PATH."
-        )
-
-    cred = credentials.Certificate(str(cred_path))
+    json_raw = settings.firebase_service_account_json.strip()
+    if json_raw:
+        cred = credentials.Certificate(json.loads(json_raw))
+    else:
+        cred_path = _resolve_service_account_path(settings)
+        if not cred_path.is_file():
+            raise FileNotFoundError(
+                f"Firebase service account file not found: {cred_path}. "
+                "Set FIREBASE_SERVICE_ACCOUNT_PATH in backend/.env "
+                "(e.g. ./service-account.json) or FIREBASE_SERVICE_ACCOUNT_JSON "
+                "for container deployments. "
+                "If you use a Windows GOOGLE_APPLICATION_CREDENTIALS variable, "
+                "it no longer overrides Fivvle — use FIREBASE_SERVICE_ACCOUNT_PATH."
+            )
+        cred = credentials.Certificate(str(cred_path))
     bucket = settings.firebase_storage_bucket.strip() or f"{settings.firebase_project_id}.appspot.com"
     try:
         firebase_admin.initialize_app(cred, {"storageBucket": bucket})
