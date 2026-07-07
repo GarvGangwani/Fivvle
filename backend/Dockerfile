@@ -24,7 +24,7 @@ COPY pyproject.toml ./
 # `uv.lock` is committed per project policy; until it exists locally, build without --frozen.
 COPY uv.lock* ./
 
-RUN --mount=type=cache,id=uv-cache,target=/root/.cache/uv \
+RUN --mount=type=cache,id=s/9d811e70-551a-41e1-b7d5-26882718dda6-/root/.cache/uv,target=/root/.cache/uv \
     if [ -f uv.lock ]; then uv sync --frozen --no-dev; else uv sync --no-dev; fi
 
 COPY app/ ./app/
