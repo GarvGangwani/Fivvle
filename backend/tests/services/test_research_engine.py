@@ -415,12 +415,14 @@ async def test_run_research_engine_forwards_experiment_id_to_all_phases() -> Non
 
     captured: dict[str, object] = {}
 
-    async def _mock_plan(db, refined_idea, experiment_id=None):
+    async def _mock_plan(db, refined_idea, experiment_id=None, targeting=None, **kwargs):
         captured["planner_exp_id"] = experiment_id
+        captured["planner_targeting"] = targeting
         return mock_plan
 
-    async def _mock_search(db, research_plan, experiment_id=None):
+    async def _mock_search(db, research_plan, experiment_id=None, refined_idea=None, targeting=None, **kwargs):
         captured["searcher_exp_id"] = experiment_id
+        captured["searcher_targeting"] = targeting
         return MergedSearchResults(tavily={}, trends=None)
 
     async def _mock_reader(*, experiment_id, **kwargs):

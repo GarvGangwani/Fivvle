@@ -30,7 +30,16 @@ def test_phase_display_contains_research_reading() -> None:
     assert len(label) > 0
 
 
-def test_phase_display_contains_research_reflecting_even_though_unreachable() -> None:
+def test_phase_order_contains_research_voices_between_reflecting_and_synthesizing() -> None:
+    order = rpm._RESEARCH_PHASE_ORDER
+    assert ExperimentStatus.RESEARCH_VOICES in order
+    i_refl = order.index(ExperimentStatus.RESEARCH_REFLECTING)
+    i_voices = order.index(ExperimentStatus.RESEARCH_VOICES)
+    i_synth = order.index(ExperimentStatus.RESEARCH_SYNTHESIZING)
+    assert i_refl < i_voices < i_synth
+
+
+def test_phase_display_contains_research_reflecting() -> None:
     label = rpm.PHASE_DISPLAY.get(ExperimentStatus.RESEARCH_REFLECTING)
     assert label is not None
     assert len(label) > 0

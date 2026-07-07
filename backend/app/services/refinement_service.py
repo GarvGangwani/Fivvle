@@ -40,7 +40,7 @@ from app.config import get_settings
 from app.db.models.experiment import Experiment
 from app.llm.prompts.refinement import (
     PROMPT_NAME,
-    PROMPT_NAME_V2_CHAT,
+    PROMPT_NAME_V5_CHAT,
     REFINEMENT_SYSTEM_PROMPT,
     REFINEMENT_V2_CHAT_SYSTEM_PROMPT,
     build_refinement_user_prompt,
@@ -51,6 +51,10 @@ from app.logging_config import get_logger
 from app.schemas.refinement import RefinedIdea, RefinementTurnDecision
 
 _logger = get_logger(__name__)
+
+REFINEMENT_CHAT_CACHE_BREAKPOINTS: list[llm_client.CacheBreakpoint] = [
+    llm_client.CacheBreakpoint(position="system_end", ttl="1h"),
+]
 
 # Model/provider defaults live in Settings (refinement_provider/refinement_model).
 # Beta ships Haiku across all phases; override via env without code changes.
@@ -299,7 +303,7 @@ async def run_turn(
         db,
         provider=settings.refinement_provider,
         model=settings.refinement_model,
-        prompt_name=PROMPT_NAME_V2_CHAT,
+        prompt_name=PROMPT_NAME_V5_CHAT,
         system=REFINEMENT_V2_CHAT_SYSTEM_PROMPT,
         user=user_prompt,
         response_model=RefinementTurnDecision,
@@ -308,6 +312,7 @@ async def run_turn(
         max_retries=6,
         experiment_id=experiment.id,
         phase="refinement_chat",
+        cache_breakpoints=REFINEMENT_CHAT_CACHE_BREAKPOINTS,
     )
 
     if parsed.decision == "clarify":
@@ -318,6 +323,21 @@ async def run_turn(
     elif parsed.decision == "finalize" and parsed.refined_idea is not None:
         experiment.refined_idea = parsed.refined_idea.model_dump()
         apply_llm_name_if_unset(experiment, parsed.refined_idea)
+        if parsed.targeting is not None:
+            if parsed.targeting.target_geography is not None:
+                experiment.target_geography = (
+                    parsed.targeting.target_geography.strip() or None
+                )
+            if parsed.targeting.audience_bracket is not None:
+                experiment.audience_bracket = (
+                    parsed.targeting.audience_bracket.strip() or None
+                )
+            if parsed.targeting.stage is not None:
+                experiment.stage = parsed.targeting.stage
+            if parsed.targeting.why_now is not None:
+                experiment.why_now = (
+                    parsed.targeting.why_now.strip() or None
+                )
 
     _logger.info(
         "refinement chat turn completed",
@@ -325,6 +345,13 @@ async def run_turn(
         decision=parsed.decision,
         clarifying_dimension=parsed.clarifying_dimension,
         refinement_count=experiment.refinement_count,
+        targeting_geography_present=(
+            parsed.targeting is not None
+            and parsed.targeting.target_geography is not None
+        ),
+        targeting_stage_present=(
+            parsed.targeting is not None and parsed.targeting.stage is not None
+        ),
         prompt_tokens=meta.prompt_tokens,
         completion_tokens=meta.completion_tokens,
         cost_usd=str(meta.cost_usd),

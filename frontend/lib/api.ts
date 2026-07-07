@@ -22,6 +22,11 @@ import type {
   ValidationReport,
   WaitlistSignupsResponse,
 } from "./types";
+import type {
+  GenerateLandingPageV2Request,
+  GenerateLandingPageV2Response,
+  LandingPageV2GenerationStatus,
+} from "./landing-page-v2-types";
 
 const API_BASE = (
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
@@ -391,6 +396,49 @@ export async function generateLandingPage(
     {
       method: "POST",
       body: options,
+    },
+  );
+}
+
+export async function getLandingPageV2(
+  experimentId: string,
+): Promise<LandingPageV2GenerationStatus> {
+  return apiFetch<LandingPageV2GenerationStatus>(
+    `/experiments/${experimentId}/landing-page-v2`,
+  );
+}
+
+export async function generateLandingPageV2(
+  experimentId: string,
+  body: GenerateLandingPageV2Request = {},
+): Promise<GenerateLandingPageV2Response> {
+  return apiFetch<GenerateLandingPageV2Response>(
+    `/experiments/${experimentId}/landing-page-v2/generate`,
+    {
+      method: "POST",
+      body,
+    },
+  );
+}
+
+/** Canonical runtime API (same backend, preferred route name). */
+export async function getLandingPageRuntime(
+  experimentId: string,
+): Promise<LandingPageV2GenerationStatus> {
+  return apiFetch<LandingPageV2GenerationStatus>(
+    `/experiments/${experimentId}/landing-page-runtime`,
+  );
+}
+
+export async function generateLandingPageRuntime(
+  experimentId: string,
+  body: GenerateLandingPageV2Request = {},
+): Promise<GenerateLandingPageV2Response> {
+  return apiFetch<GenerateLandingPageV2Response>(
+    `/experiments/${experimentId}/landing-page-runtime/generate`,
+    {
+      method: "POST",
+      body,
     },
   );
 }

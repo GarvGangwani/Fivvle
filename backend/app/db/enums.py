@@ -10,6 +10,14 @@ new states to be added without Postgres-level ALTER TYPE migrations.
 from enum import StrEnum
 
 
+class ExperimentStage(StrEnum):
+    """Founder-declared product lifecycle stage for targeting (nullable on Experiment)."""
+
+    IDEA = "idea"
+    BUILDING = "building"
+    LAUNCHED = "launched"
+
+
 class ExperimentStatus(StrEnum):
     """Matches ARCHITECTURE.md state machine exactly — 20 states total.
 
@@ -36,6 +44,7 @@ class ExperimentStatus(StrEnum):
     RESEARCH_SEARCHING = "RESEARCH_SEARCHING"
     RESEARCH_READING = "RESEARCH_READING"
     RESEARCH_REFLECTING = "RESEARCH_REFLECTING"
+    RESEARCH_VOICES = "RESEARCH_VOICES"
     RESEARCH_SYNTHESIZING = "RESEARCH_SYNTHESIZING"
     RESEARCH_READY = "RESEARCH_READY"
     RESEARCH_FAILED = "RESEARCH_FAILED"

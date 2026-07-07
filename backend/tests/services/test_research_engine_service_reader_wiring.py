@@ -19,6 +19,7 @@ from app.db.enums import ExperimentStatus
 from app.schemas.planner import ResearchPlan, ResearchQuestion
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.schemas.search import MergedSearchResults
+from app.schemas.voices import VoicesOutput
 from app.services.reader_service import ReaderTotalFailure
 from app.services.research_engine_service import run_research_engine_pipeline
 from tests.routers.test_confirm_and_research_status import (
@@ -204,6 +205,7 @@ def test_orchestrator_transitions_to_research_reflecting_after_reader(
         ExperimentStatus.RESEARCH_SEARCHING,
         ExperimentStatus.RESEARCH_READING,
         ExperimentStatus.RESEARCH_REFLECTING,
+        ExperimentStatus.RESEARCH_VOICES,
         ExperimentStatus.RESEARCH_SYNTHESIZING,
         ExperimentStatus.RESEARCH_READY,
     ]
@@ -232,6 +234,12 @@ def test_orchestrator_transitions_to_research_reflecting_after_reader(
             patch(
                 "app.services.reflector_service.execute_reflector",
                 AsyncMock(side_effect=_reflector_passthrough),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.voices_service.execute_voices",
+                AsyncMock(return_value=VoicesOutput(atoms=[])),
             )
         )
         stack.enter_context(

@@ -16,7 +16,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.enums import ExperimentStatus
+from app.db.enums import ExperimentStage, ExperimentStatus
 from app.schemas.refinement import RefinedIdea
 
 
@@ -81,6 +81,10 @@ class ExperimentResponse(BaseModel):
     name: str | None
     raw_idea: str
     refined_idea: RefinedIdea | None
+    target_geography: str | None = None
+    audience_bracket: str | None = None
+    stage: ExperimentStage | None = None
+    why_now: str | None = None
     status: ExperimentStatus
     refinement_count: int
     created_at: datetime

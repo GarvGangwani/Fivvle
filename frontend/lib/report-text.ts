@@ -21,7 +21,9 @@ function cleanRiskBody(body: string): string {
   return body
     .trim()
     .replace(/^["']\s*/, "")
-    .replace(/\s*["']$/, "");
+    .replace(/\s*["']$/, "")
+    .replace(/^[,;:]+\s*/, "")
+    .trim();
 }
 
 function splitRiskVerdict(body: string): { verdict: string | null; detail: string } {
@@ -168,15 +170,20 @@ export function splitReadableParagraphs(text: string, maxChars = 380): string[] 
     return [trimmed];
   }
 
-  const sentences =
-    trimmed.match(/[^.!?]+[.!?]+(?:\s+|$)|[^.!?]+$/g)?.map((s) => s.trim()) ??
-    [trimmed];
+  const sentenceBoundary = /(?<=[.!?])\s+(?=[A-Z("'\u201C\u2018])/g;
+  const sentences = trimmed
+    .split(sentenceBoundary)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (sentences.length === 0) {
+    return [trimmed];
+  }
 
   const paragraphs: string[] = [];
   let buffer = "";
 
   for (const sentence of sentences) {
-    if (!sentence) continue;
     const candidate = buffer ? `${buffer} ${sentence}` : sentence;
     if (candidate.length > maxChars && buffer) {
       paragraphs.push(buffer);

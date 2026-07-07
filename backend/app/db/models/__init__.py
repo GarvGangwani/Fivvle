@@ -13,10 +13,11 @@ from app.db.models.chat_thread import ChatThread
 from app.db.models.coupon import Coupon
 from app.db.models.coupon_redemption import CouponRedemption
 from app.db.models.experiment import Experiment
-from app.db.models.refinement_idempotency import RefinementIdempotency
+from app.db.models.subreddit_selection_hint import SubredditSelectionHint
 from app.db.models.external_api_call import ExternalAPICall
 from app.db.models.insight_report import InsightReport
 from app.db.models.landing_page import LandingPage
+from app.db.models.landing_page_v2 import LandingPageV2Spec
 from app.db.models.llm_call import LLMCall
 from app.db.models.page_view import PageView
 from app.db.models.payment_order import PaymentOrder
@@ -34,10 +35,13 @@ __all__ = [
     "Coupon",
     "CouponRedemption",
     "Experiment",
+    "GeographySourceHint",
+    "SubredditSelectionHint",
     "RefinementIdempotency",
     "ExternalAPICall",
     "InsightReport",
     "LandingPage",
+    "LandingPageV2Spec",
     "LLMCall",
     "PageView",
     "PaymentOrder",

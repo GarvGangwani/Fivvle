@@ -169,6 +169,7 @@ _RESEARCH_ACTIVE_STATUSES: frozenset[ExperimentStatus] = frozenset(
         ExperimentStatus.RESEARCH_SEARCHING,
         ExperimentStatus.RESEARCH_READING,
         ExperimentStatus.RESEARCH_REFLECTING,
+        ExperimentStatus.RESEARCH_VOICES,
         ExperimentStatus.RESEARCH_SYNTHESIZING,
     }
 )

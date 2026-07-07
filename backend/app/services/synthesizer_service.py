@@ -47,12 +47,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import app.llm.client as llm_client
 from app.config import get_settings
 from app.llm.prompts.synthesizer import (
-    PROMPT_NAME_V3_CACHED,
+    PROMPT_NAME_V7_CACHED,
+    PROMPT_NAME_V8_CACHED,
     SYNTHESIZER_SYSTEM_PROMPT,
-    build_synthesizer_v3_user_prompt,
+    build_synthesizer_v8_user_prompt,
 )
 
-PROMPT_NAME = PROMPT_NAME_V3_CACHED
+PROMPT_NAME = PROMPT_NAME_V8_CACHED
 from app.logging_config import get_logger
 from app.schemas.validation_report import (
     Citation,
@@ -62,6 +63,7 @@ from app.schemas.validation_report import (
     ValidationReport,
     ValidationReportDraft,
 )
+from app.schemas.business_construction import BusinessConstructionArtifact
 from app.services.synthesizer_input import CitationHydrationEntry, SynthesizerInput
 
 _logger = get_logger(__name__)
@@ -323,7 +325,7 @@ async def synthesize_report(
     else:
         breakpoints = cache_breakpoints  # type: ignore[assignment]
     use_cache = breakpoints is not None
-    user_prompt = build_synthesizer_v3_user_prompt(synth_input, for_cache=use_cache)
+    user_prompt = build_synthesizer_v8_user_prompt(synth_input, for_cache=use_cache)
     cache_breakpoints_used = len(breakpoints) if breakpoints else 0
 
     settings = get_settings()
@@ -347,6 +349,19 @@ async def synthesize_report(
     _assert_draft_citations_allowlisted(draft, allowed_urls, experiment_id)
 
     report = _hydrate_draft(draft, citation_hydration_index)
+
+    if (
+        synth_input.reasoning_output is not None
+        and synth_input.evidence_analysis is not None
+    ):
+        report = report.model_copy(
+            update={
+                "business_construction": BusinessConstructionArtifact(
+                    reasoning=synth_input.reasoning_output,
+                    evidence_analysis=synth_input.evidence_analysis,
+                )
+            }
+        )
 
     _logger.debug(
         "synthesizer field length distribution",

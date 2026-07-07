@@ -47,6 +47,9 @@ _PHASE_TO_CATEGORY: dict[str, CostCategory] = {
     "reader": CostCategory.COGNITIVE_VALIDATION,
     "reflector": CostCategory.COGNITIVE_VALIDATION,
     "synthesizer": CostCategory.COGNITIVE_VALIDATION,
+    "geography_hint": CostCategory.COGNITIVE_VALIDATION,
+    "voices_subreddit_selection": CostCategory.COGNITIVE_VALIDATION,
+    "voices_extraction": CostCategory.COGNITIVE_VALIDATION,
     # Landing page generation
     "landing_page": CostCategory.LANDING_PAGE,
     # Insight report

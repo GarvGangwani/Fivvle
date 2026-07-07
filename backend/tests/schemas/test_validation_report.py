@@ -24,7 +24,7 @@ Tests:
   18. Duplicate question_ids in questions_and_findings rejected
   19. extra="forbid" on Citation rejects unknown fields
   20. overall_recommendation only accepts valid literals
-  21. ValidationReport.competitors max 6 (not 10)
+  21. ValidationReport.competitors max 10
   22. FindingDraft: rejects empty citations, rejects >3, accepts valid URLs, rejects non-http
   23. CompetitorMentionDraft: rejects empty citations, rejects >2 citations
   24. ValidationReportDraft: 5-7 questions count, duplicate-id rejection
@@ -458,15 +458,21 @@ def test_finding_confidence_rationale_accepts_250_chars() -> None:
 
 
 def test_executive_summary_max_char_limit() -> None:
-    """executive_summary exceeding 2000 characters should raise ValidationError."""
+    """executive_summary exceeding 3000 characters should raise ValidationError."""
     base = _make_valid_report()
     with pytest.raises(ValidationError) as exc_info:
-        base.model_copy(update={"executive_summary": "x" * 2001})
         ValidationReport(
-            **{**base.model_dump(), "executive_summary": "x" * 2001}
+            **{**base.model_dump(), "executive_summary": "x" * 3001}
         )
     errors = exc_info.value.errors()
     assert any(e["loc"] == ("executive_summary",) for e in errors)
+
+
+def test_executive_summary_accepts_3000_chars() -> None:
+    """executive_summary at exactly 3000 characters should be accepted."""
+    base = _make_valid_report()
+    report = ValidationReport(**{**base.model_dump(), "executive_summary": "x" * 3000})
+    assert len(report.executive_summary) == 3000
 
 
 # ---------------------------------------------------------------------------
@@ -475,12 +481,21 @@ def test_executive_summary_max_char_limit() -> None:
 
 
 def test_recommendation_rationale_max_char_limit() -> None:
-    """recommendation_rationale exceeding 2000 characters should raise ValidationError."""
+    """recommendation_rationale exceeding 2800 characters should raise ValidationError."""
     base = _make_valid_report()
     with pytest.raises(ValidationError):
         ValidationReport(
-            **{**base.model_dump(), "recommendation_rationale": "x" * 2001}
+            **{**base.model_dump(), "recommendation_rationale": "x" * 2801}
         )
+
+
+def test_recommendation_rationale_accepts_2800_chars() -> None:
+    """recommendation_rationale at exactly 2800 characters should be accepted."""
+    base = _make_valid_report()
+    report = ValidationReport(
+        **{**base.model_dump(), "recommendation_rationale": "x" * 2800}
+    )
+    assert len(report.recommendation_rationale) == 2800
 
 
 # ---------------------------------------------------------------------------
@@ -489,12 +504,19 @@ def test_recommendation_rationale_max_char_limit() -> None:
 
 
 def test_risks_assessment_max_char_limit() -> None:
-    """risks_assessment exceeding 2500 characters should raise ValidationError."""
+    """risks_assessment exceeding 3500 characters should raise ValidationError."""
     base = _make_valid_report()
     with pytest.raises(ValidationError):
         ValidationReport(
-            **{**base.model_dump(), "risks_assessment": "x" * 2501}
+            **{**base.model_dump(), "risks_assessment": "x" * 3501}
         )
+
+
+def test_risks_assessment_accepts_3500_chars() -> None:
+    """risks_assessment at exactly 3500 characters should be accepted."""
+    base = _make_valid_report()
+    report = ValidationReport(**{**base.model_dump(), "risks_assessment": "x" * 3500})
+    assert len(report.risks_assessment) == 3500
 
 
 # ---------------------------------------------------------------------------
@@ -503,12 +525,42 @@ def test_risks_assessment_max_char_limit() -> None:
 
 
 def test_research_limitations_max_char_limit() -> None:
-    """research_limitations exceeding 800 characters should raise ValidationError."""
+    """research_limitations exceeding 1200 characters should raise ValidationError."""
     base = _make_valid_report()
     with pytest.raises(ValidationError):
         ValidationReport(
-            **{**base.model_dump(), "research_limitations": "x" * 801}
+            **{**base.model_dump(), "research_limitations": "x" * 1201}
         )
+
+
+def test_research_limitations_accepts_1200_chars() -> None:
+    """research_limitations at exactly 1200 characters should be accepted."""
+    base = _make_valid_report()
+    report = ValidationReport(
+        **{**base.model_dump(), "research_limitations": "x" * 1200}
+    )
+    assert len(report.research_limitations) == 1200
+
+
+# ---------------------------------------------------------------------------
+# 15b. ValidationReport.market_signals max char constraint
+# ---------------------------------------------------------------------------
+
+
+def test_market_signals_max_char_limit() -> None:
+    """market_signals exceeding 2400 characters should raise ValidationError."""
+    base = _make_valid_report()
+    with pytest.raises(ValidationError) as exc_info:
+        ValidationReport(**{**base.model_dump(), "market_signals": "x" * 2401})
+    errors = exc_info.value.errors()
+    assert any(e["loc"] == ("market_signals",) for e in errors)
+
+
+def test_market_signals_accepts_2400_chars() -> None:
+    """market_signals at exactly 2400 characters should be accepted."""
+    base = _make_valid_report()
+    report = ValidationReport(**{**base.model_dump(), "market_signals": "x" * 2400})
+    assert len(report.market_signals) == 2400
 
 
 # ---------------------------------------------------------------------------
@@ -607,30 +659,30 @@ def test_overall_recommendation_rejects_invalid_literals(bad_rec: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 21. ValidationReport.competitors max 6 (tightened from 10 in B2.3-fix)
+# 21. ValidationReport.competitors max 10
 # ---------------------------------------------------------------------------
 
 
-def test_validation_report_rejects_more_than_six_competitors() -> None:
-    """ValidationReport with 7 competitors should raise ValidationError (max_length=6)."""
-    seven_competitors = [_make_competitor() for _ in range(7)]
+def test_validation_report_rejects_more_than_ten_competitors() -> None:
+    """ValidationReport with 11 competitors should raise ValidationError (max_length=10)."""
+    eleven_competitors = [_make_competitor() for _ in range(11)]
     base = _make_valid_report()
     with pytest.raises(ValidationError) as exc_info:
         ValidationReport(**{**base.model_dump(), "competitors": [
-            c.model_dump() for c in seven_competitors
+            c.model_dump() for c in eleven_competitors
         ]})
     errors = exc_info.value.errors()
     assert any(e["loc"] == ("competitors",) for e in errors)
 
 
-def test_validation_report_accepts_six_competitors() -> None:
-    """ValidationReport with exactly 6 competitors should be accepted."""
-    six_competitors = [_make_competitor() for _ in range(6)]
+def test_validation_report_accepts_ten_competitors() -> None:
+    """ValidationReport with exactly 10 competitors should be accepted."""
+    ten_competitors = [_make_competitor() for _ in range(10)]
     base = _make_valid_report()
     report = ValidationReport(**{**base.model_dump(), "competitors": [
-        c.model_dump() for c in six_competitors
+        c.model_dump() for c in ten_competitors
     ]})
-    assert len(report.competitors) == 6
+    assert len(report.competitors) == 10
 
 
 # ---------------------------------------------------------------------------
@@ -950,17 +1002,30 @@ def test_validation_report_draft_rejects_duplicate_question_ids() -> None:
     assert errors
 
 
-def test_validation_report_draft_rejects_more_than_six_competitors() -> None:
-    """ValidationReportDraft with 7 competitors should raise ValidationError (max=6)."""
-    seven_draft_competitors = [_make_competitor_mention_draft() for _ in range(7)]
+def test_validation_report_draft_rejects_more_than_ten_competitors() -> None:
+    """ValidationReportDraft with 11 competitors should raise ValidationError (max=10)."""
+    eleven_draft_competitors = [_make_competitor_mention_draft() for _ in range(11)]
     base = _make_valid_draft_report()
     with pytest.raises(ValidationError):
         ValidationReportDraft(
             **{
                 **base.model_dump(),
-                "competitors": [c.model_dump() for c in seven_draft_competitors],
+                "competitors": [c.model_dump() for c in eleven_draft_competitors],
             }
         )
+
+
+def test_validation_report_draft_accepts_ten_competitors() -> None:
+    """ValidationReportDraft with exactly 10 competitors should be accepted."""
+    ten_draft_competitors = [_make_competitor_mention_draft() for _ in range(10)]
+    base = _make_valid_draft_report()
+    draft = ValidationReportDraft(
+        **{
+            **base.model_dump(),
+            "competitors": [c.model_dump() for c in ten_draft_competitors],
+        }
+    )
+    assert len(draft.competitors) == 10
 
 
 def test_validation_report_draft_extra_fields_forbidden() -> None:
@@ -1082,7 +1147,7 @@ def test_realistic_high_quality_draft_report_parses() -> None:
         "validated with evidence rather than asserted without it."
     )
     # Fixture must exceed the old 1500-char limit to prove the new limit accommodates real output.
-    assert 1500 < len(executive_summary_full) <= 2000, (
+    assert 1500 < len(executive_summary_full) <= 3000, (
         f"executive_summary fixture must exceed old 1500-char limit: {len(executive_summary_full)}"
     )
 
@@ -1112,7 +1177,7 @@ def test_realistic_high_quality_draft_report_parses() -> None:
         "indicates ongoing evaluation rather than a settled market with low switching intent."
     )
     # Fixture must exceed the old 1500-char limit to prove the new limit accommodates real output.
-    assert 1500 < len(risks_assessment_full) <= 2500, (
+    assert 1500 < len(risks_assessment_full) <= 3500, (
         f"risks_assessment fixture must exceed old 1500-char limit: {len(risks_assessment_full)}"
     )
 
@@ -1141,7 +1206,7 @@ def test_realistic_high_quality_draft_report_parses() -> None:
         "already covers adequately for the majority of buyers in this category."
     )
     # Fixture must exceed the old 1500-char limit to prove the new limit accommodates real output.
-    assert 1500 < len(recommendation_rationale_full) <= 2000, (
+    assert 1500 < len(recommendation_rationale_full) <= 2800, (
         f"recommendation_rationale fixture must exceed old 1500-char limit: "
         f"{len(recommendation_rationale_full)}"
     )
@@ -1159,7 +1224,7 @@ def test_realistic_high_quality_draft_report_parses() -> None:
         "existing solutions, signalling unsatisfied demand rather than a solved market."
     )
     # Fixture must exceed the old 600-char limit to prove regression protection.
-    assert 600 < len(market_signals_full) <= 1000, (
+    assert 600 < len(market_signals_full) <= 2400, (
         f"market_signals fixture must exceed old 600-char limit: {len(market_signals_full)}"
     )
 
@@ -1175,7 +1240,7 @@ def test_realistic_high_quality_draft_report_parses() -> None:
         "anecdote rather than a systematic survey."
     )
     # Fixture must exceed the old 500-char limit to prove regression protection.
-    assert 500 < len(research_limitations_full) <= 800, (
+    assert 500 < len(research_limitations_full) <= 1200, (
         f"research_limitations fixture must exceed old 500-char limit: {len(research_limitations_full)}"
     )
 
@@ -1234,3 +1299,71 @@ def test_realistic_high_quality_draft_report_parses() -> None:
     assert len(draft.questions_and_findings[0].findings[0].evidence_summary) > 400
     # executive_summary must exceed the old 1500-char limit.
     assert len(draft.executive_summary) > 1500
+
+
+# ---------------------------------------------------------------------------
+# 26. Draft/Final lockstep — bumped narrative field max_length values match
+# ---------------------------------------------------------------------------
+
+_BUMPED_NARRATIVE_FIELD_CAPS: dict[str, int] = {
+    "executive_summary": 3000,
+    "market_signals": 2400,
+    "risks_assessment": 3500,
+    "recommendation_rationale": 2800,
+    "research_limitations": 1200,
+    "voices": 2500,
+}
+
+
+def _schema_max_length(model: type, field_name: str) -> int:
+    props = model.model_json_schema()["properties"]
+    prop = props[field_name]
+    if "maxLength" in prop:
+        return int(prop["maxLength"])
+    for item in prop.get("anyOf", []):
+        if "maxLength" in item:
+            return int(item["maxLength"])
+    raise KeyError(f"{field_name} maxLength not in schema")
+
+
+def _schema_max_items(model: type, field_name: str) -> int:
+    props = model.model_json_schema()["properties"]
+    return int(props[field_name]["maxItems"])
+
+
+@pytest.mark.parametrize("field_name,expected_cap", list(_BUMPED_NARRATIVE_FIELD_CAPS.items()))
+def test_validation_report_draft_bumped_field_max_length(
+    field_name: str, expected_cap: int
+) -> None:
+    """ValidationReportDraft bumped narrative fields must match confirmed caps."""
+    assert _schema_max_length(ValidationReportDraft, field_name) == expected_cap
+
+
+@pytest.mark.parametrize("field_name,expected_cap", list(_BUMPED_NARRATIVE_FIELD_CAPS.items()))
+def test_validation_report_draft_bumped_field_rejects_over_cap(
+    field_name: str, expected_cap: int
+) -> None:
+    """ValidationReportDraft must reject strings one character over the new cap."""
+    base = _make_valid_draft_report()
+    with pytest.raises(ValidationError) as exc_info:
+        ValidationReportDraft(**{**base.model_dump(), field_name: "x" * (expected_cap + 1)})
+    errors = exc_info.value.errors()
+    assert any(e["loc"] == (field_name,) for e in errors)
+
+
+def test_validation_report_draft_and_final_narrative_caps_stay_in_lockstep() -> None:
+    """ValidationReportDraft and ValidationReport max_length must match on bumped fields."""
+    for field_name in _BUMPED_NARRATIVE_FIELD_CAPS:
+        draft_cap = _schema_max_length(ValidationReportDraft, field_name)
+        final_cap = _schema_max_length(ValidationReport, field_name)
+        assert draft_cap == final_cap, (
+            f"{field_name}: ValidationReportDraft max_length={draft_cap} != "
+            f"ValidationReport max_length={final_cap}"
+        )
+
+
+def test_validation_report_draft_and_final_competitors_cap_stay_in_lockstep() -> None:
+    """ValidationReportDraft and ValidationReport competitors list max must match."""
+    draft_cap = _schema_max_items(ValidationReportDraft, "competitors")
+    final_cap = _schema_max_items(ValidationReport, "competitors")
+    assert draft_cap == final_cap == 10

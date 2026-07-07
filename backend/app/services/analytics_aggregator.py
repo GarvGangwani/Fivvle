@@ -143,8 +143,8 @@ async def build_analytics_aggregate(
     else:
         unique_visitors = len(non_null_ips)
 
-    if unique_visitors > 0:
-        conversion_rate = _clamp01(total_signups / unique_visitors)
+    if total_page_views > 0:
+        conversion_rate = _clamp01(total_signups / total_page_views)
     else:
         conversion_rate = 0.0
 

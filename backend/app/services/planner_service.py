@@ -40,6 +40,7 @@ from app.llm.prompts.planner import (
 from app.logging_config import get_logger
 from app.schemas.planner import ResearchPlan
 from app.schemas.refinement import RefinedIdea
+from app.schemas.targeting import ExperimentTargeting
 
 _logger = get_logger(__name__)
 
@@ -72,6 +73,7 @@ async def plan_research(
     db: AsyncSession,
     refined_idea: RefinedIdea,
     experiment_id: UUID | None = None,
+    targeting: ExperimentTargeting | None = None,
     cache_breakpoints: list[llm_client.CacheBreakpoint] | None | object = _PLANNER_CACHE_BPS_DEFAULT,
 ) -> ResearchPlan:
     """Call Claude to produce a ResearchPlan from a validated RefinedIdea.
@@ -125,7 +127,9 @@ async def plan_research(
     use_cache = breakpoints is not None
     cache_breakpoints_used = len(breakpoints) if breakpoints else 0
 
-    user_prompt = build_planner_user_prompt(refined_idea, for_cache=use_cache)
+    user_prompt = build_planner_user_prompt(
+        refined_idea, targeting=targeting, for_cache=use_cache
+    )
 
     settings = get_settings()
 

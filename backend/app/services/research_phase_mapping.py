@@ -34,6 +34,7 @@ PHASE_DISPLAY: dict[ExperimentStatus, str | None] = {
     ExperimentStatus.RESEARCH_SEARCHING: "Searching across sources...",
     ExperimentStatus.RESEARCH_READING: "Reading and extracting evidence...",
     ExperimentStatus.RESEARCH_REFLECTING: "Evaluating evidence and refining searches...",
+    ExperimentStatus.RESEARCH_VOICES: "Gathering community voices from Reddit...",
     ExperimentStatus.RESEARCH_SYNTHESIZING: "Synthesizing the validation report...",
     # Terminal states — no phase label; frontend shows report or error screen.
     ExperimentStatus.RESEARCH_READY: None,
@@ -49,7 +50,7 @@ PHASE_DISPLAY: dict[ExperimentStatus, str | None] = {
 #
 # The ordering matches the B3 research pipeline state machine:
 #   RESEARCHING → RESEARCH_PLANNING → RESEARCH_SEARCHING
-#               → RESEARCH_READING → RESEARCH_REFLECTING
+#               → RESEARCH_READING → RESEARCH_REFLECTING → RESEARCH_VOICES
 #               → RESEARCH_SYNTHESIZING → RESEARCH_READY
 # ---------------------------------------------------------------------------
 
@@ -59,6 +60,7 @@ _RESEARCH_PHASE_ORDER: list[ExperimentStatus] = [
     ExperimentStatus.RESEARCH_SEARCHING,
     ExperimentStatus.RESEARCH_READING,
     ExperimentStatus.RESEARCH_REFLECTING,
+    ExperimentStatus.RESEARCH_VOICES,
     ExperimentStatus.RESEARCH_SYNTHESIZING,
     ExperimentStatus.RESEARCH_READY,
 ]

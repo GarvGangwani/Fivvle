@@ -16,6 +16,7 @@ from uuid import uuid4
 import pytest
 import structlog
 import structlog.testing
+from pydantic import ValidationError
 
 import app.services.reflector_service as reflector_mod
 from app.config import get_settings
@@ -26,10 +27,12 @@ from app.llm.prompts.reflector_query_refinement import (
     build_reflector_query_refinement_user_prompt,
     reflector_query_refinement_v1_legacy_flat_user_and_system,
 )
+from app.schemas.business_construction import EvidenceAtom
 from app.schemas.planner import ResearchPlan, ResearchQuestion
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.schemas.refinement import RefinedIdea
 from app.schemas.reflector import ReflectorPhaseSummary
+from app.services.evidence_atoms import evidence_atom_from_extracted
 from app.services.reflector_service import (
     MAX_QUESTIONS_PER_RUN,
     MAX_REFINED_QUERIES_PER_QUESTION,
@@ -40,6 +43,7 @@ from app.services.reflector_service import (
     _extract_domain_from_url,
     _merge_search_results,
     _refine_queries_for_question,
+    _zero_phase_summary,
     execute_reflector,
 )
 
@@ -1013,3 +1017,91 @@ async def test_reflector_falls_back_when_cache_breakpoints_none() -> None:
 
     assert captured["cache_breakpoints"] is None
     assert USER_CACHE_ZONE_BOUNDARY not in captured["user"]
+
+
+# ---------------------------------------------------------------------------
+# Evidence atom context truncation + finalize degrade guards
+# ---------------------------------------------------------------------------
+
+
+def test_evidence_atom_from_extracted_caps_context_at_400_chars() -> None:
+    question_text = "q" * 120
+    entities = ["e" * 100 for _ in range(6)]
+    evidence = ExtractedEvidence(
+        source_url="https://example.com/a",
+        relevance="high",
+        verbatim_quote=None,
+        paraphrase="paraphrase",
+        named_entities=entities,
+    )
+
+    atom = evidence_atom_from_extracted(
+        question_id="q1",
+        question_text=question_text,
+        index=0,
+        evidence=evidence,
+    )
+
+    assert isinstance(atom, EvidenceAtom)
+    assert len(atom.context) <= 400
+
+
+def _collect_atoms_validation_error(*_args: object, **_kwargs: object) -> None:
+    raise ValidationError.from_exception_data(
+        "EvidenceAtom",
+        [
+            {
+                "type": "string_too_long",
+                "loc": ("context",),
+                "msg": "String should have at most 400 characters",
+                "input": "x" * 500,
+                "ctx": {"max_length": 400},
+            }
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_execute_reflector_never_raises_when_finalize_collect_atoms_fails() -> (
+    None
+):
+    plan = _minimal_plan(("q1", "q2", "q3", "q4", "q5"))
+    outputs = {q.id: _make_reader_output(q.id, []) for q in plan.questions}
+    sr_in: dict[str, list[TavilyResult]] = {}
+    expected = _zero_phase_summary()
+
+    with patch(
+        "app.services.evidence_atoms.collect_evidence_atoms",
+        side_effect=_collect_atoms_validation_error,
+    ):
+        settings_disabled = MagicMock()
+        settings_disabled.reflector_max_refinement_waves = 0
+        ro_out, sr_out, summary = await execute_reflector(
+            experiment_id=uuid4(),
+            research_plan=plan,
+            reader_outputs=outputs,
+            search_results=sr_in,
+            db=MagicMock(spec=[]),
+            settings=settings_disabled,
+        )
+        assert ro_out == outputs
+        assert sr_out == sr_in
+        assert summary.model_dump() == expected.model_dump()
+
+        settings_active = MagicMock()
+        settings_active.reflector_max_refinement_waves = 2
+        with patch(
+            "app.services.reflector_service._evaluate_all_rules",
+            side_effect=RuntimeError("rules blew up"),
+        ):
+            ro_out, sr_out, summary = await execute_reflector(
+                experiment_id=uuid4(),
+                research_plan=plan,
+                reader_outputs=outputs,
+                search_results=sr_in,
+                db=MagicMock(spec=[]),
+                settings=settings_active,
+            )
+        assert ro_out is outputs
+        assert sr_out is sr_in
+        assert summary.model_dump() == expected.model_dump()

@@ -18,7 +18,7 @@ from app.integrations.tavily import TavilyResult
 from app.llm.client import USER_CACHE_ZONE_BOUNDARY
 from app.llm.prompts.synthesizer import (
     PROMPT_NAME_V2_CACHED,
-    PROMPT_NAME_V3_CACHED,
+    PROMPT_NAME_V7_CACHED,
     build_synthesizer_user_prompt,
     build_synthesizer_v3_user_prompt,
     synthesizer_v2_legacy_flat_user_and_system,
@@ -281,7 +281,7 @@ async def test_synthesize_report_calls_complete_structured_with_synthesizer_v3()
         )
 
     _, call_kwargs = mock_complete.call_args
-    assert call_kwargs["prompt_name"] == PROMPT_NAME_V3_CACHED
+    assert call_kwargs["prompt_name"] == PROMPT_NAME_V7_CACHED
     assert call_kwargs["prompt_name"] == PROMPT_NAME
     settings = get_settings()
     assert call_kwargs["provider"] == settings.synthesizer_provider
@@ -450,7 +450,7 @@ async def test_synthesize_report_emits_synthesizer_complete_info_log() -> None:
     ]
     assert len(complete_calls) == 1
     kwargs = complete_calls[0].kwargs
-    assert kwargs["prompt_name"] == PROMPT_NAME_V3_CACHED
+    assert kwargs["prompt_name"] == PROMPT_NAME_V7_CACHED
     assert kwargs["experiment_id"] == str(exp_id)
     assert kwargs["total_extracted_evidence_in_input"] == 5
     assert kwargs["finding_count"] == 5

@@ -36,6 +36,7 @@ from app.integrations.tavily import TavilyResult
 from app.schemas.reader import ExtractedEvidence, ReaderOutput
 from app.schemas.search import MergedSearchResults
 from app.schemas.reflector import ReflectorPhaseSummary
+from app.schemas.voices import VoicesOutput
 from app.services.research_engine_service import (
     _write_validation_report,
     run_research_engine_pipeline,
@@ -54,7 +55,11 @@ from tests.routers.test_confirm_and_research_status import (
 # ---------------------------------------------------------------------------
 
 
-def _run_pipeline(experiment_id_str: str) -> None:
+def _run_pipeline(
+    experiment_id_str: str,
+    *,
+    voices_side_effect: BaseException | None = None,
+) -> None:
     """Call run_research_engine_pipeline synchronously on a fresh event loop.
 
     Creates a dedicated async engine rather than reusing get_sessionmaker() so
@@ -66,11 +71,16 @@ def _run_pipeline(experiment_id_str: str) -> None:
     async def _go() -> None:
         engine = create_async_engine(get_settings().database_url, pool_size=1, max_overflow=0)
         sm = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+        if voices_side_effect is not None:
+            voices_mock: AsyncMock = AsyncMock(side_effect=voices_side_effect)
+        else:
+            voices_mock = AsyncMock(return_value=VoicesOutput(atoms=[]))
         try:
-            await run_research_engine_pipeline(
-                experiment_id=UUID(experiment_id_str),
-                sessionmaker=sm,
-            )
+            with patch("app.services.voices_service.execute_voices", voices_mock):
+                await run_research_engine_pipeline(
+                    experiment_id=UUID(experiment_id_str),
+                    sessionmaker=sm,
+                )
         finally:
             await engine.dispose()
 
@@ -634,6 +644,63 @@ async def test_write_validation_report_persists_reflection_loops_used() -> None:
         assert stored == 2
     finally:
         await engine.dispose()
+
+
+
+def test_voices_soft_fail_does_not_fail_pipeline(
+    client: TestClient,
+    mock_firebase: None,
+) -> None:
+    """Voices raise is caught; pipeline still reaches RESEARCH_READY."""
+    _sync_user(client)
+    exp_id = _create_refined_experiment(client)
+    _force_experiment_status(exp_id, ExperimentStatus.RESEARCHING)
+
+    mock_build = MagicMock(return_value=MagicMock())
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "app.services.planner_service.plan_research",
+                AsyncMock(return_value=_fake_research_plan()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.searcher_service.execute_search_plan",
+                AsyncMock(return_value=_merged_searcher_result()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reader_service.execute_reader",
+                AsyncMock(return_value=_fake_reader_outputs()),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.reflector_service.execute_reflector",
+                AsyncMock(side_effect=_reflector_identity),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_input.build_synthesizer_input",
+                mock_build,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.services.synthesizer_service.synthesize_report",
+                AsyncMock(return_value=_fake_report()),
+            )
+        )
+        _run_pipeline(exp_id, voices_side_effect=RuntimeError("voices boom"))
+
+    fields = _read_experiment_fields(exp_id)
+    assert fields["status"] == ExperimentStatus.RESEARCH_READY
+    assert mock_build.call_args.kwargs.get("voices_output") is not None
+    assert mock_build.call_args.kwargs["voices_output"].skipped_reason == "voices_service_raised"
 
 
 def test_orchestrator_calls_execute_reflector_between_reader_and_synthesizer(

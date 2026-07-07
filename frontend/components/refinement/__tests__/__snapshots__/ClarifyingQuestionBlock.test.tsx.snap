@@ -1,0 +1,144 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ClarifyingQuestionBlock > backward compat: no pastTurns keeps Previous disabled at first question 1`] = `
+<div>
+  <div
+    class="fv-msg-enter mx-auto w-full max-w-full lg:max-w-[42rem] "
+  >
+    <div
+      class="overflow-hidden rounded-xl border border-[var(--fv-border)] bg-[var(--fv-surface)]"
+    >
+      <div
+        class="border-b border-[var(--fv-border)] px-6 py-4 text-center"
+      >
+        <p
+          class="text-sm font-medium text-[var(--fv-text-muted)]"
+        >
+          1
+           /
+           
+          1
+        </p>
+      </div>
+      <div
+        class="space-y-6 px-6 py-6"
+      >
+        <div>
+          <h3
+            class="text-base font-semibold text-[var(--fv-text)]"
+          >
+            Q1. What is your go-to-market motion?
+          </h3>
+          <p
+            class="mt-1.5 text-xs text-[var(--fv-text-muted)]"
+          >
+            You can select multiple options — choose every answer that applies.
+          </p>
+        </div>
+        <ol
+          class="space-y-3"
+        >
+          <li>
+            <label
+              class="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--fv-border)] px-4 py-3 transition-colors hover:border-[var(--fv-accent)]/40 hover:bg-[var(--fv-accent)]/5 has-[:checked]:border-[var(--fv-accent)]/50 has-[:checked]:bg-[var(--fv-accent)]/5"
+            >
+              <input
+                class="mt-0.5 shrink-0 accent-[var(--fv-accent)]"
+                type="checkbox"
+              />
+              <span
+                class="text-sm leading-relaxed text-[var(--fv-text)]"
+              >
+                <span
+                  class="mr-2 font-medium text-[var(--fv-text-muted)]"
+                >
+                  1
+                  .
+                </span>
+                Product-led
+              </span>
+            </label>
+          </li>
+          <li>
+            <label
+              class="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--fv-border)] px-4 py-3 transition-colors hover:border-[var(--fv-accent)]/40 hover:bg-[var(--fv-accent)]/5 has-[:checked]:border-[var(--fv-accent)]/50 has-[:checked]:bg-[var(--fv-accent)]/5"
+            >
+              <input
+                class="mt-0.5 shrink-0 accent-[var(--fv-accent)]"
+                type="checkbox"
+              />
+              <span
+                class="text-sm leading-relaxed text-[var(--fv-text)]"
+              >
+                <span
+                  class="mr-2 font-medium text-[var(--fv-text-muted)]"
+                >
+                  2
+                  .
+                </span>
+                Sales-led
+              </span>
+            </label>
+          </li>
+          <li>
+            <label
+              class="flex cursor-pointer items-start gap-3 rounded-lg border border-[var(--fv-border)] px-4 py-3 transition-colors hover:border-[var(--fv-accent)]/40 hover:bg-[var(--fv-accent)]/5 has-[:checked]:border-[var(--fv-accent)]/50 has-[:checked]:bg-[var(--fv-accent)]/5"
+            >
+              <input
+                class="mt-0.5 shrink-0 accent-[var(--fv-accent)]"
+                type="checkbox"
+              />
+              <span
+                class="text-sm leading-relaxed text-[var(--fv-text)]"
+              >
+                <span
+                  class="mr-2 font-medium text-[var(--fv-text-muted)]"
+                >
+                  3
+                  .
+                </span>
+                Community
+              </span>
+            </label>
+          </li>
+          <li>
+            <label
+              class="flex flex-col gap-2 rounded-lg border border-[var(--fv-border)] px-4 py-3"
+            >
+              <span
+                class="text-sm font-medium text-[var(--fv-text)]"
+              >
+                4
+                . Other:
+              </span>
+              <input
+                class="fv-input w-full px-3 py-2 text-sm"
+                placeholder="Type your answer…"
+                type="text"
+                value=""
+              />
+            </label>
+          </li>
+        </ol>
+      </div>
+      <div
+        class="flex items-center justify-between gap-3 border-t border-[var(--fv-border)] px-6 py-4"
+      >
+        <button
+          class="fv-btn-ghost px-4 py-2 text-sm disabled:opacity-40"
+          disabled=""
+          type="button"
+        >
+          Previous
+        </button>
+        <button
+          class="fv-btn-primary px-5 py-2 text-sm disabled:opacity-50"
+          type="button"
+        >
+          Submit
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+`;

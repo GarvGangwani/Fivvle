@@ -244,6 +244,30 @@ export interface ClarifyingQuestionAnswer {
   otherText: string;
 }
 
+/**
+ * A completed clarifying-question turn from earlier in the thread, plus the
+ * user's answer to it and the message ID that carries that answer. Passed
+ * into ClarifyingQuestionBlock so the wizard can navigate backward across
+ * completed turns and let the founder edit any past answer.
+ */
+export interface PastClarifyingTurn {
+  /** The clarifying question the assistant asked in this past turn. */
+  question: ClarifyingQuestion;
+  /** The user's answer to it, in the same shape as current pending answers. */
+  answer: ClarifyingQuestionAnswer;
+  /**
+   * The message ID of the USER message that carries this answer. This is what
+   * we pass to editChatMessage when the founder saves an edit.
+   */
+  answerMessageId: string;
+  /**
+   * 1-based question number as displayed globally in the thread. Same
+   * numbering scheme ClarifyingQuestionBlock already uses for its current
+   * batch.
+   */
+  globalQuestionNumber: number;
+}
+
 export interface ChatHistoryMessage {
   id: string;
   role: ChatRole;

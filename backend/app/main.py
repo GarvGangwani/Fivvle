@@ -54,6 +54,7 @@ from app.routers.health import router as health_router
 from app.routers.public import router as public_router
 from app.routers.users import router as users_router
 from app.routers.wallet import router as wallet_router
+from app.routers.landing_page_v2 import router as landing_page_v2_router
 
 settings = get_settings()
 
@@ -217,6 +218,7 @@ app.include_router(health_router)
 app.include_router(public_router, prefix="", tags=["Public"])
 app.include_router(users_router)
 app.include_router(wallet_router)
+app.include_router(landing_page_v2_router)
 app.include_router(experiments_router)
 app.include_router(chat_router)
 app.include_router(admin_router)

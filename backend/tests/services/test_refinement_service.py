@@ -25,17 +25,21 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.enums import ExperimentStatus
+from app.db.enums import ExperimentStage, ExperimentStatus
 from app.db.models.experiment import Experiment
+from app.llm.client import USER_CACHE_ZONE_BOUNDARY, _anthropic_structured_system_and_messages
 from app.llm.prompts.refinement import (
-    PROMPT_NAME_V2_CHAT,
+    PROMPT_NAME_V5_CHAT,
+    REFINEMENT_V2_CHAT_SYSTEM_PROMPT,
     build_refinement_v2_chat_user_prompt,
 )
 from app.schemas.refinement import ClarifyingQuestion, RefinedIdea, RefinementTurnDecision
+from app.schemas.targeting import ExperimentTargeting
 from app.config import get_settings
 from app.services.experiment_service import create_experiment_with_refinement
 from app.services.refinement_service import (
     PROMPT_NAME,
+    REFINEMENT_CHAT_CACHE_BREAKPOINTS,
     refine_idea,
     run_turn,
 )
@@ -656,8 +660,67 @@ async def test_run_turn_hard_ceiling_prompt_includes_force_finalize_note(
 
     user_prompt: str = mock_complete.call_args.kwargs["user"]
     assert "Hard ceiling reached" in user_prompt
-    assert mock_complete.call_args.kwargs["prompt_name"] == PROMPT_NAME_V2_CHAT
+    assert mock_complete.call_args.kwargs["prompt_name"] == PROMPT_NAME_V5_CHAT
     assert mock_complete.call_args.kwargs["phase"] == "refinement_chat"
+
+
+@pytest.mark.asyncio
+async def test_run_turn_passes_cache_breakpoints_to_client(
+    valid_refined_idea: RefinedIdea,
+) -> None:
+    """Chat-mode refinement must cache the stable Zone A system prompt."""
+    db = AsyncMock(spec=AsyncSession)
+    experiment = _make_experiment_for_run_turn(refinement_count=1)
+    decision = _make_clarify_decision()
+    mock_meta = _make_mock_llm_result()
+    captured: dict = {}
+
+    async def capture_complete(*_a, **kw):
+        captured.update(kw)
+        return decision, mock_meta
+
+    with patch(
+        "app.services.refinement_service.llm_client.complete_structured",
+        AsyncMock(side_effect=capture_complete),
+    ):
+        await run_turn(
+            db=db,
+            experiment=experiment,
+            chat_history=[("user", "B2B invoicing SaaS")],
+            latest_message="Germany Mittelstand.",
+        )
+
+    assert captured["cache_breakpoints"] == REFINEMENT_CHAT_CACHE_BREAKPOINTS
+    assert captured["cache_breakpoints"][0].position == "system_end"
+    assert captured["cache_breakpoints"][0].ttl == "1h"
+    assert captured["system"] == REFINEMENT_V2_CHAT_SYSTEM_PROMPT
+    assert "SINGLE TOPIC PER QUESTION" in captured["system"]
+    assert USER_CACHE_ZONE_BOUNDARY not in captured["user"]
+
+
+def test_run_turn_cache_breakpoints_apply_ephemeral_to_zone_a_only() -> None:
+    """Zone A system block gets cache_control; per-turn user content does not."""
+    user_prompt = build_refinement_v2_chat_user_prompt(
+        chat_history=[("user", "fitness coaches")],
+        latest_message="CrossFit gyms in Austin.",
+        turn_count=1,
+        max_clarifying_turns=get_settings().refinement_max_clarifying_turns,
+        min_turns_before_finalize=get_settings().refinement_min_clarifying_turns_before_finalize,
+    )
+
+    sys_out, msgs = _anthropic_structured_system_and_messages(
+        system=REFINEMENT_V2_CHAT_SYSTEM_PROMPT,
+        user=user_prompt,
+        cache_breakpoints=REFINEMENT_CHAT_CACHE_BREAKPOINTS,
+    )
+
+    assert isinstance(sys_out, list)
+    assert len(sys_out) == 1
+    assert sys_out[0]["type"] == "text"
+    assert sys_out[0]["cache_control"] == {"type": "ephemeral", "ttl": "1h"}
+    assert "SINGLE TOPIC PER QUESTION" in sys_out[0]["text"]
+    assert msgs == [{"role": "user", "content": user_prompt}]
+    assert "cache_control" not in msgs[0]["content"]
 
 
 def test_refinement_turn_decision_clarify_requires_dimension() -> None:
@@ -731,3 +794,78 @@ def test_build_refinement_v2_chat_user_prompt_hard_ceiling_at_six() -> None:
     )
     assert "hard ceiling reached" in prompt.lower()
     assert "you must finalize" in prompt.lower()
+
+
+@pytest.mark.asyncio
+async def test_run_turn_finalize_with_targeting_sets_experiment_columns(
+    valid_refined_idea: RefinedIdea,
+) -> None:
+    db = AsyncMock(spec=AsyncSession)
+    experiment = _make_experiment_for_run_turn(refinement_count=3)
+    targeting = ExperimentTargeting(
+        target_geography="India",
+        audience_bracket="urban families",
+        stage=ExperimentStage.IDEA,
+        why_now="Regulatory window opening.",
+    )
+    decision = _make_finalize_decision(
+        refined_idea=valid_refined_idea,
+        targeting=targeting,
+    )
+    mock_meta = _make_mock_llm_result()
+
+    with patch(
+        "app.services.refinement_service.llm_client.complete_structured",
+        AsyncMock(return_value=(decision, mock_meta)),
+    ):
+        await run_turn(
+            db=db,
+            experiment=experiment,
+            chat_history=[("user", "India market idea")],
+            latest_message="Ready to research.",
+        )
+
+    assert experiment.target_geography == "India"
+    assert experiment.audience_bracket == "urban families"
+    assert experiment.stage == ExperimentStage.IDEA
+    assert experiment.why_now == "Regulatory window opening."
+
+
+@pytest.mark.asyncio
+async def test_run_turn_finalize_without_targeting_leaves_columns_none(
+    valid_refined_idea: RefinedIdea,
+) -> None:
+    db = AsyncMock(spec=AsyncSession)
+    experiment = _make_experiment_for_run_turn(refinement_count=3)
+    decision = _make_finalize_decision(
+        refined_idea=valid_refined_idea,
+        targeting=None,
+    )
+    mock_meta = _make_mock_llm_result()
+
+    with patch(
+        "app.services.refinement_service.llm_client.complete_structured",
+        AsyncMock(return_value=(decision, mock_meta)),
+    ):
+        await run_turn(
+            db=db,
+            experiment=experiment,
+            chat_history=[],
+            latest_message="Go.",
+        )
+
+    assert experiment.target_geography is None
+    assert experiment.audience_bracket is None
+    assert experiment.stage is None
+    assert experiment.why_now is None
+
+
+def test_refinement_turn_decision_clarify_rejects_targeting() -> None:
+    with pytest.raises(ValidationError):
+        RefinementTurnDecision(
+            decision="clarify",
+            assistant_message="Who is the target user?",
+            clarifying_dimension="audience",
+            clarifying_questions=_sample_clarifying_questions(),
+            targeting=ExperimentTargeting(target_geography="India"),
+        )
