@@ -1,0 +1,26 @@
+{
+  "startups": [
+    {
+      "title": "Founders struggle with scattered validation tools",
+      "url": "https://www.reddit.com/r/startups/comments/p1/founders_scattered_tools/",
+      "snippet": "I spent weeks jumping between spreadsheets and random research tabs.",
+      "date": "2024-01-15"
+    }
+  ],
+  "entrepreneur": [
+    {
+      "title": "What do you use to validate ideas?",
+      "url": "https://www.reddit.com/r/Entrepreneur/comments/p2/validate_ideas/",
+      "snippet": "Looking for a structured workflow before building an MVP.",
+      "date": "2024-01-20"
+    }
+  ],
+  "saas": [
+    {
+      "title": "Validation workflow for B2B SaaS",
+      "url": "https://www.reddit.com/r/SaaS/comments/p3/validation_workflow/",
+      "snippet": "We need one place to run research instead of five different tools.",
+      "date": "2024-02-01"
+    }
+  ]
+}

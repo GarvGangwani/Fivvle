@@ -65,6 +65,15 @@ class Settings(BaseSettings):
             "(e.g. 0.0075 on Project) for accurate admin dashboards."
         ),
     )
+    perplexity_api_key: str
+    perplexity_usd_per_search: Decimal = Field(
+        default=Decimal("0.005"),
+        description=(
+            "Fallback USD per Perplexity sonar request (low-context bucket). "
+            "Actual cost is read from usage.cost.total_cost when the response "
+            "includes it; this default applies only as a fallback."
+        ),
+    )
 
     # --- Reddit (read-only research) ---
     # DEPRECATED: PRAW OAuth is no longer used. Reddit disabled self-serve

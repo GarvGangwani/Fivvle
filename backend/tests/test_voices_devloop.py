@@ -16,7 +16,9 @@ def _voices_draft() -> VoicesExtractionDraft:
     return VoicesExtractionDraft(
         atoms=[
             VoicesEvidenceDraft(
-                source_url="https://www.reddit.com/r/startups/comments/p1/",
+                source_url=(
+                    "https://www.reddit.com/r/startups/comments/p1/founders_scattered_tools/"
+                ),
                 subreddit="startups",
                 kind="post",
                 verbatim_quote=(

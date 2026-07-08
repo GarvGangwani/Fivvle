@@ -59,6 +59,7 @@ _PHASE_TO_CATEGORY: dict[str, CostCategory] = {
 _EXTERNAL_PROVIDER_TO_CATEGORY: dict[str, CostCategory] = {
     "tavily": CostCategory.COGNITIVE_VALIDATION,
     "reddit": CostCategory.COGNITIVE_VALIDATION,
+    "perplexity": CostCategory.COGNITIVE_VALIDATION,
     "pytrends": CostCategory.COGNITIVE_VALIDATION,
     "ipwho": CostCategory.LANDING_PAGE,
 }

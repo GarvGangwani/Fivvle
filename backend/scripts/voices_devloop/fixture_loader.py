@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from app.integrations.perplexity import PerplexityResult
 from app.integrations.reddit import RedditComment, RedditPost
 from app.schemas.business_construction import (
     EvidenceAnalysisResult,
@@ -25,6 +26,10 @@ FIXTURES_ROOT = _PACKAGE_ROOT / "fixtures"
 
 def upstream_dir(name: str) -> Path:
     return FIXTURES_ROOT / f"upstream_{name}"
+
+
+def perplexity_dir(mode: str) -> Path:
+    return FIXTURES_ROOT / f"perplexity_{mode}"
 
 
 def reddit_dir(mode: str) -> Path:
@@ -73,6 +78,14 @@ def load_upstream(name: str) -> dict[str, Any]:
         "targeting": targeting,
         "evidence_analysis": evidence_analysis,
         "reasoning_output": reasoning_output,
+    }
+
+
+def load_perplexity_results_by_subreddit(mode: str) -> dict[str, list[PerplexityResult]]:
+    raw = _read_json(perplexity_dir(mode) / "results_by_subreddit.json")
+    return {
+        sub: [PerplexityResult(**item) for item in items]
+        for sub, items in raw.items()
     }
 
 

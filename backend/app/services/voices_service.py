@@ -1,4 +1,4 @@
-"""Voices phase — Reddit-based qualitative evidence extraction.
+"""Voices phase — Perplexity-scoped Reddit qualitative evidence extraction.
 
 Public API: execute_voices(...) → VoicesOutput. Never raises.
 """
@@ -12,7 +12,7 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import app.integrations.reddit as reddit_integration
+import app.integrations.perplexity as perplexity_integration
 import app.llm.client as llm_client
 from app.config import Settings
 from app.llm.prompts.voices import (
@@ -50,9 +50,9 @@ class _FetchedPost:
     subreddit: str
     title: str
     selftext: str
-    score: int
-    created_utc: float
-    post_id: str
+    score: int | None = None
+    created_utc: float | None = None
+    post_id: str | None = None
     comments: list[_FetchedComment] = field(default_factory=list)
 
 
@@ -62,37 +62,52 @@ def _derive_topic(refined_idea: RefinedIdea) -> str:
     return topic[:300]
 
 
-def _post_permalink(subreddit: str, post_id: str) -> str:
-    return f"https://www.reddit.com/r/{subreddit}/comments/{post_id}/"
 
-
-def _comment_permalink(subreddit: str, post_id: str, comment_id: str) -> str:
-    return (
-        f"https://www.reddit.com/r/{subreddit}/comments/{post_id}/_/"
-        f"comment/{comment_id}/"
-    )
-
-
-def _is_post_too_old(created_utc: float, max_age_days: int) -> bool:
+def _is_post_too_old(created_utc: float | None, max_age_days: int) -> bool:
+    if created_utc is None:
+        return False
     cutoff = time.time() - (max_age_days * 86400)
     return created_utc < cutoff
+
+
+def _exc_http_status_code(exc: BaseException) -> int | None:
+    """Extract HTTP status from integration errors or httpx response errors."""
+    status_code: int | None = getattr(exc, "status_code", None)
+    if status_code is None:
+        response_obj = getattr(exc, "response", None)
+        if response_obj is not None:
+            status_code = getattr(response_obj, "status_code", None)
+    return status_code
 
 
 def _serialize_reddit_content(posts: list[_FetchedPost]) -> str:
     lines: list[str] = []
     for post in posts:
         body = f"{post.title}\n{post.selftext}".strip()
+        attrs = [
+            f'subreddit="{post.subreddit}"',
+            f'url="{post.url}"',
+            'kind="post"',
+        ]
+        if post.score is not None:
+            attrs.append(f'score="{post.score}"')
+        if post.created_utc is not None:
+            attrs.append(f'created_utc="{post.created_utc}"')
         lines.append(
-            f'<post subreddit="{post.subreddit}" url="{post.url}" '
-            f'kind="post" score="{post.score}" created_utc="{post.created_utc}">\n'
-            f"{body}\n</post>"
+            f"<post {' '.join(attrs)}>\n{body}\n</post>"
         )
         for comment in post.comments:
+            comment_attrs = [
+                f'subreddit="{comment.subreddit}"',
+                f'url="{comment.url}"',
+                'kind="comment"',
+            ]
+            if comment.score is not None:
+                comment_attrs.append(f'score="{comment.score}"')
+            if comment.created_utc is not None:
+                comment_attrs.append(f'created_utc="{comment.created_utc}"')
             lines.append(
-                f'<comment subreddit="{comment.subreddit}" url="{comment.url}" '
-                f'kind="comment" score="{comment.score}" '
-                f'created_utc="{comment.created_utc}">\n'
-                f"{comment.body}\n</comment>"
+                f"<comment {' '.join(comment_attrs)}>\n{comment.body}\n</comment>"
             )
     return "\n\n".join(lines)
 
@@ -137,66 +152,42 @@ async def _fetch_subreddit_posts(
     subreddit: str,
     limit: int,
     experiment_id: UUID,
-    comments_per_thread: int,
+    comments_per_thread: int,  # noqa: ARG001 — retained for call-site stability
     max_age_days: int,
     semaphore: asyncio.Semaphore,
 ) -> list[_FetchedPost]:
     async with semaphore:
         try:
-            raw_posts = await reddit_integration.search_subreddits(
+            results = await perplexity_integration.search(
                 db,
                 query=query,
-                subreddits=[subreddit],
-                limit=limit,
                 experiment_id=experiment_id,
+                domain_filter=[f"reddit.com/r/{subreddit}"],
+                max_results=limit,
             )
         except Exception as exc:
             _logger.warning(
                 "voices subreddit fetch failed",
                 error_type=type(exc).__name__,
+                status_code=_exc_http_status_code(exc),
+                subreddit=subreddit,
             )
             return []
 
     fetched: list[_FetchedPost] = []
-    for raw in raw_posts:
-        if _is_post_too_old(raw.created_utc, max_age_days):
-            continue
-        sub = raw.subreddit_name.lower()
-        post_url = _post_permalink(sub, raw.id)
+    for result in results:
         post = _FetchedPost(
-            url=post_url,
-            subreddit=sub,
-            title=raw.title,
-            selftext=raw.selftext or "",
-            score=raw.score,
-            created_utc=raw.created_utc,
-            post_id=raw.id,
+            url=result.url,
+            subreddit=subreddit.lower(),
+            title=result.title,
+            selftext=result.snippet,
+            score=None,
+            created_utc=None,
+            post_id=None,
+            comments=[],
         )
-        try:
-            async with semaphore:
-                raw_comments = await reddit_integration.fetch_post_comments(
-                    db,
-                    post_id=raw.id,
-                    limit=comments_per_thread,
-                    experiment_id=experiment_id,
-                )
-        except Exception as exc:
-            _logger.warning(
-                "voices comment fetch failed",
-                error_type=type(exc).__name__,
-            )
-            raw_comments = []
-
-        for c in raw_comments:
-            post.comments.append(
-                _FetchedComment(
-                    url=_comment_permalink(sub, raw.id, c.id),
-                    subreddit=sub,
-                    body=c.body,
-                    score=c.score,
-                    created_utc=c.created_utc,
-                )
-            )
+        if _is_post_too_old(post.created_utc, max_age_days):
+            continue
         fetched.append(post)
     return fetched
 
@@ -278,13 +269,13 @@ async def _execute_voices_inner(
 
     all_posts: list[_FetchedPost] = []
     subreddits_searched: list[str] = []
-    for sub, posts in zip(selected, results):
+    for sub, posts in zip(selected, results, strict=True):
         if posts:
             subreddits_searched.append(sub)
             all_posts.extend(posts)
 
     threads_fetched = len(all_posts)
-    comments_fetched = sum(len(p.comments) for p in all_posts)
+    comments_fetched = 0
 
     if not all_posts:
         return VoicesOutput(
@@ -292,6 +283,7 @@ async def _execute_voices_inner(
             subreddits_searched=subreddits_searched,
             threads_fetched=0,
             comments_fetched=0,
+            # retained for Rule 5 pattern match; renaming is a follow-up PR
             skipped_reason="praw_all_failed",
         )
 

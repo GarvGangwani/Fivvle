@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-import time
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import httpx
 import pytest
 
-from app.integrations.reddit import RedditComment, RedditPost
+from app.integrations.perplexity import PerplexityResult
 from app.llm.prompts.voices import VoicesExtractionDraft
-from app.schemas.refinement import RefinedIdea
 from app.schemas.planner import ResearchPlan, ResearchQuestion
+from app.schemas.refinement import RefinedIdea
 from app.schemas.voices import VoicesEvidenceDraft
-from app.services.voices_service import execute_voices
+from app.services.voices_service import _serialize_reddit_content, execute_voices
 
 
 def _refined_idea() -> RefinedIdea:
@@ -59,40 +59,28 @@ def _settings() -> MagicMock:
     return s
 
 
-def _recent_post(pid: str = "abc123", *, age_days: int = 30) -> RedditPost:
-    return RedditPost(
-        id=pid,
-        title="Need a better HR tool",
-        url="https://example.com",
-        score=10,
-        num_comments=3,
-        created_utc=time.time() - age_days * 86400,
-        subreddit_name="startups",
-        selftext="We tried Guru and it failed us",
-    )
-
-
-def _comment(cid: str = "c1") -> RedditComment:
-    return RedditComment(
-        id=cid,
-        body="Guru is too expensive for our team",
-        score=5,
-        created_utc=time.time() - 1000,
-    )
+def _perplexity_post(
+    *,
+    url: str = "https://www.reddit.com/r/startups/comments/abc123/",
+    title: str = "Need a better HR tool",
+    snippet: str = "We tried Guru and it failed us",
+) -> PerplexityResult:
+    return PerplexityResult(title=title, url=url, snippet=snippet)
 
 
 @pytest.mark.asyncio
 async def test_happy_path_returns_atoms() -> None:
     db = AsyncMock()
-    quote = "Guru is too expensive for our team"
+    post_url = "https://www.reddit.com/r/startups/comments/abc123/"
+    quote = "We tried Guru and it failed us"
     draft = VoicesExtractionDraft(
         atoms=[
             VoicesEvidenceDraft(
-                source_url="https://www.reddit.com/r/startups/comments/abc123/_/comment/c1/",
+                source_url=post_url,
                 subreddit="startups",
-                kind="comment",
+                kind="post",
                 verbatim_quote=quote,
-                pain_pattern="Teams find incumbent tools too costly.",
+                pain_pattern="Teams find incumbent tools disappointing.",
                 on_target_geography=False,
                 signal_strength="strong",
             )
@@ -105,12 +93,8 @@ async def test_happy_path_returns_atoms() -> None:
             AsyncMock(return_value=["startups", "entrepreneur", "saas"]),
         ),
         patch(
-            "app.services.voices_service.reddit_integration.search_subreddits",
-            AsyncMock(return_value=[_recent_post()]),
-        ),
-        patch(
-            "app.services.voices_service.reddit_integration.fetch_post_comments",
-            AsyncMock(return_value=[_comment()]),
+            "app.services.voices_service.perplexity_integration.search",
+            AsyncMock(return_value=[_perplexity_post(url=post_url, snippet=quote)]),
         ),
         patch(
             "app.services.voices_service.llm_client.complete_structured",
@@ -128,6 +112,7 @@ async def test_happy_path_returns_atoms() -> None:
 
     assert len(out.atoms) == 1
     assert out.threads_fetched >= 1
+    assert out.comments_fetched == 0
     assert out.skipped_reason is None
 
 
@@ -159,8 +144,12 @@ async def test_all_praw_fails() -> None:
             AsyncMock(return_value=["startups"]),
         ),
         patch(
-            "app.services.voices_service.reddit_integration.search_subreddits",
-            AsyncMock(side_effect=RuntimeError("praw")),
+            "app.services.voices_service.perplexity_integration.search",
+            AsyncMock(side_effect=httpx.HTTPStatusError(
+                "forbidden",
+                request=httpx.Request("POST", "https://api.perplexity.ai/chat/completions"),
+                response=httpx.Response(403, request=httpx.Request("POST", "https://api.perplexity.ai/chat/completions")),
+            )),
         ),
     ):
         out = await execute_voices(
@@ -183,12 +172,8 @@ async def test_llm_extraction_fails() -> None:
             AsyncMock(return_value=["startups"]),
         ),
         patch(
-            "app.services.voices_service.reddit_integration.search_subreddits",
-            AsyncMock(return_value=[_recent_post()]),
-        ),
-        patch(
-            "app.services.voices_service.reddit_integration.fetch_post_comments",
-            AsyncMock(return_value=[]),
+            "app.services.voices_service.perplexity_integration.search",
+            AsyncMock(return_value=[_perplexity_post()]),
         ),
         patch(
             "app.services.voices_service.llm_client.complete_structured",
@@ -239,12 +224,8 @@ async def test_quote_validation_drops_invalid_atoms() -> None:
             AsyncMock(return_value=["startups"]),
         ),
         patch(
-            "app.services.voices_service.reddit_integration.search_subreddits",
-            AsyncMock(return_value=[_recent_post()]),
-        ),
-        patch(
-            "app.services.voices_service.reddit_integration.fetch_post_comments",
-            AsyncMock(return_value=[]),
+            "app.services.voices_service.perplexity_integration.search",
+            AsyncMock(return_value=[_perplexity_post(url=post_url)]),
         ),
         patch(
             "app.services.voices_service.llm_client.complete_structured",
@@ -264,17 +245,20 @@ async def test_quote_validation_drops_invalid_atoms() -> None:
 
 
 @pytest.mark.asyncio
-async def test_age_filter_excludes_old_posts() -> None:
+async def test_perplexity_results_without_dates_are_kept() -> None:
     db = AsyncMock()
-    old_post = _recent_post("old1", age_days=2000)
     with (
         patch(
             "app.services.voices_service.get_subreddits_for_topic",
             AsyncMock(return_value=["startups"]),
         ),
         patch(
-            "app.services.voices_service.reddit_integration.search_subreddits",
-            AsyncMock(return_value=[old_post]),
+            "app.services.voices_service.perplexity_integration.search",
+            AsyncMock(return_value=[_perplexity_post()]),
+        ),
+        patch(
+            "app.services.voices_service.llm_client.complete_structured",
+            AsyncMock(side_effect=RuntimeError("llm")),
         ),
     ):
         out = await execute_voices(
@@ -285,15 +269,35 @@ async def test_age_filter_excludes_old_posts() -> None:
             experiment_id=uuid4(),
             settings=_settings(),
         )
-    assert out.skipped_reason == "praw_all_failed"
+    assert out.threads_fetched == 1
+    assert out.skipped_reason == "llm_extraction_failed"
+
+
+def test_serialize_omits_null_score_and_created_utc() -> None:
+    from app.services.voices_service import _FetchedPost
+
+    content = _serialize_reddit_content(
+        [
+            _FetchedPost(
+                url="https://www.reddit.com/r/startups/comments/x/",
+                subreddit="startups",
+                title="Title",
+                selftext="Body text",
+                score=None,
+                created_utc=None,
+                post_id=None,
+            )
+        ]
+    )
+    assert 'score="' not in content
+    assert 'created_utc="' not in content
+    assert 'kind="post"' in content
 
 
 @pytest.mark.asyncio
 async def test_reddit_content_never_in_logs(caplog: pytest.LogCaptureFixture) -> None:
     db = AsyncMock()
     sensitive = "SECRET_REDDIT_BODY_TEXT_XYZ"
-    post = _recent_post()
-    post = post.model_copy(update={"selftext": sensitive})
 
     with (
         patch(
@@ -301,12 +305,8 @@ async def test_reddit_content_never_in_logs(caplog: pytest.LogCaptureFixture) ->
             AsyncMock(return_value=["startups"]),
         ),
         patch(
-            "app.services.voices_service.reddit_integration.search_subreddits",
-            AsyncMock(return_value=[post]),
-        ),
-        patch(
-            "app.services.voices_service.reddit_integration.fetch_post_comments",
-            AsyncMock(return_value=[]),
+            "app.services.voices_service.perplexity_integration.search",
+            AsyncMock(return_value=[_perplexity_post(snippet=sensitive)]),
         ),
         patch(
             "app.services.voices_service.llm_client.complete_structured",
