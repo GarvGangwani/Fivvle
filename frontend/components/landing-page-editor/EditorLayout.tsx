@@ -38,16 +38,16 @@ import {
   landingPageEditBlockedReason,
 } from "@/lib/landing-flow";
 import { EditableProjectName } from "@/components/experiment/EditableProjectName";
-import { LandingPagePreview } from "@/components/landing-page-generator/LandingPagePreview";
-import type { PreviewSaveStatus } from "@/components/landing-page-generator/PreviewSaveStatus";
+import { LandingPagePreview } from "@/components/landing-page-editor/LandingPagePreview";
+import type { PreviewSaveStatus } from "@/components/landing-page-editor/PreviewSaveStatus";
 import { useToast } from "@/components/ui/ToastProvider";
 import { ShareLinksPanel, SHARE_CHANNELS } from "@/components/distribution/ShareLinksPanel";
 import { getExperimentDisplayName } from "@/lib/experiment-name";
 import { CopyFieldsEditor, type CopySectionId } from "./CopyFieldsEditor";
 import { LandingPageSlugEditor } from "./LandingPageSlugEditor";
 import { SurfaceStylePicker } from "./SurfaceStylePicker";
-import { ColorThemePicker } from "@/components/landing-page-generator/ColorThemePicker";
-import { BrandIconPicker } from "@/components/landing-page-generator/BrandIconPicker";
+import { ColorThemePicker } from "@/components/landing-page-editor/ColorThemePicker";
+import { BrandIconPicker } from "@/components/landing-page-editor/BrandIconPicker";
 import { defaultSurfaceForTemplate, formatSurfaceSummary, resolveSurface } from "@/lib/surface";
 import { buildPageForTemplatePreview } from "@/lib/template-preview-page";
 import {

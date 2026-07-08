@@ -1,17 +1,45 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: "class", // kept for future, not used
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
+    "./lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
   theme: {
     extend: {
-      fontFamily: {
-        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
-        mono: ["var(--font-dm-mono)", "ui-monospace", "monospace"],
-      },
       colors: {
+        // Brand
+        "brand-primary": "#4f46e5",
+        "brand-primary-deep": "#1e00a9",
+        "brand-primary-soft": "#e2dfff",
+        "brutalist-yellow": "#FFFF00",
+
+        // Surfaces
+        "canvas-bg": "#FAFAFA",
+        "surface-card": "#FFFFFF",
+        "surface-muted": "#F5F2FF",
+        "surface-elevated": "#EAE6F4",
+
+        // Text
+        "ink-primary": "#1B1B24",
+        "ink-secondary": "#464555",
+        "ink-tertiary": "#777587",
+        "ink-inverse": "#FFFFFF",
+
+        // Structural
+        "border-master": "#000000",
+        "border-subtle": "#E5E7EB",
+
+        // Status
+        "status-active": "#4f46e5",
+        "status-staging": "#777587",
+        "status-success": "#16A34A",
+        "status-critical": "#BA1A1A",
+        "status-warning": "#FFFF00",
+
+        // Legacy fv-* tokens — CSS variables used by unmigrated screens
         fv: {
           bg: "var(--fv-bg)",
           surface: "var(--fv-surface)",
@@ -28,10 +56,87 @@ const config: Config = {
           "on-accent": "var(--fv-on-accent)",
           border: "var(--fv-border)",
         },
+
+        // TODO: remove after screen migrations complete — Material-style aliases
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+        "on-surface": "var(--fv-text)",
+        "on-surface-variant": "var(--fv-text-muted)",
+        "surface-container-low": "var(--fv-surface-2)",
+        "surface-container": "var(--fv-surface)",
+        "surface-container-high": "var(--fv-surface-elevated)",
+      },
+
+      borderRadius: {
+        DEFAULT: "0px",
+        sm: "0px",
+        md: "0px",
+        lg: "0px",
+        xl: "0px",
+        full: "9999px",
+      },
+
+      borderWidth: {
+        DEFAULT: "2px",
+        master: "2px",
+        thick: "3px",
+      },
+
+      boxShadow: {
+        "brutal-sm": "3px 3px 0px 0px #000000",
+        "brutal-md": "4px 4px 0px 0px #000000",
+        "brutal-lg": "6px 6px 0px 0px #000000",
+        "brutal-xl": "8px 8px 0px 0px #000000",
+        "brutal-primary": "4px 4px 0px 0px #4f46e5",
+      },
+
+      spacing: {
+        gutter: "24px",
+        "section-gap": "64px",
+        "card-padding": "16px",
+        "canvas-grid": "40px",
+        "toolbar-height": "56px",
+      },
+
+      fontFamily: {
+        sans: ["var(--font-inter)", "Inter", "system-ui", "sans-serif"],
+        display: ["Geist", "system-ui", "sans-serif"],
+        headline: ["Geist", "system-ui", "sans-serif"],
+        body: ["Inter", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "var(--font-dm-mono)", "ui-monospace", "monospace"],
+      },
+
+      fontSize: {
+        "display-xl": [
+          "64px",
+          { lineHeight: "1.05", letterSpacing: "-0.02em", fontWeight: "900" },
+        ],
+        "display-lg": [
+          "48px",
+          { lineHeight: "1.1", letterSpacing: "-0.02em", fontWeight: "900" },
+        ],
+        "headline-lg": ["32px", { lineHeight: "1.2", fontWeight: "600" }],
+        "headline-md": ["20px", { lineHeight: "1.4", fontWeight: "600" }],
+        "body-lg": ["16px", { lineHeight: "1.6", fontWeight: "400" }],
+        "body-md": ["14px", { lineHeight: "1.5", fontWeight: "400" }],
+        "body-sm": ["12px", { lineHeight: "1.5", fontWeight: "400" }],
+        "label-md": [
+          "12px",
+          { lineHeight: "1", letterSpacing: "0.05em", fontWeight: "700" },
+        ],
+        "label-sm": [
+          "10px",
+          { lineHeight: "1", letterSpacing: "0.08em", fontWeight: "700" },
+        ],
+        "mono-md": ["11px", { lineHeight: "1.4", fontWeight: "500" }],
+        "mono-sm": ["9px", { lineHeight: "1.2", fontWeight: "500" }],
       },
     },
   },
-  plugins: [],
+  plugins: [
+    require("@tailwindcss/forms"),
+    require("@tailwindcss/container-queries"),
+  ],
 };
 
 export default config;

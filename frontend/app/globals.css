@@ -1,10 +1,29 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+@layer utilities {
+  .canvas-grid-bg {
+    background-image: radial-gradient(circle, #000 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+  .dashed-underline {
+    background-image: linear-gradient(to right, #000 50%, transparent 50%);
+    background-size: 16px 1px;
+    background-repeat: repeat-x;
+    background-position: bottom;
+  }
+  .material-symbols-outlined {
+    font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  }
+}
+
 :root {
-  --fv-accent: #4f6bff;
-  --fv-accent-hover: #6b84ff;
+  --fv-accent: #4f46e5;
+  --fv-accent-hover: #3d58e8;
   --fv-accent-gradient-end: #7c5cff;
   --fv-on-accent: #ffffff;
   --fv-success: #22c55e;
@@ -14,32 +33,6 @@
   --fv-radius-md: 12px;
   --fv-radius-lg: 16px;
   --fv-radius-xl: 20px;
-}
-
-:root,
-[data-theme="dark"] {
-  --fv-bg: #06080f;
-  --fv-surface: #0d111c;
-  --fv-surface-2: #121829;
-  --fv-surface-elevated: #182035;
-  --fv-border: rgba(255, 255, 255, 0.06);
-  --fv-border-strong: rgba(255, 255, 255, 0.11);
-  --fv-text: #f1f5f9;
-  --fv-text-muted: #6b7a94;
-  --fv-text-soft: #9aa8be;
-  --fv-text-dim: #4a5568;
-  --fv-inactive: #2a3347;
-  --fv-accent-muted: color-mix(in srgb, var(--fv-accent) 14%, transparent);
-  --fv-danger-light: #fca5a5;
-  --fv-header-bg: rgba(8, 12, 20, 0.9);
-  --fv-skeleton-base: rgba(255, 255, 255, 0.03);
-  --fv-skeleton-shine: rgba(255, 255, 255, 0.07);
-  --fv-hover-overlay: rgba(255, 255, 255, 0.04);
-  --background: var(--fv-bg);
-  --foreground: var(--fv-text);
-}
-
-[data-theme="light"] {
   --fv-bg: #f4f6fb;
   --fv-surface: #ffffff;
   --fv-surface-2: #eef1f8;
@@ -51,7 +44,6 @@
   --fv-text-soft: #475569;
   --fv-text-dim: #94a3b8;
   --fv-inactive: #cbd5e1;
-  --fv-accent-hover: #3d58e8;
   --fv-accent-muted: color-mix(in srgb, var(--fv-accent) 12%, transparent);
   --fv-danger-light: #dc2626;
   --fv-header-bg: rgba(255, 255, 255, 0.88);
@@ -75,19 +67,10 @@ body {
   min-height: 100%;
   min-width: 0;
   overflow-x: hidden;
-  background: var(--fv-bg);
-  background-image:
-    radial-gradient(ellipse 100% 80% at 50% -30%, rgba(79, 107, 255, 0.08), transparent 60%),
-    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(124, 92, 255, 0.05), transparent 50%);
-  color: var(--fv-text);
-  font-family: var(--font-inter), system-ui, sans-serif;
+  background-color: #fafafa;
+  color: #1b1b24;
+  font-family: "Inter", var(--font-inter), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
-}
-
-[data-theme="light"] body {
-  background-image:
-    radial-gradient(ellipse 100% 80% at 50% -30%, rgba(79, 107, 255, 0.06), transparent 60%),
-    radial-gradient(ellipse 60% 40% at 100% 0%, rgba(124, 92, 255, 0.04), transparent 50%);
 }
 
 /* Public founder landing pages — no Fivvle dashboard chrome bleeding through */
