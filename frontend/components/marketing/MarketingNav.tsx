@@ -1,8 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 export function MarketingNav() {
+  const pathname = usePathname();
+  const isHome = pathname === "/";
+  const howItWorksHref = isHome ? "#five-acts" : "/#five-acts";
+  const pricingHref = isHome ? "#pricing" : "/#pricing";
+
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-16 border-b-2 border-border-master bg-canvas-bg">
       <div className="mx-auto flex h-full max-w-7xl items-center justify-between px-gutter">
@@ -18,13 +24,13 @@ export function MarketingNav() {
           aria-label="Marketing sections"
         >
           <a
-            href="#five-acts"
+            href={howItWorksHref}
             className="font-label-md text-label-md uppercase text-ink-secondary no-underline hover:text-ink-primary"
           >
             HOW IT WORKS
           </a>
           <a
-            href="#pricing"
+            href={pricingHref}
             className="font-label-md text-label-md uppercase text-ink-secondary no-underline hover:text-ink-primary"
           >
             PRICING
