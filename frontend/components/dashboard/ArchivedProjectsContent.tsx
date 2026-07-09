@@ -3,17 +3,13 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArchiveRestore, ArrowLeft, Loader2, Trash2 } from "lucide-react";
 import { listExperiments, unarchiveExperiment, ApiError } from "@/lib/api";
 import { notifyExperimentsChanged } from "@/lib/experiment-events";
-import { formatRelativeTime } from "@/lib/format-time";
 import { getExperimentDisplayName } from "@/lib/experiment-name";
 import type { ExperimentSummary } from "@/lib/types";
 import { DeleteProjectDialog } from "@/components/experiment/DeleteProjectDialog";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { StatusBadge } from "./StatusBadge";
+import { marketingButtonClass } from "@/components/marketing/marketing-styles";
+import { ProjectCard } from "./ProjectCard";
 
 type LoadState =
   | { status: "loading" }
@@ -24,20 +20,19 @@ export function ArchivedProjectsContent() {
   const router = useRouter();
   const [loadState, setLoadState] = useState<LoadState>({ status: "loading" });
   const [restoringId, setRestoringId] = useState<string | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<ExperimentSummary | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ExperimentSummary | null>(
+    null,
+  );
   const [actionError, setActionError] = useState<string | null>(null);
 
   const fetchArchived = useCallback(async () => {
     try {
       const experiments = await listExperiments({ archived: true });
       setLoadState({ status: "success", experiments });
-    } catch (err) {
+    } catch {
       setLoadState({
         status: "error",
-        message:
-          err instanceof ApiError
-            ? "Could not load archived projects. Please try again."
-            : "Could not load archived projects. Please try again.",
+        message: "Could not load archived experiments. Please try again.",
       });
     }
   }, []);
@@ -62,7 +57,7 @@ export function ArchivedProjectsContent() {
       notifyExperimentsChanged();
       await fetchArchived();
     } catch {
-      setActionError("Could not restore project. Please try again.");
+      setActionError("Could not restore experiment. Please try again.");
     } finally {
       setRestoringId(null);
     }
@@ -70,11 +65,14 @@ export function ArchivedProjectsContent() {
 
   if (loadState.status === "loading") {
     return (
-      <div className="p-4 sm:p-6">
-        <div className="fv-skeleton mb-8 h-10 w-56 rounded-lg" />
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="fv-skeleton h-40 rounded-2xl" />
+      <div className="py-8">
+        <div className="mb-8 h-10 w-72 animate-pulse bg-surface-elevated motion-reduce:animate-none" />
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <div
+              key={index}
+              className="h-64 animate-pulse bg-surface-elevated motion-reduce:animate-none"
+            />
           ))}
         </div>
       </div>
@@ -83,8 +81,13 @@ export function ArchivedProjectsContent() {
 
   if (loadState.status === "error") {
     return (
-      <div className="flex items-center justify-center p-6 py-20">
-        <ErrorBanner message={loadState.message} className="max-w-md" />
+      <div className="flex items-center justify-center py-20">
+        <p
+          role="alert"
+          className="border-2 border-status-critical bg-surface-card px-6 py-4 font-body-md text-body-md text-status-critical"
+        >
+          {loadState.message}
+        </p>
       </div>
     );
   }
@@ -92,87 +95,80 @@ export function ArchivedProjectsContent() {
   const { experiments } = loadState;
 
   return (
-    <div className="p-4 sm:p-6">
-      <PageHeader
-        title="Archived projects"
-        description="Projects you've archived are stored here. Restore any project to continue working on it."
-        actions={
-          <Link
-            href="/"
-            className="fv-btn-ghost inline-flex items-center gap-2 px-4 py-2 text-sm no-underline"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to projects
-          </Link>
-        }
-      />
+    <div className="py-8">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="font-display text-display-lg uppercase text-ink-primary">
+            ARCHIVED EXPERIMENTS
+          </h1>
+          <p className="mt-2 font-body-md text-body-md text-ink-secondary">
+            Restore any archived validation to continue working on it.
+          </p>
+        </div>
+        <Link
+          href="/"
+          className={`${marketingButtonClass} inline-flex shrink-0 border-2 border-border-master bg-surface-card px-6 py-3 font-label-md text-label-md uppercase text-ink-primary no-underline`}
+        >
+          ← BACK TO EXPERIMENTS
+        </Link>
+      </div>
 
-      {actionError && (
-        <ErrorBanner
-          message={actionError}
-          onDismiss={() => setActionError(null)}
-          className="mb-4"
-        />
-      )}
+      {actionError ? (
+        <p
+          role="alert"
+          className="mb-6 border-2 border-status-critical bg-surface-card px-4 py-3 font-body-md text-body-md text-status-critical"
+        >
+          {actionError}
+        </p>
+      ) : null}
 
       {experiments.length === 0 ? (
-        <EmptyState
-          icon={<ArchiveRestore className="h-7 w-7 text-[var(--fv-text-muted)]" />}
-          title="No archived projects"
-          description="When you archive a project, it will appear here. Archived projects are hidden from your main dashboard and sidebar."
-          action={
-            <Link href="/" className="fv-btn-ghost px-4 py-2 text-sm no-underline">
-              Go to active projects
-            </Link>
-          }
-        />
+        <div className="border-2 border-border-master bg-surface-card p-10 text-center shadow-brutal-md">
+          <p className="font-headline text-headline-md text-ink-primary">
+            No archived experiments
+          </p>
+          <p className="mt-2 font-body-md text-body-md text-ink-secondary">
+            When you archive a validation, it will appear here.
+          </p>
+          <Link
+            href="/"
+            className="mt-6 inline-block font-label-md text-label-md uppercase text-brand-primary no-underline hover:underline"
+          >
+            Go to active experiments
+          </Link>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
           {experiments.map((experiment) => {
             const name = getExperimentDisplayName(experiment);
             const isRestoring = restoringId === experiment.id;
 
             return (
-              <div key={experiment.id} className="fv-project-card flex flex-col">
-                <button
-                  type="button"
-                  onClick={() => router.push(`/experiment/${experiment.id}`)}
-                  className="flex-1 text-left"
-                >
-                  <div className="mb-3 flex items-start justify-between gap-2">
-                    <h3 className="truncate text-base font-semibold text-[var(--fv-text)]">
-                      {name}
-                    </h3>
-                    <StatusBadge status={experiment.status} />
-                  </div>
-                  <p className="line-clamp-2 text-sm leading-relaxed text-[var(--fv-text-muted)]">
-                    {experiment.raw_idea?.trim() ?? ""}
-                  </p>
-                  <p className="mt-3 text-xs text-[var(--fv-text-dim)]">
-                    Archived {formatRelativeTime(experiment.updated_at)}
-                  </p>
-                </button>
-                <div className="mt-4 flex gap-2 border-t border-[var(--fv-border)] pt-3">
+              <div key={experiment.id} className="flex flex-col gap-3">
+                <ProjectCard experiment={experiment} archived />
+                <div className="flex gap-2">
                   <button
                     type="button"
                     onClick={() => void handleRestore(experiment.id)}
                     disabled={isRestoring}
-                    className="fv-btn-ghost inline-flex flex-1 items-center justify-center gap-2 px-3 py-2 text-sm disabled:opacity-50"
+                    className={`${marketingButtonClass} flex-1 bg-surface-card px-4 py-2 font-label-md text-label-md uppercase text-ink-primary disabled:opacity-60`}
                   >
-                    {isRestoring ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ArchiveRestore className="h-4 w-4" />
-                    )}
-                    Restore
+                    {isRestoring ? "RESTORING…" : "RESTORE"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/experiment/${experiment.id}`)}
+                    className={`${marketingButtonClass} bg-surface-card px-4 py-2 font-label-md text-label-md uppercase text-ink-primary`}
+                  >
+                    OPEN
                   </button>
                   <button
                     type="button"
                     onClick={() => setDeleteTarget(experiment)}
-                    className="fv-btn-ghost inline-flex items-center justify-center gap-2 px-3 py-2 text-sm text-[var(--fv-text-muted)] hover:text-[var(--fv-danger)]"
+                    className={`${marketingButtonClass} bg-surface-card px-4 py-2 font-label-md text-label-md uppercase text-status-critical`}
                     aria-label={`Delete ${name}`}
                   >
-                    <Trash2 className="h-4 w-4" />
+                    DELETE
                   </button>
                 </div>
               </div>
@@ -181,7 +177,7 @@ export function ArchivedProjectsContent() {
         </div>
       )}
 
-      {deleteTarget && (
+      {deleteTarget ? (
         <DeleteProjectDialog
           experimentId={deleteTarget.id}
           projectName={getExperimentDisplayName(deleteTarget)}
@@ -190,7 +186,7 @@ export function ArchivedProjectsContent() {
           onDeleted={() => void fetchArchived()}
           redirectTo="/archived"
         />
-      )}
+      ) : null}
     </div>
   );
 }

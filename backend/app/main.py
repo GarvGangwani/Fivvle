@@ -48,10 +48,14 @@ from app.reliability.rate_limit import limiter, rate_limit_exceeded_handler
 from app.routers.admin import router as admin_router
 from app.routers.admin_chat_quality import router as admin_chat_quality_router
 from app.routers.admin_coupons import router as admin_coupons_router
+from app.routers.canvas_layout import router as canvas_layout_router
 from app.routers.chat import router as chat_router
+from app.routers.experiment_activity import router as experiment_activity_router
+from app.routers.experiment_resources import router as experiment_resources_router
 from app.routers.experiments import router as experiments_router
 from app.routers.health import router as health_router
 from app.routers.public import router as public_router
+from app.routers.search import router as search_router
 from app.routers.users import router as users_router
 from app.routers.wallet import router as wallet_router
 from app.routers.landing_page_v2 import router as landing_page_v2_router
@@ -206,7 +210,7 @@ app.add_middleware(
     allow_origins=settings.cors_origins_list,
     allow_origin_regex=settings.cors_landing_origin_regex,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
 )
 
@@ -217,9 +221,13 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(public_router, prefix="", tags=["Public"])
 app.include_router(users_router)
+app.include_router(search_router)
 app.include_router(wallet_router)
 app.include_router(landing_page_v2_router)
 app.include_router(experiments_router)
+app.include_router(canvas_layout_router)
+app.include_router(experiment_resources_router)
+app.include_router(experiment_activity_router)
 app.include_router(chat_router)
 app.include_router(admin_router)
 app.include_router(admin_chat_quality_router)

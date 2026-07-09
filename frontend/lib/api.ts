@@ -11,6 +11,7 @@ import type {
   ChatEditTurnResponse,
   ExperimentDetail,
   ExperimentSummary,
+  SearchResult,
   FounderDecision,
   GenerateInsightResponse,
   GenerateLandingPageResponse,
@@ -46,7 +47,7 @@ export class ApiError extends Error {
 }
 
 type FetchOptions = {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   authenticated?: boolean;
   /** When set, skips auth.currentUser and uses this token directly. */
@@ -197,6 +198,11 @@ export async function listExperiments(options?: {
   return apiFetch<ExperimentSummary[]>(
     query ? `/experiments?${query}` : "/experiments",
   );
+}
+
+export async function searchExperiments(q: string): Promise<SearchResult[]> {
+  const params = new URLSearchParams({ q });
+  return apiFetch<SearchResult[]>(`/search?${params.toString()}`);
 }
 
 export type ChatTurnParams = {

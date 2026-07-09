@@ -38,6 +38,20 @@
   .material-symbols-outlined.icon-xl {
     font-size: 48px;
   }
+
+  /* React Flow — force nodes to always paint above edges */
+  .react-flow__nodes {
+    z-index: 5 !important;
+  }
+  .react-flow__edges {
+    z-index: 1 !important;
+  }
+  .react-flow__node {
+    z-index: 5 !important;
+  }
+  .react-flow__node.dragging {
+    z-index: 10 !important;
+  }
 }
 
 :root {
@@ -1726,4 +1740,26 @@ body:has([data-fivvle-public-landing]) {
   background:
     radial-gradient(ellipse 70% 50% at 50% -10%, rgba(79, 107, 255, 0.18), transparent 55%),
     radial-gradient(ellipse 40% 30% at 80% 20%, rgba(124, 92, 255, 0.1), transparent 50%);
+}
+
+/* Experiment canvas — React Flow chrome */
+.brutalist-controls {
+  border: 2px solid var(--color-border-master, #1b1b24) !important;
+  background: var(--color-surface-card, #fff) !important;
+  box-shadow: 4px 4px 0 0 var(--color-border-master, #1b1b24) !important;
+}
+
+.brutalist-controls button {
+  border-bottom: 2px solid var(--color-border-master, #1b1b24) !important;
+  background: var(--color-surface-card, #fff) !important;
+}
+
+.brutalist-controls button:last-child {
+  border-bottom: none !important;
+}
+
+.brutalist-minimap {
+  border: 2px solid var(--color-border-master, #1b1b24) !important;
+  background: var(--color-surface-card, #fff) !important;
+  box-shadow: 4px 4px 0 0 var(--color-border-master, #1b1b24) !important;
 }

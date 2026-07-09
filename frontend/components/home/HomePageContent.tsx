@@ -1,8 +1,8 @@
 "use client";
 
 import { AuthProvider, useAuth } from "@/lib/auth-context";
-import { FivvleShell } from "@/components/layout/FivvleShell";
-import { DashboardContent } from "@/components/dashboard/DashboardContent";
+import { DashboardShell } from "@/components/dashboard/DashboardShell";
+import { HomeOverviewContent } from "@/components/dashboard/HomeOverviewContent";
 import { MarketingLandingPage } from "@/components/marketing/MarketingLandingPage";
 
 function HomeAuthGate() {
@@ -10,17 +10,9 @@ function HomeAuthGate() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-canvas-bg">
-        <div className="mx-auto max-w-6xl p-gutter">
-          <div className="mb-6 h-8 w-48 animate-pulse bg-surface-elevated motion-reduce:animate-none" />
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-40 animate-pulse bg-surface-elevated motion-reduce:animate-none"
-              />
-            ))}
-          </div>
+      <div className="min-h-screen bg-canvas-bg md:ml-28">
+        <div className="p-gutter">
+          <div className="mb-6 h-12 w-72 animate-pulse bg-surface-elevated motion-reduce:animate-none" />
         </div>
       </div>
     );
@@ -31,9 +23,9 @@ function HomeAuthGate() {
   }
 
   return (
-    <FivvleShell>
-      <DashboardContent />
-    </FivvleShell>
+    <DashboardShell>
+      <HomeOverviewContent />
+    </DashboardShell>
   );
 }
 

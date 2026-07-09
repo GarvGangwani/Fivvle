@@ -175,9 +175,18 @@ export interface ExperimentSummary {
   name?: string | null;
   raw_idea: string;
   status: string;
+  tags?: string[];
   created_at: string;
   updated_at: string;
   card_stats?: ExperimentCardStats | null;
+}
+
+export interface SearchResult {
+  id: string;
+  title: string;
+  snippet: string;
+  matched_field: string;
+  status: string;
 }
 
 export interface ExperimentDetail extends ExperimentSummary {
@@ -227,6 +236,13 @@ export interface Experiment {
   status: string;
   thread_id?: string | null;
   validation_report: ExperimentValidationReportSummary | null;
+  refined_idea?: string | null;
+  chat_message_count?: number;
+  evidence_atom_count?: number;
+  landing_page_view_count?: number;
+  resource_count?: number;
+  demand_score?: number | null;
+  verdict?: string | null;
 }
 
 // --- Clarifying question block (refinement pre-research) ---
@@ -538,4 +554,44 @@ export interface ArchiveExperimentResponse {
 export interface DeleteExperimentResponse {
   experiment_id: string;
   deleted: boolean;
+}
+
+export type CanvasNodeId =
+  | "refine"
+  | "evidence"
+  | "launch"
+  | "signal"
+  | "resources";
+
+export interface NodePosition {
+  x: number;
+  y: number;
+}
+
+export interface CanvasLayout {
+  experiment_id: string;
+  user_id: string;
+  node_positions: Record<CanvasNodeId, NodePosition>;
+  updated_at: string;
+}
+
+export type ResourceType = "link" | "doc" | "image" | "competitor" | "other";
+
+export interface ExperimentResource {
+  id: string;
+  experiment_id: string;
+  user_id: string;
+  title: string;
+  url: string | null;
+  note: string | null;
+  resource_type: ResourceType;
+  created_at: string;
+}
+
+export interface ActivityItem {
+  id: string;
+  event_type: string;
+  summary: string;
+  metadata: Record<string, unknown>;
+  occurred_at: string;
 }

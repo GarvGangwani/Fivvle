@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 import sqlalchemy as sa
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy import Enum as SQLEnum
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -57,6 +57,11 @@ class Experiment(Base):
         nullable=False,
     )
     refined_idea: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    tags: Mapped[list[str]] = mapped_column(
+        ARRAY(String),
+        nullable=False,
+        server_default=sa.text("'{}'"),
+    )
     refinement_count: Mapped[int] = mapped_column(
         Integer,
         nullable=False,

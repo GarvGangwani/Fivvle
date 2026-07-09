@@ -81,7 +81,7 @@ class Settings(BaseSettings):
     # --- Runtime config ---
     environment: Literal["development", "staging", "production", "test"] = "development"
     # Comma-separated list of allowed CORS origins; use cors_origins_list for the parsed form.
-    cors_allowed_origins: str = "http://localhost:3000"
+    cors_allowed_origins: str = "http://localhost:3000,http://localhost:3001"
     cors_landing_origin_regex: str = Field(
         default=(
             r"http://[a-z0-9-]{6,40}\.localhost(?::\d+)?|"
@@ -114,18 +114,18 @@ class Settings(BaseSettings):
         ),
     )
 
-    # Per-phase LLM selection. Default Sonnet — Haiku swap blocked by max_length cap overruns (see docs/calibration/runs/2026-05-27-haiku-attempt.md). Haiku migration requires per-phase cap recalibration.
-    # provider must be a value the llm.client wrapper supports ("anthropic" | "groq").
-    refinement_provider: str = Field(default="anthropic")
-    refinement_model: str = Field(default="claude-sonnet-4-6")
-    planner_provider: str = Field(default="anthropic")
-    planner_model: str = Field(default="claude-sonnet-4-6")
-    reader_provider: str = Field(default="anthropic")
-    reader_model: str = Field(default="claude-sonnet-4-6")
-    reflector_query_provider: str = Field(default="anthropic")
-    reflector_query_model: str = Field(default="claude-sonnet-4-6")
-    synthesizer_provider: str = Field(default="anthropic")
-    synthesizer_model: str = Field(default="claude-sonnet-4-6")
+    # Per-phase LLM selection (ADR 0018 — Kimi K2.6 for all 5 pipeline phases).
+    # provider must be a value the llm.client wrapper supports ("anthropic" | "groq" | "kimi").
+    refinement_provider: str = Field(default="kimi")
+    refinement_model: str = Field(default="kimi-k2.6")
+    planner_provider: str = Field(default="kimi")
+    planner_model: str = Field(default="kimi-k2.6")
+    reader_provider: str = Field(default="kimi")
+    reader_model: str = Field(default="kimi-k2.6")
+    reflector_query_provider: str = Field(default="kimi")
+    reflector_query_model: str = Field(default="kimi-k2.6")
+    synthesizer_provider: str = Field(default="kimi")
+    synthesizer_model: str = Field(default="kimi-k2.6")
     synthesizer_fallback_enabled: bool = Field(
         default=True,
         description=(

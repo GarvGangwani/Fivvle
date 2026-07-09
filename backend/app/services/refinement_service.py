@@ -47,6 +47,7 @@ from app.llm.prompts.refinement import (
     build_refinement_v2_chat_user_prompt,
 )
 from app.utils.experiment_naming import apply_llm_name_if_unset
+from app.services.tag_service import persist_experiment_tags
 from app.logging_config import get_logger
 from app.schemas.refinement import RefinedIdea, RefinementTurnDecision
 
@@ -323,6 +324,7 @@ async def run_turn(
     elif parsed.decision == "finalize" and parsed.refined_idea is not None:
         experiment.refined_idea = parsed.refined_idea.model_dump()
         apply_llm_name_if_unset(experiment, parsed.refined_idea)
+        await persist_experiment_tags(db, experiment, parsed.refined_idea)
         if parsed.targeting is not None:
             if parsed.targeting.target_geography is not None:
                 experiment.target_geography = (
