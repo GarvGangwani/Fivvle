@@ -2,18 +2,21 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { marketingButtonClass } from "@/components/marketing/marketing-styles";
 import { useAuth } from "@/lib/auth-context";
 import { formatGoogleAuthError } from "@/lib/auth-errors";
 
 interface GoogleSignInButtonProps {
   disabled?: boolean;
   label?: string;
+  ariaLabel?: string;
+  redirectTo?: string;
   onError: (message: string) => void;
 }
 
 function GoogleMark() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden>
+    <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" aria-hidden>
       <path
         fill="#4285F4"
         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -36,7 +39,9 @@ function GoogleMark() {
 
 export function GoogleSignInButton({
   disabled = false,
-  label = "Continue with Google",
+  label = "CONTINUE WITH GOOGLE",
+  ariaLabel = "Sign in with Google",
+  redirectTo = "/dashboard",
   onError,
 }: GoogleSignInButtonProps) {
   const { signInWithGoogle } = useAuth();
@@ -47,7 +52,7 @@ export function GoogleSignInButton({
     setLoading(true);
     try {
       await signInWithGoogle();
-      router.push("/dashboard");
+      router.push(redirectTo);
     } catch (err) {
       onError(formatGoogleAuthError(err));
     } finally {
@@ -60,14 +65,17 @@ export function GoogleSignInButton({
       type="button"
       onClick={() => void handleClick()}
       disabled={disabled || loading}
-      className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-[var(--fv-border-strong)] bg-[var(--fv-surface)] px-4 py-2.5 text-sm font-medium text-[var(--fv-text)] transition-colors hover:bg-[var(--fv-hover-overlay)] disabled:cursor-not-allowed disabled:opacity-50"
+      aria-label={ariaLabel}
+      className={`${marketingButtonClass} inline-flex w-full items-center justify-center gap-2 bg-surface-card px-4 py-3 text-base font-bold uppercase tracking-wider text-ink-primary disabled:cursor-not-allowed disabled:opacity-60`}
     >
       {loading ? (
-        <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-[var(--fv-text-muted)] border-t-transparent" />
+        "PROCESSING..."
       ) : (
-        <GoogleMark />
+        <>
+          <GoogleMark />
+          <span>{label}</span>
+        </>
       )}
-      {loading ? "Connecting…" : label}
     </button>
   );
 }

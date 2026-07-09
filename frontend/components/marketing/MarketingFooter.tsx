@@ -32,6 +32,14 @@ export function MarketingFooter({ onDemoClick }: MarketingFooterProps) {
                 </a>
               </li>
               <li>
+                <Link
+                  href="/docs"
+                  className="text-ink-inverse no-underline hover:underline"
+                >
+                  Documentation
+                </Link>
+              </li>
+              <li>
                 <a
                   href="#pricing"
                   className="text-ink-inverse no-underline hover:underline"
