@@ -34,6 +34,10 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block"
+        />
         <script
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var m=localStorage.getItem("fivvle-reduced-motion");if(m==="true")document.documentElement.setAttribute("data-reduced-motion","true");document.documentElement.setAttribute("data-theme","light");}catch(e){document.documentElement.setAttribute("data-theme","light");}})();`,

@@ -40,16 +40,21 @@ const googleAuthConnectSrc =
 const razorpayScriptSrc = "https://checkout.razorpay.com";
 const razorpayFrameSrc = "https://api.razorpay.com https://checkout.razorpay.com";
 
+const googleFontsStyleSrc = "https://fonts.googleapis.com";
+const googleFontsFontSrc = "https://fonts.gstatic.com";
+
 const csp = isDev
   ? "default-src 'self'; " +
     `script-src 'self' 'unsafe-inline' 'unsafe-eval' ${googleAuthScriptSrc} ${razorpayScriptSrc}; ` +
-    "style-src 'self' 'unsafe-inline'; " +
+    `style-src 'self' 'unsafe-inline' ${googleFontsStyleSrc}; ` +
+    `font-src 'self' ${googleFontsFontSrc}; ` +
     "img-src 'self' data: https: http://localhost:8000 http://127.0.0.1:8000; " +
     `frame-src 'self' ${googleAuthFrameSrc} ${razorpayFrameSrc}; ` +
     `connect-src 'self' http://localhost:8000 ws://localhost:3000 ws://localhost:3001 http://localhost:3001 https://*.googleapis.com https://*.firebaseapp.com https://*.firebaseio.com ${googleAuthConnectSrc}`
   : "default-src 'self'; " +
     `script-src 'self' 'unsafe-inline' ${googleAuthScriptSrc} ${razorpayScriptSrc}; ` +
-    "style-src 'self' 'unsafe-inline'; " +
+    `style-src 'self' 'unsafe-inline' ${googleFontsStyleSrc}; ` +
+    `font-src 'self' ${googleFontsFontSrc}; ` +
     "img-src 'self' data: https: https://firebasestorage.googleapis.com; " +
     `frame-src 'self' ${googleAuthFrameSrc} ${razorpayFrameSrc}; ` +
     `connect-src 'self'${productionApiConnectSrc ? ` ${productionApiConnectSrc}` : ""} https://*.googleapis.com https://*.firebaseapp.com https://*.firebaseio.com ${googleAuthConnectSrc}`;
