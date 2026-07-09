@@ -1,11 +1,12 @@
-"use client";
+import { AuthLayoutClient } from "./AuthLayoutClient";
 
-import { AuthProvider } from "@/lib/auth-context";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default function AuthLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <AuthProvider>{children}</AuthProvider>;
+  return <AuthLayoutClient>{children}</AuthLayoutClient>;
 }

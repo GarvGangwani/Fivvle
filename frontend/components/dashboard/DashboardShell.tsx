@@ -35,6 +35,12 @@ function SearchKeyboardShortcuts() {
 }
 
 export function DashboardShell({ children }: DashboardShellProps) {
+  useEffect(() => {
+    const preventBFCache = () => {};
+    window.addEventListener("unload", preventBFCache);
+    return () => window.removeEventListener("unload", preventBFCache);
+  }, []);
+
   return (
     <WalletProvider>
       <SearchModalProvider>
