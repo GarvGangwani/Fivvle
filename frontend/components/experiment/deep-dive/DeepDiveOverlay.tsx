@@ -1,16 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
-import { RefineDeepDive } from "./RefineDeepDive";
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  act: "refine" | "evidence" | "launch" | "signal";
+  act: "evidence" | "launch" | "signal";
   experimentId: string;
 };
 
-export function DeepDiveOverlay({ isOpen, onClose, act, experimentId }: Props) {
+export function DeepDiveOverlay({ isOpen, onClose, act }: Props) {
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -44,18 +43,14 @@ export function DeepDiveOverlay({ isOpen, onClose, act, experimentId }: Props) {
           ✕
         </button>
       </div>
-      {act === "refine" ? (
-        <RefineDeepDive experimentId={experimentId} />
-      ) : (
-        <div className="p-24 text-center">
-          <div className="mb-2 font-label-md text-label-md uppercase text-brand-primary">
-            COMING IN STEP 6
-          </div>
-          <h2 className="font-display text-display-lg uppercase text-ink-primary">
-            {act} deep-dive
-          </h2>
+      <div className="p-24 text-center">
+        <div className="mb-2 font-label-md text-label-md uppercase text-brand-primary">
+          COMING IN STEP 6
         </div>
-      )}
+        <h2 className="font-display text-display-lg uppercase text-ink-primary">
+          {act} deep-dive
+        </h2>
+      </div>
     </div>
   );
 }

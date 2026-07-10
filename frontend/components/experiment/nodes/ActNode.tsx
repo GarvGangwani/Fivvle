@@ -11,6 +11,8 @@ export type ActNodeData = {
   metricValue: string;
   validationPercent?: number;
   isRunning: boolean;
+  isFocused?: boolean;
+  isDisabled?: boolean;
   isStale?: boolean;
   basedOnVersion?: number | null;
   currentSparkVersion?: number;
@@ -25,13 +27,15 @@ function joinClasses(...parts: Array<string | false | undefined>): string {
 
 export function ActNode({ data }: NodeProps<ActNodeData>) {
   const isActive = data.isRunning;
+  const showFocusRing = Boolean(data.isFocused) || isActive;
 
   return (
     <div
       className={joinClasses(
         "group border-2 border-border-master bg-surface-card shadow-brutal-md w-64 p-4 cursor-grab transition-all z-20",
         "hover:bg-brand-primary-soft hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5",
-        isActive && "ring-2 ring-brand-primary ring-offset-2",
+        showFocusRing && "ring-2 ring-brand-primary ring-offset-2",
+        data.isDisabled && "opacity-50",
       )}
     >
       <div className={joinClasses("flex items-center gap-2 mb-3", isActive && "text-brand-primary")}>

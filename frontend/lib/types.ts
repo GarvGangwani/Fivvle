@@ -583,9 +583,13 @@ export type CanvasNodeId =
   | "launch"
   | "signal"
   | "resources"
-  | "spark-expanded";
+  | "spark-expanded"
+  | "refine-expanded";
 
-export type SatelliteNodeId = Exclude<CanvasNodeId, "spark-expanded">;
+export type SatelliteNodeId = Exclude<
+  CanvasNodeId,
+  "spark-expanded" | "refine-expanded"
+>;
 
 export interface NodePosition {
   x: number;

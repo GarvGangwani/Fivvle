@@ -47,6 +47,7 @@ import { useCanvasLayout } from "./hooks/useCanvasLayout";
 import { useResources } from "./hooks/useResources";
 import { ActNode } from "./nodes/ActNode";
 import { CoreShellNode } from "./nodes/CoreShellNode";
+import { RefineExpandedNode } from "./nodes/RefineExpandedNode";
 import { SparkExpandedNode } from "./nodes/SparkExpandedNode";
 import { SparkFullscreenModal } from "./nodes/SparkFullscreenModal";
 import { SparkNode, type SparkMetricState } from "./nodes/SparkNode";
@@ -69,12 +70,14 @@ const ACT_NODE_IDS: SatelliteNodeId[] = [
 ];
 
 const SPARK_EXPANDED_ID = "spark-expanded" as const;
+const REFINE_EXPANDED_ID = "refine-expanded" as const;
 
 const nodeTypes: NodeTypes = {
   coreShell: CoreShellNode,
   actNode: ActNode,
   sparkNode: SparkNode,
   sparkExpanded: SparkExpandedNode,
+  refineExpanded: RefineExpandedNode,
 };
 
 const edgeTypes: EdgeTypes = {
@@ -127,8 +130,8 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   const initialView = searchParams.get("view");
 
   const [overlayAct, setOverlayAct] = useState<
-    "refine" | "evidence" | "launch" | "signal" | null
-  >(initialAct === "refine" ? "refine" : null);
+    "evidence" | "launch" | "signal" | null
+  >(null);
   const [sparkPanelOpen, setSparkPanelOpen] = useState(
     () => initialAct === "spark" && initialView !== "fullscreen",
   );
@@ -136,6 +139,13 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     () => initialAct === "spark" && initialView === "fullscreen",
   );
   const [sparkPanelPosition, setSparkPanelPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [refinePanelOpen, setRefinePanelOpen] = useState(
+    () => initialAct === "refine",
+  );
+  const [refinePanelPosition, setRefinePanelPosition] = useState<{
     x: number;
     y: number;
   } | null>(null);
@@ -179,6 +189,11 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     return { x: sparkPos.x + 340, y: sparkPos.y };
   }, [positions]);
 
+  const computeInitialRefinePosition = useCallback(() => {
+    const refinePos = positions.refine ?? DEFAULT_POSITIONS.refine;
+    return { x: refinePos.x + 340, y: refinePos.y };
+  }, [positions]);
+
   // When the panel is open but local position is unset (URL deep-link / popstate),
   // wait until layout has loaded so we read spark-expanded from backend-synced state.
   useEffect(() => {
@@ -193,6 +208,20 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     sparkPanelPosition,
     positions,
     computeInitialPanelPosition,
+  ]);
+
+  useEffect(() => {
+    if (!refinePanelOpen || !loaded) return;
+    if (refinePanelPosition !== null) return;
+    setRefinePanelPosition(
+      positions[REFINE_EXPANDED_ID] ?? computeInitialRefinePosition(),
+    );
+  }, [
+    refinePanelOpen,
+    loaded,
+    refinePanelPosition,
+    positions,
+    computeInitialRefinePosition,
   ]);
 
   const setSparkUrl = useCallback(
@@ -210,6 +239,18 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     [],
   );
 
+  const setRefineUrl = useCallback((open: boolean) => {
+    const url = new URL(window.location.href);
+    if (open) {
+      url.searchParams.set("act", "refine");
+      url.searchParams.delete("view");
+    } else if (url.searchParams.get("act") === "refine") {
+      url.searchParams.delete("act");
+      url.searchParams.delete("view");
+    }
+    window.history.pushState({}, "", url.toString());
+  }, []);
+
   const closeSparkPanel = useCallback(() => {
     setSparkPanelOpen(false);
     setSparkFullscreen(false);
@@ -224,6 +265,8 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     setSparkPanelPosition(savedPos ?? computeInitialPanelPosition());
     setSparkPanelOpen(true);
     setSparkFullscreen(false);
+    setRefinePanelOpen(false);
+    setRefinePanelPosition(null);
     setSparkUrl("expanded");
   }, [sparkPanelOpen, positions, computeInitialPanelPosition, setSparkUrl]);
 
@@ -242,17 +285,44 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     setSparkUrl("expanded");
   }, [positions, computeInitialPanelPosition, setSparkUrl]);
 
+  const closeRefinePanel = useCallback(() => {
+    setRefinePanelOpen(false);
+    setRefinePanelPosition(null);
+    setRefineUrl(false);
+  }, [setRefineUrl]);
+
+  const openRefinePanel = useCallback(() => {
+    if (refinePanelOpen) return;
+    const savedPos = positions[REFINE_EXPANDED_ID];
+    setRefinePanelPosition(savedPos ?? computeInitialRefinePosition());
+    setRefinePanelOpen(true);
+    setSparkPanelOpen(false);
+    setSparkFullscreen(false);
+    setSparkPanelPosition(null);
+    setRefineUrl(true);
+  }, [refinePanelOpen, positions, computeInitialRefinePosition, setRefineUrl]);
+
   useEffect(() => {
     const onPopState = () => {
       const params = new URLSearchParams(window.location.search);
       const act = params.get("act");
       const view = params.get("view");
-      setOverlayAct(act === "refine" ? "refine" : null);
-      if (act === "spark" && view === "fullscreen") {
+      setOverlayAct(null);
+      if (act === "refine") {
+        setSparkFullscreen(false);
+        setSparkPanelOpen(false);
+        setSparkPanelPosition(null);
+        setRefinePanelPosition(null);
+        setRefinePanelOpen(true);
+      } else if (act === "spark" && view === "fullscreen") {
+        setRefinePanelOpen(false);
+        setRefinePanelPosition(null);
         setSparkFullscreen(true);
         setSparkPanelOpen(false);
         setSparkPanelPosition(null);
       } else if (act === "spark") {
+        setRefinePanelOpen(false);
+        setRefinePanelPosition(null);
         setSparkFullscreen(false);
         setSparkPanelPosition(null);
         setSparkPanelOpen(true);
@@ -260,6 +330,8 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         setSparkFullscreen(false);
         setSparkPanelOpen(false);
         setSparkPanelPosition(null);
+        setRefinePanelOpen(false);
+        setRefinePanelPosition(null);
       }
     };
     window.addEventListener("popstate", onPopState);
@@ -282,6 +354,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
 
   const buildNodes = useCallback((): Node[] => {
     const currentSparkVersion = experiment.current_spark_version ?? 0;
+    const refineLocked = currentSparkVersion < 1;
     const phaseStale = {
       refine: {
         isStale: Boolean(experiment.refine_is_stale),
@@ -349,6 +422,8 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
             metricLabel: config.metricLabel,
             metricValue: metrics[id],
             isRunning: isActRunning(id, experiment.status),
+            isFocused: id === "refine" ? refinePanelOpen : false,
+            isDisabled: id === "refine" ? refineLocked : false,
             isStale: stale?.isStale ?? false,
             basedOnVersion: stale?.basedOnVersion ?? null,
             currentSparkVersion,
@@ -376,6 +451,22 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       });
     }
 
+    if (refinePanelOpen && refinePanelPosition) {
+      base.push({
+        id: REFINE_EXPANDED_ID,
+        type: "refineExpanded",
+        position: refinePanelPosition,
+        draggable: true,
+        selectable: true,
+        data: {
+          experiment,
+          onClose: closeRefinePanel,
+          onFullscreen: () =>
+            toast("Fullscreen coming in the next update.", "info"),
+        },
+      });
+    }
+
     return base;
   }, [
     experiment,
@@ -385,12 +476,16 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     sparkPanelOpen,
     sparkFullscreen,
     sparkPanelPosition,
+    refinePanelOpen,
+    refinePanelPosition,
     metrics,
     closeSparkPanel,
     openSparkFullscreen,
+    closeRefinePanel,
     onExperimentChange,
     evidenceRerunning,
     handleEvidenceRerun,
+    toast,
   ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes());
@@ -445,15 +540,19 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   }, [resetLayout, fitView]);
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
-    if (node.id === SPARK_EXPANDED_ID) return;
+    if (node.id === SPARK_EXPANDED_ID || node.id === REFINE_EXPANDED_ID) return;
     setFocusedNodeId(node.id);
     if (node.id === "spark") {
       openSparkPanel();
       return;
     }
     if (node.id === "refine") {
-      setOverlayAct("refine");
-      window.history.pushState({}, "", `?act=refine`);
+      const sparkVersion = experiment.current_spark_version ?? 0;
+      if (sparkVersion < 1) {
+        toast("Save your idea in Spark first to unlock Refine.", "info");
+        return;
+      }
+      openRefinePanel();
       return;
     }
     if (node.id === "resources") {
@@ -467,9 +566,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
 
   const closeOverlay = () => {
     setOverlayAct(null);
-    const url = new URL(window.location.href);
-    url.searchParams.delete("act");
-    window.history.pushState({}, "", url.toString());
   };
 
   const onNodeDragStop: NodeDragHandler = useCallback(
@@ -478,7 +574,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
 
       const snapped = snapToGrid(node.position);
       const finalPos =
-        node.id === SPARK_EXPANDED_ID
+        node.id === SPARK_EXPANDED_ID || node.id === REFINE_EXPANDED_ID
           ? snapped
           : snapOutOfExclusionZone(snapped);
 
@@ -490,6 +586,9 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
 
       if (node.id === SPARK_EXPANDED_ID) {
         setSparkPanelPosition(finalPos);
+      }
+      if (node.id === REFINE_EXPANDED_ID) {
+        setRefinePanelPosition(finalPos);
       }
     },
     [setNodes, updatePosition],
@@ -560,7 +659,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       <DeepDiveOverlay
         isOpen={overlayAct !== null}
         onClose={closeOverlay}
-        act={overlayAct ?? "refine"}
+        act={overlayAct ?? "evidence"}
         experimentId={experiment.id}
       />
       <ResourcesDrawer
