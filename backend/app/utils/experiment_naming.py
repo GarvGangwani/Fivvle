@@ -18,6 +18,18 @@ _SLUG_MIN_LEN = 6
 LANDING_SLUG_RE = re.compile(r"^[a-z0-9-]{6,40}$")
 
 
+def get_experiment_display_name(experiment: Experiment) -> str:
+    """Display name for dashboards and search results."""
+    if experiment.name and experiment.name.strip():
+        return experiment.name.strip()
+    raw = (experiment.raw_idea or "").strip()
+    if not raw:
+        return "Untitled project"
+    if len(raw) <= 50:
+        return raw
+    return f"{raw[:50]}…"
+
+
 def normalize_experiment_name(name: str | None) -> str | None:
     """Trim and validate a user-supplied name. Empty strings become None."""
     if name is None:

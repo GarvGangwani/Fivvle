@@ -36,7 +36,7 @@ function SignupPageContent() {
           Start validating in under a minute.
         </p>
 
-        <div className="mt-8 space-y-0">
+        <div className="mt-8">
           <GoogleSignInButton
             disabled={formDisabled}
             redirectTo={destination}

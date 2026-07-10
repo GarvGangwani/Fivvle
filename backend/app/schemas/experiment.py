@@ -87,6 +87,7 @@ class ExperimentResponse(BaseModel):
     why_now: str | None = None
     status: ExperimentStatus
     refinement_count: int
+    tags: list[str] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -139,3 +140,17 @@ class ResearchStatusResponse(BaseModel):
     phases_completed: list[ExperimentStatus]
     last_updated_at: datetime
     error_detail: str | None
+
+
+class ExperimentCanvasDetailFields(BaseModel):
+    """Extra fields on GET /experiments/{id} for the experiment canvas."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    refined_idea: str | None = None
+    chat_message_count: int = Field(default=0, ge=0)
+    evidence_atom_count: int = Field(default=0, ge=0)
+    landing_page_view_count: int = Field(default=0, ge=0)
+    resource_count: int = Field(default=0, ge=0)
+    demand_score: int | None = Field(default=None, ge=0, le=100)
+    verdict: str | None = None

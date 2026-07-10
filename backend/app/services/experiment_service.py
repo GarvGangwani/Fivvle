@@ -17,6 +17,11 @@ Per .cursorrules "Cost Tracking & Limits":
 
 from __future__ import annotations
 
+import asyncio
+from typing import NamedTuple
+from uuid import UUID
+
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.enums import ExperimentStatus
@@ -26,6 +31,7 @@ from app.logging_config import get_logger
 from app.utils.experiment_naming import apply_llm_name_if_unset, normalize_experiment_name
 from app.schemas.refinement import RefinedIdea
 from app.services.refinement_service import refine_idea
+from app.services.tag_service import persist_experiment_tags
 
 _logger = get_logger(__name__)
 
@@ -143,6 +149,7 @@ async def create_experiment_with_refinement(
 
     experiment.refined_idea = refined.model_dump()
     apply_llm_name_if_unset(experiment, refined)
+    await persist_experiment_tags(db, experiment, refined)
     experiment.status = ExperimentStatus.REFINED
     experiment.refinement_count = 1
 
@@ -243,6 +250,7 @@ async def regenerate_refinement(
 
     experiment.refined_idea = refined.model_dump()
     apply_llm_name_if_unset(experiment, refined)
+    await persist_experiment_tags(db, experiment, refined)
     experiment.status = ExperimentStatus.REFINED
     experiment.refinement_count += 1
 
@@ -299,4 +307,94 @@ async def delete_experiment(db: AsyncSession, experiment: Experiment) -> None:
         "experiment deleted",
         experiment_id=str(experiment_id),
         user_id=str(user_id),
+    )
+
+
+class ExperimentCanvasMetrics(NamedTuple):
+    chat_message_count: int
+    evidence_atom_count: int
+    landing_page_view_count: int
+    resource_count: int
+    demand_score: int | None
+    verdict: str | None
+
+
+def extract_refined_idea_text(refined: dict | None) -> str | None:
+    """Return the refined one-liner for canvas display, or None if not refined yet."""
+    if not refined:
+        return None
+    one_liner = refined.get("refined_one_liner")
+    if isinstance(one_liner, str) and one_liner.strip():
+        return one_liner.strip()
+    return None
+
+
+def metrics_from_validation_report(
+    raw: dict | None,
+) -> tuple[int, int | None, str | None]:
+    """Finding count, demand score, and verdict from a validation report payload."""
+    if not raw:
+        return 0, None, None
+
+    qfs = raw.get("questions_and_findings") or []
+    finding_count = sum(len(qf.get("findings") or []) for qf in qfs)
+
+    demand_score: int | None = None
+    overall_score = raw.get("overall_score")
+    if isinstance(overall_score, (int, float)):
+        demand_score = max(0, min(100, int(overall_score)))
+
+    verdict = raw.get("overall_recommendation")
+    verdict_str = verdict if isinstance(verdict, str) else None
+
+    return finding_count, demand_score, verdict_str
+
+
+async def fetch_experiment_canvas_metrics(
+    db: AsyncSession,
+    experiment_id: UUID,
+    *,
+    thread_id: UUID | None,
+    validation_raw: dict | None,
+) -> ExperimentCanvasMetrics:
+    """Lightweight counts for the experiment canvas — queries run in parallel."""
+    from app.db.models.chat_message import ChatMessage
+    from app.db.models.experiment_resource import ExperimentResource
+    from app.db.models.page_view import PageView
+
+    evidence_atom_count, demand_score, verdict = metrics_from_validation_report(
+        validation_raw
+    )
+
+    if thread_id is not None:
+        chat_filter = or_(
+            ChatMessage.experiment_id == experiment_id,
+            ChatMessage.thread_id == thread_id,
+        )
+    else:
+        chat_filter = ChatMessage.experiment_id == experiment_id
+
+    chat_stmt = select(func.count()).select_from(ChatMessage).where(chat_filter)
+    resource_stmt = (
+        select(func.count())
+        .select_from(ExperimentResource)
+        .where(ExperimentResource.experiment_id == experiment_id)
+    )
+    page_view_stmt = (
+        select(func.count()).select_from(PageView).where(PageView.experiment_id == experiment_id)
+    )
+
+    chat_result, resource_result, page_view_result = await asyncio.gather(
+        db.execute(chat_stmt),
+        db.execute(resource_stmt),
+        db.execute(page_view_stmt),
+    )
+
+    return ExperimentCanvasMetrics(
+        chat_message_count=int(chat_result.scalar_one()),
+        evidence_atom_count=evidence_atom_count,
+        landing_page_view_count=int(page_view_result.scalar_one()),
+        resource_count=int(resource_result.scalar_one()),
+        demand_score=demand_score,
+        verdict=verdict,
     )

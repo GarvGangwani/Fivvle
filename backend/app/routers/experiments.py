@@ -94,6 +94,8 @@ from app.schemas.experiment import (
     ResearchStatusResponse,
 )
 from app.schemas.validation_report import ValidationReport as ValidationReportSchema
+from app.schemas.tags import UpdateExperimentTagsRequest
+from app.services.tag_service import validate_tags
 from app.services.analytics_aggregator import (
     LandingPageNotLiveError,
     build_analytics_aggregate,
@@ -105,6 +107,8 @@ from app.services.experiment_service import (
     RefinementLimitExceeded,
     create_experiment_with_refinement,
     delete_experiment,
+    extract_refined_idea_text,
+    fetch_experiment_canvas_metrics,
     infer_status_after_unarchive,
     regenerate_refinement,
 )
@@ -270,6 +274,47 @@ class GetExperimentDetailResponse(BaseModel):
     status: ExperimentStatus
     thread_id: UUID | None = None
     validation_report: ExperimentValidationReportSummary | None = None
+    refined_idea: str | None = None
+    chat_message_count: int = Field(default=0, ge=0)
+    evidence_atom_count: int = Field(default=0, ge=0)
+    landing_page_view_count: int = Field(default=0, ge=0)
+    resource_count: int = Field(default=0, ge=0)
+    demand_score: int | None = Field(default=None, ge=0, le=100)
+    verdict: str | None = None
+
+
+async def _build_experiment_detail_response(
+    db: AsyncSession,
+    experiment: Experiment,
+) -> GetExperimentDetailResponse:
+    summary = None
+    validation_raw = None
+    if experiment.validation_report is not None:
+        validation_raw = experiment.validation_report.raw_report
+        summary = _aggregate_validation_report(validation_raw)
+
+    metrics = await fetch_experiment_canvas_metrics(
+        db,
+        experiment.id,
+        thread_id=experiment.thread_id,
+        validation_raw=validation_raw,
+    )
+
+    return GetExperimentDetailResponse(
+        id=experiment.id,
+        name=experiment.name,
+        raw_idea=experiment.raw_idea,
+        status=experiment.status,
+        thread_id=experiment.thread_id,
+        validation_report=summary,
+        refined_idea=extract_refined_idea_text(experiment.refined_idea),
+        chat_message_count=metrics.chat_message_count,
+        evidence_atom_count=metrics.evidence_atom_count,
+        landing_page_view_count=metrics.landing_page_view_count,
+        resource_count=metrics.resource_count,
+        demand_score=metrics.demand_score,
+        verdict=metrics.verdict,
+    )
 
 
 def _aggregate_validation_report(raw: dict) -> ExperimentValidationReportSummary:
@@ -1510,18 +1555,7 @@ async def unarchive_experiment(
     experiment.status = infer_status_after_unarchive(experiment)
     await db.commit()
 
-    summary = None
-    if experiment.validation_report is not None:
-        summary = _aggregate_validation_report(experiment.validation_report.raw_report)
-
-    return GetExperimentDetailResponse(
-        id=experiment.id,
-        name=experiment.name,
-        raw_idea=experiment.raw_idea,
-        status=experiment.status,
-        thread_id=experiment.thread_id,
-        validation_report=summary,
-    )
+    return await _build_experiment_detail_response(db, experiment)
 
 
 @router.patch(
@@ -1568,17 +1602,55 @@ async def rename_experiment(
 
     await db.commit()
 
-    summary = None
-    if experiment.validation_report is not None:
-        summary = _aggregate_validation_report(experiment.validation_report.raw_report)
+    return await _build_experiment_detail_response(db, experiment)
 
-    return GetExperimentDetailResponse(
-        id=experiment.id,
-        name=experiment.name,
-        raw_idea=experiment.raw_idea,
-        status=experiment.status,
-        thread_id=experiment.thread_id,
-        validation_report=summary,
+
+@router.patch(
+    "/{experiment_id}/tags",
+    response_model=ExperimentListItemResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def update_experiment_tags(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: UpdateExperimentTagsRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> ExperimentListItemResponse:
+    result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+    experiment = result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    try:
+        validated = validate_tags(body.tags)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(exc),
+        ) from exc
+
+    if len(validated) < 1:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="At least one tag is required",
+        )
+
+    experiment.tags = validated
+    await db.commit()
+    await db.refresh(experiment)
+
+    stats_map = await build_experiment_card_stats_map(
+        db,
+        [experiment],
+        user_id=current_user.id,
+    )
+    base = ExperimentResponse.model_validate(experiment)
+    return ExperimentListItemResponse(
+        **base.model_dump(),
+        card_stats=stats_map.get(experiment.id),
     )
 
 
@@ -1609,15 +1681,4 @@ async def get_experiment_detail(
     if experiment is None or experiment.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
 
-    summary = None
-    if experiment.validation_report is not None:
-        summary = _aggregate_validation_report(experiment.validation_report.raw_report)
-
-    return GetExperimentDetailResponse(
-        id=experiment.id,
-        name=experiment.name,
-        raw_idea=experiment.raw_idea,
-        status=experiment.status,
-        thread_id=experiment.thread_id,
-        validation_report=summary,
-    )
+    return await _build_experiment_detail_response(db, experiment)
