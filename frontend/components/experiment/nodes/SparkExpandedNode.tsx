@@ -1,65 +1,56 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { NodeProps } from "reactflow";
 import { getExperiment } from "@/lib/api";
 import type { Experiment } from "@/lib/types";
 import { AddAttachmentMenu } from "../attachments/AddAttachmentMenu";
 import { AttachmentRow } from "../attachments/AttachmentRow";
 import { useAttachments } from "../hooks/useAttachments";
+import { useSparkManualSave } from "../hooks/useSparkManualSave";
 
 export type SparkExpandedData = {
   experiment: Experiment;
   onClose: () => void;
   onFullscreen: () => void;
-  onSave: (rawIdea: string) => Promise<void>;
   onExperimentChange?: (experiment: Experiment) => void;
 };
 
-function useDebouncedSave(
-  value: string,
-  onSave: (rawIdea: string) => Promise<void>,
-  delayMs: number,
-) {
-  const [saving, setSaving] = useState(false);
-  const first = useRef(true);
-  const latest = useRef(onSave);
-  latest.current = onSave;
-
-  useEffect(() => {
-    if (first.current) {
-      first.current = false;
-      return;
-    }
-    setSaving(true);
-    const timer = window.setTimeout(() => {
-      void latest
-        .current(value)
-        .catch(() => undefined)
-        .finally(() => setSaving(false));
-    }, delayMs);
-    return () => window.clearTimeout(timer);
-  }, [value, delayMs]);
-
-  return saving;
-}
-
 export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
-  const { experiment, onClose, onFullscreen, onSave, onExperimentChange } = data;
-  const [idea, setIdea] = useState(experiment.raw_idea ?? "");
+  const { experiment, onClose, onFullscreen, onExperimentChange } = data;
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const attachments = useAttachments(experiment.id);
-  const saving = useDebouncedSave(idea, onSave, 800);
-
-  useEffect(() => {
-    setIdea(experiment.raw_idea ?? "");
-  }, [experiment.id, experiment.raw_idea]);
 
   const refreshExperiment = async () => {
     if (!onExperimentChange) return;
     const updated = await getExperiment(experiment.id);
     onExperimentChange(updated);
   };
+
+  const {
+    idea,
+    setIdea,
+    saving,
+    isDirty,
+    currentVersion,
+    nextVersion,
+    handleSave,
+    handleCloseAttempt,
+  } = useSparkManualSave({
+    experiment,
+    attachments: attachments.items,
+    attachmentsLoading: attachments.loading,
+    onSaved: async ({ current_spark_version, raw_idea }) => {
+      if (onExperimentChange) {
+        const updated = await getExperiment(experiment.id);
+        onExperimentChange({
+          ...updated,
+          current_spark_version,
+          raw_idea,
+        });
+      }
+    },
+  });
 
   return (
     <div className="w-[560px] bg-surface-card border-2 border-border-master shadow-brutal-lg">
@@ -75,6 +66,9 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
           <span className="font-mono text-mono-md uppercase tracking-wider">
             PHASE 01: SPARK // EXPANDED_VIEW
           </span>
+          <span className="font-mono text-mono-sm bg-brand-primary text-ink-inverse px-2 py-0.5">
+            v{currentVersion || 1}
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -89,7 +83,7 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
           </button>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => handleCloseAttempt(onClose)}
             aria-label="Close panel"
             className="p-1 hover:bg-ink-inverse/10"
           >
@@ -114,9 +108,11 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
           <label className="font-label-md text-label-md uppercase text-ink-primary">
             THE IDEA
           </label>
-          <span className="font-mono text-mono-sm uppercase text-ink-tertiary">
-            {saving ? "SAVING..." : "AUTO-SAVED"}
-          </span>
+          {isDirty ? (
+            <span className="font-mono text-mono-sm uppercase text-brutalist-yellow bg-ink-primary px-2 py-0.5">
+              UNSAVED CHANGES
+            </span>
+          ) : null}
         </div>
         <textarea
           value={idea}
@@ -176,6 +172,28 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
             ))}
           </ul>
         )}
+      </div>
+
+      <div className="p-5 border-t-2 border-border-master nodrag">
+        <button
+          type="button"
+          onClick={() => void handleSave()}
+          disabled={!isDirty || saving}
+          className="w-full bg-brand-primary text-ink-inverse px-6 py-3 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-md hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-brutal-sm disabled:translate-x-0 disabled:translate-y-0 transition-all"
+        >
+          {saving
+            ? "SAVING..."
+            : isDirty
+              ? `SAVE AS v${nextVersion}`
+              : `SAVED · v${currentVersion || 1}`}
+        </button>
+        {isDirty &&
+        (experiment.refine_is_stale || experiment.evidence_is_stale) ? (
+          <p className="mt-3 font-body text-body-sm text-ink-secondary text-center">
+            Saving creates a new version. Downstream phases will show as based
+            on the previous version until you re-run them.
+          </p>
+        ) : null}
       </div>
     </div>
   );

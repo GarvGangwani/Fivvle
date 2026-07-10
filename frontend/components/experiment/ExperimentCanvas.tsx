@@ -17,9 +17,10 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui/ToastProvider";
+import { getExperiment } from "@/lib/api";
 import {
   createExperimentEvent,
-  patchExperimentSpark,
+  rerunEvidence,
 } from "@/lib/experiment-api";
 import type { CanvasNodeId, Experiment, SatelliteNodeId } from "@/lib/types";
 import { ACT_CONFIG } from "./act-config";
@@ -139,6 +140,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   } | null>(null);
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
+  const [evidenceRerunning, setEvidenceRerunning] = useState(false);
   const { setCenter } = useReactFlow();
   const { positions, loaded, updatePosition, resetLayout } = useCanvasLayout(
     experiment.id,
@@ -246,7 +248,45 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
+  const handleEvidenceRerun = useCallback(async () => {
+    setEvidenceRerunning(true);
+    try {
+      await rerunEvidence(experiment.id);
+      toast("Evidence re-run started against the current Spark.", "info");
+      const updated = await getExperiment(experiment.id);
+      onExperimentChange?.(updated);
+    } catch {
+      toast("Could not re-run Evidence. Try again.", "error");
+    } finally {
+      setEvidenceRerunning(false);
+    }
+  }, [experiment.id, onExperimentChange, toast]);
+
   const buildNodes = useCallback((): Node[] => {
+    const currentSparkVersion = experiment.current_spark_version ?? 0;
+    const phaseStale = {
+      refine: {
+        isStale: Boolean(experiment.refine_is_stale),
+        basedOnVersion: experiment.refine_spark_version,
+        canRerun: false,
+      },
+      evidence: {
+        isStale: Boolean(experiment.evidence_is_stale),
+        basedOnVersion: experiment.evidence_spark_version,
+        canRerun: true,
+      },
+      launch: {
+        isStale: Boolean(experiment.launch_is_stale),
+        basedOnVersion: experiment.launch_spark_version,
+        canRerun: false,
+      },
+      signal: {
+        isStale: Boolean(experiment.signal_is_stale),
+        basedOnVersion: experiment.signal_spark_version,
+        canRerun: false,
+      },
+    } as const;
+
     const base: Node[] = [
       {
         id: "core",
@@ -270,10 +310,15 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
           sparkMetric,
           isFocused: sparkPanelOpen || sparkFullscreen,
           isRunning: isActRunning("spark", experiment.status),
+          currentSparkVersion,
         },
       },
       ...ACT_NODE_IDS.map((id) => {
         const config = ACT_CONFIG[id];
+        const stale =
+          id in phaseStale
+            ? phaseStale[id as keyof typeof phaseStale]
+            : null;
         return {
           id,
           type: "actNode" as const,
@@ -286,6 +331,12 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
             metricLabel: config.metricLabel,
             metricValue: metrics[id],
             isRunning: isActRunning(id, experiment.status),
+            isStale: stale?.isStale ?? false,
+            basedOnVersion: stale?.basedOnVersion ?? null,
+            currentSparkVersion,
+            canRerun: Boolean(stale?.canRerun && stale.isStale),
+            rerunning: id === "evidence" ? evidenceRerunning : false,
+            onRerun: id === "evidence" ? handleEvidenceRerun : undefined,
           },
         };
       }),
@@ -302,10 +353,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
           experiment,
           onClose: closeSparkPanel,
           onFullscreen: openSparkFullscreen,
-          onSave: async (rawIdea: string) => {
-            const updated = await patchExperimentSpark(experiment.id, rawIdea);
-            onExperimentChange?.(updated);
-          },
           onExperimentChange,
         },
       });
@@ -324,6 +371,8 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     closeSparkPanel,
     openSparkFullscreen,
     onExperimentChange,
+    evidenceRerunning,
+    handleEvidenceRerun,
   ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes());
@@ -445,10 +494,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
           experiment={experiment}
           onClose={closeSparkPanel}
           onMinimize={minimizeFromFullscreen}
-          onSave={async (rawIdea) => {
-            const updated = await patchExperimentSpark(experiment.id, rawIdea);
-            onExperimentChange?.(updated);
-          }}
           onExperimentChange={onExperimentChange}
         />
       ) : null}

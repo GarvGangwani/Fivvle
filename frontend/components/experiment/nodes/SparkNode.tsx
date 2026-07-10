@@ -9,6 +9,7 @@ export type SparkNodeData = {
   sparkMetric: { value: string; state: SparkMetricState };
   isFocused: boolean;
   isRunning: boolean;
+  currentSparkVersion?: number;
 };
 
 function joinClasses(...parts: Array<string | false | undefined>): string {
@@ -16,7 +17,8 @@ function joinClasses(...parts: Array<string | false | undefined>): string {
 }
 
 export function SparkNode({ data }: NodeProps<SparkNodeData>) {
-  const { rawIdea, sparkMetric, isFocused, isRunning } = data;
+  const { rawIdea, sparkMetric, isFocused, isRunning, currentSparkVersion } =
+    data;
   const ideaSnippet = rawIdea?.trim().slice(0, 60) ?? "";
 
   return (
@@ -75,6 +77,11 @@ export function SparkNode({ data }: NodeProps<SparkNodeData>) {
           >
             {sparkMetric.value}
           </p>
+          {(currentSparkVersion ?? 0) > 0 ? (
+            <p className="font-mono text-mono-sm text-ink-tertiary uppercase mt-1">
+              v{currentSparkVersion}
+            </p>
+          ) : null}
         </div>
         <span
           className="material-symbols-outlined text-ink-primary/20"

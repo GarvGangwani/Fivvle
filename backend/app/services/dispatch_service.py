@@ -17,6 +17,18 @@ _USER_CONFIRM_ALLOWED = frozenset(
     {ExperimentStatus.REFINED, ExperimentStatus.RESEARCH_FAILED}
 )
 _AUTO_FIRE_ALLOWED = frozenset({ExperimentStatus.REFINED, ExperimentStatus.REFINING})
+_EVIDENCE_RERUN_ALLOWED = frozenset(
+    {
+        ExperimentStatus.RESEARCH_READY,
+        ExperimentStatus.RESEARCH_FAILED,
+        ExperimentStatus.LANDING_GENERATING,
+        ExperimentStatus.LANDING_DRAFT,
+        ExperimentStatus.LANDING_LIVE,
+        ExperimentStatus.INSIGHT_GENERATING,
+        ExperimentStatus.INSIGHT_READY,
+        ExperimentStatus.INSIGHT_FAILED,
+    }
+)
 
 
 def _allowed_source_statuses(trigger: DispatchTrigger) -> frozenset[ExperimentStatus]:
@@ -24,6 +36,8 @@ def _allowed_source_statuses(trigger: DispatchTrigger) -> frozenset[ExperimentSt
         return _USER_CONFIRM_ALLOWED
     if trigger == DispatchTrigger.AUTO_FIRE:
         return _AUTO_FIRE_ALLOWED
+    if trigger == DispatchTrigger.EVIDENCE_RERUN:
+        return _EVIDENCE_RERUN_ALLOWED
     raise ValueError(f"Unknown dispatch trigger: {trigger!r}")
 
 

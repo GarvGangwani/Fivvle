@@ -109,6 +109,7 @@ class ChatTurnKind(StrEnum):
 class DispatchTrigger(StrEnum):
     USER_CONFIRM = "user_confirm"
     AUTO_FIRE = "auto_fire"
+    EVIDENCE_RERUN = "evidence_rerun"
 
 
 class WalletTransactionType(StrEnum):

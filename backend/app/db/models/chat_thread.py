@@ -35,6 +35,11 @@ class ChatThread(Base):
         Text,
         nullable=True,
     )
+    spark_version_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("experiment_spark_versions.id"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

@@ -24,6 +24,10 @@ _LOCAL_ATTACHMENT_ROOT = _BACKEND_ROOT / "var" / "uploads" / "experiment-attachm
 
 UPLOAD_URL_TTL = timedelta(minutes=5)
 
+# Public path prefix served by FastAPI (mirrors landing-logo local URLs).
+_LOCAL_PUBLIC_PREFIX = "/uploads/experiment-attachments"
+_LEGACY_PUBLIC_PREFIX = "/media/experiment-attachments"
+
 
 class AttachmentUploadError(ValueError):
     """User-facing validation failure for attachment uploads."""
@@ -42,6 +46,36 @@ def _use_local_storage(settings: Settings) -> bool:
     if settings.logo_upload_backend == "firebase":
         return False
     return settings.environment in ("development", "test")
+
+
+def build_public_firebase_url(storage_path: str, *, bucket_name: str | None = None) -> str:
+    """Permanent public media URL. Requires public-read Storage rules on the path."""
+    settings = get_settings()
+    bucket = bucket_name or _bucket_name(settings)
+    encoded = quote(storage_path, safe="")
+    return (
+        f"https://firebasestorage.googleapis.com/v0/b/{bucket}"
+        f"/o/{encoded}?alt=media"
+    )
+
+
+def absolutize_attachment_file_url(file_url: str | None, api_base_url: str) -> str | None:
+    """Ensure local relative attachment URLs are absolute against the API origin.
+
+    Relative paths like ``/uploads/experiment-attachments/...`` resolve against the
+    Next.js origin in ``<img src>`` and 404 — they must point at FastAPI.
+    """
+    if not file_url:
+        return None
+    if file_url.startswith("http://") or file_url.startswith("https://"):
+        return file_url
+
+    path = file_url
+    if path.startswith(_LEGACY_PUBLIC_PREFIX):
+        path = _LOCAL_PUBLIC_PREFIX + path[len(_LEGACY_PUBLIC_PREFIX) :]
+    if not path.startswith("/"):
+        return file_url
+    return f"{api_base_url.rstrip('/')}{path}"
 
 
 def _sanitize_filename(filename: str) -> str:
@@ -78,14 +112,15 @@ def create_attachment_upload_url(
     object_path = f"experiments/{experiment_id}/{object_name}"
     expires_at = datetime.now(timezone.utc) + UPLOAD_URL_TTL
     settings = get_settings()
+    api_base = api_base_url.rstrip("/")
 
     if _use_local_storage(settings):
-        # Local: client PUTs bytes to FastAPI; file_url is a local media path.
         upload_url = (
-            f"{api_base_url.rstrip('/')}/experiments/{experiment_id}"
+            f"{api_base}/experiments/{experiment_id}"
             f"/attachments/local-upload/{object_name}"
         )
-        file_url = f"/media/experiment-attachments/{experiment_id}/{object_name}"
+        # Absolute API URL so <img src> hits FastAPI, not the Next.js origin.
+        file_url = f"{api_base}{_LOCAL_PUBLIC_PREFIX}/{experiment_id}/{object_name}"
         return UploadUrlResponse(
             upload_url=upload_url,
             file_url=file_url,
@@ -101,11 +136,7 @@ def create_attachment_upload_url(
         method="PUT",
         content_type=mime_type,
     )
-    encoded = quote(object_path, safe="")
-    file_url = (
-        f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}"
-        f"/o/{encoded}?alt=media"
-    )
+    file_url = build_public_firebase_url(object_path, bucket_name=bucket_name)
     _logger.info(
         "attachment upload URL issued",
         experiment_id=str(experiment_id),
@@ -142,4 +173,25 @@ def store_local_attachment_bytes(
         content_type=content_type,
         size_bytes=len(file_bytes),
     )
-    return f"/media/experiment-attachments/{experiment_id}/{object_name}"
+    return f"{_LOCAL_PUBLIC_PREFIX}/{experiment_id}/{object_name}"
+
+
+def resolve_local_attachment_path(experiment_id: str, filename: str) -> Path:
+    return _LOCAL_ATTACHMENT_ROOT / experiment_id / filename
+
+
+def local_attachment_content_type(path: Path) -> str:
+    suffix = path.suffix.lower()
+    return {
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".webp": "image/webp",
+        ".pdf": "application/pdf",
+        ".md": "text/markdown",
+        ".txt": "text/plain",
+        ".doc": "application/msword",
+        ".docx": (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        ),
+    }.get(suffix, "application/octet-stream")

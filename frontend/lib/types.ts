@@ -246,6 +246,23 @@ export interface Experiment {
   verdict?: string | null;
   spark_last_edited_at?: string | null;
   refinement_started_at?: string | null;
+  current_spark_version?: number;
+  refine_spark_version?: number | null;
+  evidence_spark_version?: number | null;
+  launch_spark_version?: number | null;
+  signal_spark_version?: number | null;
+  refine_is_stale?: boolean;
+  evidence_is_stale?: boolean;
+  launch_is_stale?: boolean;
+  signal_is_stale?: boolean;
+}
+
+export interface SparkVersion {
+  id: string;
+  version_number: number;
+  raw_idea: string | null;
+  attachment_ids_snapshot: string[];
+  created_at: string;
 }
 
 // --- Clarifying question block (refinement pre-research) ---

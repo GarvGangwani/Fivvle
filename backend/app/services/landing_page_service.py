@@ -735,6 +735,9 @@ async def _persist_landing_page_row(
         existing.copy_json = copy_json
         existing.page_json = page_json
         existing.template_id = resolved_tid
+        from app.services.spark_version_service import get_latest_spark_version_id
+
+        existing.spark_version_id = await get_latest_spark_version_id(db, experiment.id)
         row = existing
     else:
         scalars = _scalar_fields_for_insert(
@@ -743,6 +746,8 @@ async def _persist_landing_page_row(
             input_model=input_model,
             page_goal=page_goal,
         )
+        from app.services.spark_version_service import get_latest_spark_version_id
+
         row = LandingPage(
             experiment_id=experiment.id,
             template_id=resolved_tid,
@@ -752,6 +757,7 @@ async def _persist_landing_page_row(
             slug=await _generate_unique_slug(db, experiment),
             copy_json=copy_json,
             page_json=page_json,
+            spark_version_id=await get_latest_spark_version_id(db, experiment.id),
             **scalars,
         )
         db.add(row)

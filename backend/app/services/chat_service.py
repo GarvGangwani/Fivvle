@@ -485,6 +485,7 @@ async def _resolve_refinement_experiment(
             )
         if experiment.status == ExperimentStatus.SPARK:
             from app.services.experiment_service import begin_refinement_from_spark
+            from app.services.spark_version_service import stamp_chat_thread_spark_version
 
             try:
                 experiment = await begin_refinement_from_spark(db, experiment)
@@ -493,6 +494,7 @@ async def _resolve_refinement_experiment(
             if experiment.thread_id is None:
                 experiment.thread_id = thread.id
                 await db.flush()
+            await stamp_chat_thread_spark_version(db, thread, experiment.id)
             return experiment
         if experiment.status != ExperimentStatus.REFINING:
             raise InvalidExperimentState(

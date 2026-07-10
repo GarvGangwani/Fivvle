@@ -37,12 +37,21 @@ from app.services.logo_upload_service import (
     resolve_local_logo_path,
     resolve_local_section_image_path,
 )
+from app.services.attachment_upload_service import (
+    local_attachment_content_type,
+    resolve_local_attachment_path,
+)
 from app.services.waitlist_service import record_waitlist_signup
 
 _logger = get_logger(__name__)
 
 _SLUG_RE = re.compile(r"^[a-z0-9-]{6,40}$")
 _LOGO_FILENAME_RE = re.compile(r"^[0-9a-f-]{36}\.(png|jpe?g|webp)$", re.IGNORECASE)
+# UUID-prefixed attachment object names: {uuid}-{original-filename}
+_ATTACHMENT_FILENAME_RE = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-.+$",
+    re.IGNORECASE,
+)
 _UUID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     re.IGNORECASE,
@@ -312,5 +321,32 @@ async def get_landing_page_section_image_upload(
     return FileResponse(
         path,
         media_type=local_section_image_content_type(path),
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
+@router.get("/uploads/experiment-attachments/{experiment_id}/{filename}")
+@limiter.limit(PUBLIC_RATE_LIMIT, key_func=ip_key)
+async def get_experiment_attachment_upload(
+    request: Request,
+    response: Response,
+    experiment_id: str,
+    filename: str,
+) -> FileResponse:
+    """Serve locally stored Spark attachments (development / fallback storage)."""
+    if not _UUID_RE.match(experiment_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    if not _ATTACHMENT_FILENAME_RE.match(filename):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    path = resolve_local_attachment_path(experiment_id, filename)
+    if not path.is_file():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+
+    return FileResponse(
+        path,
+        media_type=local_attachment_content_type(path),
         headers={"Cache-Control": "public, max-age=31536000, immutable"},
     )

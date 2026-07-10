@@ -23,6 +23,7 @@ from app.schemas.experiment_attachments import (
 )
 from app.services.attachment_upload_service import (
     AttachmentUploadError,
+    absolutize_attachment_file_url,
     create_attachment_upload_url,
     store_local_attachment_bytes,
 )
@@ -42,12 +43,22 @@ async def _get_owned_experiment(
     return experiment
 
 
+def _serialize_attachment(row: ExperimentAttachment, api_base_url: str) -> AttachmentOut:
+    out = AttachmentOut.model_validate(row)
+    return out.model_copy(
+        update={
+            "file_url": absolutize_attachment_file_url(out.file_url, api_base_url),
+        }
+    )
+
+
 @router.get(
     "/experiments/{experiment_id}/attachments",
     response_model=list[AttachmentOut],
 )
 async def list_attachments(
     experiment_id: UUID,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> list[AttachmentOut]:
@@ -64,7 +75,8 @@ async def list_attachments(
         )
     )
     rows = result.scalars().all()
-    return [AttachmentOut.model_validate(row) for row in rows]
+    api_base = str(request.base_url)
+    return [_serialize_attachment(row, api_base) for row in rows]
 
 
 @router.post(
@@ -75,6 +87,7 @@ async def list_attachments(
 async def create_attachment(
     experiment_id: UUID,
     payload: AttachmentCreateIn,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> AttachmentOut:
@@ -92,7 +105,7 @@ async def create_attachment(
     db.add(row)
     await db.flush()
     await db.refresh(row)
-    return AttachmentOut.model_validate(row)
+    return _serialize_attachment(row, str(request.base_url))
 
 
 @router.patch(
@@ -103,6 +116,7 @@ async def patch_attachment(
     experiment_id: UUID,
     att_id: UUID,
     payload: AttachmentPatchIn,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> AttachmentOut:
@@ -125,7 +139,7 @@ async def patch_attachment(
         setattr(row, key, value)
     await db.flush()
     await db.refresh(row)
-    return AttachmentOut.model_validate(row)
+    return _serialize_attachment(row, str(request.base_url))
 
 
 @router.delete(
