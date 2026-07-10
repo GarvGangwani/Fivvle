@@ -41,6 +41,21 @@ async def _get_owned_experiment(
     return experiment
 
 
+def _to_out(row: ExperimentCanvasLayout, *, merge_defaults: bool = False) -> CanvasLayoutOut:
+    positions = row.node_positions or {}
+    if merge_defaults:
+        positions = {**DEFAULT_POSITIONS, **positions}
+    return CanvasLayoutOut(
+        experiment_id=str(row.experiment_id),
+        user_id=str(row.user_id),
+        node_positions=positions,  # type: ignore[arg-type]
+        viewport_x=row.viewport_x,
+        viewport_y=row.viewport_y,
+        viewport_zoom=row.viewport_zoom,
+        updated_at=row.updated_at,
+    )
+
+
 @router.get("/experiments/{experiment_id}/canvas-layout", response_model=CanvasLayoutOut)
 async def get_layout(
     experiment_id: UUID,
@@ -60,16 +75,13 @@ async def get_layout(
             experiment_id=str(experiment_id),
             user_id=str(current_user.id),
             node_positions=DEFAULT_POSITIONS,  # type: ignore[arg-type]
+            viewport_x=None,
+            viewport_y=None,
+            viewport_zoom=None,
             updated_at=datetime.now(timezone.utc),
         )
     # Merge defaults so older pentagon layouts pick up the new spark node.
-    merged = {**DEFAULT_POSITIONS, **(row.node_positions or {})}
-    return CanvasLayoutOut(
-        experiment_id=str(row.experiment_id),
-        user_id=str(row.user_id),
-        node_positions=merged,  # type: ignore[arg-type]
-        updated_at=row.updated_at,
-    )
+    return _to_out(row, merge_defaults=True)
 
 
 @router.put("/experiments/{experiment_id}/canvas-layout", response_model=CanvasLayoutOut)
@@ -87,20 +99,38 @@ async def upsert_layout(
         )
     )
     row = result.scalar_one_or_none()
+    fields_set = payload.model_fields_set
+    now = datetime.now(timezone.utc)
+
     if row is None:
         row = ExperimentCanvasLayout(
             experiment_id=experiment_id,
             user_id=current_user.id,
-            node_positions={k: v.model_dump() for k, v in payload.node_positions.items()},
+            node_positions={
+                k: v.model_dump() for k, v in payload.node_positions.items()
+            },
+            viewport_x=payload.viewport_x if "viewport_x" in fields_set else None,
+            viewport_y=payload.viewport_y if "viewport_y" in fields_set else None,
+            viewport_zoom=(
+                payload.viewport_zoom if "viewport_zoom" in fields_set else None
+            ),
+            updated_at=now,
         )
         db.add(row)
         await db.flush()
     else:
-        row.node_positions = {k: v.model_dump() for k, v in payload.node_positions.items()}
+        row.node_positions = {
+            k: v.model_dump() for k, v in payload.node_positions.items()
+        }
+        # Explicit null clears saved viewport (Reset Layout); omitted fields preserve.
+        if "viewport_x" in fields_set:
+            row.viewport_x = payload.viewport_x
+        if "viewport_y" in fields_set:
+            row.viewport_y = payload.viewport_y
+        if "viewport_zoom" in fields_set:
+            row.viewport_zoom = payload.viewport_zoom
+        row.updated_at = now
+        await db.flush()
+
     await db.refresh(row)
-    return CanvasLayoutOut(
-        experiment_id=str(row.experiment_id),
-        user_id=str(row.user_id),
-        node_positions=row.node_positions,  # type: ignore[arg-type]
-        updated_at=row.updated_at,
-    )
+    return _to_out(row)

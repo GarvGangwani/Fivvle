@@ -9,6 +9,16 @@ import {
 import type { CanvasNodeId, NodePosition } from "@/lib/types";
 import { DEFAULT_POSITIONS } from "../canvas-helpers";
 
+export type CanvasViewport = { x: number; y: number; zoom: number };
+
+type PositionsState = Partial<Record<CanvasNodeId, NodePosition>> &
+  typeof DEFAULT_POSITIONS;
+
+type CanvasState = {
+  positions: PositionsState;
+  viewport: CanvasViewport | null;
+};
+
 function debounce<T extends (...args: never[]) => void>(
   fn: T,
   waitMs: number,
@@ -20,14 +30,35 @@ function debounce<T extends (...args: never[]) => void>(
   };
 }
 
+function viewportFromLayout(data: {
+  viewport_x?: number | null;
+  viewport_y?: number | null;
+  viewport_zoom?: number | null;
+}): CanvasViewport | null {
+  if (
+    data.viewport_x == null ||
+    data.viewport_y == null ||
+    data.viewport_zoom == null
+  ) {
+    return null;
+  }
+  return {
+    x: data.viewport_x,
+    y: data.viewport_y,
+    zoom: data.viewport_zoom,
+  };
+}
+
 export function useCanvasLayout(experimentId: string) {
-  const [positions, setPositions] =
-    useState<Partial<Record<CanvasNodeId, NodePosition>> & typeof DEFAULT_POSITIONS>(
-      DEFAULT_POSITIONS,
-    );
+  const [state, setState] = useState<CanvasState>({
+    positions: DEFAULT_POSITIONS,
+    viewport: null,
+  });
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const mountedRef = useRef(true);
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     mountedRef.current = true;
@@ -42,11 +73,15 @@ export function useCanvasLayout(experimentId: string) {
     void getCanvasLayout(experimentId)
       .then((data) => {
         if (cancelled) return;
-        setPositions({ ...DEFAULT_POSITIONS, ...data.node_positions });
+        // Keep every key from the API (including spark-expanded) — no ID filtering.
+        setState({
+          positions: { ...DEFAULT_POSITIONS, ...data.node_positions },
+          viewport: viewportFromLayout(data),
+        });
       })
       .catch(() => {
         if (cancelled) return;
-        setPositions(DEFAULT_POSITIONS);
+        setState({ positions: DEFAULT_POSITIONS, viewport: null });
       })
       .finally(() => {
         if (!cancelled) setLoaded(true);
@@ -57,18 +92,18 @@ export function useCanvasLayout(experimentId: string) {
   }, [experimentId]);
 
   const saveLayout = useCallback(
-    async (
-      nextPositions: Partial<Record<CanvasNodeId, NodePosition>> &
-        typeof DEFAULT_POSITIONS,
-    ) => {
+    async (next: CanvasState) => {
       setSaving(true);
       try {
         const payload: CanvasLayoutInput = {
-          node_positions: nextPositions as Record<CanvasNodeId, NodePosition>,
+          node_positions: next.positions as Record<CanvasNodeId, NodePosition>,
+          viewport_x: next.viewport?.x ?? null,
+          viewport_y: next.viewport?.y ?? null,
+          viewport_zoom: next.viewport?.zoom ?? null,
         };
         await upsertCanvasLayout(experimentId, payload);
       } catch {
-        // Layout save is best-effort; local positions still apply if the API is unreachable.
+        // Layout save is best-effort; local state still applies if the API is unreachable.
       } finally {
         if (mountedRef.current) setSaving(false);
       }
@@ -76,13 +111,37 @@ export function useCanvasLayout(experimentId: string) {
     [experimentId],
   );
 
-  const debouncedSave = useMemo(() => debounce(saveLayout, 500), [saveLayout]);
+  // Flush latest state at timer fire time so a viewport save can't overwrite a
+  // newer spark-expanded position that was scheduled earlier in the same window.
+  const debouncedSave = useMemo(
+    () =>
+      debounce(() => {
+        void saveLayout(stateRef.current);
+      }, 500),
+    [saveLayout],
+  );
 
   const updatePosition = useCallback(
     (nodeId: CanvasNodeId, pos: NodePosition) => {
-      setPositions((prev) => {
-        const next = { ...prev, [nodeId]: pos };
-        debouncedSave(next);
+      setState((prev) => {
+        const next = {
+          ...prev,
+          positions: { ...prev.positions, [nodeId]: pos },
+        };
+        stateRef.current = next;
+        debouncedSave();
+        return next;
+      });
+    },
+    [debouncedSave],
+  );
+
+  const updateViewport = useCallback(
+    (viewport: CanvasViewport) => {
+      setState((prev) => {
+        const next = { ...prev, viewport };
+        stateRef.current = next;
+        debouncedSave();
         return next;
       });
     },
@@ -90,9 +149,28 @@ export function useCanvasLayout(experimentId: string) {
   );
 
   const resetLayout = useCallback(async () => {
-    setPositions(DEFAULT_POSITIONS);
-    await saveLayout(DEFAULT_POSITIONS);
+    const next: CanvasState = {
+      positions: DEFAULT_POSITIONS,
+      viewport: null,
+    };
+    stateRef.current = next;
+    setState(next);
+    await saveLayout(next);
   }, [saveLayout]);
 
-  return { positions, loaded, saving, setPositions, updatePosition, resetLayout };
+  return {
+    positions: state.positions,
+    viewport: state.viewport,
+    loaded,
+    saving,
+    setPositions: (positions: PositionsState) =>
+      setState((prev) => {
+        const next = { ...prev, positions };
+        stateRef.current = next;
+        return next;
+      }),
+    updatePosition,
+    updateViewport,
+    resetLayout,
+  };
 }

@@ -13,6 +13,7 @@ import ReactFlow, {
   type NodeDragHandler,
   type NodeMouseHandler,
   type NodeTypes,
+  type Viewport,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import { useSearchParams } from "next/navigation";
@@ -141,10 +142,16 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [evidenceRerunning, setEvidenceRerunning] = useState(false);
-  const { setCenter } = useReactFlow();
-  const { positions, loaded, updatePosition, resetLayout } = useCanvasLayout(
-    experiment.id,
-  );
+  const { setCenter, fitView } = useReactFlow();
+  const {
+    positions,
+    viewport: savedViewport,
+    loaded,
+    updatePosition,
+    updateViewport,
+    resetLayout,
+  } = useCanvasLayout(experiment.id);
+  const [canvasSettled, setCanvasSettled] = useState(false);
   const { resources, addResource, removeResource } = useResources(experiment.id);
 
   const phasesComplete = getPhasesComplete(experiment.status);
@@ -172,13 +179,17 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     return { x: sparkPos.x + 340, y: sparkPos.y };
   }, [positions]);
 
+  // When the panel is open but local position is unset (URL deep-link / popstate),
+  // wait until layout has loaded so we read spark-expanded from backend-synced state.
   useEffect(() => {
-    if (!sparkPanelOpen) return;
-    if (sparkPanelPosition) return;
-    const saved = positions[SPARK_EXPANDED_ID];
-    setSparkPanelPosition(saved ?? computeInitialPanelPosition());
+    if (!sparkPanelOpen || !loaded) return;
+    if (sparkPanelPosition !== null) return;
+    setSparkPanelPosition(
+      positions[SPARK_EXPANDED_ID] ?? computeInitialPanelPosition(),
+    );
   }, [
     sparkPanelOpen,
+    loaded,
     sparkPanelPosition,
     positions,
     computeInitialPanelPosition,
@@ -202,26 +213,30 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   const closeSparkPanel = useCallback(() => {
     setSparkPanelOpen(false);
     setSparkFullscreen(false);
+    setSparkPanelPosition(null);
     setSparkUrl("closed");
   }, [setSparkUrl]);
 
   const openSparkPanel = useCallback(() => {
-    const saved = positions[SPARK_EXPANDED_ID];
-    setSparkPanelPosition(saved ?? computeInitialPanelPosition());
+    if (sparkPanelOpen) return;
+    // Always prefer backend-synced positions over any leftover local state.
+    const savedPos = positions[SPARK_EXPANDED_ID];
+    setSparkPanelPosition(savedPos ?? computeInitialPanelPosition());
     setSparkPanelOpen(true);
     setSparkFullscreen(false);
     setSparkUrl("expanded");
-  }, [positions, computeInitialPanelPosition, setSparkUrl]);
+  }, [sparkPanelOpen, positions, computeInitialPanelPosition, setSparkUrl]);
 
   const openSparkFullscreen = useCallback(() => {
     setSparkFullscreen(true);
     setSparkPanelOpen(false);
+    setSparkPanelPosition(null);
     setSparkUrl("fullscreen");
   }, [setSparkUrl]);
 
   const minimizeFromFullscreen = useCallback(() => {
-    const saved = positions[SPARK_EXPANDED_ID];
-    setSparkPanelPosition(saved ?? computeInitialPanelPosition());
+    const savedPos = positions[SPARK_EXPANDED_ID];
+    setSparkPanelPosition(savedPos ?? computeInitialPanelPosition());
     setSparkFullscreen(false);
     setSparkPanelOpen(true);
     setSparkUrl("expanded");
@@ -236,12 +251,15 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       if (act === "spark" && view === "fullscreen") {
         setSparkFullscreen(true);
         setSparkPanelOpen(false);
+        setSparkPanelPosition(null);
       } else if (act === "spark") {
         setSparkFullscreen(false);
+        setSparkPanelPosition(null);
         setSparkPanelOpen(true);
       } else {
         setSparkFullscreen(false);
         setSparkPanelOpen(false);
+        setSparkPanelPosition(null);
       }
     };
     window.addEventListener("popstate", onPopState);
@@ -390,10 +408,41 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     });
   }, [setCenter]);
 
+  // Start settle window when ReactFlow mounts (after layout load), not on
+  // CanvasInner mount — otherwise a slow GET would leave onMove unguarded.
   useEffect(() => {
-    if (!loaded) return;
+    if (!loaded) {
+      setCanvasSettled(false);
+      return;
+    }
+    setCanvasSettled(false);
+    const timer = window.setTimeout(() => setCanvasSettled(true), 300);
+    return () => window.clearTimeout(timer);
+  }, [loaded, experiment.id]);
+
+  const handleMove = useCallback(
+    (_event: unknown, viewport: Viewport) => {
+      if (!canvasSettled) return;
+      updateViewport({
+        x: viewport.x,
+        y: viewport.y,
+        zoom: viewport.zoom,
+      });
+    },
+    [canvasSettled, updateViewport],
+  );
+
+  const handleFitView = useCallback(() => {
     frameCanvas();
-  }, [loaded, frameCanvas]);
+  }, [frameCanvas]);
+
+  const handleResetLayout = useCallback(() => {
+    void resetLayout().then(() => {
+      requestAnimationFrame(() => {
+        fitView({ padding: 0.4, duration: 400 });
+      });
+    });
+  }, [resetLayout, fitView]);
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
     if (node.id === SPARK_EXPANDED_ID) return;
@@ -423,16 +472,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     window.history.pushState({}, "", url.toString());
   };
 
-  const handleFitView = useCallback(() => {
-    frameCanvas();
-  }, [frameCanvas]);
-
-  const handleResetLayout = useCallback(() => {
-    void resetLayout().then(() => {
-      frameCanvas();
-    });
-  }, [resetLayout, frameCanvas]);
-
   const onNodeDragStop: NodeDragHandler = useCallback(
     (_, node) => {
       if (node.id === "core") return;
@@ -458,36 +497,50 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
 
   return (
     <div className="relative h-full w-full canvas-grid-bg overflow-hidden">
-      <BlueprintDecor />
+      {!loaded ? (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <span className="font-mono text-mono-md uppercase text-ink-tertiary">
+            Loading canvas...
+          </span>
+        </div>
+      ) : (
+        <>
+          <BlueprintDecor />
 
-      <ReactFlow
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
-        nodes={nodes}
-        edges={edges}
-        onNodesChange={onNodesChange}
-        onEdgesChange={onEdgesChange}
-        minZoom={0.3}
-        maxZoom={2}
-        panOnScroll
-        proOptions={{ hideAttribution: true }}
-        defaultEdgeOptions={{
-          type: "dashed-straight",
-          style: {
-            stroke: "#777587",
-            strokeWidth: 1.5,
-            strokeDasharray: "6 8",
-          },
-        }}
-        style={{ background: "transparent" }}
-        onNodeClick={onNodeClick}
-        onNodeDragStop={onNodeDragStop}
-      >
-        <Controls
-          className="brutalist-controls !left-6 !bottom-24 z-20"
-          showInteractive={false}
-        />
-      </ReactFlow>
+          <ReactFlow
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            minZoom={0.3}
+            maxZoom={2}
+            panOnScroll
+            proOptions={{ hideAttribution: true }}
+            defaultViewport={savedViewport ?? undefined}
+            fitView={!savedViewport}
+            fitViewOptions={{ padding: 0.4 }}
+            defaultEdgeOptions={{
+              type: "dashed-straight",
+              style: {
+                stroke: "#777587",
+                strokeWidth: 1.5,
+                strokeDasharray: "6 8",
+              },
+            }}
+            style={{ background: "transparent" }}
+            onNodeClick={onNodeClick}
+            onNodeDragStop={onNodeDragStop}
+            onMove={handleMove}
+          >
+            <Controls
+              className="brutalist-controls !left-6 !bottom-24 z-20"
+              showInteractive={false}
+            />
+          </ReactFlow>
+        </>
+      )}
 
       {sparkFullscreen ? (
         <SparkFullscreenModal

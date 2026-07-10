@@ -19,6 +19,9 @@ import { handleSessionExpired } from "./session-expired";
 
 export type CanvasLayoutInput = {
   node_positions: Record<CanvasNodeId, NodePosition>;
+  viewport_x?: number | null;
+  viewport_y?: number | null;
+  viewport_zoom?: number | null;
 };
 
 export async function getCanvasLayout(

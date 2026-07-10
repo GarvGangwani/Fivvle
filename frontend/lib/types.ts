@@ -596,6 +596,9 @@ export interface CanvasLayout {
   experiment_id: string;
   user_id: string;
   node_positions: Record<CanvasNodeId, NodePosition>;
+  viewport_x?: number | null;
+  viewport_y?: number | null;
+  viewport_zoom?: number | null;
   updated_at: string;
 }
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, UniqueConstraint, text
+from sqlalchemy import DateTime, Float, ForeignKey, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -41,6 +41,9 @@ class ExperimentCanvasLayout(Base):
         nullable=False,
         server_default=text("'{}'::jsonb"),
     )
+    viewport_x: Mapped[float | None] = mapped_column(Float, nullable=True)
+    viewport_y: Mapped[float | None] = mapped_column(Float, nullable=True)
+    viewport_zoom: Mapped[float | None] = mapped_column(Float, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

@@ -26,6 +26,18 @@ class NodePosition(BaseModel):
 
 class CanvasLayoutIn(BaseModel):
     node_positions: dict[CanvasNodeId, NodePosition]
+    viewport_x: float | None = None
+    viewport_y: float | None = None
+    viewport_zoom: float | None = None
+
+    @field_validator("viewport_zoom")
+    @classmethod
+    def _validate_zoom(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        if value < 0.3 or value > 2.0:
+            raise ValueError("viewport_zoom must be between 0.3 and 2.0")
+        return value
 
 
 class CanvasLayoutOut(BaseModel):
@@ -34,6 +46,9 @@ class CanvasLayoutOut(BaseModel):
     experiment_id: str
     user_id: str
     node_positions: dict[CanvasNodeId, NodePosition]
+    viewport_x: float | None = None
+    viewport_y: float | None = None
+    viewport_zoom: float | None = None
     updated_at: datetime
 
 
