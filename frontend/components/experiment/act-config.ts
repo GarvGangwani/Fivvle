@@ -1,5 +1,4 @@
-import { Position } from "reactflow";
-import type { CanvasNodeId } from "@/lib/types";
+import type { SatelliteNodeId } from "@/lib/types";
 
 export type ActConfig = {
   index: string;
@@ -7,54 +6,49 @@ export type ActConfig = {
   title: string;
   icon: string;
   metricLabel: string;
-  coreAnchor: string;
-  handlePosition: Position;
 };
 
-export const ACT_CONFIG: Record<CanvasNodeId, ActConfig> = {
-  refine: {
+export const ACT_CONFIG: Record<SatelliteNodeId, ActConfig> = {
+  spark: {
     index: "01",
+    actName: "SPARK",
+    title: "Capture the raw idea",
+    icon: "bolt",
+    metricLabel: "Status",
+  },
+  refine: {
+    index: "02",
     actName: "REFINE",
     title: "Pressure-test your hypothesis",
     icon: "chat",
     metricLabel: "Messages",
-    coreAnchor: "anchor-right",
-    handlePosition: Position.Left,
   },
   evidence: {
-    index: "02",
+    index: "03",
     actName: "EVIDENCE",
     title: "Market signal from real sources",
-    icon: "analytics",
+    icon: "search",
     metricLabel: "Insights",
-    coreAnchor: "anchor-right",
-    handlePosition: Position.Left,
   },
   launch: {
-    index: "03",
+    index: "04",
     actName: "LAUNCH",
     title: "Landing page + share links",
     icon: "rocket_launch",
     metricLabel: "Views",
-    coreAnchor: "anchor-left",
-    handlePosition: Position.Right,
   },
   signal: {
-    index: "04",
+    index: "05",
     actName: "SIGNAL",
     title: "Metrics + verdict",
     icon: "insights",
     metricLabel: "Demand Score",
-    coreAnchor: "anchor-left",
-    handlePosition: Position.Right,
   },
   resources: {
-    index: "05",
+    index: "06",
     actName: "RESOURCES",
     title: "Notes, links, competitors",
     icon: "folder_open",
     metricLabel: "Items",
-    coreAnchor: "anchor-top",
-    handlePosition: Position.Bottom,
   },
 };

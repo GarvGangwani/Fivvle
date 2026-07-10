@@ -93,6 +93,11 @@ class LandingPage(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    spark_version_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("experiment_spark_versions.id"),
+        nullable=True,
+    )
 
     # --- Relationships ---
     experiment: Mapped[Experiment] = relationship(back_populates="landing_page")

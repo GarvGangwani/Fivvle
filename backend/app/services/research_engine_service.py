@@ -146,6 +146,7 @@ async def _write_validation_report(
     raw_report: dict,
     *,
     reflection_loops_used: int = 0,
+    spark_version_id: UUID | None = None,
 ) -> None:
     """Upsert a ValidationReport row with the raw_report payload.
 
@@ -157,6 +158,7 @@ async def _write_validation_report(
         clarity_score = None  (B3 synthesizer prompt will populate)
         reflection_loops_used — refinement waves with ≥1 successful Tavily re-search
         generated_at = now()
+        spark_version_id — Spark snapshot this report was generated against
     """
     from sqlalchemy.dialects.postgresql import insert as pg_insert  # noqa: PLC0415
 
@@ -166,6 +168,7 @@ async def _write_validation_report(
         clarity_score=None,
         reflection_loops_used=reflection_loops_used,
         generated_at=datetime.now(UTC),
+        spark_version_id=spark_version_id,
     )
     stmt = stmt.on_conflict_do_update(
         index_elements=["experiment_id"],
@@ -174,6 +177,7 @@ async def _write_validation_report(
             "clarity_score": stmt.excluded.clarity_score,
             "reflection_loops_used": stmt.excluded.reflection_loops_used,
             "generated_at": stmt.excluded.generated_at,
+            "spark_version_id": stmt.excluded.spark_version_id,
         },
     )
     await session.execute(stmt)
@@ -247,6 +251,12 @@ async def run_research_engine_pipeline(
             targeting = ExperimentTargeting.from_experiment(experiment)
             dev_capture_write("refined_idea.json", refined_idea)
             dev_capture_write("targeting.json", targeting)
+
+            from app.services.spark_version_service import (  # noqa: PLC0415
+                get_latest_spark_version_id,
+            )
+
+            spark_version_id = await get_latest_spark_version_id(session, experiment_id)
 
             # ------------------------------------------------------------------
             # 1. RESEARCH_PLANNING — planner generates research questions.
@@ -538,6 +548,7 @@ async def run_research_engine_pipeline(
                 experiment_id,
                 raw_report_dict,
                 reflection_loops_used=reflector_summary.waves_used,
+                spark_version_id=spark_version_id,
             )
             await _set_status(session, experiment_id, ExperimentStatus.RESEARCH_READY)
             await session.commit()

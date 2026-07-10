@@ -241,8 +241,28 @@ export interface Experiment {
   evidence_atom_count?: number;
   landing_page_view_count?: number;
   resource_count?: number;
+  attachment_count?: number;
   demand_score?: number | null;
   verdict?: string | null;
+  spark_last_edited_at?: string | null;
+  refinement_started_at?: string | null;
+  current_spark_version?: number;
+  refine_spark_version?: number | null;
+  evidence_spark_version?: number | null;
+  launch_spark_version?: number | null;
+  signal_spark_version?: number | null;
+  refine_is_stale?: boolean;
+  evidence_is_stale?: boolean;
+  launch_is_stale?: boolean;
+  signal_is_stale?: boolean;
+}
+
+export interface SparkVersion {
+  id: string;
+  version_number: number;
+  raw_idea: string | null;
+  attachment_ids_snapshot: string[];
+  created_at: string;
 }
 
 // --- Clarifying question block (refinement pre-research) ---
@@ -557,11 +577,15 @@ export interface DeleteExperimentResponse {
 }
 
 export type CanvasNodeId =
+  | "spark"
   | "refine"
   | "evidence"
   | "launch"
   | "signal"
-  | "resources";
+  | "resources"
+  | "spark-expanded";
+
+export type SatelliteNodeId = Exclude<CanvasNodeId, "spark-expanded">;
 
 export interface NodePosition {
   x: number;
@@ -572,10 +596,40 @@ export interface CanvasLayout {
   experiment_id: string;
   user_id: string;
   node_positions: Record<CanvasNodeId, NodePosition>;
+  viewport_x?: number | null;
+  viewport_y?: number | null;
+  viewport_zoom?: number | null;
   updated_at: string;
 }
 
 export type ResourceType = "link" | "doc" | "image" | "competitor" | "other";
+
+export type AttachmentType =
+  | "image"
+  | "document"
+  | "pdf"
+  | "markdown"
+  | "pasted_text"
+  | "link";
+
+export interface ExperimentAttachment {
+  id: string;
+  experiment_id: string;
+  user_id: string;
+  attachment_type: AttachmentType;
+  title: string;
+  content_text: string | null;
+  file_url: string | null;
+  file_mime: string | null;
+  file_size_bytes: number | null;
+  created_at: string;
+}
+
+export interface AttachmentUploadUrl {
+  upload_url: string;
+  file_url: string;
+  expires_at: string;
+}
 
 export interface ExperimentResource {
   id: string;

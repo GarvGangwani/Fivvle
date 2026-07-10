@@ -479,10 +479,23 @@ async def _resolve_refinement_experiment(
         experiment = result.scalar_one_or_none()
         if experiment is None or experiment.user_id != user.id:
             raise ChatAuthorizationError("Experiment not found or not owned by user")
-        if experiment.thread_id != thread.id:
+        if experiment.thread_id is not None and experiment.thread_id != thread.id:
             raise InvalidExperimentState(
                 "Experiment does not belong to this chat thread"
             )
+        if experiment.status == ExperimentStatus.SPARK:
+            from app.services.experiment_service import begin_refinement_from_spark
+            from app.services.spark_version_service import stamp_chat_thread_spark_version
+
+            try:
+                experiment = await begin_refinement_from_spark(db, experiment)
+            except ValueError as exc:
+                raise InvalidExperimentState(str(exc)) from exc
+            if experiment.thread_id is None:
+                experiment.thread_id = thread.id
+                await db.flush()
+            await stamp_chat_thread_spark_version(db, thread, experiment.id)
+            return experiment
         if experiment.status != ExperimentStatus.REFINING:
             raise InvalidExperimentState(
                 f"Experiment must be in REFINING status (current: {experiment.status})"
@@ -500,6 +513,7 @@ async def _resolve_refinement_experiment(
         name=normalize_experiment_name(name),
         status=ExperimentStatus.REFINING,
         refinement_count=0,
+        refinement_started_at=datetime.now(UTC),
     )
     db.add(experiment)
     await db.flush()

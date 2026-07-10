@@ -11,6 +11,12 @@ export type ActNodeData = {
   metricValue: string;
   validationPercent?: number;
   isRunning: boolean;
+  isStale?: boolean;
+  basedOnVersion?: number | null;
+  currentSparkVersion?: number;
+  canRerun?: boolean;
+  rerunning?: boolean;
+  onRerun?: () => void;
 };
 
 function joinClasses(...parts: Array<string | false | undefined>): string {
@@ -64,6 +70,41 @@ export function ActNode({ data }: NodeProps<ActNodeData>) {
           <span className="text-mono-sm font-black uppercase">
             {data.validationPercent}% VALIDATED
           </span>
+        </div>
+      ) : null}
+
+      {data.isStale ? (
+        <div className="mt-3 border-t-2 border-brutalist-yellow bg-brutalist-yellow/20 p-2 -mx-4 -mb-4">
+          <div className="flex items-center gap-2 px-4">
+            <span
+              className="material-symbols-outlined text-ink-primary"
+              style={{ fontSize: 14 }}
+              aria-hidden="true"
+            >
+              info
+            </span>
+            <span className="font-mono text-mono-sm uppercase text-ink-primary">
+              BASED ON v{data.basedOnVersion} · CURRENT IS v
+              {data.currentSparkVersion}
+            </span>
+          </div>
+          {data.canRerun ? (
+            <div className="px-4 pb-3 pt-2">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  data.onRerun?.();
+                }}
+                disabled={data.rerunning}
+                className="w-full bg-brand-primary text-ink-inverse px-3 py-2 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-sm hover:shadow-brutal-md transition-all disabled:opacity-50"
+              >
+                {data.rerunning
+                  ? "RE-RUNNING..."
+                  : `RE-RUN WITH v${data.currentSparkVersion}`}
+              </button>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

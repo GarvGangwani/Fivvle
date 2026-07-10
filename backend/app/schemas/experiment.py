@@ -21,26 +21,30 @@ from app.schemas.refinement import RefinedIdea
 
 
 class CreateExperimentRequest(BaseModel):
-    """Body for POST /experiments — founder submits their raw startup idea.
+    """Body for POST /experiments — name-only Spark create.
 
-    Field constraints mirror the service-layer validation in experiment_service.py
-    and the USER_FLOW Stage 2 guidance ("2-5 sentences in their own words").
-    FastAPI validates this at request-parse time (returns 422 on failure);
-    the service also validates defensively (returns 400 on whitespace-only inputs).
+    Idea text is captured later on the canvas Spark node. The 50-char
+    raw_idea minimum is enforced when Refine starts, not at creation.
     """
 
-    raw_idea: str = Field(
-        min_length=50,
-        max_length=2000,
-        description=(
-            "The founder's raw idea. Describe the problem, who it is for, "
-            "and the proposed solution. 2-5 sentences."
-        ),
-    )
-    name: str | None = Field(
-        default=None,
+    name: str = Field(
+        min_length=3,
         max_length=100,
-        description="Optional user-defined project name.",
+        description="Project name for the new validation.",
+    )
+    raw_idea: str | None = Field(
+        default=None,
+        max_length=2000,
+        description="Optional. Prefer empty at create; edit via PATCH /spark.",
+    )
+
+
+class PatchSparkRequest(BaseModel):
+    """Body for PATCH /experiments/{id}/spark — update raw idea."""
+
+    raw_idea: str = Field(
+        max_length=2000,
+        description="Spark idea text. Empty string allowed until Refine starts.",
     )
 
 

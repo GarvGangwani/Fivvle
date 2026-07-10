@@ -19,7 +19,7 @@ class ExperimentStage(StrEnum):
 
 
 class ExperimentStatus(StrEnum):
-    """Matches ARCHITECTURE.md state machine exactly — 20 states total.
+    """Matches ARCHITECTURE.md state machine exactly — 21 states total.
 
     Sub-states for the research engine phases are inline rather than
     nested, making them first-class status values on the Experiment row.
@@ -33,8 +33,9 @@ class ExperimentStatus(StrEnum):
     This lets us add states without Postgres-level ALTER TYPE migrations.
     """
 
-    # --- Refinement states (3) ---
-    DRAFT = "DRAFT"
+    # --- Spark + refinement states (4) ---
+    SPARK = "SPARK"
+    DRAFT = "DRAFT"  # legacy mid-flow rows; new creates use SPARK
     REFINING = "REFINING"
     REFINED = "REFINED"
 
@@ -108,6 +109,7 @@ class ChatTurnKind(StrEnum):
 class DispatchTrigger(StrEnum):
     USER_CONFIRM = "user_confirm"
     AUTO_FIRE = "auto_fire"
+    EVIDENCE_RERUN = "evidence_rerun"
 
 
 class WalletTransactionType(StrEnum):

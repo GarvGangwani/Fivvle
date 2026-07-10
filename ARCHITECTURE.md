@@ -471,11 +471,13 @@ flowchart TB
 
 ```mermaid
 stateDiagram-v2
-    [*] --> DRAFT: User creates experiment
+    [*] --> SPARK: User creates experiment (name only)
 
-    DRAFT --> REFINING: Submit raw idea
+    SPARK --> REFINING: First Refine message (raw_idea required)
+    DRAFT --> REFINING: Legacy mid-flow rows
     REFINING --> REFINED: AI returns output
-    REFINING --> DRAFT: AI error / cancel
+    REFINING --> SPARK: AI error / cancel (new creates)
+    REFINING --> DRAFT: AI error / cancel (legacy)
 
     REFINED --> REFINING: User requests re-refine
     REFINED --> RESEARCHING: User accepts refinement

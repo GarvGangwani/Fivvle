@@ -1,11 +1,12 @@
-import type { CanvasNodeId, NodePosition } from "@/lib/types";
+import type { NodePosition, SatelliteNodeId } from "@/lib/types";
 
-export const DEFAULT_POSITIONS: Record<CanvasNodeId, NodePosition> = {
-  refine: { x: 475, y: -155 },
-  evidence: { x: 295, y: 405 },
-  launch: { x: -295, y: 405 },
-  signal: { x: -475, y: -155 },
-  resources: { x: 0, y: -500 },
+export const DEFAULT_POSITIONS: Record<SatelliteNodeId, NodePosition> = {
+  spark: { x: -250, y: -430 },
+  refine: { x: 250, y: -430 },
+  evidence: { x: 500, y: 0 },
+  launch: { x: 250, y: 430 },
+  signal: { x: -250, y: 430 },
+  resources: { x: -500, y: 0 },
 };
 
 /** Visual center of the core shell node (w-80 = 320px, ~260px tall). */
@@ -87,7 +88,7 @@ const LANDING_LIVE_OR_LATER = new Set([
 ]);
 
 export function getPhasesComplete(status: string): number {
-  if (status === "DRAFT" || status === "REFINING") return 0;
+  if (status === "SPARK" || status === "DRAFT" || status === "REFINING") return 0;
   if (!REFINED_OR_LATER.has(status)) return 0;
   if (!RESEARCH_READY_OR_LATER.has(status)) return 1;
   if (!LANDING_LIVE_OR_LATER.has(status)) return 2;
@@ -96,6 +97,8 @@ export function getPhasesComplete(status: string): number {
 
 export function isActRunning(actId: string, status: string): boolean {
   switch (actId) {
+    case "spark":
+      return status === "SPARK";
     case "refine":
       return status === "REFINING";
     case "evidence":

@@ -89,6 +89,7 @@ from app.schemas.experiment import (
     CreateExperimentRequest,
     ExperimentListItemResponse,
     ExperimentResponse,
+    PatchSparkRequest,
     RegenerateRefinementRequest,
     RenameExperimentRequest,
     ResearchStatusResponse,
@@ -105,13 +106,16 @@ from app.services.experiment_dashboard_stats import build_experiment_card_stats_
 from app.services.experiment_service import (
     InvalidExperimentState,
     RefinementLimitExceeded,
+    create_experiment_spark,
     create_experiment_with_refinement,
     delete_experiment,
     extract_refined_idea_text,
     fetch_experiment_canvas_metrics,
     infer_status_after_unarchive,
     regenerate_refinement,
+    update_experiment_raw_idea,
 )
+from app.services.spark_version_service import fetch_spark_phase_version_info
 from app.services.logo_upload_service import (
     LogoUploadError,
     upload_landing_page_logo,
@@ -279,8 +283,20 @@ class GetExperimentDetailResponse(BaseModel):
     evidence_atom_count: int = Field(default=0, ge=0)
     landing_page_view_count: int = Field(default=0, ge=0)
     resource_count: int = Field(default=0, ge=0)
+    attachment_count: int = Field(default=0, ge=0)
     demand_score: int | None = Field(default=None, ge=0, le=100)
     verdict: str | None = None
+    spark_last_edited_at: datetime | None = None
+    refinement_started_at: datetime | None = None
+    current_spark_version: int = 0
+    refine_spark_version: int | None = None
+    evidence_spark_version: int | None = None
+    launch_spark_version: int | None = None
+    signal_spark_version: int | None = None
+    refine_is_stale: bool = False
+    evidence_is_stale: bool = False
+    launch_is_stale: bool = False
+    signal_is_stale: bool = False
 
 
 async def _build_experiment_detail_response(
@@ -299,6 +315,7 @@ async def _build_experiment_detail_response(
         thread_id=experiment.thread_id,
         validation_raw=validation_raw,
     )
+    spark_info = await fetch_spark_phase_version_info(db, experiment)
 
     return GetExperimentDetailResponse(
         id=experiment.id,
@@ -312,8 +329,20 @@ async def _build_experiment_detail_response(
         evidence_atom_count=metrics.evidence_atom_count,
         landing_page_view_count=metrics.landing_page_view_count,
         resource_count=metrics.resource_count,
+        attachment_count=metrics.attachment_count,
         demand_score=metrics.demand_score,
         verdict=metrics.verdict,
+        spark_last_edited_at=experiment.spark_last_edited_at,
+        refinement_started_at=experiment.refinement_started_at,
+        current_spark_version=spark_info.current_spark_version,
+        refine_spark_version=spark_info.refine_spark_version,
+        evidence_spark_version=spark_info.evidence_spark_version,
+        launch_spark_version=spark_info.launch_spark_version,
+        signal_spark_version=spark_info.signal_spark_version,
+        refine_is_stale=spark_info.refine_is_stale,
+        evidence_is_stale=spark_info.evidence_is_stale,
+        launch_is_stale=spark_info.launch_is_stale,
+        signal_is_stale=spark_info.signal_is_stale,
     )
 
 
@@ -386,21 +415,25 @@ async def create_experiment(
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> Experiment:
-    user_id = str(current_user.id)  # cache before try — avoids lazy-load on broken session
+    user_id = str(current_user.id)
     try:
-        return await create_experiment_with_refinement(
-            db,
-            current_user,
-            body.raw_idea,
-            body.name,
-        )
+        # Name-only Spark create. Legacy clients that still send a long raw_idea
+        # keep the immediate-refinement path.
+        if body.raw_idea and len(body.raw_idea.strip()) >= 50:
+            return await create_experiment_with_refinement(
+                db,
+                current_user,
+                body.raw_idea,
+                body.name,
+            )
+        return await create_experiment_spark(db, current_user, body.name)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
         _logger.error("experiment creation failed", error_type=type(exc).__name__, user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Refinement failed, please try again",
+            detail="Could not create experiment, please try again",
         ) from exc
 
 
@@ -535,6 +568,97 @@ async def confirm_research(
         await db.commit()
         _logger.error(
             "dispatch failed",
+            error_type=type(exc).__name__,
+            experiment_id=str(experiment_id),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to start research pipeline, please try again",
+        ) from exc
+
+    status_url = str(request.url_for("get_research_status", experiment_id=experiment_id))
+    wallet = await get_or_create_wallet(db, current_user.id)
+    return ConfirmResearchResponse(
+        experiment_id=experiment_id,
+        status=ExperimentStatus.RESEARCHING,
+        status_url=status_url,
+        credits_balance=wallet.credits_balance,
+    )
+
+
+@router.post(
+    "/{experiment_id}/evidence/rerun",
+    response_model=ConfirmResearchResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def rerun_evidence(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+    dispatcher: Annotated[ResearchDispatcher, Depends(get_dispatcher_dep)],
+) -> ConfirmResearchResponse:
+    """Re-trigger the research pipeline against the current Spark version."""
+    experiment = await _get_owned_experiment_for_update(
+        db,
+        experiment_id=experiment_id,
+        user_id=current_user.id,
+    )
+
+    if experiment.status in _RESEARCH_ACTIVE_STATUSES:
+        status_url = str(request.url_for("get_research_status", experiment_id=experiment_id))
+        wallet = await get_or_create_wallet(db, current_user.id)
+        return ConfirmResearchResponse(
+            experiment_id=experiment_id,
+            status=experiment.status,
+            status_url=status_url,
+            credits_balance=wallet.credits_balance,
+        )
+
+    await debit_for_service_or_raise(
+        db,
+        user_id=current_user.id,
+        service="fullValidationFlow",
+        experiment_id=experiment_id,
+    )
+    await db.commit()
+
+    try:
+        await transition_to_researching_and_dispatch(
+            db,
+            experiment,
+            DispatchTrigger.EVIDENCE_RERUN,
+            dispatcher,
+        )
+    except InvalidExperimentState:
+        await refund_for_service(
+            db,
+            user_id=current_user.id,
+            service="fullValidationFlow",
+            reason="invalid experiment state",
+            experiment_id=experiment_id,
+        )
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Evidence re-run requires a completed or failed research phase "
+                f"(current: {experiment.status})"
+            ),
+        ) from None
+    except DispatchError as exc:
+        await refund_for_service(
+            db,
+            user_id=current_user.id,
+            service="fullValidationFlow",
+            reason="research dispatch failed",
+            experiment_id=experiment_id,
+        )
+        await db.commit()
+        _logger.error(
+            "evidence rerun dispatch failed",
             error_type=type(exc).__name__,
             experiment_id=str(experiment_id),
         )
@@ -1554,6 +1678,37 @@ async def unarchive_experiment(
 
     experiment.status = infer_status_after_unarchive(experiment)
     await db.commit()
+
+    return await _build_experiment_detail_response(db, experiment)
+
+
+@router.patch(
+    "/{experiment_id}/spark",
+    response_model=GetExperimentDetailResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def patch_experiment_spark(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: PatchSparkRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> GetExperimentDetailResponse:
+    result = await db.execute(
+        select(Experiment)
+        .options(selectinload(Experiment.validation_report))
+        .where(Experiment.id == experiment_id),
+    )
+    experiment = result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    try:
+        experiment = await update_experiment_raw_idea(db, experiment, body.raw_idea)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     return await _build_experiment_detail_response(db, experiment)
 

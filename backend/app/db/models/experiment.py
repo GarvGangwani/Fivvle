@@ -102,8 +102,16 @@ class Experiment(Base):
             length=50,
         ),
         nullable=False,
-        default=ExperimentStatus.DRAFT,
+        default=ExperimentStatus.SPARK,
         index=True,
+    )
+    spark_last_edited_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    refinement_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

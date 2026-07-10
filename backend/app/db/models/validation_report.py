@@ -37,6 +37,11 @@ class ValidationReport(Base):
     # JSONB column.  Replaces the 9 legacy scalar JSONB columns dropped in B2.4.
     # NOT NULL: the service must supply a value; '{}' sentinel never reaches here.
     raw_report: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    spark_version_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("experiment_spark_versions.id"),
+        nullable=True,
+    )
 
     # --- Kept scalar columns (queryable aggregates, populated in B3) ---
     # clarity_score: B3 synthesizer prompt will output this; B2.4 writes NULL.

@@ -1,0 +1,16 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Public read on Spark attachment paths — object names are UUID-prefixed
+    // and not guessable. Write still requires Firebase Auth.
+    match /experiments/{experimentId}/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Existing landing-logo / section-image paths and everything else.
+    match /{allPaths=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
