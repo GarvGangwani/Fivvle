@@ -89,6 +89,7 @@ from app.schemas.experiment import (
     CreateExperimentRequest,
     ExperimentListItemResponse,
     ExperimentResponse,
+    PatchSparkRequest,
     RegenerateRefinementRequest,
     RenameExperimentRequest,
     ResearchStatusResponse,
@@ -105,12 +106,14 @@ from app.services.experiment_dashboard_stats import build_experiment_card_stats_
 from app.services.experiment_service import (
     InvalidExperimentState,
     RefinementLimitExceeded,
+    create_experiment_spark,
     create_experiment_with_refinement,
     delete_experiment,
     extract_refined_idea_text,
     fetch_experiment_canvas_metrics,
     infer_status_after_unarchive,
     regenerate_refinement,
+    update_experiment_raw_idea,
 )
 from app.services.logo_upload_service import (
     LogoUploadError,
@@ -279,8 +282,11 @@ class GetExperimentDetailResponse(BaseModel):
     evidence_atom_count: int = Field(default=0, ge=0)
     landing_page_view_count: int = Field(default=0, ge=0)
     resource_count: int = Field(default=0, ge=0)
+    attachment_count: int = Field(default=0, ge=0)
     demand_score: int | None = Field(default=None, ge=0, le=100)
     verdict: str | None = None
+    spark_last_edited_at: datetime | None = None
+    refinement_started_at: datetime | None = None
 
 
 async def _build_experiment_detail_response(
@@ -312,8 +318,11 @@ async def _build_experiment_detail_response(
         evidence_atom_count=metrics.evidence_atom_count,
         landing_page_view_count=metrics.landing_page_view_count,
         resource_count=metrics.resource_count,
+        attachment_count=metrics.attachment_count,
         demand_score=metrics.demand_score,
         verdict=metrics.verdict,
+        spark_last_edited_at=experiment.spark_last_edited_at,
+        refinement_started_at=experiment.refinement_started_at,
     )
 
 
@@ -386,21 +395,25 @@ async def create_experiment(
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> Experiment:
-    user_id = str(current_user.id)  # cache before try — avoids lazy-load on broken session
+    user_id = str(current_user.id)
     try:
-        return await create_experiment_with_refinement(
-            db,
-            current_user,
-            body.raw_idea,
-            body.name,
-        )
+        # Name-only Spark create. Legacy clients that still send a long raw_idea
+        # keep the immediate-refinement path.
+        if body.raw_idea and len(body.raw_idea.strip()) >= 50:
+            return await create_experiment_with_refinement(
+                db,
+                current_user,
+                body.raw_idea,
+                body.name,
+            )
+        return await create_experiment_spark(db, current_user, body.name)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     except Exception as exc:
         _logger.error("experiment creation failed", error_type=type(exc).__name__, user_id=user_id)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Refinement failed, please try again",
+            detail="Could not create experiment, please try again",
         ) from exc
 
 
@@ -1554,6 +1567,37 @@ async def unarchive_experiment(
 
     experiment.status = infer_status_after_unarchive(experiment)
     await db.commit()
+
+    return await _build_experiment_detail_response(db, experiment)
+
+
+@router.patch(
+    "/{experiment_id}/spark",
+    response_model=GetExperimentDetailResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def patch_experiment_spark(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: PatchSparkRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> GetExperimentDetailResponse:
+    result = await db.execute(
+        select(Experiment)
+        .options(selectinload(Experiment.validation_report))
+        .where(Experiment.id == experiment_id),
+    )
+    experiment = result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    try:
+        experiment = await update_experiment_raw_idea(db, experiment, body.raw_idea)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     return await _build_experiment_detail_response(db, experiment)
 

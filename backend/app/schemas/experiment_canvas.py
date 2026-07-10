@@ -7,7 +7,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-CanvasNodeId = Literal["refine", "evidence", "launch", "signal", "resources"]
+CanvasNodeId = Literal[
+    "spark",
+    "refine",
+    "evidence",
+    "launch",
+    "signal",
+    "resources",
+    "spark-expanded",
+]
 ResourceType = Literal["link", "doc", "image", "competitor", "other"]
 
 

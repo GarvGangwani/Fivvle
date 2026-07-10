@@ -41,6 +41,7 @@ export function getInitials(name: string): string {
 
 export function mapStatusToPill(status: string): PillState {
   switch (status) {
+    case "SPARK":
     case "DRAFT":
       return "SPARK";
     case "REFINING":

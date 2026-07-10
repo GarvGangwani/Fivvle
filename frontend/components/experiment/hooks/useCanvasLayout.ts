@@ -22,7 +22,9 @@ function debounce<T extends (...args: never[]) => void>(
 
 export function useCanvasLayout(experimentId: string) {
   const [positions, setPositions] =
-    useState<Record<CanvasNodeId, NodePosition>>(DEFAULT_POSITIONS);
+    useState<Partial<Record<CanvasNodeId, NodePosition>> & typeof DEFAULT_POSITIONS>(
+      DEFAULT_POSITIONS,
+    );
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const mountedRef = useRef(true);
@@ -40,7 +42,7 @@ export function useCanvasLayout(experimentId: string) {
     void getCanvasLayout(experimentId)
       .then((data) => {
         if (cancelled) return;
-        setPositions(data.node_positions);
+        setPositions({ ...DEFAULT_POSITIONS, ...data.node_positions });
       })
       .catch(() => {
         if (cancelled) return;
@@ -55,10 +57,15 @@ export function useCanvasLayout(experimentId: string) {
   }, [experimentId]);
 
   const saveLayout = useCallback(
-    async (nextPositions: Record<CanvasNodeId, NodePosition>) => {
+    async (
+      nextPositions: Partial<Record<CanvasNodeId, NodePosition>> &
+        typeof DEFAULT_POSITIONS,
+    ) => {
       setSaving(true);
       try {
-        const payload: CanvasLayoutInput = { node_positions: nextPositions };
+        const payload: CanvasLayoutInput = {
+          node_positions: nextPositions as Record<CanvasNodeId, NodePosition>,
+        };
         await upsertCanvasLayout(experimentId, payload);
       } catch {
         // Layout save is best-effort; local positions still apply if the API is unreachable.

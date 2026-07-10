@@ -154,16 +154,11 @@ export async function syncUser(
 }
 
 export async function createExperiment(
-  raw_idea: string,
-  name?: string | null,
-): Promise<ExperimentDetail> {
-  const body: { raw_idea: string; name?: string } = { raw_idea };
-  if (name?.trim()) {
-    body.name = name.trim();
-  }
-  return apiFetch<ExperimentDetail>("/experiments", {
+  name: string,
+): Promise<{ id: string }> {
+  return apiFetch<{ id: string }>("/experiments", {
     method: "POST",
-    body,
+    body: { name: name.trim() },
   });
 }
 

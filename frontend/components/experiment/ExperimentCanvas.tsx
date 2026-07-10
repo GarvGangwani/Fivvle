@@ -17,8 +17,11 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui/ToastProvider";
-import { createExperimentEvent } from "@/lib/experiment-api";
-import type { CanvasNodeId, Experiment } from "@/lib/types";
+import {
+  createExperimentEvent,
+  patchExperimentSpark,
+} from "@/lib/experiment-api";
+import type { CanvasNodeId, Experiment, SatelliteNodeId } from "@/lib/types";
 import { ACT_CONFIG } from "./act-config";
 import { BlueprintDecor } from "./BlueprintDecor";
 import { CanvasActivityPanel } from "./CanvasActivityPanel";
@@ -27,6 +30,7 @@ import { CanvasToolbar } from "./CanvasToolbar";
 import {
   CORE_NODE_CENTER,
   DEFAULT_CANVAS_ZOOM,
+  DEFAULT_POSITIONS,
   MIN_CANVAS_ZOOM,
   formatCanvasMetric,
   getPhasesComplete,
@@ -41,8 +45,12 @@ import { useCanvasLayout } from "./hooks/useCanvasLayout";
 import { useResources } from "./hooks/useResources";
 import { ActNode } from "./nodes/ActNode";
 import { CoreShellNode } from "./nodes/CoreShellNode";
+import { SparkExpandedNode } from "./nodes/SparkExpandedNode";
+import { SparkFullscreenModal } from "./nodes/SparkFullscreenModal";
+import { SparkNode, type SparkMetricState } from "./nodes/SparkNode";
 
-const SATELLITE_IDS: CanvasNodeId[] = [
+const SATELLITE_IDS: SatelliteNodeId[] = [
+  "spark",
   "refine",
   "evidence",
   "launch",
@@ -50,9 +58,21 @@ const SATELLITE_IDS: CanvasNodeId[] = [
   "resources",
 ];
 
+const ACT_NODE_IDS: SatelliteNodeId[] = [
+  "refine",
+  "evidence",
+  "launch",
+  "signal",
+  "resources",
+];
+
+const SPARK_EXPANDED_ID = "spark-expanded" as const;
+
 const nodeTypes: NodeTypes = {
   coreShell: CoreShellNode,
   actNode: ActNode,
+  sparkNode: SparkNode,
+  sparkExpanded: SparkExpandedNode,
 };
 
 const edgeTypes: EdgeTypes = {
@@ -74,119 +94,190 @@ const FRAME_CANVAS_DURATION_MS = 200;
 
 type Props = {
   experiment: Experiment;
+  onExperimentChange?: (experiment: Experiment) => void;
 };
 
-function buildInitialNodes(
-  experiment: Experiment,
-  positions: Record<CanvasNodeId, { x: number; y: number }>,
-  metrics: Record<CanvasNodeId, string>,
-  phasesComplete: number,
-): Node[] {
-  return [
-    {
-      id: "core",
-      type: "coreShell",
-      position: { x: 0, y: 0 },
-      draggable: false,
-      selectable: false,
-      data: {
-        projectName: experiment.name ?? "UNTITLED PROJECT",
-        refinedIdea: experiment.refined_idea ?? null,
-        rawIdea: experiment.raw_idea ?? null,
-        phasesComplete,
-      },
-    },
-    ...SATELLITE_IDS.map((id) => {
-      const config = ACT_CONFIG[id];
-      return {
-        id,
-        type: "actNode",
-        position: positions[id],
-        data: {
-          index: config.index,
-          actName: config.actName,
-          title: config.title,
-          icon: config.icon,
-          metricLabel: config.metricLabel,
-          metricValue: metrics[id],
-          isRunning: isActRunning(id, experiment.status),
-        },
-      };
-    }),
-  ];
+function getSparkMetric(experiment: Experiment): {
+  value: string;
+  state: SparkMetricState;
+} {
+  const hasIdea = Boolean(experiment.raw_idea?.trim());
+  const attachmentCount = experiment.attachment_count ?? 0;
+  const refinementStarted = Boolean(experiment.refinement_started_at);
+
+  if (!hasIdea && attachmentCount === 0) {
+    return { value: "NEEDS INPUT", state: "empty" };
+  }
+  if (refinementStarted) {
+    const parts = ["IDEA CAPTURED"];
+    if (attachmentCount > 0) parts.push(`${attachmentCount} FILES`);
+    return { value: parts.join(" · "), state: "locked" };
+  }
+  const parts = ["IDEA DRAFTED"];
+  if (attachmentCount > 0) parts.push(`${attachmentCount} FILES`);
+  return { value: parts.join(" · "), state: "drafted" };
 }
 
-function CanvasInner({ experiment }: Props) {
+function CanvasInner({ experiment, onExperimentChange }: Props) {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const initialAct = searchParams.get("act");
+  const initialView = searchParams.get("view");
+
   const [overlayAct, setOverlayAct] = useState<
     "refine" | "evidence" | "launch" | "signal" | null
   >(initialAct === "refine" ? "refine" : null);
+  const [sparkPanelOpen, setSparkPanelOpen] = useState(
+    () => initialAct === "spark" && initialView !== "fullscreen",
+  );
+  const [sparkFullscreen, setSparkFullscreen] = useState(
+    () => initialAct === "spark" && initialView === "fullscreen",
+  );
+  const [sparkPanelPosition, setSparkPanelPosition] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const { setCenter } = useReactFlow();
-  const { positions, loaded, updatePosition, resetLayout } = useCanvasLayout(experiment.id);
+  const { positions, loaded, updatePosition, resetLayout } = useCanvasLayout(
+    experiment.id,
+  );
   const { resources, addResource, removeResource } = useResources(experiment.id);
 
   const phasesComplete = getPhasesComplete(experiment.status);
   const resourceCount = Math.max(experiment.resource_count ?? 0, resources.length);
+  const sparkMetric = useMemo(() => getSparkMetric(experiment), [experiment]);
 
   const metrics = useMemo(
-    () => ({
-      refine: formatCanvasMetric(experiment.chat_message_count),
-      evidence: formatCanvasMetric(experiment.evidence_atom_count),
-      launch: formatCanvasMetric(experiment.landing_page_view_count),
-      signal:
-        experiment.demand_score != null
-          ? String(experiment.demand_score)
-          : "—",
-      resources: formatCanvasMetric(resourceCount),
-    }),
-    [experiment, resourceCount],
+    () =>
+      ({
+        spark: sparkMetric.value,
+        refine: formatCanvasMetric(experiment.chat_message_count),
+        evidence: formatCanvasMetric(experiment.evidence_atom_count),
+        launch: formatCanvasMetric(experiment.landing_page_view_count),
+        signal:
+          experiment.demand_score != null
+            ? String(experiment.demand_score)
+            : "—",
+        resources: formatCanvasMetric(resourceCount),
+      }) satisfies Record<SatelliteNodeId, string>,
+    [experiment, resourceCount, sparkMetric.value],
   );
 
-  const initialNodes = useMemo(
-    () => buildInitialNodes(experiment, positions, metrics, phasesComplete),
-    [experiment, positions, metrics, phasesComplete],
+  const computeInitialPanelPosition = useCallback(() => {
+    const sparkPos = positions.spark ?? DEFAULT_POSITIONS.spark;
+    return { x: sparkPos.x + 340, y: sparkPos.y };
+  }, [positions]);
+
+  useEffect(() => {
+    if (!sparkPanelOpen) return;
+    if (sparkPanelPosition) return;
+    const saved = positions[SPARK_EXPANDED_ID];
+    setSparkPanelPosition(saved ?? computeInitialPanelPosition());
+  }, [
+    sparkPanelOpen,
+    sparkPanelPosition,
+    positions,
+    computeInitialPanelPosition,
+  ]);
+
+  const setSparkUrl = useCallback(
+    (state: "closed" | "expanded" | "fullscreen") => {
+      const url = new URL(window.location.href);
+      if (state === "closed") {
+        url.searchParams.delete("act");
+        url.searchParams.delete("view");
+      } else {
+        url.searchParams.set("act", "spark");
+        url.searchParams.set("view", state);
+      }
+      window.history.pushState({}, "", url.toString());
+    },
+    [],
   );
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, , onEdgesChange] = useEdgesState(INITIAL_EDGES);
+  const closeSparkPanel = useCallback(() => {
+    setSparkPanelOpen(false);
+    setSparkFullscreen(false);
+    setSparkUrl("closed");
+  }, [setSparkUrl]);
+
+  const openSparkPanel = useCallback(() => {
+    const saved = positions[SPARK_EXPANDED_ID];
+    setSparkPanelPosition(saved ?? computeInitialPanelPosition());
+    setSparkPanelOpen(true);
+    setSparkFullscreen(false);
+    setSparkUrl("expanded");
+  }, [positions, computeInitialPanelPosition, setSparkUrl]);
+
+  const openSparkFullscreen = useCallback(() => {
+    setSparkFullscreen(true);
+    setSparkPanelOpen(false);
+    setSparkUrl("fullscreen");
+  }, [setSparkUrl]);
+
+  const minimizeFromFullscreen = useCallback(() => {
+    const saved = positions[SPARK_EXPANDED_ID];
+    setSparkPanelPosition(saved ?? computeInitialPanelPosition());
+    setSparkFullscreen(false);
+    setSparkPanelOpen(true);
+    setSparkUrl("expanded");
+  }, [positions, computeInitialPanelPosition, setSparkUrl]);
 
   useEffect(() => {
-    setNodes((current) =>
-      current.map((node) => {
-        const saved = positions[node.id as CanvasNodeId];
-        if (saved && node.id !== "core") {
-          return { ...node, position: saved };
-        }
-        return node;
-      }),
-    );
-  }, [positions, setNodes]);
+    const onPopState = () => {
+      const params = new URLSearchParams(window.location.search);
+      const act = params.get("act");
+      const view = params.get("view");
+      setOverlayAct(act === "refine" ? "refine" : null);
+      if (act === "spark" && view === "fullscreen") {
+        setSparkFullscreen(true);
+        setSparkPanelOpen(false);
+      } else if (act === "spark") {
+        setSparkFullscreen(false);
+        setSparkPanelOpen(true);
+      } else {
+        setSparkFullscreen(false);
+        setSparkPanelOpen(false);
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
-  useEffect(() => {
-    setNodes((current) =>
-      current.map((node) => {
-        if (node.id === "core") {
-          return {
-            ...node,
-            data: {
-              projectName: experiment.name ?? "UNTITLED PROJECT",
-              refinedIdea: experiment.refined_idea ?? null,
-              rawIdea: experiment.raw_idea ?? null,
-              phasesComplete,
-            },
-          };
-        }
-        if (!SATELLITE_IDS.includes(node.id as CanvasNodeId)) {
-          return node;
-        }
-        const id = node.id as CanvasNodeId;
+  const buildNodes = useCallback((): Node[] => {
+    const base: Node[] = [
+      {
+        id: "core",
+        type: "coreShell",
+        position: { x: 0, y: 0 },
+        draggable: false,
+        selectable: false,
+        data: {
+          projectName: experiment.name ?? "UNTITLED PROJECT",
+          refinedIdea: experiment.refined_idea ?? null,
+          rawIdea: experiment.raw_idea ?? null,
+          phasesComplete,
+        },
+      },
+      {
+        id: "spark",
+        type: "sparkNode",
+        position: positions.spark ?? DEFAULT_POSITIONS.spark,
+        data: {
+          rawIdea: experiment.raw_idea ?? null,
+          sparkMetric,
+          isFocused: sparkPanelOpen || sparkFullscreen,
+          isRunning: isActRunning("spark", experiment.status),
+        },
+      },
+      ...ACT_NODE_IDS.map((id) => {
         const config = ACT_CONFIG[id];
         return {
-          ...node,
+          id,
+          type: "actNode" as const,
+          position: positions[id] ?? DEFAULT_POSITIONS[id],
           data: {
             index: config.index,
             actName: config.actName,
@@ -198,8 +289,49 @@ function CanvasInner({ experiment }: Props) {
           },
         };
       }),
-    );
-  }, [experiment, metrics, phasesComplete, setNodes]);
+    ];
+
+    if (sparkPanelOpen && sparkPanelPosition) {
+      base.push({
+        id: SPARK_EXPANDED_ID,
+        type: "sparkExpanded",
+        position: sparkPanelPosition,
+        draggable: true,
+        selectable: true,
+        data: {
+          experiment,
+          onClose: closeSparkPanel,
+          onFullscreen: openSparkFullscreen,
+          onSave: async (rawIdea: string) => {
+            const updated = await patchExperimentSpark(experiment.id, rawIdea);
+            onExperimentChange?.(updated);
+          },
+          onExperimentChange,
+        },
+      });
+    }
+
+    return base;
+  }, [
+    experiment,
+    phasesComplete,
+    positions,
+    sparkMetric,
+    sparkPanelOpen,
+    sparkFullscreen,
+    sparkPanelPosition,
+    metrics,
+    closeSparkPanel,
+    openSparkFullscreen,
+    onExperimentChange,
+  ]);
+
+  const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes());
+  const [edges, , onEdgesChange] = useEdgesState(INITIAL_EDGES);
+
+  useEffect(() => {
+    setNodes(buildNodes());
+  }, [buildNodes, setNodes]);
 
   const frameCanvas = useCallback(() => {
     const zoom = Math.max(MIN_CANVAS_ZOOM, DEFAULT_CANVAS_ZOOM);
@@ -215,7 +347,12 @@ function CanvasInner({ experiment }: Props) {
   }, [loaded, frameCanvas]);
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
+    if (node.id === SPARK_EXPANDED_ID) return;
     setFocusedNodeId(node.id);
+    if (node.id === "spark") {
+      openSparkPanel();
+      return;
+    }
     if (node.id === "refine") {
       setOverlayAct("refine");
       window.history.pushState({}, "", `?act=refine`);
@@ -252,13 +389,20 @@ function CanvasInner({ experiment }: Props) {
       if (node.id === "core") return;
 
       const snapped = snapToGrid(node.position);
-      const finalPos = snapOutOfExclusionZone(snapped);
+      const finalPos =
+        node.id === SPARK_EXPANDED_ID
+          ? snapped
+          : snapOutOfExclusionZone(snapped);
 
       setNodes((current) =>
         current.map((n) => (n.id === node.id ? { ...n, position: finalPos } : n)),
       );
 
       updatePosition(node.id as CanvasNodeId, finalPos);
+
+      if (node.id === SPARK_EXPANDED_ID) {
+        setSparkPanelPosition(finalPos);
+      }
     },
     [setNodes, updatePosition],
   );
@@ -280,7 +424,11 @@ function CanvasInner({ experiment }: Props) {
         proOptions={{ hideAttribution: true }}
         defaultEdgeOptions={{
           type: "dashed-straight",
-          style: { stroke: "#777587", strokeWidth: 1.5, strokeDasharray: "6 8" },
+          style: {
+            stroke: "#777587",
+            strokeWidth: 1.5,
+            strokeDasharray: "6 8",
+          },
         }}
         style={{ background: "transparent" }}
         onNodeClick={onNodeClick}
@@ -292,9 +440,25 @@ function CanvasInner({ experiment }: Props) {
         />
       </ReactFlow>
 
+      {sparkFullscreen ? (
+        <SparkFullscreenModal
+          experiment={experiment}
+          onClose={closeSparkPanel}
+          onMinimize={minimizeFromFullscreen}
+          onSave={async (rawIdea) => {
+            const updated = await patchExperimentSpark(experiment.id, rawIdea);
+            onExperimentChange?.(updated);
+          }}
+          onExperimentChange={onExperimentChange}
+        />
+      ) : null}
+
       <CanvasToolbar onReset={handleResetLayout} onFitView={handleFitView} />
       <CanvasActivityPanel experimentId={experiment.id} />
-      <CanvasComposerPill experimentId={experiment.id} focusedAct={focusedNodeId} />
+      <CanvasComposerPill
+        experimentId={experiment.id}
+        focusedAct={focusedNodeId}
+      />
       <DeepDiveOverlay
         isOpen={overlayAct !== null}
         onClose={closeOverlay}

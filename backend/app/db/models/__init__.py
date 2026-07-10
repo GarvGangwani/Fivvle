@@ -12,6 +12,7 @@ from app.db.models.chat_message import ChatMessage
 from app.db.models.chat_thread import ChatThread
 from app.db.models.coupon import Coupon
 from app.db.models.coupon_redemption import CouponRedemption
+from app.db.models.experiment_attachment import ExperimentAttachment
 from app.db.models.experiment_canvas_layout import ExperimentCanvasLayout
 from app.db.models.experiment_event import ExperimentEvent
 from app.db.models.experiment_resource import ExperimentResource
@@ -38,6 +39,7 @@ __all__ = [
     "Coupon",
     "CouponRedemption",
     "Experiment",
+    "ExperimentAttachment",
     "ExperimentCanvasLayout",
     "ExperimentEvent",
     "ExperimentResource",

@@ -51,6 +51,7 @@ from app.routers.admin_coupons import router as admin_coupons_router
 from app.routers.canvas_layout import router as canvas_layout_router
 from app.routers.chat import router as chat_router
 from app.routers.experiment_activity import router as experiment_activity_router
+from app.routers.experiment_attachments import router as experiment_attachments_router
 from app.routers.experiment_resources import router as experiment_resources_router
 from app.routers.experiments import router as experiments_router
 from app.routers.health import router as health_router
@@ -227,6 +228,7 @@ app.include_router(landing_page_v2_router)
 app.include_router(experiments_router)
 app.include_router(canvas_layout_router)
 app.include_router(experiment_resources_router)
+app.include_router(experiment_attachments_router)
 app.include_router(experiment_activity_router)
 app.include_router(chat_router)
 app.include_router(admin_router)

@@ -9,16 +9,6 @@ type CoreShellData = {
   phasesComplete: number;
 };
 
-function coreIdeaText(data: CoreShellData): string {
-  if (data.refinedIdea) return data.refinedIdea;
-  if (data.rawIdea) {
-    const trimmed = data.rawIdea.trim();
-    if (trimmed.length <= 120) return trimmed;
-    return `${trimmed.slice(0, 120)}...`;
-  }
-  return "Refined idea will appear here after Refine phase.";
-}
-
 export function CoreShellNode({ data }: NodeProps<CoreShellData>) {
   return (
     <div className="bg-brand-primary text-ink-inverse border-2 border-border-master shadow-brutal-md w-80 p-8 z-20">
@@ -37,7 +27,21 @@ export function CoreShellNode({ data }: NodeProps<CoreShellData>) {
 
       <div className="border-t-2 border-ink-inverse mb-4" />
 
-      <p className="font-body text-body-md mb-6 line-clamp-2">{coreIdeaText(data)}</p>
+      {data.refinedIdea ? (
+        <p className="font-body text-body-md mb-6 line-clamp-2">
+          {data.refinedIdea}
+        </p>
+      ) : data.rawIdea?.trim() ? (
+        <p className="font-body text-body-md mb-6 line-clamp-2">
+          {data.rawIdea.trim().length > 120
+            ? `${data.rawIdea.trim().slice(0, 120)}...`
+            : data.rawIdea.trim()}
+        </p>
+      ) : (
+        <p className="font-body text-body-md mb-6 italic opacity-60">
+          Add your idea in the Spark phase to get started.
+        </p>
+      )}
 
       <div className="flex gap-2">
         <StatusSquare filled={data.phasesComplete >= 1} />

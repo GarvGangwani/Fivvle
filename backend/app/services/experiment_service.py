@@ -1,8 +1,10 @@
 """Experiment service — business logic for experiment creation and refinement.
 
-State machine transitions (B1 scope):
-    DRAFT → REFINING → REFINED   (create_experiment_with_refinement)
-    REFINED → REFINING → REFINED  (regenerate_refinement)
+State machine transitions (Spark + B1 scope):
+    SPARK                          (create_experiment_spark — name only)
+    SPARK → REFINING               (begin_refinement_from_spark)
+    DRAFT → REFINING → REFINED     (legacy create_experiment_with_refinement)
+    REFINED → REFINING → REFINED   (regenerate_refinement)
 
 This module does NOT handle HTTP concerns. Exceptions propagate to the router
 (app.routers.experiments), which translates them to HTTP responses.
@@ -18,6 +20,7 @@ Per .cursorrules "Cost Tracking & Limits":
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from typing import NamedTuple
 from uuid import UUID
 
@@ -38,7 +41,7 @@ _logger = get_logger(__name__)
 # Per .cursorrules "Cost Tracking & Limits".
 _REFINEMENT_REGENERATION_CAP = 5
 
-# Per USER_FLOW Stage 2 Step 2.1: founder writes "2-5 sentences in their own words".
+# Enforced when leaving Spark / starting Refine — not at experiment creation.
 _RAW_IDEA_MIN_LEN = 50
 _RAW_IDEA_MAX_LEN = 2000
 
@@ -68,13 +71,95 @@ class InvalidExperimentState(DomainError):  # noqa: N818
 _NAME_MAX_LEN = 100
 
 
+def validate_raw_idea_for_refine(raw_idea: str) -> str:
+    """Validate idea content when leaving Spark / starting Refine."""
+    stripped = raw_idea.strip()
+    if len(stripped) < _RAW_IDEA_MIN_LEN:
+        raise ValueError(
+            f"raw_idea must contain at least {_RAW_IDEA_MIN_LEN} non-whitespace characters"
+        )
+    if len(raw_idea) > _RAW_IDEA_MAX_LEN:
+        raise ValueError(f"raw_idea must be at most {_RAW_IDEA_MAX_LEN} characters")
+    return stripped
+
+
+async def create_experiment_spark(
+    db: AsyncSession,
+    user: User,
+    name: str,
+) -> Experiment:
+    """Create an experiment in SPARK with name only and empty raw_idea."""
+    stored_name = normalize_experiment_name(name)
+    if not stored_name or len(stored_name) < 3:
+        raise ValueError("name must be at least 3 characters")
+    if len(stored_name) > _NAME_MAX_LEN:
+        raise ValueError(f"name must be at most {_NAME_MAX_LEN} characters")
+
+    experiment = Experiment(
+        user_id=user.id,
+        raw_idea="",
+        name=stored_name,
+        status=ExperimentStatus.SPARK,
+        refinement_count=0,
+    )
+    db.add(experiment)
+    await db.commit()
+    await db.refresh(experiment)
+
+    _logger.info(
+        "experiment created in SPARK",
+        experiment_id=str(experiment.id),
+        user_id=str(user.id),
+    )
+    return experiment
+
+
+async def update_experiment_raw_idea(
+    db: AsyncSession,
+    experiment: Experiment,
+    raw_idea: str,
+) -> Experiment:
+    """Persist Spark idea edits. Empty string allowed; max length enforced."""
+    if len(raw_idea) > _RAW_IDEA_MAX_LEN:
+        raise ValueError(f"raw_idea must be at most {_RAW_IDEA_MAX_LEN} characters")
+
+    experiment.raw_idea = raw_idea
+    experiment.spark_last_edited_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(experiment)
+    return experiment
+
+
+async def begin_refinement_from_spark(
+    db: AsyncSession,
+    experiment: Experiment,
+) -> Experiment:
+    """SPARK → REFINING when the first Refine message is sent."""
+    if experiment.status != ExperimentStatus.SPARK:
+        return experiment
+
+    validate_raw_idea_for_refine(experiment.raw_idea)
+    now = datetime.now(timezone.utc)
+    experiment.status = ExperimentStatus.REFINING
+    if experiment.refinement_started_at is None:
+        experiment.refinement_started_at = now
+    await db.flush()
+
+    _logger.info(
+        "experiment SPARK → REFINING",
+        experiment_id=str(experiment.id),
+        user_id=str(experiment.user_id),
+    )
+    return experiment
+
+
 async def create_experiment_with_refinement(
     db: AsyncSession,
     user: User,
     raw_idea: str,
     name: str | None = None,
 ) -> Experiment:
-    """Create an Experiment and run first-pass AI refinement synchronously.
+    """Legacy path: create + immediate refinement (kept for older clients/tests).
 
     State transitions: DRAFT → REFINING → REFINED.
 
@@ -315,6 +400,7 @@ class ExperimentCanvasMetrics(NamedTuple):
     evidence_atom_count: int
     landing_page_view_count: int
     resource_count: int
+    attachment_count: int
     demand_score: int | None
     verdict: str | None
 
@@ -359,6 +445,7 @@ async def fetch_experiment_canvas_metrics(
 ) -> ExperimentCanvasMetrics:
     """Lightweight counts for the experiment canvas — queries run in parallel."""
     from app.db.models.chat_message import ChatMessage
+    from app.db.models.experiment_attachment import ExperimentAttachment
     from app.db.models.experiment_resource import ExperimentResource
     from app.db.models.page_view import PageView
 
@@ -380,13 +467,19 @@ async def fetch_experiment_canvas_metrics(
         .select_from(ExperimentResource)
         .where(ExperimentResource.experiment_id == experiment_id)
     )
+    attachment_stmt = (
+        select(func.count())
+        .select_from(ExperimentAttachment)
+        .where(ExperimentAttachment.experiment_id == experiment_id)
+    )
     page_view_stmt = (
         select(func.count()).select_from(PageView).where(PageView.experiment_id == experiment_id)
     )
 
-    chat_result, resource_result, page_view_result = await asyncio.gather(
+    chat_result, resource_result, attachment_result, page_view_result = await asyncio.gather(
         db.execute(chat_stmt),
         db.execute(resource_stmt),
+        db.execute(attachment_stmt),
         db.execute(page_view_stmt),
     )
 
@@ -395,6 +488,7 @@ async def fetch_experiment_canvas_metrics(
         evidence_atom_count=evidence_atom_count,
         landing_page_view_count=int(page_view_result.scalar_one()),
         resource_count=int(resource_result.scalar_one()),
+        attachment_count=int(attachment_result.scalar_one()),
         demand_score=demand_score,
         verdict=verdict,
     )

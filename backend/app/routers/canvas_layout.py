@@ -20,11 +20,12 @@ from app.schemas.experiment_canvas import CanvasLayoutIn, CanvasLayoutOut
 router = APIRouter(tags=["canvas-layout"])
 
 DEFAULT_POSITIONS = {
-    "refine": {"x": 475, "y": -155},
-    "evidence": {"x": 295, "y": 405},
-    "launch": {"x": -295, "y": 405},
-    "signal": {"x": -475, "y": -155},
-    "resources": {"x": 0, "y": -500},
+    "spark": {"x": -250, "y": -430},
+    "refine": {"x": 250, "y": -430},
+    "evidence": {"x": 500, "y": 0},
+    "launch": {"x": 250, "y": 430},
+    "signal": {"x": -250, "y": 430},
+    "resources": {"x": -500, "y": 0},
 }
 
 
@@ -61,10 +62,12 @@ async def get_layout(
             node_positions=DEFAULT_POSITIONS,  # type: ignore[arg-type]
             updated_at=datetime.now(timezone.utc),
         )
+    # Merge defaults so older pentagon layouts pick up the new spark node.
+    merged = {**DEFAULT_POSITIONS, **(row.node_positions or {})}
     return CanvasLayoutOut(
         experiment_id=str(row.experiment_id),
         user_id=str(row.user_id),
-        node_positions=row.node_positions,  # type: ignore[arg-type]
+        node_positions=merged,  # type: ignore[arg-type]
         updated_at=row.updated_at,
     )
 
