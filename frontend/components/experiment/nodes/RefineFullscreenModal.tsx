@@ -1,0 +1,149 @@
+"use client";
+
+import { useEffect } from "react";
+import { createPortal } from "react-dom";
+import { useAuth } from "@/lib/auth-context";
+import type { Experiment } from "@/lib/types";
+import { LiveWorkspacePanel } from "../refine/LiveWorkspacePanel";
+import { RefineChatInput, type AttachmentDraft } from "../refine/RefineChatInput";
+import { RefineChatScroll } from "../refine/RefineChatScroll";
+import type { RefineChatMessageModel } from "../refine/RefineChatMessage";
+
+type Props = {
+  experiment: Experiment;
+  onClose: () => void;
+  onMinimize: () => void;
+  messages: RefineChatMessageModel[];
+  loading: boolean;
+  generatingOpener: boolean;
+  sending: boolean;
+  send: (text: string, attachments: AttachmentDraft[]) => void | Promise<void>;
+  refinementCount: number;
+  activeMCQFromMessageId?: string | null;
+  dismissedMCQMessageIds?: Set<string>;
+  onReopenMCQ?: (messageId: string) => void;
+  onEditMessage?: (messageId: string, newContent: string) => void | Promise<void>;
+  onRetryMessage?: (messageId: string) => void | Promise<void>;
+  mcqActive?: boolean;
+  onFinalizedOrReset: () => Promise<void>;
+};
+
+export function RefineFullscreenModal({
+  experiment,
+  onClose,
+  onMinimize,
+  messages,
+  loading,
+  generatingOpener,
+  sending,
+  send,
+  refinementCount,
+  activeMCQFromMessageId,
+  dismissedMCQMessageIds,
+  onReopenMCQ,
+  onEditMessage,
+  onRetryMessage,
+  mcqActive = false,
+  onFinalizedOrReset,
+}: Props) {
+  const { user } = useAuth();
+
+  const currentUserProfile = user
+    ? {
+        displayName: user.displayName ?? user.email ?? null,
+        photoURL: user.photoURL ?? null,
+      }
+    : null;
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (mcqActive) return;
+      onMinimize();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [mcqActive, onMinimize]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 bg-canvas-bg flex flex-col">
+      <div className="bg-ink-primary text-ink-inverse flex items-center justify-between px-6 py-4 shrink-0 border-b-2 border-border-master">
+        <div className="flex items-center gap-3">
+          <span
+            className="material-symbols-outlined text-brand-primary"
+            style={{ fontSize: 24 }}
+            aria-hidden="true"
+          >
+            bolt
+          </span>
+          <span className="font-mono text-mono-md uppercase tracking-wider">
+            PHASE 02: REFINE // FULLSCREEN
+          </span>
+          {refinementCount > 0 ? (
+            <span className="bg-brand-primary text-ink-inverse px-2 py-0.5 font-mono text-mono-sm uppercase">
+              TURN {refinementCount}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onMinimize}
+            className="p-2 hover:bg-ink-inverse/10 flex items-center gap-2"
+            aria-label="Exit fullscreen"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
+              close_fullscreen
+            </span>
+            <span className="font-mono text-mono-sm uppercase hidden sm:inline">
+              MINIMIZE
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 hover:bg-ink-inverse/10"
+            aria-label="Close"
+          >
+            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
+              close
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex-1 flex overflow-hidden">
+        <div className="flex-1 flex flex-col min-w-0 border-r-2 border-border-master">
+          <div className="flex-1 min-h-0 overflow-y-auto p-8">
+            <RefineChatScroll
+              messages={messages}
+              currentUserProfile={currentUserProfile}
+              loading={loading}
+              generatingOpener={generatingOpener}
+              activeMCQFromMessageId={activeMCQFromMessageId}
+              dismissedMCQMessageIds={dismissedMCQMessageIds}
+              onReopenMCQ={onReopenMCQ}
+              onEditMessage={onEditMessage}
+              onRetryMessage={onRetryMessage}
+            />
+          </div>
+          <div className="border-t-2 border-border-master p-4 shrink-0">
+            <RefineChatInput onSend={send} sending={sending} />
+          </div>
+        </div>
+
+        <div className="w-[400px] shrink-0 overflow-y-auto border-l-0">
+          <LiveWorkspacePanel
+            experiment={experiment}
+            messages={messages}
+            onFinalized={onFinalizedOrReset}
+            onReset={onFinalizedOrReset}
+          />
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}

@@ -48,6 +48,9 @@ import { useResources } from "./hooks/useResources";
 import { ActNode } from "./nodes/ActNode";
 import { CoreShellNode } from "./nodes/CoreShellNode";
 import { RefineExpandedNode } from "./nodes/RefineExpandedNode";
+import { RefineFullscreenModal } from "./nodes/RefineFullscreenModal";
+import { RefineMCQPopup } from "./refine/RefineMCQPopup";
+import { useRefineChat } from "./refine/useRefineChat";
 import { SparkExpandedNode } from "./nodes/SparkExpandedNode";
 import { SparkFullscreenModal } from "./nodes/SparkFullscreenModal";
 import { SparkNode, type SparkMetricState } from "./nodes/SparkNode";
@@ -149,6 +152,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     x: number;
     y: number;
   } | null>(null);
+  const [refineFullscreen, setRefineFullscreen] = useState(false);
   const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [evidenceRerunning, setEvidenceRerunning] = useState(false);
@@ -163,6 +167,53 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   } = useCanvasLayout(experiment.id);
   const [canvasSettled, setCanvasSettled] = useState(false);
   const { resources, addResource, removeResource } = useResources(experiment.id);
+
+  const refineSurfaceOpen = refinePanelOpen || refineFullscreen;
+  const enableOpener =
+    refineSurfaceOpen &&
+    (experiment.current_spark_version ?? 0) >= 1 &&
+    Boolean(experiment.raw_idea?.trim());
+
+  const onRefineTurnComplete = useCallback(async () => {
+    if (!onExperimentChange) return;
+    const updated = await getExperiment(experiment.id);
+    onExperimentChange(updated);
+  }, [experiment.id, onExperimentChange]);
+
+  const {
+    messages: refineMessages,
+    loading: refineLoading,
+    generatingOpener,
+    sending: refineSending,
+    send: refineSend,
+    reload: reloadRefineChat,
+    activeMCQ,
+    answerMCQ,
+    dismissMCQ,
+    reopenMCQ,
+    dismissedMCQMessageIds,
+    refinementCount,
+    editMessage,
+    retryMessage,
+  } = useRefineChat(experiment.id, {
+    onTurnComplete: onRefineTurnComplete,
+    enableOpener,
+  });
+
+  const refreshExperimentAndChat = useCallback(async () => {
+    const updated = await getExperiment(experiment.id);
+    onExperimentChange?.(updated);
+    reloadRefineChat();
+  }, [experiment.id, onExperimentChange, reloadRefineChat]);
+
+  useEffect(() => {
+    if (!activeMCQ) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") dismissMCQ();
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [activeMCQ, dismissMCQ]);
 
   const phasesComplete = getPhasesComplete(experiment.status);
   const resourceCount = Math.max(experiment.resource_count ?? 0, resources.length);
@@ -274,6 +325,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     setSparkFullscreen(true);
     setSparkPanelOpen(false);
     setSparkPanelPosition(null);
+    setRefineFullscreen(false);
     setSparkUrl("fullscreen");
   }, [setSparkUrl]);
 
@@ -288,6 +340,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   const closeRefinePanel = useCallback(() => {
     setRefinePanelOpen(false);
     setRefinePanelPosition(null);
+    setRefineFullscreen(false);
     setRefineUrl(false);
   }, [setRefineUrl]);
 
@@ -301,6 +354,14 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     setSparkPanelPosition(null);
     setRefineUrl(true);
   }, [refinePanelOpen, positions, computeInitialRefinePosition, setRefineUrl]);
+
+  const openRefineFullscreen = useCallback(() => {
+    setRefineFullscreen(true);
+  }, []);
+
+  const minimizeRefineFullscreen = useCallback(() => {
+    setRefineFullscreen(false);
+  }, []);
 
   useEffect(() => {
     const onPopState = () => {
@@ -387,7 +448,10 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         selectable: false,
         data: {
           projectName: experiment.name ?? "UNTITLED PROJECT",
-          refinedIdea: experiment.refined_idea ?? null,
+          refinedIdea:
+            typeof experiment.refined_idea === "string"
+              ? experiment.refined_idea
+              : experiment.refined_idea?.refined_one_liner ?? null,
           rawIdea: experiment.raw_idea ?? null,
           phasesComplete,
         },
@@ -422,7 +486,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
             metricLabel: config.metricLabel,
             metricValue: metrics[id],
             isRunning: isActRunning(id, experiment.status),
-            isFocused: id === "refine" ? refinePanelOpen : false,
+            isFocused: id === "refine" ? refinePanelOpen || refineFullscreen : false,
             isDisabled: id === "refine" ? refineLocked : false,
             isStale: stale?.isStale ?? false,
             basedOnVersion: stale?.basedOnVersion ?? null,
@@ -451,7 +515,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       });
     }
 
-    if (refinePanelOpen && refinePanelPosition) {
+    if (refinePanelOpen && refinePanelPosition && !refineFullscreen) {
       base.push({
         id: REFINE_EXPANDED_ID,
         type: "refineExpanded",
@@ -461,8 +525,18 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         data: {
           experiment,
           onClose: closeRefinePanel,
-          onFullscreen: () =>
-            toast("Fullscreen coming in the next update.", "info"),
+          onFullscreen: openRefineFullscreen,
+          messages: refineMessages,
+          loading: refineLoading,
+          generatingOpener,
+          sending: refineSending,
+          send: refineSend,
+          refinementCount,
+          activeMCQFromMessageId: activeMCQ?.fromMessageId,
+          dismissedMCQMessageIds,
+          onReopenMCQ: reopenMCQ,
+          onEditMessage: editMessage,
+          onRetryMessage: retryMessage,
         },
       });
     }
@@ -478,14 +552,26 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     sparkPanelPosition,
     refinePanelOpen,
     refinePanelPosition,
+    refineFullscreen,
     metrics,
     closeSparkPanel,
     openSparkFullscreen,
     closeRefinePanel,
+    openRefineFullscreen,
     onExperimentChange,
     evidenceRerunning,
     handleEvidenceRerun,
-    toast,
+    refineMessages,
+    refineLoading,
+    generatingOpener,
+    refineSending,
+    refineSend,
+    refinementCount,
+    activeMCQ?.fromMessageId,
+    dismissedMCQMessageIds,
+    reopenMCQ,
+    editMessage,
+    retryMessage,
   ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes());
@@ -647,6 +733,37 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
           onClose={closeSparkPanel}
           onMinimize={minimizeFromFullscreen}
           onExperimentChange={onExperimentChange}
+        />
+      ) : null}
+
+      {refineFullscreen ? (
+        <RefineFullscreenModal
+          experiment={experiment}
+          onClose={closeRefinePanel}
+          onMinimize={minimizeRefineFullscreen}
+          messages={refineMessages}
+          loading={refineLoading}
+          generatingOpener={generatingOpener}
+          sending={refineSending}
+          send={refineSend}
+          refinementCount={refinementCount}
+          activeMCQFromMessageId={activeMCQ?.fromMessageId}
+          dismissedMCQMessageIds={dismissedMCQMessageIds}
+          onReopenMCQ={reopenMCQ}
+          onEditMessage={editMessage}
+          onRetryMessage={retryMessage}
+          mcqActive={Boolean(activeMCQ)}
+          onFinalizedOrReset={refreshExperimentAndChat}
+        />
+      ) : null}
+
+      {activeMCQ && refineSurfaceOpen ? (
+        <RefineMCQPopup
+          question={activeMCQ.question}
+          options={activeMCQ.options}
+          turnNumber={refinementCount || 1}
+          onAnswer={answerMCQ}
+          onDismiss={dismissMCQ}
         />
       ) : null}
 

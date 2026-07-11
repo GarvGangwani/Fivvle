@@ -140,7 +140,7 @@ export function RefineChatInput({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+    if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void handleSend();
     }
@@ -245,7 +245,7 @@ export function RefineChatInput({
 
         <div className="flex items-center gap-3">
           <span className="hidden sm:inline font-mono text-mono-sm uppercase text-ink-tertiary">
-            Cmd+Enter
+            ENTER TO SEND · SHIFT+ENTER NEWLINE
           </span>
           <button
             type="button"

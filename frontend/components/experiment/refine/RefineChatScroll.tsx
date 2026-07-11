@@ -15,27 +15,61 @@ type Props = {
   messages: RefineChatMessageModel[];
   currentUserProfile: Profile;
   loading?: boolean;
+  generatingOpener?: boolean;
+  activeMCQFromMessageId?: string | null;
+  dismissedMCQMessageIds?: Set<string>;
+  onReopenMCQ?: (messageId: string) => void;
+  onEditMessage?: (messageId: string, newContent: string) => void | Promise<void>;
+  onRetryMessage?: (messageId: string) => void | Promise<void>;
 };
 
 export function RefineChatScroll({
   messages,
   currentUserProfile,
   loading = false,
+  generatingOpener = false,
+  activeMCQFromMessageId,
+  dismissedMCQMessageIds,
+  onReopenMCQ,
+  onEditMessage,
+  onRetryMessage,
 }: Props) {
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
+  const latestMessageId =
+    messages.length > 0 ? messages[messages.length - 1].id : null;
 
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({
       behavior: "smooth",
       block: "end",
     });
-  }, [messages]);
+  }, [messages, generatingOpener]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
         <p className="font-mono text-mono-md uppercase text-ink-tertiary">
           Loading conversation...
+        </p>
+      </div>
+    );
+  }
+
+  if (messages.length === 0 && generatingOpener) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[280px] text-center px-8">
+        <span
+          className="material-symbols-outlined text-brand-primary animate-pulse mb-4"
+          style={{ fontSize: 48 }}
+          aria-hidden="true"
+        >
+          bolt
+        </span>
+        <div className="font-mono text-mono-md uppercase text-brand-primary mb-2">
+          REFINER IS READING YOUR IDEA
+        </div>
+        <p className="font-body text-body-md text-ink-secondary">
+          Just a moment...
         </p>
       </div>
     );
@@ -52,6 +86,12 @@ export function RefineChatScroll({
           key={msg.id}
           message={msg}
           currentUserProfile={currentUserProfile}
+          activeMCQFromMessageId={activeMCQFromMessageId}
+          dismissedMCQMessageIds={dismissedMCQMessageIds}
+          isLatest={msg.id === latestMessageId}
+          onReopenMCQ={onReopenMCQ}
+          onEditMessage={onEditMessage}
+          onRetryMessage={onRetryMessage}
         />
       ))}
       <div ref={scrollAnchorRef} />

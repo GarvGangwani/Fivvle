@@ -3,24 +3,45 @@
 import type { NodeProps } from "reactflow";
 import { useAuth } from "@/lib/auth-context";
 import type { Experiment } from "@/lib/types";
-import { RefineChatInput } from "../refine/RefineChatInput";
+import { RefineChatInput, type AttachmentDraft } from "../refine/RefineChatInput";
 import { RefineChatScroll } from "../refine/RefineChatScroll";
-import { useRefineChat } from "../refine/useRefineChat";
+import type { RefineChatMessageModel } from "../refine/RefineChatMessage";
 
 export type RefineExpandedData = {
   experiment: Experiment;
   onClose: () => void;
   onFullscreen: () => void;
+  messages: RefineChatMessageModel[];
+  loading: boolean;
+  generatingOpener: boolean;
+  sending: boolean;
+  send: (text: string, attachments: AttachmentDraft[]) => void | Promise<void>;
+  refinementCount: number;
+  activeMCQFromMessageId?: string | null;
+  dismissedMCQMessageIds?: Set<string>;
+  onReopenMCQ?: (messageId: string) => void;
+  onEditMessage?: (messageId: string, newContent: string) => void | Promise<void>;
+  onRetryMessage?: (messageId: string) => void | Promise<void>;
 };
 
 export function RefineExpandedNode({ data }: NodeProps<RefineExpandedData>) {
-  const { experiment, onClose, onFullscreen } = data;
-  // Same auth source as AppSideRail — Firebase user via AuthProvider.
+  const {
+    onClose,
+    onFullscreen,
+    messages,
+    loading,
+    generatingOpener,
+    sending,
+    send,
+    refinementCount,
+    activeMCQFromMessageId,
+    dismissedMCQMessageIds,
+    onReopenMCQ,
+    onEditMessage,
+    onRetryMessage,
+  } = data;
   const { user } = useAuth();
-  const { messages, loading, sending, send } = useRefineChat(experiment.id);
 
-  // Match AppSideRail: fall back to email when displayName is unset so
-  // ProfileAvatar can render initials instead of an empty/black tile.
   const currentUserProfile = user
     ? {
         displayName: user.displayName ?? user.email ?? null,
@@ -45,6 +66,11 @@ export function RefineExpandedNode({ data }: NodeProps<RefineExpandedData>) {
           <span className="font-mono text-mono-md uppercase tracking-wider">
             PHASE 02: REFINE // EXPANDED_VIEW
           </span>
+          {refinementCount > 0 ? (
+            <span className="bg-brand-primary text-ink-inverse px-2 py-0.5 font-mono text-mono-sm uppercase">
+              TURN {refinementCount}
+            </span>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -75,6 +101,12 @@ export function RefineExpandedNode({ data }: NodeProps<RefineExpandedData>) {
           messages={messages}
           currentUserProfile={currentUserProfile}
           loading={loading}
+          generatingOpener={generatingOpener}
+          activeMCQFromMessageId={activeMCQFromMessageId}
+          dismissedMCQMessageIds={dismissedMCQMessageIds}
+          onReopenMCQ={onReopenMCQ}
+          onEditMessage={onEditMessage}
+          onRetryMessage={onRetryMessage}
         />
       </div>
 

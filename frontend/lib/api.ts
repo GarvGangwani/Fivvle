@@ -3,6 +3,7 @@ import { getFirebaseAuth } from "./firebase";
 import { handleSessionExpired } from "./session-expired";
 import type {
   ArchiveExperimentResponse,
+  ChatHistoryMessage,
   ChatTurnResponse,
   DeleteExperimentResponse,
   Experiment,
@@ -208,6 +209,9 @@ export type ChatTurnParams = {
   idempotency_key?: string;
   name?: string | null;
   attachment_ids?: string[];
+  selected_option_indices?: number[] | null;
+  custom_added_text?: string | null;
+  answered_question_from_message_id?: string | null;
   signal?: AbortSignal;
 };
 
@@ -296,6 +300,17 @@ export async function chatTurn(
       params.idempotency_key ?? crypto.randomUUID();
   }
 
+  if (params.selected_option_indices != null) {
+    body.selected_option_indices = params.selected_option_indices;
+  }
+  if (params.custom_added_text != null) {
+    body.custom_added_text = params.custom_added_text;
+  }
+  if (params.answered_question_from_message_id != null) {
+    body.answered_question_from_message_id =
+      params.answered_question_from_message_id;
+  }
+
   return apiFetch<ChatTurnResponse>("/chat/turn", {
     method: "POST",
     body,
@@ -308,6 +323,49 @@ export async function getExperimentChatMessages(
 ): Promise<ExperimentChatMessagesResponse> {
   return apiFetch<ExperimentChatMessagesResponse>(
     `/chat/experiments/${experimentId}/messages`,
+  );
+}
+
+export async function finalizeRefinement(
+  experimentId: string,
+): Promise<Experiment> {
+  return apiFetch<Experiment>(`/experiments/${experimentId}/refine/finalize`, {
+    method: "POST",
+    body: {},
+  });
+}
+
+export async function resetRefineSession(
+  experimentId: string,
+): Promise<Experiment> {
+  return apiFetch<Experiment>(`/experiments/${experimentId}/refine/session`, {
+    method: "DELETE",
+  });
+}
+
+/** Proactive Refiner opener for an empty Refine thread. 400 if messages exist. */
+export async function generateRefinerOpener(
+  experimentId: string,
+): Promise<ChatHistoryMessage> {
+  return apiFetch<ChatHistoryMessage>(
+    `/experiments/${experimentId}/refine/opener`,
+    {
+      method: "POST",
+      body: {},
+    },
+  );
+}
+
+export async function retryRefineAssistantMessage(
+  experimentId: string,
+  messageId: string,
+): Promise<ChatTurnResponse> {
+  return apiFetch<ChatTurnResponse>(
+    `/experiments/${experimentId}/refine/messages/${messageId}/retry`,
+    {
+      method: "POST",
+      body: {},
+    },
   );
 }
 
