@@ -7,7 +7,9 @@ import {
   editChatMessage,
   generateRefinerOpener,
   getExperimentChatMessages,
+  getMessageSiblings,
   retryRefineAssistantMessage,
+  setActiveBranch,
   uploadChatAttachments,
 } from "@/lib/api";
 import type { ChatHistoryMessage, ClarifyingQuestion } from "@/lib/types";
@@ -38,6 +40,9 @@ function mapHistoryMessage(msg: ChatHistoryMessage): RefineChatMessageModel {
     is_streaming: false,
     clarifying_questions: msg.clarifying_questions ?? undefined,
     metadata: msg.metadata ?? undefined,
+    parent_message_id: msg.parent_message_id ?? null,
+    sibling_index: msg.sibling_index ?? 0,
+    sibling_count: msg.sibling_count ?? 1,
   };
 }
 
@@ -83,6 +88,9 @@ export function useRefineChat(experimentId: string, options: Options = {}) {
     Set<string>
   >(new Set());
   const [refinementCount, setRefinementCount] = useState(0);
+  const [navigatingMessageId, setNavigatingMessageId] = useState<string | null>(
+    null,
+  );
 
   const reload = useCallback(() => {
     setReloadToken((n) => n + 1);
@@ -369,6 +377,40 @@ export function useRefineChat(experimentId: string, options: Options = {}) {
     [experimentId, onTurnComplete],
   );
 
+  const switchToBranch = useCallback(
+    async (fromMessageId: string, direction: "prev" | "next") => {
+      if (navigatingMessageId) return;
+      setNavigatingMessageId(fromMessageId);
+      setError(null);
+
+      try {
+        const siblings = await getMessageSiblings(experimentId, fromMessageId);
+        const currentIdx = siblings.findIndex((s) => s.id === fromMessageId);
+        if (currentIdx === -1) return;
+
+        const targetIdx = direction === "next" ? currentIdx + 1 : currentIdx - 1;
+        if (targetIdx < 0 || targetIdx >= siblings.length) return;
+
+        const targetSiblingId = siblings[targetIdx].id;
+        await setActiveBranch(experimentId, targetSiblingId);
+
+        const chatData = await getExperimentChatMessages(experimentId);
+        setThreadId(chatData.thread_id);
+        const mapped = chatData.messages.map(mapHistoryMessage);
+        setMessages(mapped);
+        setDismissedMCQMessageIds(new Set());
+        setActiveMCQ(restoreMcqFromMessages(mapped));
+        await onTurnComplete?.();
+      } catch (err) {
+        console.error("Failed to switch branch:", err);
+        setError("Could not switch branch.");
+      } finally {
+        setNavigatingMessageId(null);
+      }
+    },
+    [experimentId, navigatingMessageId, onTurnComplete],
+  );
+
   return {
     messages,
     loading,
@@ -386,5 +428,7 @@ export function useRefineChat(experimentId: string, options: Options = {}) {
     refinementCount,
     editMessage,
     retryMessage,
+    switchToBranch,
+    navigatingMessageId,
   };
 }

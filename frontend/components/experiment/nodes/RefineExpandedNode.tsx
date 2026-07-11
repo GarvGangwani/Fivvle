@@ -22,6 +22,11 @@ export type RefineExpandedData = {
   onReopenMCQ?: (messageId: string) => void;
   onEditMessage?: (messageId: string, newContent: string) => void | Promise<void>;
   onRetryMessage?: (messageId: string) => void | Promise<void>;
+  onSwitchBranch?: (
+    messageId: string,
+    direction: "prev" | "next",
+  ) => void | Promise<void>;
+  navigatingMessageId?: string | null;
 };
 
 export function RefineExpandedNode({ data }: NodeProps<RefineExpandedData>) {
@@ -39,6 +44,8 @@ export function RefineExpandedNode({ data }: NodeProps<RefineExpandedData>) {
     onReopenMCQ,
     onEditMessage,
     onRetryMessage,
+    onSwitchBranch,
+    navigatingMessageId,
   } = data;
   const { user } = useAuth();
 
@@ -107,6 +114,8 @@ export function RefineExpandedNode({ data }: NodeProps<RefineExpandedData>) {
           onReopenMCQ={onReopenMCQ}
           onEditMessage={onEditMessage}
           onRetryMessage={onRetryMessage}
+          onSwitchBranch={onSwitchBranch}
+          navigatingMessageId={navigatingMessageId}
         />
       </div>
 

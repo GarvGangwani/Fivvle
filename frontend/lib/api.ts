@@ -369,6 +369,28 @@ export async function retryRefineAssistantMessage(
   );
 }
 
+export async function getMessageSiblings(
+  experimentId: string,
+  messageId: string,
+): Promise<ChatHistoryMessage[]> {
+  return apiFetch<ChatHistoryMessage[]>(
+    `/experiments/${experimentId}/refine/messages/${messageId}/siblings`,
+  );
+}
+
+export async function setActiveBranch(
+  experimentId: string,
+  messageId: string,
+): Promise<Experiment> {
+  return apiFetch<Experiment>(
+    `/experiments/${experimentId}/refine/messages/${messageId}/set-active`,
+    {
+      method: "POST",
+      body: {},
+    },
+  );
+}
+
 export async function editChatMessage(
   threadId: string,
   messageId: string,

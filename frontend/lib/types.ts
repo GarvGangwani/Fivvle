@@ -317,6 +317,9 @@ export interface ChatHistoryMessage {
     custom_added_text?: string | null;
     answered_question_from_message_id?: string;
   } | null;
+  parent_message_id?: string | null;
+  sibling_index?: number;
+  sibling_count?: number;
   created_at: string;
 }
 

@@ -195,6 +195,8 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     refinementCount,
     editMessage,
     retryMessage,
+    switchToBranch,
+    navigatingMessageId,
   } = useRefineChat(experiment.id, {
     onTurnComplete: onRefineTurnComplete,
     enableOpener,
@@ -537,6 +539,8 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
           onReopenMCQ: reopenMCQ,
           onEditMessage: editMessage,
           onRetryMessage: retryMessage,
+          onSwitchBranch: switchToBranch,
+          navigatingMessageId,
         },
       });
     }
@@ -572,6 +576,8 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     reopenMCQ,
     editMessage,
     retryMessage,
+    switchToBranch,
+    navigatingMessageId,
   ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes());
@@ -752,6 +758,8 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
           onReopenMCQ={reopenMCQ}
           onEditMessage={editMessage}
           onRetryMessage={retryMessage}
+          onSwitchBranch={switchToBranch}
+          navigatingMessageId={navigatingMessageId}
           mcqActive={Boolean(activeMCQ)}
           onFinalizedOrReset={refreshExperimentAndChat}
         />

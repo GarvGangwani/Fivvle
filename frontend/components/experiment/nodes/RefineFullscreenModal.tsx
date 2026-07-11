@@ -24,6 +24,11 @@ type Props = {
   onReopenMCQ?: (messageId: string) => void;
   onEditMessage?: (messageId: string, newContent: string) => void | Promise<void>;
   onRetryMessage?: (messageId: string) => void | Promise<void>;
+  onSwitchBranch?: (
+    messageId: string,
+    direction: "prev" | "next",
+  ) => void | Promise<void>;
+  navigatingMessageId?: string | null;
   mcqActive?: boolean;
   onFinalizedOrReset: () => Promise<void>;
 };
@@ -43,6 +48,8 @@ export function RefineFullscreenModal({
   onReopenMCQ,
   onEditMessage,
   onRetryMessage,
+  onSwitchBranch,
+  navigatingMessageId,
   mcqActive = false,
   onFinalizedOrReset,
 }: Props) {
@@ -127,6 +134,8 @@ export function RefineFullscreenModal({
               onReopenMCQ={onReopenMCQ}
               onEditMessage={onEditMessage}
               onRetryMessage={onRetryMessage}
+              onSwitchBranch={onSwitchBranch}
+              navigatingMessageId={navigatingMessageId}
             />
           </div>
           <div className="border-t-2 border-border-master p-4 shrink-0">

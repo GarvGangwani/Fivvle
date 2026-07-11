@@ -9,6 +9,7 @@ import {
   MessageAttachments,
   type RefineMessageAttachment,
 } from "./MessageAttachments";
+import { BranchNavigator } from "./BranchNavigator";
 import { MessageActions } from "./MessageActions";
 
 export type RefineChatMessageModel = {
@@ -21,6 +22,9 @@ export type RefineChatMessageModel = {
   error?: boolean;
   clarifying_questions?: ClarifyingQuestion[];
   metadata?: ChatHistoryMessage["metadata"];
+  parent_message_id?: string | null;
+  sibling_index?: number;
+  sibling_count?: number;
 };
 
 type Profile = {
@@ -37,6 +41,11 @@ type Props = {
   onReopenMCQ?: (messageId: string) => void;
   onEditMessage?: (messageId: string, newContent: string) => void | Promise<void>;
   onRetryMessage?: (messageId: string) => void | Promise<void>;
+  onSwitchBranch?: (
+    messageId: string,
+    direction: "prev" | "next",
+  ) => void | Promise<void>;
+  navigatingMessageId?: string | null;
 };
 
 const DISALLOWED_ELEMENTS = [
@@ -131,6 +140,8 @@ export function RefineChatMessage({
   onReopenMCQ,
   onEditMessage,
   onRetryMessage,
+  onSwitchBranch,
+  navigatingMessageId,
 }: Props) {
   if (message.role === "user") {
     return (
@@ -139,6 +150,8 @@ export function RefineChatMessage({
         profile={currentUserProfile}
         isLatest={isLatest}
         onEditMessage={onEditMessage}
+        onSwitchBranch={onSwitchBranch}
+        navigatingMessageId={navigatingMessageId}
       />
     );
   }
@@ -151,10 +164,45 @@ export function RefineChatMessage({
         isLatest={isLatest}
         onReopenMCQ={onReopenMCQ}
         onRetryMessage={onRetryMessage}
+        onSwitchBranch={onSwitchBranch}
+        navigatingMessageId={navigatingMessageId}
       />
     );
   }
   return null;
+}
+
+function BranchSlot({
+  message,
+  onSwitchBranch,
+  navigatingMessageId,
+}: {
+  message: RefineChatMessageModel;
+  onSwitchBranch?: (
+    messageId: string,
+    direction: "prev" | "next",
+  ) => void | Promise<void>;
+  navigatingMessageId?: string | null;
+}) {
+  const siblingCount = message.sibling_count ?? 1;
+  const siblingIndex = message.sibling_index ?? 0;
+  if (siblingCount <= 1 || !onSwitchBranch) return null;
+
+  return (
+    <BranchNavigator
+      currentIndex={siblingIndex}
+      totalCount={siblingCount}
+      canNavigatePrev={siblingIndex > 0}
+      canNavigateNext={siblingIndex < siblingCount - 1}
+      onPrev={() => {
+        void onSwitchBranch(message.id, "prev");
+      }}
+      onNext={() => {
+        void onSwitchBranch(message.id, "next");
+      }}
+      isNavigating={navigatingMessageId === message.id}
+    />
+  );
 }
 
 function UserMessage({
@@ -162,11 +210,18 @@ function UserMessage({
   profile,
   isLatest,
   onEditMessage,
+  onSwitchBranch,
+  navigatingMessageId,
 }: {
   message: RefineChatMessageModel;
   profile: Profile;
   isLatest: boolean;
   onEditMessage?: (messageId: string, newContent: string) => void | Promise<void>;
+  onSwitchBranch?: (
+    messageId: string,
+    direction: "prev" | "next",
+  ) => void | Promise<void>;
+  navigatingMessageId?: string | null;
 }) {
   const handleEdit = () => {
     if (!onEditMessage) return;
@@ -195,6 +250,13 @@ function UserMessage({
           role="user"
           isLatest={isLatest}
           onEdit={onEditMessage ? handleEdit : undefined}
+          branchNavigator={
+            <BranchSlot
+              message={message}
+              onSwitchBranch={onSwitchBranch}
+              navigatingMessageId={navigatingMessageId}
+            />
+          }
         />
       </div>
       <ProfileAvatar
@@ -213,6 +275,8 @@ function AssistantMessage({
   isLatest,
   onReopenMCQ,
   onRetryMessage,
+  onSwitchBranch,
+  navigatingMessageId,
 }: {
   message: RefineChatMessageModel;
   activeMCQFromMessageId?: string | null;
@@ -220,6 +284,11 @@ function AssistantMessage({
   isLatest: boolean;
   onReopenMCQ?: (messageId: string) => void;
   onRetryMessage?: (messageId: string) => void | Promise<void>;
+  onSwitchBranch?: (
+    messageId: string,
+    direction: "prev" | "next",
+  ) => void | Promise<void>;
+  navigatingMessageId?: string | null;
 }) {
   const questions = message.clarifying_questions ?? [];
   const hasMCQOptions = questions.some((q) => q.options.length >= 2);
@@ -295,6 +364,13 @@ function AssistantMessage({
                   void onRetryMessage(message.id);
                 }
               : undefined
+          }
+          branchNavigator={
+            <BranchSlot
+              message={message}
+              onSwitchBranch={onSwitchBranch}
+              navigatingMessageId={navigatingMessageId}
+            />
           }
         />
       </div>

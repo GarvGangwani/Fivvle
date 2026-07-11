@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useState } from "react";
 
 type Props = {
@@ -9,6 +10,7 @@ type Props = {
   isLatest: boolean;
   onEdit?: () => void;
   onRetry?: () => void;
+  branchNavigator?: ReactNode;
 };
 
 function formatTime(iso: string): string {
@@ -29,6 +31,7 @@ export function MessageActions({
   isLatest,
   onEdit,
   onRetry,
+  branchNavigator,
 }: Props) {
   const [copied, setCopied] = useState(false);
 
@@ -51,6 +54,8 @@ export function MessageActions({
       <span className="font-mono text-mono-sm uppercase text-ink-tertiary">
         {formatTime(createdAt)} UTC
       </span>
+
+      {branchNavigator}
 
       <button
         type="button"
@@ -90,8 +95,8 @@ export function MessageActions({
         <button
           type="button"
           onClick={onRetry}
-          aria-label="Retry"
-          title="Regenerate response"
+          aria-label="Try another response"
+          title="Try another response"
           className="p-1 text-ink-tertiary hover:text-ink-primary hover:bg-surface-elevated transition-colors"
         >
           <span

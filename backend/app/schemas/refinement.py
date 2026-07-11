@@ -193,9 +193,11 @@ class ClarifyingQuestion(BaseModel):
         Field(
             min_length=2,
             description=(
-                "Concrete answer choices that help the founder understand the "
-                "problem space. Include every plausible option — no artificial cap. "
-                "The UI always adds a free-text 'Other' field."
+                "Concrete answer choices. Prefer 2–4 short UPPERCASE labels for "
+                "discrete choices (B2B vs B2C, web vs mobile). For open-ended "
+                "questions, still provide starter options the founder can pick "
+                "or override with free text. Mutually distinct. Do NOT include "
+                "'SOMETHING ELSE' or 'OTHER' — the UI has a free-form path."
             ),
         ),
     ]
@@ -224,8 +226,8 @@ class RefinementTurnDecision(BaseModel):
         Field(
             default_factory=list,
             description=(
-                "Required when decision is clarify. One or more structured questions "
-                "shown sequentially in the question-block UI."
+                "Required when decision is clarify. Exactly ONE structured "
+                "question per turn — never two or more."
             ),
         ),
     ]
