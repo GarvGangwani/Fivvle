@@ -23,7 +23,7 @@ from app.db.models.experiment import Experiment
 from app.db.models.refinement_idempotency import RefinementIdempotency
 from app.db.models.user import User
 from app.dispatchers.protocol import DispatchError
-from app.schemas.refinement import RefinedIdea, RefinementTurnDecision
+from app.schemas.refinement import ClarifyingQuestion, RefinedIdea, RefinementTurnDecision
 from app.services.chat_service import (
     ChatAuthorizationError,
     ChatTurnResult,
@@ -66,6 +66,17 @@ def _clarify_decision() -> RefinementTurnDecision:
         decision="clarify",
         assistant_message="Who specifically feels this pain day to day?",
         clarifying_dimension="audience",
+        clarifying_questions=[
+            ClarifyingQuestion(
+                question="Who specifically feels this pain day to day?",
+                selection_mode="multiple",
+                options=[
+                    "Independent CrossFit coaches",
+                    "Box owners managing multiple coaches",
+                    "Online-only programming coaches",
+                ],
+            )
+        ],
         reasoning_trace="Need a concrete audience before research.",
     )
 
@@ -793,7 +804,7 @@ async def test_post_refinement_plain_chat_uses_discuss_turn(
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.reply_plain", new_callable=AsyncMock)
-async def test_edit_user_message_truncates_downstream_and_replays(
+async def test_edit_user_message_creates_branch_not_truncate(
     mock_reply_plain: AsyncMock,
     db_session: AsyncSession,
 ) -> None:
@@ -805,19 +816,30 @@ async def test_edit_user_message_truncates_downstream_and_replays(
         thread_id=thread.id,
         role=ChatRole.USER,
         content="Original question",
+        parent_message_id=None,
     )
+    db_session.add(user_msg)
+    await db_session.flush()
+
     old_assistant = ChatMessage(
         thread_id=thread.id,
         role=ChatRole.ASSISTANT,
         content="Old answer",
         turn_kind=ChatTurnKind.NORMAL_CHAT,
+        parent_message_id=user_msg.id,
     )
+    db_session.add(old_assistant)
+    await db_session.flush()
+
     later_user = ChatMessage(
         thread_id=thread.id,
         role=ChatRole.USER,
         content="Follow-up",
+        parent_message_id=old_assistant.id,
     )
-    db_session.add_all([user_msg, old_assistant, later_user])
+    db_session.add(later_user)
+    await db_session.flush()
+    thread.active_leaf_message_id = later_user.id
     await db_session.commit()
     await db_session.refresh(user_msg)
 
@@ -832,26 +854,27 @@ async def test_edit_user_message_truncates_downstream_and_replays(
         _RecordingDispatcher(),
     )
 
-    assert result.edited_message_id == user_msg.id
+    assert result.edited_message_id != user_msg.id
     assert result.assistant_message == "Updated assistant reply."
 
-    debug_lines = [
-        f"{m.role.value}: {m.content!r}" for m in result.messages
-    ]
-    assert len(result.messages) == 2, (
-        "expected edited user + new assistant; got:\n  "
-        + "\n  ".join(debug_lines)
-    )
+    assert len(result.messages) == 2
     assert result.messages[0].content == "Edited question"
     assert result.messages[1].content == "Updated assistant reply."
+    assert result.messages[0].parent_message_id is None
+    assert result.messages[1].parent_message_id == result.messages[0].id
 
     remaining = await db_session.execute(
         select(ChatMessage).where(ChatMessage.thread_id == thread.id)
     )
     rows = list(remaining.scalars().all())
-    assert len(rows) == 2
-    assert all(row.content != "Follow-up" for row in rows)
-    assert all(row.content != "Old answer" for row in rows)
+    # Original branch preserved + new branch (edited user + new assistant)
+    assert len(rows) == 5
+    assert any(row.content == "Follow-up" for row in rows)
+    assert any(row.content == "Old answer" for row in rows)
+    assert any(row.content == "Original question" for row in rows)
+
+    await db_session.refresh(thread)
+    assert thread.active_leaf_message_id == result.message_id
 
 
 # ---------------------------------------------------------------------------
@@ -860,41 +883,37 @@ async def test_edit_user_message_truncates_downstream_and_replays(
 
 
 @pytest.mark.asyncio
-async def test_list_thread_messages_returns_deterministic_order_on_created_at_tie(
+async def test_list_thread_messages_returns_active_branch_order(
     db_session: AsyncSession,
 ) -> None:
-    """When user answer and assistant follow-up share created_at, id tiebreaker
-    must return user before assistant regardless of insert order."""
+    """Active branch is returned root→leaf via parent links."""
     user = await _persist_user(db_session)
     thread = await _persist_thread(db_session, user)
-    tie_time = datetime(2026, 7, 7, 12, 0, 0, tzinfo=UTC)
 
     user_msg = ChatMessage(
-        id=UUID("00000000-0000-4000-8000-000000000001"),
         thread_id=thread.id,
         role=ChatRole.USER,
-        content="Q1 answer",
-        created_at=tie_time,
+        content="Q",
+        parent_message_id=None,
     )
-    assistant_msg = ChatMessage(
-        id=UUID("00000000-0000-4000-8000-000000000010"),
+    db_session.add(user_msg)
+    await db_session.flush()
+    assistant = ChatMessage(
         thread_id=thread.id,
         role=ChatRole.ASSISTANT,
-        content="Q2 question",
-        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
-        clarifying_dimension="audience",
-        created_at=tie_time,
+        content="A",
+        turn_kind=ChatTurnKind.NORMAL_CHAT,
+        parent_message_id=user_msg.id,
     )
-    # Insert assistant first — without id tiebreaker PG may return this order.
-    db_session.add_all([assistant_msg, user_msg])
+    db_session.add(assistant)
+    await db_session.flush()
+    thread.active_leaf_message_id = assistant.id
     await db_session.commit()
 
     from app.services.chat_service import list_thread_messages
 
     messages = await list_thread_messages(db_session, user, thread.id)
-    assert len(messages) == 2
-    assert messages[0].role == ChatRole.USER
-    assert messages[1].role == ChatRole.ASSISTANT
+    assert [m.content for m in messages] == ["Q", "A"]
 
 
 @pytest.mark.asyncio

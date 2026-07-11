@@ -36,10 +36,12 @@ from app.services.chat_attachment_service import (
 from app.services.chat_service import (
     ChatAuthorizationError,
     ChatMessageEditError,
+    build_user_message_metadata,
     handle_edit_turn,
     handle_turn,
     list_experiment_chat_messages,
 )
+from app.services.chat_tree_service import enrich_messages_with_sibling_info
 from app.services.experiment_service import InvalidExperimentState
 from app.utils.chat_attachment import (
     MAX_ATTACHMENTS_PER_TURN,
@@ -47,6 +49,21 @@ from app.utils.chat_attachment import (
 )
 
 _logger = get_logger(__name__)
+
+
+async def _message_items_with_siblings(
+    db: AsyncSession,
+    messages: list,
+) -> list[ChatMessageItem]:
+    enriched = await enrich_messages_with_sibling_info(db, messages)
+    return [
+        ChatMessageItem.from_orm_message(
+            msg,
+            sibling_index=index,
+            sibling_count=count,
+        )
+        for msg, index, count in enriched
+    ]
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -80,6 +97,11 @@ async def chat_turn(
             dispatcher,
             body.name,
             body.attachment_ids,
+            user_message_metadata=build_user_message_metadata(
+                selected_option_indices=body.selected_option_indices,
+                custom_added_text=body.custom_added_text,
+                answered_question_from_message_id=body.answered_question_from_message_id,
+            ),
         )
         return ChatTurnResponse.from_result(result)
     except ChatAuthorizationError:
@@ -161,7 +183,7 @@ async def chat_turn_edit(
             dispatched_at=result.dispatched_at,
             experiment_status=result.experiment_status,
             research_error_detail=result.research_error_detail,
-            messages=[ChatMessageItem.model_validate(m) for m in result.messages],
+            messages=await _message_items_with_siblings(db, result.messages),
         )
     except ChatAuthorizationError:
         raise HTTPException(
@@ -298,5 +320,5 @@ async def get_experiment_chat_messages(
     return ExperimentChatMessagesResponse(
         thread_id=thread_id,
         experiment_id=experiment_id,
-        messages=[ChatMessageItem.model_validate(m) for m in messages],
+        messages=await _message_items_with_siblings(db, messages),
     )

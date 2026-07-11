@@ -33,6 +33,9 @@ class ChatTurnRequest(BaseModel):
     ] = None
     deep_research: bool
     idempotency_key: Annotated[str, Field(min_length=1, max_length=200)] | None = None
+    selected_option_indices: list[int] | None = None
+    custom_added_text: Annotated[str | None, Field(default=None, max_length=2000)] = None
+    answered_question_from_message_id: UUID | None = None
 
     @model_validator(mode="after")
     def _check_turn_payload(self) -> ChatTurnRequest:
@@ -69,6 +72,7 @@ class ChatTurnResponse(BaseModel):
     dispatched_at: datetime | None
     experiment_status: ExperimentStatus | None
     research_error_detail: str | None
+    refinement_count: int | None = None
 
     @classmethod
     def from_result(cls, result: ChatTurnResult) -> ChatTurnResponse:
@@ -84,6 +88,7 @@ class ChatTurnResponse(BaseModel):
             dispatched_at=result.dispatched_at,
             experiment_status=result.experiment_status,
             research_error_detail=result.research_error_detail,
+            refinement_count=result.refinement_count,
         )
 
 
@@ -95,7 +100,37 @@ class ChatMessageItem(BaseModel):
     content: str
     turn_kind: ChatTurnKind | None
     clarifying_questions: list[ClarifyingQuestion] | None = None
+    metadata: dict | None = None
+    parent_message_id: UUID | None = None
+    sibling_count: int = 1
+    sibling_index: int = 0
     created_at: datetime
+
+    @classmethod
+    def from_orm_message(
+        cls,
+        message: object,
+        *,
+        sibling_count: int = 1,
+        sibling_index: int = 0,
+    ) -> ChatMessageItem:
+        """Map ORM ChatMessage → API item (metadata_json → metadata)."""
+        cq_raw = getattr(message, "clarifying_questions", None)
+        clarifying: list[ClarifyingQuestion] | None = None
+        if cq_raw:
+            clarifying = [ClarifyingQuestion.model_validate(item) for item in cq_raw]
+        return cls(
+            id=getattr(message, "id"),
+            role=getattr(message, "role"),
+            content=getattr(message, "content"),
+            turn_kind=getattr(message, "turn_kind", None),
+            clarifying_questions=clarifying,
+            metadata=getattr(message, "metadata_json", None),
+            parent_message_id=getattr(message, "parent_message_id", None),
+            sibling_count=sibling_count,
+            sibling_index=sibling_index,
+            created_at=getattr(message, "created_at"),
+        )
 
 
 class ExperimentChatMessagesResponse(BaseModel):

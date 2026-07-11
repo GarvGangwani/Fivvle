@@ -40,6 +40,16 @@ class ChatThread(Base):
         ForeignKey("experiment_spark_versions.id"),
         nullable=True,
     )
+    active_leaf_message_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey(
+            "chat_messages.id",
+            ondelete="SET NULL",
+            use_alter=True,
+            name="fk_chat_threads_active_leaf_message_id",
+        ),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -57,4 +67,10 @@ class ChatThread(Base):
     messages: Mapped[list[ChatMessage]] = relationship(
         back_populates="thread",
         cascade="all, delete-orphan",
+        foreign_keys="ChatMessage.thread_id",
+    )
+    active_leaf: Mapped[ChatMessage | None] = relationship(
+        "ChatMessage",
+        foreign_keys=[active_leaf_message_id],
+        post_update=True,
     )
