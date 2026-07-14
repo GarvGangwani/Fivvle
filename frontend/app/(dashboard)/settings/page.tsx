@@ -4,12 +4,13 @@ import Link from "next/link";
 import { useAuth } from "@/lib/auth-context";
 import { useWallet } from "@/lib/wallet-context";
 import { ProfileAvatar } from "@/components/dashboard/ProfileAvatar";
+import { SettingsSkeleton } from "@/components/dashboard/skeletons/SettingsSkeleton";
 import { marketingButtonClass } from "@/components/marketing/marketing-styles";
 import { getFirebaseAuth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { balance, loading: walletLoading } = useWallet();
 
   const displayName = user?.displayName ?? "—";
@@ -18,6 +19,10 @@ export default function SettingsPage() {
   async function handleSignOut() {
     await signOut(getFirebaseAuth());
     window.location.href = "/login";
+  }
+
+  if (authLoading) {
+    return <SettingsSkeleton />;
   }
 
   return (

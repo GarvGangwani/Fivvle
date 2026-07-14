@@ -32,11 +32,19 @@ function errorMessage(err: unknown, fallback: string): string {
 }
 
 function hasRefinedIdeaValue(
-  value: Experiment["refined_idea"],
+  value: Experiment["refined_idea"] | Experiment["refined_idea_current"],
 ): value is string | RefinedIdea {
   if (value == null) return false;
   if (typeof value === "string") return value.trim().length > 0;
   return Boolean(value.refined_one_liner);
+}
+
+function oneLinerOf(
+  value: string | RefinedIdea | null | undefined,
+): string | null {
+  if (value == null) return null;
+  if (typeof value === "string") return value.trim() || null;
+  return value.refined_one_liner?.trim() || null;
 }
 
 function extractRefinementLog(
@@ -65,7 +73,74 @@ function extractRefinementLog(
     });
   }
 
-  return entries.reverse();
+  return entries;
+}
+
+function RefinementLogViewer({ logEntries }: { logEntries: LogEntry[] }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  useEffect(() => {
+    if (logEntries.length > 0) {
+      setCurrentIndex(logEntries.length - 1);
+    }
+  }, [logEntries.length]);
+
+  if (logEntries.length === 0) {
+    return (
+      <div className="border-2 border-dashed border-border-master p-4">
+        <p className="font-body text-body-sm text-ink-tertiary italic">
+          Questions and your answers will appear here as you go.
+        </p>
+      </div>
+    );
+  }
+
+  const safeIndex = Math.min(currentIndex, logEntries.length - 1);
+  const entry = logEntries[safeIndex];
+  const totalCount = logEntries.length;
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-2">
+        <button
+          type="button"
+          onClick={() => setCurrentIndex(Math.max(0, safeIndex - 1))}
+          disabled={safeIndex === 0}
+          className="p-1 disabled:opacity-30 hover:bg-surface-elevated"
+          aria-label="Previous question"
+        >
+          <span
+            className="material-symbols-outlined text-ink-secondary"
+            style={{ fontSize: 18 }}
+            aria-hidden="true"
+          >
+            chevron_left
+          </span>
+        </button>
+        <span className="font-mono text-mono-sm uppercase text-ink-secondary tabular-nums">
+          Q{safeIndex + 1} / {totalCount}
+        </span>
+        <button
+          type="button"
+          onClick={() =>
+            setCurrentIndex(Math.min(totalCount - 1, safeIndex + 1))
+          }
+          disabled={safeIndex === totalCount - 1}
+          className="p-1 disabled:opacity-30 hover:bg-surface-elevated"
+          aria-label="Next question"
+        >
+          <span
+            className="material-symbols-outlined text-ink-secondary"
+            style={{ fontSize: 18 }}
+            aria-hidden="true"
+          >
+            chevron_right
+          </span>
+        </button>
+      </div>
+      <LogEntryCard entry={entry} />
+    </div>
+  );
 }
 
 export function LiveWorkspacePanel({
@@ -80,10 +155,41 @@ export function LiveWorkspacePanel({
   const [finalizeConfirm, setFinalizeConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [flashKey, setFlashKey] = useState(0);
-  const lastRefinedIdea = useRef(experiment.refined_idea);
+  const [justUpdated, setJustUpdated] = useState(false);
+  const lastWip = useRef(experiment.refined_idea_current);
 
-  const hasRefinedIdea = hasRefinedIdeaValue(experiment.refined_idea);
-  const isFinalized = experiment.status === "REFINED";
+  const wipIdea = experiment.refined_idea_current;
+  const finalizedOneLiner = oneLinerOf(experiment.refined_idea);
+  const wipOneLiner = oneLinerOf(wipIdea);
+  const hasWip = hasRefinedIdeaValue(wipIdea);
+  const hasFinalized = Boolean(finalizedOneLiner);
+  const isFinalized = experiment.status === "REFINED" && hasFinalized;
+  const wipDiffers =
+    isFinalized &&
+    hasWip &&
+    Boolean(wipOneLiner) &&
+    wipOneLiner !== finalizedOneLiner;
+
+  const cardIdea: string | RefinedIdea | null = hasWip
+    ? (wipIdea as string | RefinedIdea)
+    : hasFinalized
+      ? (experiment.refined_idea as string | RefinedIdea)
+      : null;
+
+  const canFinalize = hasWip && (!isFinalized || wipDiffers);
+
+  const latestAssistantMessage = useMemo(
+    () => [...messages].reverse().find((m) => m.role === "assistant"),
+    [messages],
+  );
+
+  const isReadyToFinalize = useMemo(() => {
+    if (!latestAssistantMessage || !hasWip) return false;
+    if (isFinalized && !wipDiffers) return false;
+    const questions = latestAssistantMessage.clarifying_questions ?? [];
+    return questions.length === 0;
+  }, [latestAssistantMessage, hasWip, isFinalized, wipDiffers]);
+
   const logEntries = useMemo(
     () => extractRefinementLog(messages),
     [messages],
@@ -91,13 +197,20 @@ export function LiveWorkspacePanel({
 
   useEffect(() => {
     const changed =
-      JSON.stringify(experiment.refined_idea) !==
-      JSON.stringify(lastRefinedIdea.current);
-    if (changed && experiment.refined_idea) {
+      JSON.stringify(experiment.refined_idea_current) !==
+      JSON.stringify(lastWip.current);
+    if (changed && experiment.refined_idea_current) {
       setFlashKey((k) => k + 1);
-      lastRefinedIdea.current = experiment.refined_idea;
+      lastWip.current = experiment.refined_idea_current;
     }
-  }, [experiment.refined_idea]);
+  }, [experiment.refined_idea_current]);
+
+  useEffect(() => {
+    if (flashKey === 0) return;
+    setJustUpdated(true);
+    const timer = window.setTimeout(() => setJustUpdated(false), 1600);
+    return () => window.clearTimeout(timer);
+  }, [flashKey]);
 
   const handleFinalize = async () => {
     setFinalizing(true);
@@ -127,31 +240,46 @@ export function LiveWorkspacePanel({
     }
   };
 
+  const finalizeLabel = (() => {
+    if (isFinalized && !wipDiffers) return "FINALIZED";
+    if (wipDiffers) return "UPDATE FINAL VERSION";
+    return "FINALIZE REFINEMENT";
+  })();
+
   return (
     <div className="p-6 flex flex-col h-full overflow-y-auto">
       <div className="font-mono text-mono-sm uppercase text-brand-primary mb-6 tracking-wider">
         LIVE WORKSPACE
       </div>
 
-      {hasRefinedIdea ? (
-        <div className="mb-6">
-          <div className="flex items-center justify-between mb-2">
-            <div className="font-mono text-mono-sm uppercase text-ink-tertiary">
-              CURRENT REFINEMENT
-            </div>
-            {flashKey > 0 ? (
-              <span
-                key={flashKey}
-                className="font-mono text-mono-sm uppercase text-brand-primary animate-pulse"
-                style={{ animationIterationCount: 2, animationDuration: "0.6s" }}
-              >
-                JUST UPDATED
-              </span>
-            ) : null}
+      {isReadyToFinalize ? (
+        <div className="mb-4 border-2 border-brutalist-yellow bg-brutalist-yellow/20 p-3 flex items-start gap-3">
+          <span
+            className="material-symbols-outlined text-ink-primary shrink-0 mt-0.5"
+            style={{ fontSize: 20 }}
+            aria-hidden="true"
+          >
+            check_circle
+          </span>
+          <div>
+            <p className="font-mono text-mono-sm uppercase text-ink-primary font-bold mb-1">
+              REFINEMENT COMPLETE
+            </p>
+            <p className="font-body text-body-sm text-ink-primary">
+              The Refiner is done. Hit FINALIZE to lock in your refined idea and
+              move to Evidence, or keep chatting to sharpen it further.
+            </p>
           </div>
+        </div>
+      ) : null}
+
+      {cardIdea ? (
+        <div className="mb-6">
           <RefinedIdeaCard
-            refinedIdea={experiment.refined_idea as string | RefinedIdea}
+            refinedIdea={cardIdea}
             isFinalized={isFinalized}
+            isJustUpdated={justUpdated}
+            wipDiffers={wipDiffers}
           />
         </div>
       ) : null}
@@ -160,22 +288,7 @@ export function LiveWorkspacePanel({
         <div className="font-mono text-mono-sm uppercase text-ink-tertiary mb-2">
           REFINEMENT LOG
         </div>
-        {logEntries.length === 0 ? (
-          <div className="border-2 border-dashed border-border-master p-4">
-            <p className="font-body text-body-sm text-ink-tertiary italic">
-              Questions and your answers will appear here as you go.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {logEntries.map((entry, i) => (
-              <LogEntryCard
-                key={`${entry.timestamp}-${i}-${entry.question.slice(0, 16)}`}
-                entry={entry}
-              />
-            ))}
-          </div>
-        )}
+        <RefinementLogViewer logEntries={logEntries} />
       </div>
 
       <div className="mb-6">
@@ -202,44 +315,32 @@ export function LiveWorkspacePanel({
         <button
           type="button"
           onClick={() => setFinalizeConfirm(true)}
-          disabled={!hasRefinedIdea || finalizing || isFinalized}
+          disabled={!canFinalize || finalizing}
           className={`w-full px-6 py-4 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-md hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 ${
-            isFinalized
+            isFinalized && !wipDiffers
               ? "bg-status-success text-ink-inverse"
               : "bg-brutalist-yellow text-ink-primary"
-          }`}
+          } ${isReadyToFinalize ? "animate-pulse" : ""}`}
         >
-          {isFinalized ? (
-            <>
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: 18 }}
-              >
-                check_circle
-              </span>
-              FINALIZED
-            </>
-          ) : (
-            <>
-              <span
-                className="material-symbols-outlined"
-                style={{ fontSize: 18 }}
-              >
-                rocket_launch
-              </span>
-              FINALIZE REFINEMENT
-            </>
-          )}
+          <span
+            className="material-symbols-outlined"
+            style={{ fontSize: 18 }}
+            aria-hidden="true"
+          >
+            {isFinalized && !wipDiffers ? "check_circle" : "rocket_launch"}
+          </span>
+          {finalizeLabel}
         </button>
-        {!hasRefinedIdea ? (
+        {!hasWip ? (
           <p className="font-body text-body-sm text-ink-tertiary text-center">
             Continue the conversation until the Refiner produces a refined idea.
           </p>
         ) : null}
-        {hasRefinedIdea && !isFinalized ? (
+        {canFinalize ? (
           <p className="font-body text-body-sm text-ink-tertiary text-center">
-            Locks in this refinement. Research still requires Confirm (credits)
-            on Evidence.
+            {wipDiffers
+              ? "WIP has changed since the last finalize. Update the final version when ready."
+              : "Locks in this refinement. Research still requires Confirm (credits) on Evidence."}
           </p>
         ) : null}
         <button
@@ -253,9 +354,9 @@ export function LiveWorkspacePanel({
 
       {finalizeConfirm ? (
         <BrutalistConfirm
-          title="Finalize this refinement?"
-          body="This marks the current refined idea as ready. You can keep refining and re-finalize later. Research still requires Confirm (credits) on Evidence."
-          confirmLabel="FINALIZE"
+          title={wipDiffers ? "Update final version?" : "Finalize this refinement?"}
+          body="This marks the current refined idea as ready. You can keep chatting and re-finalize later. Research still requires Confirm (credits) on Evidence."
+          confirmLabel={wipDiffers ? "UPDATE FINAL" : "FINALIZE"}
           cancelLabel="CANCEL"
           onConfirm={handleFinalize}
           onCancel={() => setFinalizeConfirm(false)}

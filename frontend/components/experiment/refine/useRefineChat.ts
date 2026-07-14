@@ -91,6 +91,9 @@ export function useRefineChat(experimentId: string, options: Options = {}) {
   const [navigatingMessageId, setNavigatingMessageId] = useState<string | null>(
     null,
   );
+  const [regeneratingMessageId, setRegeneratingMessageId] = useState<
+    string | null
+  >(null);
 
   const reload = useCallback(() => {
     setReloadToken((n) => n + 1);
@@ -322,7 +325,8 @@ export function useRefineChat(experimentId: string, options: Options = {}) {
 
   const editMessage = useCallback(
     async (messageId: string, newContent: string) => {
-      if (!threadId) return;
+      if (!threadId || regeneratingMessageId) return;
+      setRegeneratingMessageId(messageId);
       setSending(true);
       setError(null);
       try {
@@ -337,13 +341,16 @@ export function useRefineChat(experimentId: string, options: Options = {}) {
         setError("Edit failed.");
       } finally {
         setSending(false);
+        setRegeneratingMessageId(null);
       }
     },
-    [threadId, experimentId, onTurnComplete],
+    [threadId, experimentId, onTurnComplete, regeneratingMessageId],
   );
 
   const retryMessage = useCallback(
     async (messageId: string) => {
+      if (regeneratingMessageId) return;
+      setRegeneratingMessageId(messageId);
       setSending(true);
       setError(null);
       setActiveMCQ(null);
@@ -372,9 +379,10 @@ export function useRefineChat(experimentId: string, options: Options = {}) {
         setError("Retry failed.");
       } finally {
         setSending(false);
+        setRegeneratingMessageId(null);
       }
     },
-    [experimentId, onTurnComplete],
+    [experimentId, onTurnComplete, regeneratingMessageId],
   );
 
   const switchToBranch = useCallback(
@@ -430,5 +438,6 @@ export function useRefineChat(experimentId: string, options: Options = {}) {
     retryMessage,
     switchToBranch,
     navigatingMessageId,
+    regeneratingMessageId,
   };
 }

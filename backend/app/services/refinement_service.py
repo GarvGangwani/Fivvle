@@ -33,6 +33,7 @@ from uuid import UUID
 
 from instructor.core.exceptions import InstructorRetryException
 from pydantic import ValidationError
+from sqlalchemy import func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.llm.client as llm_client
@@ -271,14 +272,18 @@ async def run_turn(
     experiment: Experiment,
     chat_history: list[tuple[str, str]],
     latest_message: str,
+    *,
+    bump_refinement_count: bool = True,
 ) -> RefinementTurnDecision:
-    """Run one refinement turn. Returns clarify or finalize decision.
+    """Run one refinement turn. Always returns a clarify decision.
 
     Side effects (in-place on experiment, no commit — caller commits):
-    - On clarifying_dimension == "pivot_resolution": reset experiment.refinement_count to 0.
-    - On any other clarify: increment experiment.refinement_count by 1.
-    - On finalize: persist refined_idea into experiment.refined_idea (as JSONB dict).
-    - Does NOT change experiment.status. (Status transitions are the chat service's job.)
+    - When bump_refinement_count is True:
+      - clarifying_dimension == "pivot_resolution": reset refinement_count to 0
+      - otherwise: increment refinement_count by 1
+    - When bump_refinement_count is False (retry/edit): leave refinement_count alone
+    - When refined_idea is present: write WIP to experiment.refined_idea_current
+      (does NOT set experiment.refined_idea or change status — user owns finalize).
     """
     turn_count = experiment.refinement_count
 
@@ -288,6 +293,7 @@ async def run_turn(
         turn_count=turn_count,
         history_length=len(chat_history),
         latest_message_length=len(latest_message),
+        bump_refinement_count=bump_refinement_count,
     )
 
     settings = get_settings()
@@ -298,6 +304,11 @@ async def run_turn(
         turn_count=turn_count,
         max_clarifying_turns=settings.refinement_max_clarifying_turns,
         min_turns_before_finalize=settings.refinement_min_clarifying_turns_before_finalize,
+        finalized_refined_idea=(
+            experiment.refined_idea
+            if isinstance(experiment.refined_idea, dict)
+            else None
+        ),
     )
 
     parsed, meta = await llm_client.complete_structured(
@@ -316,13 +327,15 @@ async def run_turn(
         cache_breakpoints=REFINEMENT_CHAT_CACHE_BREAKPOINTS,
     )
 
-    if parsed.decision == "clarify":
+    if bump_refinement_count:
         if parsed.clarifying_dimension == "pivot_resolution":
             experiment.refinement_count = 0
         else:
             experiment.refinement_count = turn_count + 1
-    elif parsed.decision == "finalize" and parsed.refined_idea is not None:
-        experiment.refined_idea = parsed.refined_idea.model_dump()
+
+    if parsed.refined_idea is not None:
+        experiment.refined_idea_current = parsed.refined_idea.model_dump()
+        experiment.refined_idea_updated_at = func.clock_timestamp()
         apply_llm_name_if_unset(experiment, parsed.refined_idea)
         await persist_experiment_tags(db, experiment, parsed.refined_idea)
         if parsed.targeting is not None:
@@ -337,16 +350,17 @@ async def run_turn(
             if parsed.targeting.stage is not None:
                 experiment.stage = parsed.targeting.stage
             if parsed.targeting.why_now is not None:
-                experiment.why_now = (
-                    parsed.targeting.why_now.strip() or None
-                )
+                experiment.why_now = parsed.targeting.why_now.strip() or None
 
     _logger.info(
         "refinement chat turn completed",
         experiment_id=str(experiment.id),
         decision=parsed.decision,
         clarifying_dimension=parsed.clarifying_dimension,
+        has_questions=bool(parsed.clarifying_questions),
+        has_wip_refined_idea=parsed.refined_idea is not None,
         refinement_count=experiment.refinement_count,
+        bump_refinement_count=bump_refinement_count,
         targeting_geography_present=(
             parsed.targeting is not None
             and parsed.targeting.target_geography is not None

@@ -14,6 +14,7 @@ import {
   getFirstName,
   sortByUpdatedDesc,
 } from "./dashboard-helpers";
+import { DashboardHomeSkeleton } from "./skeletons/DashboardHomeSkeleton";
 
 type LoadState =
   | { status: "loading" }
@@ -42,15 +43,7 @@ export function HomeOverviewContent() {
   }, [fetchExperiments]);
 
   if (loadState.status === "loading") {
-    return (
-      <div className="py-8">
-        <div className="mb-8 h-12 w-72 animate-pulse bg-surface-elevated motion-reduce:animate-none" />
-        <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-          <div className="h-72 animate-pulse bg-surface-elevated motion-reduce:animate-none lg:col-span-2" />
-          <div className="h-72 animate-pulse bg-surface-elevated motion-reduce:animate-none" />
-        </div>
-      </div>
-    );
+    return <DashboardHomeSkeleton />;
   }
 
   if (loadState.status === "error") {

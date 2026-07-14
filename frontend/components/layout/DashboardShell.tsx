@@ -4,7 +4,13 @@ import { usePathname } from "next/navigation";
 import { FivvleShell } from "@/components/layout/FivvleShell";
 import { DashboardShell as BrutalistDashboardShell } from "@/components/dashboard/DashboardShell";
 
-const BRUTALIST_ROUTES = ["/archived", "/experiments", "/experiment", "/settings"];
+const BRUTALIST_ROUTES = [
+  "/archived",
+  "/experiments",
+  "/experiment",
+  "/settings",
+  "/new",
+];
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -17,10 +23,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     return <BrutalistDashboardShell>{children}</BrutalistDashboardShell>;
   }
 
-  const fullHeight =
-    pathname === "/new" ||
-    pathname.startsWith("/new/") ||
-    pathname.startsWith("/experiment/");
+  const fullHeight = pathname.startsWith("/experiment/");
 
   return <FivvleShell fullHeight={fullHeight}>{children}</FivvleShell>;
 }

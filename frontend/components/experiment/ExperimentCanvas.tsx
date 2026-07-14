@@ -49,7 +49,7 @@ import { ActNode } from "./nodes/ActNode";
 import { CoreShellNode } from "./nodes/CoreShellNode";
 import { RefineExpandedNode } from "./nodes/RefineExpandedNode";
 import { RefineFullscreenModal } from "./nodes/RefineFullscreenModal";
-import { RefineMCQPopup } from "./refine/RefineMCQPopup";
+import { RefineMCQPopup, type MCQPopupPosition } from "./refine/RefineMCQPopup";
 import { useRefineChat } from "./refine/useRefineChat";
 import { SparkExpandedNode } from "./nodes/SparkExpandedNode";
 import { SparkFullscreenModal } from "./nodes/SparkFullscreenModal";
@@ -197,10 +197,14 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     retryMessage,
     switchToBranch,
     navigatingMessageId,
+    regeneratingMessageId,
   } = useRefineChat(experiment.id, {
     onTurnComplete: onRefineTurnComplete,
     enableOpener,
   });
+
+  const [mcqPopupPosition, setMcqPopupPosition] =
+    useState<MCQPopupPosition | null>(null);
 
   const refreshExperimentAndChat = useCallback(async () => {
     const updated = await getExperiment(experiment.id);
@@ -216,6 +220,20 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [activeMCQ, dismissMCQ]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setMcqPopupPosition((prev) => {
+        if (!prev) return prev;
+        const maxX = window.innerWidth - 384;
+        const maxY = window.innerHeight - 100;
+        if (prev.x > maxX || prev.y > maxY) return null;
+        return prev;
+      });
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const phasesComplete = getPhasesComplete(experiment.status);
   const resourceCount = Math.max(experiment.resource_count ?? 0, resources.length);
@@ -541,6 +559,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
           onRetryMessage: retryMessage,
           onSwitchBranch: switchToBranch,
           navigatingMessageId,
+          regeneratingMessageId,
         },
       });
     }
@@ -578,6 +597,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     retryMessage,
     switchToBranch,
     navigatingMessageId,
+    regeneratingMessageId,
   ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes());
@@ -760,6 +780,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
           onRetryMessage={retryMessage}
           onSwitchBranch={switchToBranch}
           navigatingMessageId={navigatingMessageId}
+          regeneratingMessageId={regeneratingMessageId}
           mcqActive={Boolean(activeMCQ)}
           onFinalizedOrReset={refreshExperimentAndChat}
         />
@@ -770,6 +791,8 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
           question={activeMCQ.question}
           options={activeMCQ.options}
           turnNumber={refinementCount || 1}
+          initialPosition={mcqPopupPosition}
+          onPositionChange={setMcqPopupPosition}
           onAnswer={answerMCQ}
           onDismiss={dismissMCQ}
         />

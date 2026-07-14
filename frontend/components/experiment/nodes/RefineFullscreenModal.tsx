@@ -29,6 +29,7 @@ type Props = {
     direction: "prev" | "next",
   ) => void | Promise<void>;
   navigatingMessageId?: string | null;
+  regeneratingMessageId?: string | null;
   mcqActive?: boolean;
   onFinalizedOrReset: () => Promise<void>;
 };
@@ -50,6 +51,7 @@ export function RefineFullscreenModal({
   onRetryMessage,
   onSwitchBranch,
   navigatingMessageId,
+  regeneratingMessageId,
   mcqActive = false,
   onFinalizedOrReset,
 }: Props) {
@@ -136,6 +138,7 @@ export function RefineFullscreenModal({
               onRetryMessage={onRetryMessage}
               onSwitchBranch={onSwitchBranch}
               navigatingMessageId={navigatingMessageId}
+              regeneratingMessageId={regeneratingMessageId}
             />
           </div>
           <div className="border-t-2 border-border-master p-4 shrink-0">

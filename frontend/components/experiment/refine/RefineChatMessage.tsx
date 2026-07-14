@@ -46,6 +46,7 @@ type Props = {
     direction: "prev" | "next",
   ) => void | Promise<void>;
   navigatingMessageId?: string | null;
+  regeneratingMessageId?: string | null;
 };
 
 const DISALLOWED_ELEMENTS = [
@@ -142,13 +143,13 @@ export function RefineChatMessage({
   onRetryMessage,
   onSwitchBranch,
   navigatingMessageId,
+  regeneratingMessageId,
 }: Props) {
   if (message.role === "user") {
     return (
       <UserMessage
         message={message}
         profile={currentUserProfile}
-        isLatest={isLatest}
         onEditMessage={onEditMessage}
         onSwitchBranch={onSwitchBranch}
         navigatingMessageId={navigatingMessageId}
@@ -166,6 +167,7 @@ export function RefineChatMessage({
         onRetryMessage={onRetryMessage}
         onSwitchBranch={onSwitchBranch}
         navigatingMessageId={navigatingMessageId}
+        isRegenerating={regeneratingMessageId === message.id}
       />
     );
   }
@@ -208,14 +210,12 @@ function BranchSlot({
 function UserMessage({
   message,
   profile,
-  isLatest,
   onEditMessage,
   onSwitchBranch,
   navigatingMessageId,
 }: {
   message: RefineChatMessageModel;
   profile: Profile;
-  isLatest: boolean;
   onEditMessage?: (messageId: string, newContent: string) => void | Promise<void>;
   onSwitchBranch?: (
     messageId: string,
@@ -248,7 +248,6 @@ function UserMessage({
           content={message.content}
           createdAt={message.created_at}
           role="user"
-          isLatest={isLatest}
           onEdit={onEditMessage ? handleEdit : undefined}
           branchNavigator={
             <BranchSlot
@@ -277,6 +276,7 @@ function AssistantMessage({
   onRetryMessage,
   onSwitchBranch,
   navigatingMessageId,
+  isRegenerating,
 }: {
   message: RefineChatMessageModel;
   activeMCQFromMessageId?: string | null;
@@ -289,75 +289,103 @@ function AssistantMessage({
     direction: "prev" | "next",
   ) => void | Promise<void>;
   navigatingMessageId?: string | null;
+  isRegenerating: boolean;
 }) {
   const questions = message.clarifying_questions ?? [];
   const hasMCQOptions = questions.some((q) => q.options.length >= 2);
   const isMCQActive = activeMCQFromMessageId === message.id;
   const isDismissed = dismissedMCQMessageIds?.has(message.id) ?? false;
+  const isCompletionSignal = isLatest && questions.length === 0;
 
   return (
     <div className="flex justify-start mb-6">
       <div className="max-w-[85%]">
-        <p className="font-mono text-mono-sm uppercase text-brand-primary mb-2">
+        <p className="font-mono text-mono-sm uppercase text-brand-primary mb-2 flex items-center gap-2">
           REFINER
+          {isCompletionSignal ? (
+            <span className="bg-brutalist-yellow text-ink-primary px-2 py-0.5 font-mono text-mono-sm uppercase">
+              COMPLETE
+            </span>
+          ) : null}
         </p>
         <div
           className={[
-            "border-2 border-border-master border-l-4 border-l-brand-primary bg-brand-primary-soft shadow-brutal-sm p-4",
+            "border-2 border-border-master border-l-4 bg-brand-primary-soft shadow-brutal-sm p-4",
+            isCompletionSignal
+              ? "border-l-brutalist-yellow"
+              : "border-l-brand-primary",
             message.error ? "opacity-80" : "",
           ]
             .filter(Boolean)
             .join(" ")}
         >
-          {message.content ? (
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              disallowedElements={DISALLOWED_ELEMENTS}
-              unwrapDisallowed
-              components={BRUTALIST_MARKDOWN_COMPONENTS}
-            >
-              {message.content}
-            </ReactMarkdown>
-          ) : null}
-          {message.is_streaming ? (
-            <span
-              className="animate-pulse text-brand-primary"
-              aria-hidden="true"
-            >
-              ▊
-            </span>
-          ) : null}
-
-          {hasMCQOptions && isLatest ? (
+          {isRegenerating ? (
+            <div className="flex items-center gap-3">
+              <div className="w-2 h-2 bg-brand-primary animate-pulse" />
+              <div
+                className="w-2 h-2 bg-brand-primary animate-pulse"
+                style={{ animationDelay: "150ms" }}
+              />
+              <div
+                className="w-2 h-2 bg-brand-primary animate-pulse"
+                style={{ animationDelay: "300ms" }}
+              />
+              <span className="font-mono text-mono-sm uppercase text-ink-tertiary ml-2">
+                REGENERATING...
+              </span>
+            </div>
+          ) : (
             <>
-              {isDismissed || (!isMCQActive && !isDismissed) ? (
-                <button
-                  type="button"
-                  onClick={() => onReopenMCQ?.(message.id)}
-                  className="mt-4 w-full border-2 border-dashed border-brand-primary bg-surface-card hover:bg-brand-primary hover:text-ink-inverse px-4 py-3 font-label-md text-label-md uppercase tracking-wider text-brand-primary transition-all flex items-center justify-center gap-2"
+              {message.content ? (
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  disallowedElements={DISALLOWED_ELEMENTS}
+                  unwrapDisallowed
+                  components={BRUTALIST_MARKDOWN_COMPONENTS}
                 >
-                  <span
-                    className="material-symbols-outlined"
-                    style={{ fontSize: 18 }}
-                    aria-hidden="true"
-                  >
-                    quiz
-                  </span>
-                  {isDismissed ? "REOPEN QUESTION" : "OPEN QUESTION"}
-                </button>
+                  {message.content}
+                </ReactMarkdown>
+              ) : null}
+              {message.is_streaming ? (
+                <span
+                  className="animate-pulse text-brand-primary"
+                  aria-hidden="true"
+                >
+                  ▊
+                </span>
+              ) : null}
+
+              {hasMCQOptions && isLatest ? (
+                <>
+                  {isDismissed || (!isMCQActive && !isDismissed) ? (
+                    <button
+                      type="button"
+                      onClick={() => onReopenMCQ?.(message.id)}
+                      className="mt-4 w-full border-2 border-dashed border-brand-primary bg-surface-card hover:bg-brand-primary hover:text-ink-inverse px-4 py-3 font-label-md text-label-md uppercase tracking-wider text-brand-primary transition-all flex items-center justify-center gap-2"
+                    >
+                      <span
+                        className="material-symbols-outlined"
+                        style={{ fontSize: 18 }}
+                        aria-hidden="true"
+                      >
+                        quiz
+                      </span>
+                      {isDismissed ? "REOPEN QUESTION" : "OPEN QUESTION"}
+                    </button>
+                  ) : null}
+                </>
+              ) : null}
+
+              {!hasMCQOptions && questions.length > 0 && !isMCQActive ? (
+                <ClarifyingQuestionsInline questions={questions} />
               ) : null}
             </>
-          ) : null}
-
-          {!hasMCQOptions && questions.length > 0 && !isMCQActive ? (
-            <ClarifyingQuestionsInline questions={questions} />
-          ) : null}
+          )}
         </div>
         <MessageActions
           content={message.content}
           createdAt={message.created_at}
           role="assistant"
-          isLatest={isLatest}
           onRetry={
             onRetryMessage
               ? () => {
@@ -365,6 +393,7 @@ function AssistantMessage({
                 }
               : undefined
           }
+          retryDisabled={isRegenerating}
           branchNavigator={
             <BranchSlot
               message={message}

@@ -238,6 +238,8 @@ export interface Experiment {
   thread_id?: string | null;
   validation_report: ExperimentValidationReportSummary | null;
   refined_idea?: string | RefinedIdea | null;
+  refined_idea_current?: RefinedIdea | null;
+  refined_idea_updated_at?: string | null;
   chat_message_count?: number;
   evidence_atom_count?: number;
   landing_page_view_count?: number;

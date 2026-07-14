@@ -29,7 +29,6 @@ from app.services.chat_service import (
     ChatTurnResult,
     handle_turn,
 )
-from app.services.experiment_service import InvalidExperimentState
 from app.services.rollout import _hash_bucket
 from tests.services.test_rollout import _find_uuid
 
@@ -81,14 +80,18 @@ def _clarify_decision() -> RefinementTurnDecision:
     )
 
 
-def _finalize_decision() -> RefinementTurnDecision:
+def _ready_clarify_decision() -> RefinementTurnDecision:
+    """Clarify with empty questions + WIP refined_idea (user may finalize)."""
     return RefinementTurnDecision(
-        decision="finalize",
+        decision="clarify",
         assistant_message=(
-            "Researching: a programming tool for CrossFit coaches replacing Excel workflows."
+            "Here's a draft for CrossFit coaches replacing Excel workflows. "
+            "Finalize when you're ready, or keep exploring."
         ),
+        clarifying_dimension=None,
+        clarifying_questions=[],
         refined_idea=_make_refined_idea(),
-        reasoning_trace="Audience and value prop are clear.",
+        reasoning_trace="Audience and value prop are clear enough for a WIP draft.",
     )
 
 
@@ -345,11 +348,12 @@ async def test_dr_idempotency_replay_skips_second_run_turn(
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_defers_to_refined(
+async def test_dr_ready_clarify_stays_refining_no_dispatch(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
 ) -> None:
-    mock_run_turn.return_value = _finalize_decision()
+    """LLM ready-clarify writes WIP only; user owns finalize — no REFINED, no dispatch."""
+    mock_run_turn.return_value = _ready_clarify_decision()
     user = await _persist_user(db_session)
     dispatcher = _RecordingDispatcher()
 
@@ -366,18 +370,24 @@ async def test_dr_finalize_defers_to_refined(
 
     assert result.pipeline_dispatched is False
     assert result.dispatched_at is None
-    assert result.turn_kind == ChatTurnKind.REFINEMENT_FINALIZE
-    assert result.experiment_status == ExperimentStatus.REFINED
+    assert result.turn_kind == ChatTurnKind.REFINEMENT_CLARIFY
+    assert result.experiment_status == ExperimentStatus.REFINING
+    assert result.clarifying_questions == ()
     assert dispatcher.dispatched == []
+
+    exp = await db_session.get(Experiment, result.experiment_id)
+    assert exp is not None
+    assert exp.status == ExperimentStatus.REFINING
+    assert exp.refined_idea is None
 
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_deferred_even_if_dispatcher_would_fail(
+async def test_dr_ready_clarify_no_dispatch_even_if_dispatcher_would_fail(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
 ) -> None:
-    mock_run_turn.return_value = _finalize_decision()
+    mock_run_turn.return_value = _ready_clarify_decision()
     user = await _persist_user(db_session)
     dispatcher = _RecordingDispatcher(
         raise_on_dispatch=DispatchError("scheduler unavailable")
@@ -395,13 +405,13 @@ async def test_dr_finalize_deferred_even_if_dispatcher_would_fail(
     )
 
     assert result.pipeline_dispatched is False
-    assert result.experiment_status == ExperimentStatus.REFINED
+    assert result.experiment_status == ExperimentStatus.REFINING
     assert dispatcher.dispatched == []
 
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_deferred_logs(
+async def test_dr_ready_clarify_shadow_mode_still_no_dispatch(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -409,33 +419,29 @@ async def test_dr_finalize_deferred_logs(
     monkeypatch.setenv("AUTO_FIRE_CHAT_ENABLED", "shadow")
     get_settings.cache_clear()
 
-    mock_run_turn.return_value = _finalize_decision()
+    mock_run_turn.return_value = _ready_clarify_decision()
     user = await _persist_user(db_session)
     dispatcher = _RecordingDispatcher()
 
-    with patch("app.services.chat_service._logger.info") as mock_info:
-        result = await handle_turn(
-            db_session,
-            user,
-            _DR_MESSAGE,
-            deep_research=True,
-            thread_id=None,
-            experiment_id=None,
-            idempotency_key=str(uuid4()),
-            dispatcher=dispatcher,
-        )
+    result = await handle_turn(
+        db_session,
+        user,
+        _DR_MESSAGE,
+        deep_research=True,
+        thread_id=None,
+        experiment_id=None,
+        idempotency_key=str(uuid4()),
+        dispatcher=dispatcher,
+    )
 
     assert result.pipeline_dispatched is False
-    assert result.experiment_status == ExperimentStatus.REFINED
+    assert result.experiment_status == ExperimentStatus.REFINING
     assert dispatcher.dispatched == []
-    mock_info.assert_called_once()
-    assert mock_info.call_args.args[0] == "refinement_finalize_deferred"
-    assert mock_info.call_args.kwargs["auto_fire_mode"] == "shadow"
 
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_cohort_10_in_bucket_still_deferred(
+async def test_dr_ready_clarify_cohort_10_in_bucket_still_no_dispatch(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -446,7 +452,7 @@ async def test_dr_finalize_cohort_10_in_bucket_still_deferred(
     experiment_id = _find_uuid(bucket_lt=10)
     assert _hash_bucket(experiment_id) < 10
 
-    mock_run_turn.return_value = _finalize_decision()
+    mock_run_turn.return_value = _ready_clarify_decision()
     user = await _persist_user(db_session)
     thread = await _persist_thread(db_session, user)
     await _persist_refinement_experiment_with_id(
@@ -466,13 +472,13 @@ async def test_dr_finalize_cohort_10_in_bucket_still_deferred(
     )
 
     assert result.pipeline_dispatched is False
-    assert result.experiment_status == ExperimentStatus.REFINED
+    assert result.experiment_status == ExperimentStatus.REFINING
     assert dispatcher.dispatched == []
 
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_cohort_10_out_of_bucket_refined(
+async def test_dr_ready_clarify_cohort_10_out_of_bucket_still_refining(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -483,7 +489,7 @@ async def test_dr_finalize_cohort_10_out_of_bucket_refined(
     experiment_id = _find_uuid(bucket_ge=10)
     assert _hash_bucket(experiment_id) >= 10
 
-    mock_run_turn.return_value = _finalize_decision()
+    mock_run_turn.return_value = _ready_clarify_decision()
     user = await _persist_user(db_session)
     thread = await _persist_thread(db_session, user)
     await _persist_refinement_experiment_with_id(
@@ -503,7 +509,7 @@ async def test_dr_finalize_cohort_10_out_of_bucket_refined(
     )
 
     assert result.pipeline_dispatched is False
-    assert result.experiment_status == ExperimentStatus.REFINED
+    assert result.experiment_status == ExperimentStatus.REFINING
     assert dispatcher.dispatched == []
 
 
@@ -586,35 +592,43 @@ async def test_dr_experiment_not_owned_raises_authorization(
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_experiment_wrong_status_raises_invalid_state(
+async def test_dr_experiment_refined_reopens_to_refining(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
 ) -> None:
+    """Post-finalize deep_research turn reopens REFINED → REFINING and keeps idea."""
     mock_run_turn.return_value = _clarify_decision()
     user = await _persist_user(db_session)
     thread = await _persist_thread(db_session, user)
+    finalized = _make_refined_idea().model_dump(mode="json")
     experiment = Experiment(
         user_id=user.id,
         thread_id=thread.id,
         raw_idea=_DR_MESSAGE,
         status=ExperimentStatus.REFINED,
         refinement_count=1,
-        refined_idea=_make_refined_idea().model_dump(mode="json"),
+        refined_idea=finalized,
+        refined_idea_current=finalized,
     )
     db_session.add(experiment)
     await db_session.commit()
 
-    with pytest.raises(InvalidExperimentState):
-        await handle_turn(
-            db_session,
-            user,
-            _DR_MESSAGE,
-            deep_research=True,
-            thread_id=thread.id,
-            experiment_id=experiment.id,
-            idempotency_key=str(uuid4()),
-            dispatcher=_RecordingDispatcher(),
-        )
+    result = await handle_turn(
+        db_session,
+        user,
+        "Actually, let me add something about pricing.",
+        deep_research=True,
+        thread_id=thread.id,
+        experiment_id=experiment.id,
+        idempotency_key=str(uuid4()),
+        dispatcher=_RecordingDispatcher(),
+    )
+
+    await db_session.refresh(experiment)
+    assert experiment.status == ExperimentStatus.REFINING
+    assert experiment.refined_idea == finalized
+    assert result.experiment_status == ExperimentStatus.REFINING
+    mock_run_turn.assert_awaited_once()
 
 
 @pytest.mark.asyncio

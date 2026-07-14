@@ -84,7 +84,8 @@ def _seed_refined(experiment_id: str, *, status: ExperimentStatus) -> None:
                 select(Experiment).where(Experiment.id == UUID(experiment_id))
             )
             exp = result.scalar_one()
-            exp.refined_idea = _REFINED
+            # Finalize copies refined_idea_current → refined_idea.
+            exp.refined_idea_current = _REFINED
             exp.status = status
             exp.raw_idea = (
                 "A slack bot that answers HR policy questions so ops managers "
@@ -113,6 +114,7 @@ def _seed_thread_with_messages(experiment_id: str) -> None:
             await db.flush()
             exp.thread_id = thread.id
             exp.refined_idea = _REFINED
+            exp.refined_idea_current = _REFINED
             exp.status = ExperimentStatus.REFINED
             db.add(
                 ChatMessage(
@@ -202,6 +204,7 @@ def test_reset_session_clears_messages_and_refined_idea(
     body = resp.json()
     assert body["status"] == "SPARK"
     assert body["refined_idea"] is None
+    assert body.get("refined_idea_current") is None
     assert _message_count(experiment_id) == 0
 
 

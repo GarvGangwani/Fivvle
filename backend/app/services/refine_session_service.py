@@ -48,31 +48,33 @@ async def finalize_refinement(
     db: AsyncSession,
     experiment: Experiment,
 ) -> Experiment:
-    """Mark refinement complete when refined_idea is populated.
+    """Copy WIP refined_idea_current → refined_idea and mark REFINED.
 
     Does not dispatch research — that remains POST /experiments/{id}/confirm.
+    May be called again after further chat to re-finalize with an updated WIP.
     """
-    if not experiment.refined_idea:
+    if not experiment.refined_idea_current:
         raise RefineSessionError(
             "No refined idea to finalize. Continue the conversation until "
             "the Refiner produces a refined idea."
         )
 
+    experiment.refined_idea = experiment.refined_idea_current
+
     if experiment.status in (
         ExperimentStatus.SPARK,
         ExperimentStatus.REFINING,
         ExperimentStatus.DRAFT,
+        ExperimentStatus.REFINED,
     ):
         experiment.status = ExperimentStatus.REFINED
-        await db.commit()
-        _logger.info(
-            "refine_finalize",
-            experiment_id=str(experiment.id),
-            status=experiment.status.value,
-        )
-    else:
-        await db.commit()
 
+    await db.commit()
+    _logger.info(
+        "refine_finalize",
+        experiment_id=str(experiment.id),
+        status=experiment.status.value,
+    )
     return experiment
 
 
@@ -89,7 +91,7 @@ async def reset_refinement_session(
     db: AsyncSession,
     experiment: Experiment,
 ) -> Experiment:
-    """Delete refine chat messages; clear refined_idea if Evidence has not run."""
+    """Delete refine chat messages; clear refined idea WIP if Evidence has not run."""
     if experiment.thread_id is not None:
         thread = await db.get(ChatThread, experiment.thread_id)
         if thread is not None:
@@ -98,6 +100,9 @@ async def reset_refinement_session(
         await db.execute(
             delete(ChatMessage).where(ChatMessage.thread_id == experiment.thread_id)
         )
+
+    experiment.refined_idea_current = None
+    experiment.refined_idea_updated_at = None
 
     has_downstream = await _has_downstream_evidence(db, experiment.id)
     if not has_downstream:

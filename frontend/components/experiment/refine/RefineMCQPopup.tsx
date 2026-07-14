@@ -14,21 +14,36 @@ export type MCQAnswer = {
   customAddedText: string | null;
 };
 
+export type MCQPopupPosition = { x: number; y: number };
+
 type Props = {
   question: string;
   options: string[];
   turnNumber: number;
+  /** Null = center of viewport on mount. */
+  initialPosition: MCQPopupPosition | null;
+  onPositionChange: (position: MCQPopupPosition) => void;
   onAnswer: (answer: MCQAnswer) => void;
   onDismiss: () => void;
 };
 
 const POPUP_WIDTH = 384;
+const POPUP_HEIGHT_APPROX = 500;
 const MAX_POPUP_OPTIONS = 4;
+
+export function computeCenteredMcqPosition(): MCQPopupPosition {
+  return {
+    x: Math.max(0, (window.innerWidth - POPUP_WIDTH) / 2),
+    y: Math.max(0, (window.innerHeight - POPUP_HEIGHT_APPROX) / 2),
+  };
+}
 
 export function RefineMCQPopup({
   question,
   options,
   turnNumber,
+  initialPosition,
+  onPositionChange,
   onAnswer,
   onDismiss,
 }: Props) {
@@ -38,7 +53,11 @@ export function RefineMCQPopup({
   const [customText, setCustomText] = useState("");
   const [customFocused, setCustomFocused] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState({ x: 0, y: 96 });
+  const [position, setPosition] = useState<MCQPopupPosition>(
+    () => initialPosition ?? computeCenteredMcqPosition(),
+  );
+  const positionRef = useRef(position);
+  positionRef.current = position;
   const [isDragging, setIsDragging] = useState(false);
   const dragOffset = useRef({ x: 0, y: 0 });
 
@@ -48,13 +67,6 @@ export function RefineMCQPopup({
   const hasCustom = customTrimmed.length > 0;
   const totalSelected = selectedIndices.size + (hasCustom ? 1 : 0);
   const canSubmit = totalSelected > 0;
-
-  useEffect(() => {
-    setPosition({
-      x: Math.max(24, window.innerWidth - POPUP_WIDTH - 24),
-      y: 96,
-    });
-  }, []);
 
   useEffect(() => {
     setSelectedIndices(new Set());
@@ -80,11 +92,17 @@ export function RefineMCQPopup({
       });
     if (hasCustom) parts.push(customTrimmed);
     if (parts.length === 0) return;
+    onPositionChange(positionRef.current);
     onAnswer({
       combinedText: parts.join(" · "),
       selectedIndices: Array.from(selectedIndices).sort((a, b) => a - b),
       customAddedText: hasCustom ? customTrimmed : null,
     });
+  };
+
+  const handleDismiss = () => {
+    onPositionChange(positionRef.current);
+    onDismiss();
   };
 
   const handleDragStart = (e: ReactMouseEvent) => {
@@ -100,7 +118,7 @@ export function RefineMCQPopup({
   useEffect(() => {
     if (!isDragging) return;
     const handleMove = (e: MouseEvent) => {
-      setPosition({
+      const next = {
         x: Math.max(
           0,
           Math.min(
@@ -112,16 +130,21 @@ export function RefineMCQPopup({
           0,
           Math.min(window.innerHeight - 100, e.clientY - dragOffset.current.y),
         ),
-      });
+      };
+      positionRef.current = next;
+      setPosition(next);
     };
-    const handleUp = () => setIsDragging(false);
+    const handleUp = () => {
+      setIsDragging(false);
+      onPositionChange(positionRef.current);
+    };
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
     return () => {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [isDragging]);
+  }, [isDragging, onPositionChange]);
 
   if (typeof document === "undefined") return null;
 
@@ -145,7 +168,7 @@ export function RefineMCQPopup({
         </div>
         <button
           type="button"
-          onClick={onDismiss}
+          onClick={handleDismiss}
           aria-label="Dismiss"
           className="p-1 hover:bg-ink-inverse/10"
           onMouseDown={(e) => e.stopPropagation()}

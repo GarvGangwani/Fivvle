@@ -530,6 +530,17 @@ async def _resolve_refinement_experiment(
                 await db.flush()
             await stamp_chat_thread_spark_version(db, thread, experiment.id)
             return experiment
+        if experiment.status == ExperimentStatus.REFINED:
+            # User came back to Refine chat after finalize — reopen without
+            # clearing refined_idea (stable until explicit re-finalize).
+            experiment.status = ExperimentStatus.REFINING
+            await db.flush()
+            _logger.info(
+                "refinement_reopened_after_finalize",
+                experiment_id=str(experiment.id),
+                thread_id=str(thread.id),
+            )
+            return experiment
         if experiment.status != ExperimentStatus.REFINING:
             raise InvalidExperimentState(
                 f"Experiment must be in REFINING status (current: {experiment.status})"
@@ -884,6 +895,7 @@ async def _handle_deep_research_turn(
     name: str | None = None,
     existing_user_message: ChatMessage | None = None,
     user_message_metadata: dict[str, Any] | None = None,
+    bump_refinement_count: bool = True,
 ) -> ChatTurnResult:
     if idempotency_key is None:
         raise ValueError("idempotency_key required for deep_research=true")
@@ -933,6 +945,7 @@ async def _handle_deep_research_turn(
             experiment,
             chat_history,
             llm_message,
+            bump_refinement_count=bump_refinement_count,
         )
     except Exception as exc:
         user_error = translate_engineer_error(
@@ -965,14 +978,9 @@ async def _handle_deep_research_turn(
             refinement_count=experiment.refinement_count,
         )
 
-    if decision.decision == "finalize":
-        turn_kind = ChatTurnKind.REFINEMENT_FINALIZE
-        clarifying_dimension = None
-        clarifying_questions_tuple: tuple[ClarifyingQuestion, ...] = ()
-    else:
-        turn_kind = ChatTurnKind.REFINEMENT_CLARIFY
-        clarifying_dimension = decision.clarifying_dimension
-        clarifying_questions_tuple = _questions_tuple(decision.clarifying_questions)
+    turn_kind = ChatTurnKind.REFINEMENT_CLARIFY
+    clarifying_dimension = decision.clarifying_dimension
+    clarifying_questions_tuple = _questions_tuple(decision.clarifying_questions)
 
     assistant_msg = await _append_assistant_and_activate(
         db,
@@ -990,18 +998,8 @@ async def _handle_deep_research_turn(
     user_facing_error: UserFacingError | None = None
     research_error_detail = experiment.research_error_detail
 
-    if decision.decision == "finalize":
-        # Always stop at REFINED (Chapter 3). Research starts only via
-        # POST /experiments/{id}/confirm after the validation paywall.
-        experiment.status = ExperimentStatus.REFINED
-        await db.commit()
-        _logger.info(
-            "refinement_finalize_deferred",
-            experiment_id=str(experiment.id),
-            auto_fire_mode=get_settings().auto_fire_chat_enabled,
-        )
-    else:
-        await db.commit()
+    # User owns finalize — LLM turns never flip status to REFINED.
+    await db.commit()
 
     result = ChatTurnResult(
         thread_id=thread.id,
@@ -1072,7 +1070,10 @@ async def handle_edit_turn(
         original_user.experiment_id,
     )
 
-    if experiment is not None and experiment.status == ExperimentStatus.REFINING:
+    if experiment is not None and experiment.status in (
+        ExperimentStatus.REFINING,
+        ExperimentStatus.REFINED,
+    ):
         turn_result = await _handle_deep_research_turn(
             db,
             user=user,
@@ -1083,6 +1084,7 @@ async def handle_edit_turn(
             idempotency_key=str(uuid4()),
             dispatcher=dispatcher,
             existing_user_message=new_user,
+            bump_refinement_count=False,
         )
     else:
         turn_result = await _handle_plain_chat_turn(
@@ -1150,11 +1152,6 @@ async def retry_assistant_message(
     if target.parent_message_id is None:
         raise ChatMessageRetryError("Cannot retry the first message of a thread")
 
-    if thread.active_leaf_message_id != target.id:
-        raise ChatMessageRetryError(
-            "Only the active branch tip can be retried"
-        )
-
     parent_user = await db.get(ChatMessage, target.parent_message_id)
     if parent_user is None or parent_user.role != ChatRole.USER:
         raise ChatMessageRetryError("Parent must be a user message")
@@ -1169,4 +1166,5 @@ async def retry_assistant_message(
         idempotency_key=str(uuid4()),
         dispatcher=dispatcher,
         existing_user_message=parent_user,
+        bump_refinement_count=False,
     )

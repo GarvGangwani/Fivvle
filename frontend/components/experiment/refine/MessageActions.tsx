@@ -2,35 +2,25 @@
 
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { formatLocalTime } from "./formatLocalTime";
 
 type Props = {
   content: string;
   createdAt: string;
   role: "user" | "assistant";
-  isLatest: boolean;
   onEdit?: () => void;
   onRetry?: () => void;
+  retryDisabled?: boolean;
   branchNavigator?: ReactNode;
 };
-
-function formatTime(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleTimeString("en-GB", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-    timeZone: "UTC",
-  });
-}
 
 export function MessageActions({
   content,
   createdAt,
   role,
-  isLatest,
   onEdit,
   onRetry,
+  retryDisabled = false,
   branchNavigator,
 }: Props) {
   const [copied, setCopied] = useState(false);
@@ -52,7 +42,7 @@ export function MessageActions({
       }`}
     >
       <span className="font-mono text-mono-sm uppercase text-ink-tertiary">
-        {formatTime(createdAt)} UTC
+        {formatLocalTime(createdAt)}
       </span>
 
       {branchNavigator}
@@ -73,7 +63,7 @@ export function MessageActions({
         </span>
       </button>
 
-      {role === "user" && onEdit && isLatest ? (
+      {role === "user" && onEdit ? (
         <button
           type="button"
           onClick={onEdit}
@@ -91,13 +81,14 @@ export function MessageActions({
         </button>
       ) : null}
 
-      {onRetry && isLatest ? (
+      {onRetry ? (
         <button
           type="button"
           onClick={onRetry}
+          disabled={retryDisabled}
           aria-label="Try another response"
           title="Try another response"
-          className="p-1 text-ink-tertiary hover:text-ink-primary hover:bg-surface-elevated transition-colors"
+          className="p-1 text-ink-tertiary hover:text-ink-primary hover:bg-surface-elevated transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <span
             className="material-symbols-outlined"

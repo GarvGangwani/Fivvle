@@ -26,6 +26,7 @@ type Props = {
     direction: "prev" | "next",
   ) => void | Promise<void>;
   navigatingMessageId?: string | null;
+  regeneratingMessageId?: string | null;
 };
 
 export function RefineChatScroll({
@@ -40,6 +41,7 @@ export function RefineChatScroll({
   onRetryMessage,
   onSwitchBranch,
   navigatingMessageId,
+  regeneratingMessageId,
 }: Props) {
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const latestMessageId =
@@ -101,6 +103,7 @@ export function RefineChatScroll({
           onRetryMessage={onRetryMessage}
           onSwitchBranch={onSwitchBranch}
           navigatingMessageId={navigatingMessageId}
+          regeneratingMessageId={regeneratingMessageId}
         />
       ))}
       <div ref={scrollAnchorRef} />

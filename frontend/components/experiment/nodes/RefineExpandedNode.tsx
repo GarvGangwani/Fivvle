@@ -27,6 +27,7 @@ export type RefineExpandedData = {
     direction: "prev" | "next",
   ) => void | Promise<void>;
   navigatingMessageId?: string | null;
+  regeneratingMessageId?: string | null;
 };
 
 export function RefineExpandedNode({ data }: NodeProps<RefineExpandedData>) {
@@ -46,6 +47,7 @@ export function RefineExpandedNode({ data }: NodeProps<RefineExpandedData>) {
     onRetryMessage,
     onSwitchBranch,
     navigatingMessageId,
+    regeneratingMessageId,
   } = data;
   const { user } = useAuth();
 
@@ -116,6 +118,7 @@ export function RefineExpandedNode({ data }: NodeProps<RefineExpandedData>) {
           onRetryMessage={onRetryMessage}
           onSwitchBranch={onSwitchBranch}
           navigatingMessageId={navigatingMessageId}
+          regeneratingMessageId={regeneratingMessageId}
         />
       </div>
 

@@ -3,6 +3,7 @@
 import { AuthProvider, useAuth } from "@/lib/auth-context";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { HomeOverviewContent } from "@/components/dashboard/HomeOverviewContent";
+import { DashboardHomeSkeleton } from "@/components/dashboard/skeletons/DashboardHomeSkeleton";
 import { MarketingLandingPage } from "@/components/marketing/MarketingLandingPage";
 
 function HomeAuthGate() {
@@ -12,7 +13,7 @@ function HomeAuthGate() {
     return (
       <div className="min-h-screen bg-canvas-bg md:ml-28">
         <div className="p-gutter">
-          <div className="mb-6 h-12 w-72 animate-pulse bg-surface-elevated motion-reduce:animate-none" />
+          <DashboardHomeSkeleton />
         </div>
       </div>
     );
