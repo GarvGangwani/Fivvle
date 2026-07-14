@@ -15,6 +15,7 @@ CanvasNodeId = Literal[
     "signal",
     "resources",
     "spark-expanded",
+    "refine-expanded",
 ]
 ResourceType = Literal["link", "doc", "image", "competitor", "other"]
 

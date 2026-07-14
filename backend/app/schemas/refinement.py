@@ -193,21 +193,28 @@ class ClarifyingQuestion(BaseModel):
         Field(
             min_length=2,
             description=(
-                "Concrete answer choices that help the founder understand the "
-                "problem space. Include every plausible option — no artificial cap. "
-                "The UI always adds a free-text 'Other' field."
+                "Concrete answer choices. Prefer 2–4 short UPPERCASE labels for "
+                "discrete choices (B2B vs B2C, web vs mobile). For open-ended "
+                "questions, still provide starter options the founder can pick "
+                "or override with free text. Mutually distinct. Do NOT include "
+                "'SOMETHING ELSE' or 'OTHER' — the UI has a free-form path."
             ),
         ),
     ]
 
 
 class RefinementTurnDecision(BaseModel):
-    """Per-turn structured output for chat-mode refinement (planning doc §2)."""
+    """Per-turn structured output for chat-mode refinement (planning doc §2).
+
+    The Refiner never finalizes — the founder clicks Finalize. Every turn is
+    ``clarify``. Empty ``clarifying_questions`` means "no more questions right
+    now"; ``refined_idea`` is WIP and should be updated once enough signal exists.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
-    decision: Literal["clarify", "finalize"]
-    assistant_message: Annotated[str, Field(max_length=600)]
+    decision: Literal["clarify"] = "clarify"
+    assistant_message: Annotated[str, Field(max_length=800)]
     clarifying_dimension: Literal[
         "audience",
         "problem",
@@ -224,9 +231,10 @@ class RefinementTurnDecision(BaseModel):
         Field(
             default_factory=list,
             description=(
-                "Required when decision is clarify. One or more structured questions "
-                "shown sequentially in the question-block UI."
+                "At most one structured question. Empty list signals no more "
+                "questions right now — user may finalize or keep chatting."
             ),
+            max_length=1,
         ),
     ]
     refined_idea: RefinedIdea | None = None
@@ -242,38 +250,26 @@ class RefinementTurnDecision(BaseModel):
                     f"assistant_message must not contain banned filler phrase: {phrase!r}"
                 )
 
-        if self.decision == "clarify":
+        if self.decision != "clarify":
+            raise ValueError("decision must be 'clarify' — the user owns finalize")
+
+        if self.clarifying_questions:
             if self.clarifying_dimension is None:
                 raise ValueError(
-                    "clarifying_dimension must be set when decision is clarify"
+                    "clarifying_dimension must be set when clarifying_questions "
+                    "is non-empty"
                 )
-            if not self.clarifying_questions:
-                raise ValueError(
-                    "clarifying_questions must be non-empty when decision is clarify"
-                )
-            if self.refined_idea is not None:
-                raise ValueError("refined_idea must be null when decision is clarify")
-            if self.targeting is not None:
-                raise ValueError("targeting must be null when decision is clarify")
-            if (
-                not self.clarifying_questions
-                and not self.assistant_message.rstrip().endswith("?")
-            ):
-                raise ValueError(
-                    "assistant_message must end with '?' when decision is clarify "
-                    "and clarifying_questions is empty"
-                )
-        elif self.decision == "finalize":
-            if self.refined_idea is None:
-                raise ValueError("refined_idea must be set when decision is finalize")
+        else:
             if self.clarifying_dimension is not None:
                 raise ValueError(
-                    "clarifying_dimension must be null when decision is finalize"
+                    "clarifying_dimension must be null when clarifying_questions "
+                    "is empty"
                 )
-            if not self.assistant_message.lower().startswith("researching:"):
-                raise ValueError(
-                    "assistant_message must start with 'Researching:' when decision is finalize"
-                )
+
+        if self.targeting is not None and self.refined_idea is None:
+            raise ValueError(
+                "targeting requires refined_idea (WIP) to be set on the same turn"
+            )
         return self
 
 

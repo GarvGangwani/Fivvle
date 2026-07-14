@@ -23,13 +23,12 @@ from app.db.models.experiment import Experiment
 from app.db.models.refinement_idempotency import RefinementIdempotency
 from app.db.models.user import User
 from app.dispatchers.protocol import DispatchError
-from app.schemas.refinement import RefinedIdea, RefinementTurnDecision
+from app.schemas.refinement import ClarifyingQuestion, RefinedIdea, RefinementTurnDecision
 from app.services.chat_service import (
     ChatAuthorizationError,
     ChatTurnResult,
     handle_turn,
 )
-from app.services.experiment_service import InvalidExperimentState
 from app.services.rollout import _hash_bucket
 from tests.services.test_rollout import _find_uuid
 
@@ -66,18 +65,33 @@ def _clarify_decision() -> RefinementTurnDecision:
         decision="clarify",
         assistant_message="Who specifically feels this pain day to day?",
         clarifying_dimension="audience",
+        clarifying_questions=[
+            ClarifyingQuestion(
+                question="Who specifically feels this pain day to day?",
+                selection_mode="multiple",
+                options=[
+                    "Independent CrossFit coaches",
+                    "Box owners managing multiple coaches",
+                    "Online-only programming coaches",
+                ],
+            )
+        ],
         reasoning_trace="Need a concrete audience before research.",
     )
 
 
-def _finalize_decision() -> RefinementTurnDecision:
+def _ready_clarify_decision() -> RefinementTurnDecision:
+    """Clarify with empty questions + WIP refined_idea (user may finalize)."""
     return RefinementTurnDecision(
-        decision="finalize",
+        decision="clarify",
         assistant_message=(
-            "Researching: a programming tool for CrossFit coaches replacing Excel workflows."
+            "Here's a draft for CrossFit coaches replacing Excel workflows. "
+            "Finalize when you're ready, or keep exploring."
         ),
+        clarifying_dimension=None,
+        clarifying_questions=[],
         refined_idea=_make_refined_idea(),
-        reasoning_trace="Audience and value prop are clear.",
+        reasoning_trace="Audience and value prop are clear enough for a WIP draft.",
     )
 
 
@@ -334,11 +348,12 @@ async def test_dr_idempotency_replay_skips_second_run_turn(
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_defers_to_refined(
+async def test_dr_ready_clarify_stays_refining_no_dispatch(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
 ) -> None:
-    mock_run_turn.return_value = _finalize_decision()
+    """LLM ready-clarify writes WIP only; user owns finalize — no REFINED, no dispatch."""
+    mock_run_turn.return_value = _ready_clarify_decision()
     user = await _persist_user(db_session)
     dispatcher = _RecordingDispatcher()
 
@@ -355,18 +370,24 @@ async def test_dr_finalize_defers_to_refined(
 
     assert result.pipeline_dispatched is False
     assert result.dispatched_at is None
-    assert result.turn_kind == ChatTurnKind.REFINEMENT_FINALIZE
-    assert result.experiment_status == ExperimentStatus.REFINED
+    assert result.turn_kind == ChatTurnKind.REFINEMENT_CLARIFY
+    assert result.experiment_status == ExperimentStatus.REFINING
+    assert result.clarifying_questions == ()
     assert dispatcher.dispatched == []
+
+    exp = await db_session.get(Experiment, result.experiment_id)
+    assert exp is not None
+    assert exp.status == ExperimentStatus.REFINING
+    assert exp.refined_idea is None
 
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_deferred_even_if_dispatcher_would_fail(
+async def test_dr_ready_clarify_no_dispatch_even_if_dispatcher_would_fail(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
 ) -> None:
-    mock_run_turn.return_value = _finalize_decision()
+    mock_run_turn.return_value = _ready_clarify_decision()
     user = await _persist_user(db_session)
     dispatcher = _RecordingDispatcher(
         raise_on_dispatch=DispatchError("scheduler unavailable")
@@ -384,13 +405,13 @@ async def test_dr_finalize_deferred_even_if_dispatcher_would_fail(
     )
 
     assert result.pipeline_dispatched is False
-    assert result.experiment_status == ExperimentStatus.REFINED
+    assert result.experiment_status == ExperimentStatus.REFINING
     assert dispatcher.dispatched == []
 
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_deferred_logs(
+async def test_dr_ready_clarify_shadow_mode_still_no_dispatch(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -398,33 +419,29 @@ async def test_dr_finalize_deferred_logs(
     monkeypatch.setenv("AUTO_FIRE_CHAT_ENABLED", "shadow")
     get_settings.cache_clear()
 
-    mock_run_turn.return_value = _finalize_decision()
+    mock_run_turn.return_value = _ready_clarify_decision()
     user = await _persist_user(db_session)
     dispatcher = _RecordingDispatcher()
 
-    with patch("app.services.chat_service._logger.info") as mock_info:
-        result = await handle_turn(
-            db_session,
-            user,
-            _DR_MESSAGE,
-            deep_research=True,
-            thread_id=None,
-            experiment_id=None,
-            idempotency_key=str(uuid4()),
-            dispatcher=dispatcher,
-        )
+    result = await handle_turn(
+        db_session,
+        user,
+        _DR_MESSAGE,
+        deep_research=True,
+        thread_id=None,
+        experiment_id=None,
+        idempotency_key=str(uuid4()),
+        dispatcher=dispatcher,
+    )
 
     assert result.pipeline_dispatched is False
-    assert result.experiment_status == ExperimentStatus.REFINED
+    assert result.experiment_status == ExperimentStatus.REFINING
     assert dispatcher.dispatched == []
-    mock_info.assert_called_once()
-    assert mock_info.call_args.args[0] == "refinement_finalize_deferred"
-    assert mock_info.call_args.kwargs["auto_fire_mode"] == "shadow"
 
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_cohort_10_in_bucket_still_deferred(
+async def test_dr_ready_clarify_cohort_10_in_bucket_still_no_dispatch(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -435,7 +452,7 @@ async def test_dr_finalize_cohort_10_in_bucket_still_deferred(
     experiment_id = _find_uuid(bucket_lt=10)
     assert _hash_bucket(experiment_id) < 10
 
-    mock_run_turn.return_value = _finalize_decision()
+    mock_run_turn.return_value = _ready_clarify_decision()
     user = await _persist_user(db_session)
     thread = await _persist_thread(db_session, user)
     await _persist_refinement_experiment_with_id(
@@ -455,13 +472,13 @@ async def test_dr_finalize_cohort_10_in_bucket_still_deferred(
     )
 
     assert result.pipeline_dispatched is False
-    assert result.experiment_status == ExperimentStatus.REFINED
+    assert result.experiment_status == ExperimentStatus.REFINING
     assert dispatcher.dispatched == []
 
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_finalize_cohort_10_out_of_bucket_refined(
+async def test_dr_ready_clarify_cohort_10_out_of_bucket_still_refining(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
@@ -472,7 +489,7 @@ async def test_dr_finalize_cohort_10_out_of_bucket_refined(
     experiment_id = _find_uuid(bucket_ge=10)
     assert _hash_bucket(experiment_id) >= 10
 
-    mock_run_turn.return_value = _finalize_decision()
+    mock_run_turn.return_value = _ready_clarify_decision()
     user = await _persist_user(db_session)
     thread = await _persist_thread(db_session, user)
     await _persist_refinement_experiment_with_id(
@@ -492,7 +509,7 @@ async def test_dr_finalize_cohort_10_out_of_bucket_refined(
     )
 
     assert result.pipeline_dispatched is False
-    assert result.experiment_status == ExperimentStatus.REFINED
+    assert result.experiment_status == ExperimentStatus.REFINING
     assert dispatcher.dispatched == []
 
 
@@ -575,35 +592,43 @@ async def test_dr_experiment_not_owned_raises_authorization(
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
-async def test_dr_experiment_wrong_status_raises_invalid_state(
+async def test_dr_experiment_refined_reopens_to_refining(
     mock_run_turn: AsyncMock,
     db_session: AsyncSession,
 ) -> None:
+    """Post-finalize deep_research turn reopens REFINED → REFINING and keeps idea."""
     mock_run_turn.return_value = _clarify_decision()
     user = await _persist_user(db_session)
     thread = await _persist_thread(db_session, user)
+    finalized = _make_refined_idea().model_dump(mode="json")
     experiment = Experiment(
         user_id=user.id,
         thread_id=thread.id,
         raw_idea=_DR_MESSAGE,
         status=ExperimentStatus.REFINED,
         refinement_count=1,
-        refined_idea=_make_refined_idea().model_dump(mode="json"),
+        refined_idea=finalized,
+        refined_idea_current=finalized,
     )
     db_session.add(experiment)
     await db_session.commit()
 
-    with pytest.raises(InvalidExperimentState):
-        await handle_turn(
-            db_session,
-            user,
-            _DR_MESSAGE,
-            deep_research=True,
-            thread_id=thread.id,
-            experiment_id=experiment.id,
-            idempotency_key=str(uuid4()),
-            dispatcher=_RecordingDispatcher(),
-        )
+    result = await handle_turn(
+        db_session,
+        user,
+        "Actually, let me add something about pricing.",
+        deep_research=True,
+        thread_id=thread.id,
+        experiment_id=experiment.id,
+        idempotency_key=str(uuid4()),
+        dispatcher=_RecordingDispatcher(),
+    )
+
+    await db_session.refresh(experiment)
+    assert experiment.status == ExperimentStatus.REFINING
+    assert experiment.refined_idea == finalized
+    assert result.experiment_status == ExperimentStatus.REFINING
+    mock_run_turn.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -793,7 +818,7 @@ async def test_post_refinement_plain_chat_uses_discuss_turn(
 
 @pytest.mark.asyncio
 @patch("app.services.chat_service.reply_plain", new_callable=AsyncMock)
-async def test_edit_user_message_truncates_downstream_and_replays(
+async def test_edit_user_message_creates_branch_not_truncate(
     mock_reply_plain: AsyncMock,
     db_session: AsyncSession,
 ) -> None:
@@ -805,19 +830,30 @@ async def test_edit_user_message_truncates_downstream_and_replays(
         thread_id=thread.id,
         role=ChatRole.USER,
         content="Original question",
+        parent_message_id=None,
     )
+    db_session.add(user_msg)
+    await db_session.flush()
+
     old_assistant = ChatMessage(
         thread_id=thread.id,
         role=ChatRole.ASSISTANT,
         content="Old answer",
         turn_kind=ChatTurnKind.NORMAL_CHAT,
+        parent_message_id=user_msg.id,
     )
+    db_session.add(old_assistant)
+    await db_session.flush()
+
     later_user = ChatMessage(
         thread_id=thread.id,
         role=ChatRole.USER,
         content="Follow-up",
+        parent_message_id=old_assistant.id,
     )
-    db_session.add_all([user_msg, old_assistant, later_user])
+    db_session.add(later_user)
+    await db_session.flush()
+    thread.active_leaf_message_id = later_user.id
     await db_session.commit()
     await db_session.refresh(user_msg)
 
@@ -832,26 +868,27 @@ async def test_edit_user_message_truncates_downstream_and_replays(
         _RecordingDispatcher(),
     )
 
-    assert result.edited_message_id == user_msg.id
+    assert result.edited_message_id != user_msg.id
     assert result.assistant_message == "Updated assistant reply."
 
-    debug_lines = [
-        f"{m.role.value}: {m.content!r}" for m in result.messages
-    ]
-    assert len(result.messages) == 2, (
-        "expected edited user + new assistant; got:\n  "
-        + "\n  ".join(debug_lines)
-    )
+    assert len(result.messages) == 2
     assert result.messages[0].content == "Edited question"
     assert result.messages[1].content == "Updated assistant reply."
+    assert result.messages[0].parent_message_id is None
+    assert result.messages[1].parent_message_id == result.messages[0].id
 
     remaining = await db_session.execute(
         select(ChatMessage).where(ChatMessage.thread_id == thread.id)
     )
     rows = list(remaining.scalars().all())
-    assert len(rows) == 2
-    assert all(row.content != "Follow-up" for row in rows)
-    assert all(row.content != "Old answer" for row in rows)
+    # Original branch preserved + new branch (edited user + new assistant)
+    assert len(rows) == 5
+    assert any(row.content == "Follow-up" for row in rows)
+    assert any(row.content == "Old answer" for row in rows)
+    assert any(row.content == "Original question" for row in rows)
+
+    await db_session.refresh(thread)
+    assert thread.active_leaf_message_id == result.message_id
 
 
 # ---------------------------------------------------------------------------
@@ -860,41 +897,37 @@ async def test_edit_user_message_truncates_downstream_and_replays(
 
 
 @pytest.mark.asyncio
-async def test_list_thread_messages_returns_deterministic_order_on_created_at_tie(
+async def test_list_thread_messages_returns_active_branch_order(
     db_session: AsyncSession,
 ) -> None:
-    """When user answer and assistant follow-up share created_at, id tiebreaker
-    must return user before assistant regardless of insert order."""
+    """Active branch is returned root→leaf via parent links."""
     user = await _persist_user(db_session)
     thread = await _persist_thread(db_session, user)
-    tie_time = datetime(2026, 7, 7, 12, 0, 0, tzinfo=UTC)
 
     user_msg = ChatMessage(
-        id=UUID("00000000-0000-4000-8000-000000000001"),
         thread_id=thread.id,
         role=ChatRole.USER,
-        content="Q1 answer",
-        created_at=tie_time,
+        content="Q",
+        parent_message_id=None,
     )
-    assistant_msg = ChatMessage(
-        id=UUID("00000000-0000-4000-8000-000000000010"),
+    db_session.add(user_msg)
+    await db_session.flush()
+    assistant = ChatMessage(
         thread_id=thread.id,
         role=ChatRole.ASSISTANT,
-        content="Q2 question",
-        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
-        clarifying_dimension="audience",
-        created_at=tie_time,
+        content="A",
+        turn_kind=ChatTurnKind.NORMAL_CHAT,
+        parent_message_id=user_msg.id,
     )
-    # Insert assistant first — without id tiebreaker PG may return this order.
-    db_session.add_all([assistant_msg, user_msg])
+    db_session.add(assistant)
+    await db_session.flush()
+    thread.active_leaf_message_id = assistant.id
     await db_session.commit()
 
     from app.services.chat_service import list_thread_messages
 
     messages = await list_thread_messages(db_session, user, thread.id)
-    assert len(messages) == 2
-    assert messages[0].role == ChatRole.USER
-    assert messages[1].role == ChatRole.ASSISTANT
+    assert [m.content for m in messages] == ["Q", "A"]
 
 
 @pytest.mark.asyncio

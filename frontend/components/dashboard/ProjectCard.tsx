@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import type { KeyboardEvent } from "react";
 import type { ExperimentSummary } from "@/lib/types";
 import { StatusBadge } from "./StatusBadge";
+import { cacheExperimentName } from "@/lib/experiment-name-cache";
 import {
   formatExperimentId,
   getActLabel,
@@ -28,6 +29,7 @@ export function ProjectCard({ experiment, archived = false }: ProjectCardProps) 
   const href = `/experiment/${experiment.id}`;
 
   function navigate() {
+    cacheExperimentName(experiment.id, getExperimentDisplayTitle(experiment));
     router.push(href);
   }
 

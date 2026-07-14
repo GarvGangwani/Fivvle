@@ -54,7 +54,7 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
 
   return (
     <div className="w-[560px] bg-surface-card border-2 border-border-master shadow-brutal-lg">
-      <div className="bg-ink-primary text-ink-inverse flex items-center justify-between px-4 py-3">
+      <div className="bg-ink-primary text-ink-inverse flex items-center justify-between px-4 py-3 cursor-grab active:cursor-grabbing">
         <div className="flex items-center gap-3">
           <span
             className="material-symbols-outlined text-brand-primary"
@@ -95,7 +95,7 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
       </div>
 
       {experiment.refinement_started_at ? (
-        <div className="mx-5 mt-4 border-2 border-brutalist-yellow bg-brutalist-yellow/20 p-3">
+        <div className="mx-5 mt-4 border-2 border-brutalist-yellow bg-brutalist-yellow/20 p-3 nodrag nowheel cursor-auto">
           <p className="font-body text-body-sm text-ink-primary">
             <strong>Note:</strong> You&apos;ve already started Refine. Editing
             your idea won&apos;t automatically re-run it.
@@ -103,7 +103,7 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
         </div>
       ) : null}
 
-      <div className="p-5">
+      <div className="p-5 nodrag nowheel cursor-auto">
         <div className="flex items-center justify-between mb-2">
           <label className="font-label-md text-label-md uppercase text-ink-primary">
             THE IDEA
@@ -119,14 +119,14 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
           onChange={(e) => setIdea(e.target.value)}
           placeholder="What are you thinking of building? Just write it out plainly. Fivvle will help you refine it in the next phase."
           rows={6}
-          className="nodrag w-full border-2 border-border-master bg-surface-card p-3 font-body text-body-md placeholder:text-ink-tertiary focus:shadow-brutal-primary focus:outline-none resize-none"
+          className="nodrag nowheel w-full border-2 border-border-master bg-surface-card p-3 font-body text-body-md placeholder:text-ink-tertiary focus:shadow-brutal-primary focus:outline-none resize-none cursor-text"
         />
         <p className="mt-2 font-mono text-mono-sm text-ink-tertiary">
           {idea.length} CHARACTERS
         </p>
       </div>
 
-      <div className="p-5 border-t-2 border-border-master">
+      <div className="p-5 border-t-2 border-border-master nodrag nowheel cursor-auto">
         <div className="flex items-center justify-between mb-3">
           <label className="font-label-md text-label-md uppercase text-ink-primary">
             ATTACHMENTS ({attachments.items.length})
@@ -160,7 +160,7 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
             </p>
           </div>
         ) : (
-          <ul className="space-y-2 nodrag">
+          <ul className="space-y-2 max-h-48 overflow-y-auto nodrag nowheel">
             {attachments.items.map((att) => (
               <AttachmentRow
                 key={att.id}
@@ -174,7 +174,7 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
         )}
       </div>
 
-      <div className="p-5 border-t-2 border-border-master nodrag">
+      <div className="p-5 border-t-2 border-border-master nodrag nowheel cursor-auto">
         <button
           type="button"
           onClick={() => void handleSave()}

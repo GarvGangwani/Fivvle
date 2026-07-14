@@ -10,6 +10,7 @@ import {
   mapStatusToPill,
   type PillState,
 } from "./dashboard-helpers";
+import { ExperimentsListSkeleton } from "./skeletons/ExperimentsListSkeleton";
 
 type LoadState =
   | { status: "loading" }
@@ -167,19 +168,7 @@ export function ExperimentsContent() {
   }, [loadState, searchResults, statusFilter, sortBy]);
 
   if (loadState.status === "loading") {
-    return (
-      <div className="py-8">
-        <div className="mb-8 h-10 w-64 animate-pulse bg-surface-elevated motion-reduce:animate-none" />
-        <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div
-              key={i}
-              className="h-64 animate-pulse bg-surface-elevated motion-reduce:animate-none"
-            />
-          ))}
-        </div>
-      </div>
-    );
+    return <ExperimentsListSkeleton />;
   }
 
   if (loadState.status === "error") {

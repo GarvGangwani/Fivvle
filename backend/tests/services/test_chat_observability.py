@@ -127,7 +127,7 @@ async def test_user_reply_length_stats(db_session: AsyncSession) -> None:
         ),
         (
             ChatRole.ASSISTANT,
-            "Researching: test",
+            "Draft ready — finalize when you like.",
             ChatTurnKind.REFINEMENT_FINALIZE,
             base_time + timedelta(seconds=3),
         ),

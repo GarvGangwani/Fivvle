@@ -57,6 +57,11 @@ class Experiment(Base):
         nullable=False,
     )
     refined_idea: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    refined_idea_current: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    refined_idea_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     tags: Mapped[list[str]] = mapped_column(
         ARRAY(String),
         nullable=False,

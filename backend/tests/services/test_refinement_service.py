@@ -437,9 +437,15 @@ async def test_refinement_validation_error_triggers_graceful_retry_then_succeeds
 
     mock_complete = AsyncMock(side_effect=[ve_first, (valid_refined_idea, mock_meta)])
 
-    with patch(
-        "app.services.refinement_service.llm_client.complete_structured",
-        mock_complete,
+    with (
+        patch(
+            "app.services.refinement_service.llm_client.complete_structured",
+            mock_complete,
+        ),
+        patch(
+            "app.services.experiment_service.persist_experiment_tags",
+            new_callable=AsyncMock,
+        ),
     ):
         experiment = await create_experiment_with_refinement(db, user, "B" * 50)
 
@@ -536,18 +542,21 @@ def _make_clarify_decision(**overrides) -> RefinementTurnDecision:
     return RefinementTurnDecision(**defaults)
 
 
-def _make_finalize_decision(
+def _make_ready_clarify_decision(
     refined_idea: RefinedIdea | None = None,
     **overrides,
 ) -> RefinementTurnDecision:
+    """Clarify with empty questions + WIP refined_idea (user may finalize)."""
     defaults = {
-        "decision": "finalize",
+        "decision": "clarify",
         "assistant_message": (
-            "Researching: a tool for CrossFit coaches that speeds up client program design."
+            "Here's a draft one-liner for CrossFit coaches speeding up program design. "
+            "Finalize when you're ready, or keep exploring."
         ),
         "clarifying_dimension": None,
+        "clarifying_questions": [],
         "refined_idea": refined_idea or _make_valid_refined_idea(),
-        "reasoning_trace": "ready to hand off",
+        "reasoning_trace": "enough signal for WIP draft",
     }
     defaults.update(overrides)
     return RefinementTurnDecision(**defaults)
@@ -581,6 +590,33 @@ async def test_run_turn_clarify_on_turn_zero_increments_count_and_strips_trace(
 
 
 @pytest.mark.asyncio
+async def test_run_turn_without_bump_leaves_refinement_count(
+    valid_refined_idea: RefinedIdea,
+) -> None:
+    """Retry/edit path must not increment refinement_count."""
+    db = AsyncMock(spec=AsyncSession)
+    experiment = _make_experiment_for_run_turn(refinement_count=2)
+    decision = _make_clarify_decision(
+        assistant_message="Alternate take — who pays first?",
+    )
+    mock_meta = _make_mock_llm_result()
+
+    with patch(
+        "app.services.refinement_service.llm_client.complete_structured",
+        AsyncMock(return_value=(decision, mock_meta)),
+    ):
+        await run_turn(
+            db=db,
+            experiment=experiment,
+            chat_history=[],
+            latest_message="Same user message again.",
+            bump_refinement_count=False,
+        )
+
+    assert experiment.refinement_count == 2
+
+
+@pytest.mark.asyncio
 async def test_run_turn_clarify_pivot_resolution_resets_count(
     valid_refined_idea: RefinedIdea,
 ) -> None:
@@ -608,18 +644,24 @@ async def test_run_turn_clarify_pivot_resolution_resets_count(
 
 
 @pytest.mark.asyncio
-async def test_run_turn_finalize_persists_refined_idea_count_unchanged(
+async def test_run_turn_wip_refined_idea_writes_current_not_refined(
     valid_refined_idea: RefinedIdea,
 ) -> None:
-    """Finalize persists refined_idea; refinement_count unchanged."""
+    """Ready clarify writes refined_idea_current; does not set refined_idea."""
     db = AsyncMock(spec=AsyncSession)
     experiment = _make_experiment_for_run_turn(refinement_count=0)
-    decision = _make_finalize_decision(refined_idea=valid_refined_idea)
+    decision = _make_ready_clarify_decision(refined_idea=valid_refined_idea)
     mock_meta = _make_mock_llm_result()
 
-    with patch(
-        "app.services.refinement_service.llm_client.complete_structured",
-        AsyncMock(return_value=(decision, mock_meta)),
+    with (
+        patch(
+            "app.services.refinement_service.llm_client.complete_structured",
+            AsyncMock(return_value=(decision, mock_meta)),
+        ),
+        patch(
+            "app.services.refinement_service.persist_experiment_tags",
+            new_callable=AsyncMock,
+        ),
     ):
         result = await run_turn(
             db=db,
@@ -628,25 +670,33 @@ async def test_run_turn_finalize_persists_refined_idea_count_unchanged(
             latest_message="AI weekly exec summaries for EMs at 50-500 person orgs.",
         )
 
-    assert result.decision == "finalize"
-    assert experiment.refinement_count == 0
-    assert experiment.refined_idea == valid_refined_idea.model_dump()
+    assert result.decision == "clarify"
+    assert experiment.refinement_count == 1
+    assert experiment.refined_idea is None
+    assert experiment.refined_idea_current == valid_refined_idea.model_dump()
+    assert experiment.refined_idea_updated_at is not None
 
 
 @pytest.mark.asyncio
-async def test_run_turn_hard_ceiling_prompt_includes_force_finalize_note(
+async def test_run_turn_soft_ceiling_prompt_prefers_empty_questions(
     valid_refined_idea: RefinedIdea,
 ) -> None:
-    """When refinement_count hits the hard ceiling, user prompt requires finalize."""
+    """When refinement_count hits the soft ceiling, user prompt prefers empty questions."""
     db = AsyncMock(spec=AsyncSession)
     experiment = _make_experiment_for_run_turn(refinement_count=6)
-    decision = _make_finalize_decision(refined_idea=valid_refined_idea)
+    decision = _make_ready_clarify_decision(refined_idea=valid_refined_idea)
     mock_meta = _make_mock_llm_result()
     mock_complete = AsyncMock(return_value=(decision, mock_meta))
 
-    with patch(
-        "app.services.refinement_service.llm_client.complete_structured",
-        mock_complete,
+    with (
+        patch(
+            "app.services.refinement_service.llm_client.complete_structured",
+            mock_complete,
+        ),
+        patch(
+            "app.services.refinement_service.persist_experiment_tags",
+            new_callable=AsyncMock,
+        ),
     ):
         await run_turn(
             db=db,
@@ -659,7 +709,8 @@ async def test_run_turn_hard_ceiling_prompt_includes_force_finalize_note(
         )
 
     user_prompt: str = mock_complete.call_args.kwargs["user"]
-    assert "Hard ceiling reached" in user_prompt
+    assert "Soft ceiling reached" in user_prompt
+    assert "clarifying_questions empty" in user_prompt
     assert mock_complete.call_args.kwargs["prompt_name"] == PROMPT_NAME_V5_CHAT
     assert mock_complete.call_args.kwargs["phase"] == "refinement_chat"
 
@@ -735,11 +786,11 @@ def test_refinement_turn_decision_clarify_requires_dimension() -> None:
         )
 
 
-def test_refinement_turn_decision_finalize_requires_researching_prefix() -> None:
-    """Finalize without Researching: prefix raises ValidationError."""
+def test_refinement_turn_decision_rejects_finalize() -> None:
+    """decision='finalize' is invalid — the user owns finalize."""
     with pytest.raises(ValidationError):
         RefinementTurnDecision(
-            decision="finalize",
+            decision="finalize",  # type: ignore[arg-type]
             assistant_message="Starting research on your fitness tool.",
             refined_idea=_make_valid_refined_idea(),
         )
@@ -756,8 +807,8 @@ def test_refinement_turn_decision_rejects_banned_filler_phrase() -> None:
         )
 
 
-def test_refinement_turn_decision_clarify_requires_questions() -> None:
-    """Clarify must include at least one structured question."""
+def test_refinement_turn_decision_empty_questions_require_null_dimension() -> None:
+    """Empty clarifying_questions must have clarifying_dimension=None."""
     with pytest.raises(ValidationError):
         RefinementTurnDecision(
             decision="clarify",
@@ -767,8 +818,22 @@ def test_refinement_turn_decision_clarify_requires_questions() -> None:
         )
 
 
-def test_build_refinement_v2_chat_user_prompt_blocks_early_finalize() -> None:
-    """Prompt builder forbids finalize before the minimum clarifying turn count."""
+def test_refinement_turn_decision_empty_questions_with_wip_idea_ok() -> None:
+    """Empty questions + null dimension + refined_idea is valid (ready to finalize)."""
+    decision = RefinementTurnDecision(
+        decision="clarify",
+        assistant_message="Draft ready — finalize when you like.",
+        clarifying_dimension=None,
+        clarifying_questions=[],
+        refined_idea=_make_valid_refined_idea(),
+    )
+    assert decision.decision == "clarify"
+    assert decision.clarifying_questions == []
+    assert decision.refined_idea is not None
+
+
+def test_build_refinement_v2_chat_user_prompt_prefers_clarify_early() -> None:
+    """Prompt builder prefers asking before the minimum clarifying turn count."""
     prompt = build_refinement_v2_chat_user_prompt(
         chat_history=[("user", "earlier"), ("assistant", "Who?")],
         latest_message="CrossFit coaches.",
@@ -779,12 +844,12 @@ def test_build_refinement_v2_chat_user_prompt_blocks_early_finalize() -> None:
     assert "<chat_history>" in prompt
     assert "[user]: CrossFit coaches." in prompt
     assert "Clarifying turns used so far: 2" in prompt
-    assert "You MUST choose CLARIFY" in prompt
-    assert "Finalize is not permitted" in prompt
+    assert "you NEVER finalize" in prompt
+    assert "Prefer asking ONE clarifying question" in prompt
 
 
-def test_build_refinement_v2_chat_user_prompt_hard_ceiling_at_six() -> None:
-    """Prompt builder requires finalize once the hard ceiling is reached."""
+def test_build_refinement_v2_chat_user_prompt_soft_ceiling_at_six() -> None:
+    """Prompt builder prefers empty questions once the soft ceiling is reached."""
     prompt = build_refinement_v2_chat_user_prompt(
         chat_history=[("user", "earlier"), ("assistant", "Who?")],
         latest_message="CrossFit coaches.",
@@ -792,12 +857,13 @@ def test_build_refinement_v2_chat_user_prompt_hard_ceiling_at_six() -> None:
         max_clarifying_turns=6,
         min_turns_before_finalize=3,
     )
-    assert "hard ceiling reached" in prompt.lower()
-    assert "you must finalize" in prompt.lower()
+    assert "soft ceiling reached" in prompt.lower()
+    assert "clarifying_questions empty" in prompt.lower()
+    assert "you never finalize" in prompt.lower()
 
 
 @pytest.mark.asyncio
-async def test_run_turn_finalize_with_targeting_sets_experiment_columns(
+async def test_run_turn_wip_with_targeting_sets_experiment_columns(
     valid_refined_idea: RefinedIdea,
 ) -> None:
     db = AsyncMock(spec=AsyncSession)
@@ -808,15 +874,21 @@ async def test_run_turn_finalize_with_targeting_sets_experiment_columns(
         stage=ExperimentStage.IDEA,
         why_now="Regulatory window opening.",
     )
-    decision = _make_finalize_decision(
+    decision = _make_ready_clarify_decision(
         refined_idea=valid_refined_idea,
         targeting=targeting,
     )
     mock_meta = _make_mock_llm_result()
 
-    with patch(
-        "app.services.refinement_service.llm_client.complete_structured",
-        AsyncMock(return_value=(decision, mock_meta)),
+    with (
+        patch(
+            "app.services.refinement_service.llm_client.complete_structured",
+            AsyncMock(return_value=(decision, mock_meta)),
+        ),
+        patch(
+            "app.services.refinement_service.persist_experiment_tags",
+            new_callable=AsyncMock,
+        ),
     ):
         await run_turn(
             db=db,
@@ -825,6 +897,8 @@ async def test_run_turn_finalize_with_targeting_sets_experiment_columns(
             latest_message="Ready to research.",
         )
 
+    assert experiment.refined_idea is None
+    assert experiment.refined_idea_current == valid_refined_idea.model_dump()
     assert experiment.target_geography == "India"
     assert experiment.audience_bracket == "urban families"
     assert experiment.stage == ExperimentStage.IDEA
@@ -832,20 +906,26 @@ async def test_run_turn_finalize_with_targeting_sets_experiment_columns(
 
 
 @pytest.mark.asyncio
-async def test_run_turn_finalize_without_targeting_leaves_columns_none(
+async def test_run_turn_wip_without_targeting_leaves_columns_none(
     valid_refined_idea: RefinedIdea,
 ) -> None:
     db = AsyncMock(spec=AsyncSession)
     experiment = _make_experiment_for_run_turn(refinement_count=3)
-    decision = _make_finalize_decision(
+    decision = _make_ready_clarify_decision(
         refined_idea=valid_refined_idea,
         targeting=None,
     )
     mock_meta = _make_mock_llm_result()
 
-    with patch(
-        "app.services.refinement_service.llm_client.complete_structured",
-        AsyncMock(return_value=(decision, mock_meta)),
+    with (
+        patch(
+            "app.services.refinement_service.llm_client.complete_structured",
+            AsyncMock(return_value=(decision, mock_meta)),
+        ),
+        patch(
+            "app.services.refinement_service.persist_experiment_tags",
+            new_callable=AsyncMock,
+        ),
     ):
         await run_turn(
             db=db,
@@ -854,13 +934,14 @@ async def test_run_turn_finalize_without_targeting_leaves_columns_none(
             latest_message="Go.",
         )
 
+    assert experiment.refined_idea_current == valid_refined_idea.model_dump()
     assert experiment.target_geography is None
     assert experiment.audience_bracket is None
     assert experiment.stage is None
     assert experiment.why_now is None
 
 
-def test_refinement_turn_decision_clarify_rejects_targeting() -> None:
+def test_refinement_turn_decision_targeting_requires_refined_idea() -> None:
     with pytest.raises(ValidationError):
         RefinementTurnDecision(
             decision="clarify",

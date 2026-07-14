@@ -66,14 +66,18 @@ def _clarify_decision() -> RefinementTurnDecision:
     )
 
 
-def _finalize_decision() -> RefinementTurnDecision:
+def _ready_clarify_decision() -> RefinementTurnDecision:
+    """Clarify with empty questions + WIP refined_idea (user may finalize)."""
     return RefinementTurnDecision(
-        decision="finalize",
+        decision="clarify",
         assistant_message=(
-            "Researching: a programming tool for CrossFit coaches replacing Excel workflows."
+            "Here's a draft for CrossFit coaches replacing Excel workflows. "
+            "Finalize when you're ready, or keep exploring."
         ),
+        clarifying_dimension=None,
+        clarifying_questions=[],
         refined_idea=_make_refined_idea(),
-        reasoning_trace="Audience and value prop are clear.",
+        reasoning_trace="Audience and value prop are clear enough for a WIP draft.",
     )
 
 
@@ -346,13 +350,13 @@ def test_chat_turn_dr_experiment_wrong_status_409(
     assert "REFINING" in resp.json()["detail"]
 
 
-def test_chat_turn_dr_finalize_refined_no_dispatch(
+def test_chat_turn_dr_ready_clarify_stays_refining_no_dispatch(
     client: TestClient,
     mock_firebase: None,
     mock_run_turn: AsyncMock,
     fake_dispatcher: FakeDispatcher,
 ) -> None:
-    mock_run_turn.return_value = _finalize_decision()
+    mock_run_turn.return_value = _ready_clarify_decision()
     _sync_user(client)
 
     resp = client.post(
@@ -364,18 +368,19 @@ def test_chat_turn_dr_finalize_refined_no_dispatch(
     assert resp.status_code == 200
     data = resp.json()
     assert data["pipeline_dispatched"] is False
-    assert data["experiment_status"] == ExperimentStatus.REFINED.value
+    assert data["experiment_status"] == ExperimentStatus.REFINING.value
     assert data["dispatched_at"] is None
-    assert data["turn_kind"] == ChatTurnKind.REFINEMENT_FINALIZE.value
+    assert data["turn_kind"] == ChatTurnKind.REFINEMENT_CLARIFY.value
+    assert data["clarifying_questions"] == []
     assert fake_dispatcher.dispatched == []
 
 
-def test_chat_turn_dr_finalize_deferred_even_if_dispatcher_would_fail(
+def test_chat_turn_dr_ready_clarify_no_dispatch_even_if_dispatcher_would_fail(
     client: TestClient,
     mock_firebase: None,
     mock_run_turn: AsyncMock,
 ) -> None:
-    mock_run_turn.return_value = _finalize_decision()
+    mock_run_turn.return_value = _ready_clarify_decision()
     fd = FakeDispatcher(raise_on_dispatch=DispatchError("scheduler unavailable"))
     app.dependency_overrides[get_dispatcher_dep] = lambda: fd
     try:
@@ -388,8 +393,8 @@ def test_chat_turn_dr_finalize_deferred_even_if_dispatcher_would_fail(
         assert resp.status_code == 200
         data = resp.json()
         assert data["pipeline_dispatched"] is False
-        assert data["experiment_status"] == ExperimentStatus.REFINED.value
-        assert data["assistant_message"].lower().startswith("researching:")
+        assert data["experiment_status"] == ExperimentStatus.REFINING.value
+        assert "finalize when you're ready" in data["assistant_message"].lower()
         assert fd.dispatched == []
     finally:
         app.dependency_overrides.pop(get_dispatcher_dep, None)
@@ -492,7 +497,7 @@ def test_chat_turn_off_returns_404(
     assert resp.status_code == 404
 
 
-def test_chat_turn_shadow_finalize_refined_no_dispatch(
+def test_chat_turn_shadow_ready_clarify_stays_refining_no_dispatch(
     client: TestClient,
     mock_firebase: None,
     mock_run_turn: AsyncMock,
@@ -502,7 +507,7 @@ def test_chat_turn_shadow_finalize_refined_no_dispatch(
     monkeypatch.setenv("AUTO_FIRE_CHAT_ENABLED", "shadow")
     get_settings.cache_clear()
 
-    mock_run_turn.return_value = _finalize_decision()
+    mock_run_turn.return_value = _ready_clarify_decision()
     _sync_user(client)
 
     resp = client.post(
@@ -513,6 +518,6 @@ def test_chat_turn_shadow_finalize_refined_no_dispatch(
 
     assert resp.status_code == 200
     data = resp.json()
-    assert data["experiment_status"] == ExperimentStatus.REFINED.value
+    assert data["experiment_status"] == ExperimentStatus.REFINING.value
     assert data["pipeline_dispatched"] is False
     assert fake_dispatcher.dispatched == []

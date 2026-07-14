@@ -25,6 +25,7 @@ class ChatMessage(Base):
     __table_args__ = (
         Index("idx_chat_messages_thread_id", "thread_id", "created_at"),
         Index("idx_chat_messages_experiment_id", "experiment_id"),
+        Index("ix_chat_messages_parent", "parent_message_id"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -72,6 +73,15 @@ class ChatMessage(Base):
         JSONB,
         nullable=True,
     )
+    metadata_json: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
+    parent_message_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("chat_messages.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=text("clock_timestamp()"),
@@ -79,5 +89,19 @@ class ChatMessage(Base):
     )
 
     # --- Relationships ---
-    thread: Mapped[ChatThread] = relationship(back_populates="messages")
+    thread: Mapped[ChatThread] = relationship(
+        back_populates="messages",
+        foreign_keys=[thread_id],
+    )
     experiment: Mapped[Experiment | None] = relationship()
+    parent: Mapped[ChatMessage | None] = relationship(
+        "ChatMessage",
+        remote_side="ChatMessage.id",
+        back_populates="children",
+        foreign_keys=[parent_message_id],
+    )
+    children: Mapped[list[ChatMessage]] = relationship(
+        "ChatMessage",
+        back_populates="parent",
+        foreign_keys=[parent_message_id],
+    )

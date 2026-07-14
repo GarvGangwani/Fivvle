@@ -15,7 +15,7 @@ class RefinementArchetype:
     id: str
     name: str
     user_messages: list[str]
-    expected_first_decision: Literal["clarify", "finalize"]
+    expected_first_decision: Literal["clarify"]
     expected_first_dimensions: set[str] | None
     expected_max_clarify_turns: int
     expected_finalize_traits: list[str]
@@ -64,7 +64,8 @@ REFINEMENT_ARCHETYPES: list[RefinementArchetype] = [
                 "writing status updates."
             ),
         ],
-        expected_first_decision="finalize",
+        # Crisp ideas still get decision=clarify (possibly empty questions + WIP idea).
+        expected_first_decision="clarify",
         expected_first_dimensions=None,
         expected_max_clarify_turns=0,
         expected_finalize_traits=["engineering manager", "weekly"],

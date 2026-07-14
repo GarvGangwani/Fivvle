@@ -159,6 +159,7 @@ export interface RefinedIdea {
   target_audience: string;
   value_proposition: string;
   risks: string[];
+  project_name?: string | null;
   headline: string;
   subheadline: string;
   cta_text: string;
@@ -236,7 +237,9 @@ export interface Experiment {
   status: string;
   thread_id?: string | null;
   validation_report: ExperimentValidationReportSummary | null;
-  refined_idea?: string | null;
+  refined_idea?: string | RefinedIdea | null;
+  refined_idea_current?: RefinedIdea | null;
+  refined_idea_updated_at?: string | null;
   chat_message_count?: number;
   evidence_atom_count?: number;
   landing_page_view_count?: number;
@@ -310,6 +313,15 @@ export interface ChatHistoryMessage {
   content: string;
   turn_kind: ChatTurnKind | null;
   clarifying_questions?: ClarifyingQuestion[] | null;
+  /** MCQ answer metadata (selected indices, custom text, etc.). */
+  metadata?: {
+    selected_option_indices?: number[];
+    custom_added_text?: string | null;
+    answered_question_from_message_id?: string;
+  } | null;
+  parent_message_id?: string | null;
+  sibling_index?: number;
+  sibling_count?: number;
   created_at: string;
 }
 
@@ -472,6 +484,8 @@ export interface ChatTurnResponse {
   dispatched_at: string | null;
   experiment_status: string | null;
   research_error_detail: string | null;
+  /** Experiment.refinement_count after this turn (clarify increments). */
+  refinement_count?: number | null;
 }
 
 // --- Insight & analytics types (ADR 0021) ---
@@ -583,9 +597,13 @@ export type CanvasNodeId =
   | "launch"
   | "signal"
   | "resources"
-  | "spark-expanded";
+  | "spark-expanded"
+  | "refine-expanded";
 
-export type SatelliteNodeId = Exclude<CanvasNodeId, "spark-expanded">;
+export type SatelliteNodeId = Exclude<
+  CanvasNodeId,
+  "spark-expanded" | "refine-expanded"
+>;
 
 export interface NodePosition {
   x: number;

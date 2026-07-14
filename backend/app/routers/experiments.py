@@ -94,6 +94,7 @@ from app.schemas.experiment import (
     RenameExperimentRequest,
     ResearchStatusResponse,
 )
+from app.schemas.refinement import RefinedIdea
 from app.schemas.validation_report import ValidationReport as ValidationReportSchema
 from app.schemas.tags import UpdateExperimentTagsRequest
 from app.services.tag_service import validate_tags
@@ -279,6 +280,8 @@ class GetExperimentDetailResponse(BaseModel):
     thread_id: UUID | None = None
     validation_report: ExperimentValidationReportSummary | None = None
     refined_idea: str | None = None
+    refined_idea_current: RefinedIdea | None = None
+    refined_idea_updated_at: datetime | None = None
     chat_message_count: int = Field(default=0, ge=0)
     evidence_atom_count: int = Field(default=0, ge=0)
     landing_page_view_count: int = Field(default=0, ge=0)
@@ -325,6 +328,8 @@ async def _build_experiment_detail_response(
         thread_id=experiment.thread_id,
         validation_report=summary,
         refined_idea=extract_refined_idea_text(experiment.refined_idea),
+        refined_idea_current=_coerce_refined_idea(experiment.refined_idea_current),
+        refined_idea_updated_at=experiment.refined_idea_updated_at,
         chat_message_count=metrics.chat_message_count,
         evidence_atom_count=metrics.evidence_atom_count,
         landing_page_view_count=metrics.landing_page_view_count,
@@ -344,6 +349,15 @@ async def _build_experiment_detail_response(
         launch_is_stale=spark_info.launch_is_stale,
         signal_is_stale=spark_info.signal_is_stale,
     )
+
+
+def _coerce_refined_idea(value: dict | None) -> RefinedIdea | None:
+    if not value:
+        return None
+    try:
+        return RefinedIdea.model_validate(value)
+    except Exception:
+        return None
 
 
 def _aggregate_validation_report(raw: dict) -> ExperimentValidationReportSummary:
