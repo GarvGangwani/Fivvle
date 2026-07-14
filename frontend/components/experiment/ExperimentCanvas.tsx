@@ -42,7 +42,7 @@ import {
 } from "./canvas-helpers";
 import { DeepDiveOverlay } from "./deep-dive/DeepDiveOverlay";
 import { ResourcesDrawer } from "./deep-dive/ResourcesDrawer";
-import { DashedStraightEdge } from "./edges/DashedStraightEdge";
+import { DashedCurvedEdge } from "./edges/DashedCurvedEdge";
 import { useCanvasLayout } from "./hooks/useCanvasLayout";
 import { useResources } from "./hooks/useResources";
 import { ActNode } from "./nodes/ActNode";
@@ -84,7 +84,8 @@ const nodeTypes: NodeTypes = {
 };
 
 const edgeTypes: EdgeTypes = {
-  "dashed-straight": DashedStraightEdge,
+  // Experiment: curved bezier behind same key for easy revert.
+  "dashed-straight": DashedCurvedEdge,
 };
 
 const INITIAL_EDGES: Edge[] = SATELLITE_IDS.map((id) => ({
