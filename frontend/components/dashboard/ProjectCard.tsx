@@ -42,7 +42,7 @@ export function ProjectCard({ experiment, archived = false }: ProjectCardProps) 
 
   const hoverClass = archived
     ? ""
-    : "shadow-brutal-md transition-all motion-reduce:transition-none hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-lg motion-reduce:hover:translate-x-0 motion-reduce:hover:translate-y-0";
+    : "shadow-brutal-md fv-brutal-hover";
 
   const tags = experiment.tags ?? [];
 

@@ -881,7 +881,7 @@ export function ChatInterface({
                       key={prompt}
                       type="button"
                       onClick={() => handleStarterChipClick(prompt)}
-                      className="cursor-pointer rounded-full border border-white/[0.1] bg-white/[0.03] px-4 py-2 text-[13px] text-fv-text-soft transition-all duration-200 hover:border-[var(--fv-accent)]/40 hover:bg-[var(--fv-accent)]/5"
+                      className="cursor-pointer rounded-full border border-[var(--fv-border)] bg-[var(--fv-surface-2)] px-4 py-2 text-[13px] text-fv-text-soft transition-all duration-200 hover:border-[var(--fv-accent)]/40 hover:bg-[var(--fv-accent)]/5"
                     >
                       {prompt}
                     </button>

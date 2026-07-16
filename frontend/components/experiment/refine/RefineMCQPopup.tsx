@@ -204,7 +204,7 @@ export function RefineMCQPopup({
                 className={`w-full flex items-stretch rounded-sm border-2 transition-all ${
                   isSelected
                     ? "border-brutalist-yellow bg-brutalist-yellow text-ink-primary"
-                    : "border-ink-inverse bg-ink-primary text-ink-inverse hover:bg-ink-inverse/10"
+                    : "border-ink-inverse/40 bg-ink-inverse/10 text-ink-inverse fv-brutal-hover"
                 }`}
               >
                 <div
@@ -240,8 +240,8 @@ export function RefineMCQPopup({
               hasCustom
                 ? "border-brutalist-yellow bg-brutalist-yellow text-ink-primary"
                 : customFocused
-                  ? "border-brutalist-yellow bg-ink-primary text-ink-inverse"
-                  : "border-ink-inverse border-dashed bg-ink-primary text-ink-inverse"
+                  ? "border-brutalist-yellow bg-ink-inverse/15 text-ink-inverse"
+                  : "border-ink-inverse/40 border-dashed bg-ink-inverse/10 text-ink-inverse"
             }`}
           >
             <div

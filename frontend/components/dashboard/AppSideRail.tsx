@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Moon, Sun } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
+import { usePreferences } from "@/lib/preferences-context";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { useSearchModal } from "./search-modal-context";
 
@@ -10,11 +12,15 @@ export function AppSideRail() {
   const pathname = usePathname();
   const { user } = useAuth();
   const { openSearch } = useSearchModal();
+  const { resolvedTheme, setThemeMode } = usePreferences();
 
   const homeActive = pathname === "/";
   const newActive = pathname === "/new" || pathname.startsWith("/new/");
   const settingsActive =
     pathname === "/settings" || pathname.startsWith("/settings/");
+
+  const switchToLight = resolvedTheme === "dark";
+  const themeToggleLabel = switchToLight ? "Switch to Light" : "Switch to Dark";
 
   // notifications feature deferred — tracked-work #33
 
@@ -22,7 +28,7 @@ export function AppSideRail() {
     `flex h-12 w-12 items-center justify-center rounded-sm border-2 transition-colors ${
       active
         ? "border-border-master bg-brand-primary text-ink-inverse shadow-brutal-sm"
-        : "border-transparent text-ink-secondary hover:border-border-master hover:bg-surface-elevated hover:text-ink-primary"
+        : "border-transparent text-ink-secondary fv-brutal-hover hover:text-ink-primary"
     }`;
 
   return (
@@ -82,6 +88,20 @@ export function AppSideRail() {
           </span>
         </Link>
       </nav>
+
+      <button
+        type="button"
+        className={`${iconClass(false)} mt-auto`}
+        aria-label={themeToggleLabel}
+        title={themeToggleLabel}
+        onClick={() => setThemeMode(switchToLight ? "light" : "dark")}
+      >
+        {switchToLight ? (
+          <Sun className="h-5 w-5" aria-hidden />
+        ) : (
+          <Moon className="h-5 w-5" aria-hidden />
+        )}
+      </button>
     </aside>
   );
 }

@@ -75,6 +75,7 @@ export function TemplatePreviewThumb({
     <div
       ref={hostRef}
       className="lp-template-swatch lp-template-preview"
+      data-theme="light"
       aria-hidden
     >
       {!mounted && fallback ? (

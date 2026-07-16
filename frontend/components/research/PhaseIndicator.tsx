@@ -259,7 +259,7 @@ export function PhaseIndicator({
                 </span>
               )}
               {state === "pending" && (
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-[var(--fv-text-muted)] ring-2 ring-[var(--fv-border)]">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--fv-hover-overlay)] text-[var(--fv-text-muted)] ring-2 ring-[var(--fv-border)]">
                   <span className="h-2 w-2 rounded-full bg-[var(--fv-text-muted)]" />
                 </span>
               )}

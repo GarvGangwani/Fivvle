@@ -6,11 +6,19 @@
 
 @layer utilities {
   .canvas-grid-bg {
-    background-image: radial-gradient(circle, #000 1px, transparent 1px);
+    background-image: radial-gradient(
+      circle,
+      var(--fv-canvas-dot) 1px,
+      transparent 1px
+    );
     background-size: 40px 40px;
   }
   .dashed-underline {
-    background-image: linear-gradient(to right, #000 50%, transparent 50%);
+    background-image: linear-gradient(
+      to right,
+      var(--fv-border-master) 50%,
+      transparent 50%
+    );
     background-size: 16px 1px;
     background-repeat: repeat-x;
     background-position: bottom;
@@ -55,9 +63,9 @@
 }
 
 :root {
-  --fv-accent: #4f46e5;
-  --fv-accent-hover: #3d58e8;
-  --fv-accent-gradient-end: #7c5cff;
+  --fv-accent: #7c3aed;
+  --fv-accent-hover: #6d28d9;
+  --fv-accent-gradient-end: #a78bfa;
   --fv-on-accent: #ffffff;
   --fv-success: #22c55e;
   --fv-warning: #f59e0b;
@@ -85,8 +93,104 @@
   --fv-skeleton-base: rgba(15, 23, 42, 0.04);
   --fv-skeleton-shine: rgba(15, 23, 42, 0.08);
   --fv-hover-overlay: rgba(15, 23, 42, 0.04);
+
+  /* Brutalist surface palette (was hardcoded in tailwind config) */
+  --fv-canvas-bg: #fafafa;
+  --fv-surface-card: #ffffff;
+  --fv-surface-elevated-brutal: #eae6f4;
+  --fv-surface-muted: #f5f2ff;
+
+  /* Ink */
+  --fv-ink-primary: #1b1b24;
+  --fv-ink-secondary: #464555;
+  --fv-ink-tertiary: #777587;
+  --fv-ink-inverse: #ffffff;
+
+  /* Structure */
+  --fv-border-master: #000000;
+  --fv-border-subtle: #e5e7eb;
+  --fv-shadow-color: #000000;
+  --fv-shadow-color-primary: #7c3aed;
+
+  /* Brand soft/deep (tailwind brand-primary-* ) */
+  --fv-brand-soft: #ede9fe;
+  --fv-brand-deep: #5b21b6;
+
+  /* Accents */
+  --fv-yellow: #ffff00;
+
+  /* Code blocks */
+  --fv-code-bg: #f5f2ff;
+  --fv-code-fg: #1b1b24;
+  --fv-code-border: rgba(15, 23, 42, 0.1);
+
+  /* Canvas specifics */
+  --fv-canvas-dot: #000000;
+  --fv-canvas-edge: #777587;
+
   --background: var(--fv-bg);
   --foreground: var(--fv-text);
+}
+
+[data-theme="dark"] {
+  /* --fv-* app tokens */
+  --fv-bg: #0e0b1e;
+  --fv-surface: #17132b;
+  --fv-surface-2: #1d1836;
+  --fv-surface-elevated: #221d3e;
+  --fv-border: rgba(167, 139, 250, 0.14);
+  --fv-border-strong: rgba(167, 139, 250, 0.22);
+  --fv-text: #f5f5f5;
+  --fv-text-soft: #c7c7c7;
+  --fv-text-muted: #9a9a9a;
+  --fv-text-dim: #6b6b6b;
+  --fv-inactive: #3a3a3a;
+  --fv-header-bg: rgba(23, 19, 43, 0.88);
+  --fv-hover-overlay: rgba(167, 139, 250, 0.08);
+  --fv-skeleton-base: rgba(167, 139, 250, 0.08);
+  --fv-skeleton-shine: rgba(167, 139, 250, 0.14);
+  --fv-accent-muted: color-mix(in srgb, var(--fv-accent) 18%, transparent);
+
+  /* Brutalist surface palette */
+  --fv-canvas-bg: #0e0b1e;
+  --fv-surface-card: #17132b;
+  --fv-surface-elevated-brutal: #221d3e;
+  --fv-surface-muted: #191533;
+
+  /* Ink flips for dark */
+  --fv-ink-primary: #f5f5f5;
+  --fv-ink-secondary: #c7c7c7;
+  --fv-ink-tertiary: #8a8a8a;
+  --fv-ink-inverse: #0e0b1e;
+
+  /* Structure */
+  --fv-border-master: #423c5e;
+  --fv-border-subtle: #2a2540;
+  --fv-shadow-color: #7c3aed;
+  --fv-shadow-color-primary: #a78bfa;
+
+  /* Brand soft/deep */
+  --fv-brand-soft: color-mix(in srgb, var(--fv-accent) 22%, var(--fv-surface));
+  --fv-brand-deep: #c4b5fd;
+
+  /* Accents */
+  --fv-yellow: #d9bc1f;
+
+  /* Code blocks */
+  --fv-code-bg: #1d1836;
+  --fv-code-fg: #e4ddfb;
+  --fv-code-border: rgba(167, 139, 250, 0.18);
+
+  /* Canvas specifics */
+  --fv-canvas-dot: rgba(167, 139, 250, 0.1);
+  --fv-canvas-edge: #4a4266;
+
+  /* Semantic */
+  --fv-success: #34d399;
+  --fv-warning: #f59e0b;
+  --fv-danger: #f87171;
+  --fv-danger-light: #ef4444;
+  --fv-on-accent: #ffffff;
 }
 
 * {
@@ -102,8 +206,8 @@ body {
   min-height: 100%;
   min-width: 0;
   overflow-x: hidden;
-  background-color: #fafafa;
-  color: #1b1b24;
+  background-color: var(--fv-canvas-bg);
+  color: var(--fv-ink-primary);
   font-family: "Inter", var(--font-inter), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
@@ -531,12 +635,55 @@ body:has([data-fivvle-public-landing]) {
 }
 
 .fv-sidebar-item:hover {
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--fv-hover-overlay);
+  border-left-color: color-mix(in srgb, var(--fv-accent) 50%, transparent);
 }
 
 .fv-sidebar-item-active {
   background: color-mix(in srgb, var(--fv-accent) 10%, transparent);
   border-left-color: var(--fv-accent);
+}
+
+/* Brutalist interactive cards / canvas nodes */
+.fv-brutal-hover {
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+[data-theme="light"] .fv-brutal-hover:hover {
+  border-color: var(--fv-accent);
+  background: var(--fv-brand-soft);
+  box-shadow: 6px 6px 0 0 var(--fv-shadow-color);
+  transform: translate(-2px, -2px);
+}
+
+[data-theme="dark"] .fv-brutal-hover:hover {
+  border-color: var(--fv-accent);
+  background: var(--fv-surface-2);
+  box-shadow:
+    6px 6px 0 0 var(--fv-shadow-color),
+    0 0 0 3px color-mix(in srgb, var(--fv-accent) 20%, transparent);
+  transform: translate(-2px, -2px);
+}
+
+/* Filled accent surfaces (core node, WIP prize) — glow only, keep fill */
+.fv-brutal-hover-glow {
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+[data-theme="light"] .fv-brutal-hover-glow:hover {
+  box-shadow: 6px 6px 0 0 var(--fv-shadow-color);
+  transform: translate(-2px, -2px);
+}
+
+[data-theme="dark"] .fv-brutal-hover-glow:hover {
+  box-shadow:
+    6px 6px 0 0 var(--fv-shadow-color-primary),
+    0 0 0 3px color-mix(in srgb, var(--fv-accent) 25%, transparent);
+  transform: translate(-2px, -2px);
 }
 
 .fv-shell-sidebar {
@@ -738,7 +885,9 @@ body:has([data-fivvle-public-landing]) {
 .fv-chat-md code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 0.9em;
-  background: color-mix(in srgb, var(--fv-text) 8%, transparent);
+  background: var(--fv-code-bg);
+  color: var(--fv-code-fg);
+  border: 1px solid var(--fv-code-border);
   border-radius: 4px;
   padding: 0.1em 0.35em;
 }
@@ -747,14 +896,17 @@ body:has([data-fivvle-public-landing]) {
   margin: 0.75em 0;
   overflow-x: auto;
   border-radius: 8px;
-  border: 1px solid var(--fv-border);
-  background: var(--fv-surface-2);
+  border: 1px solid var(--fv-code-border);
+  background: var(--fv-code-bg);
+  color: var(--fv-code-fg);
   padding: 0.75em 1em;
 }
 
 .fv-chat-md pre code {
   background: none;
+  border: none;
   padding: 0;
+  color: inherit;
 }
 
 .fv-chat-md blockquote {
@@ -1740,20 +1892,20 @@ body:has([data-fivvle-public-landing]) {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 70% 50% at 50% -10%, rgba(79, 107, 255, 0.18), transparent 55%),
-    radial-gradient(ellipse 40% 30% at 80% 20%, rgba(124, 92, 255, 0.1), transparent 50%);
+    radial-gradient(ellipse 70% 50% at 50% -10%, rgba(124, 58, 237, 0.18), transparent 55%),
+    radial-gradient(ellipse 40% 30% at 80% 20%, rgba(167, 139, 250, 0.12), transparent 50%);
 }
 
 /* Experiment canvas — React Flow chrome */
 .brutalist-controls {
-  border: 2px solid var(--color-border-master, #1b1b24) !important;
-  background: var(--color-surface-card, #fff) !important;
-  box-shadow: 4px 4px 0 0 var(--color-border-master, #1b1b24) !important;
+  border: 2px solid var(--fv-border-master) !important;
+  background: var(--fv-surface-card) !important;
+  box-shadow: 4px 4px 0 0 var(--fv-shadow-color) !important;
 }
 
 .brutalist-controls button {
-  border-bottom: 2px solid var(--color-border-master, #1b1b24) !important;
-  background: var(--color-surface-card, #fff) !important;
+  border-bottom: 2px solid var(--fv-border-master) !important;
+  background: var(--fv-surface-card) !important;
 }
 
 .brutalist-controls button:last-child {
@@ -1761,7 +1913,7 @@ body:has([data-fivvle-public-landing]) {
 }
 
 .brutalist-minimap {
-  border: 2px solid var(--color-border-master, #1b1b24) !important;
-  background: var(--color-surface-card, #fff) !important;
-  box-shadow: 4px 4px 0 0 var(--color-border-master, #1b1b24) !important;
+  border: 2px solid var(--fv-border-master) !important;
+  background: var(--fv-surface-card) !important;
+  box-shadow: 4px 4px 0 0 var(--fv-shadow-color) !important;
 }

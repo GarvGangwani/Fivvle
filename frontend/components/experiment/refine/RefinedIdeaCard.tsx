@@ -37,8 +37,8 @@ export function RefinedIdeaCard({
     <div
       className={`relative rounded-lg border-2 shadow-brutal-lg transition-all ${
         isFinalized && !wipDiffers
-          ? "border-status-success bg-status-success/10"
-          : "border-brand-primary bg-brand-primary text-ink-inverse"
+          ? "border-status-success bg-status-success/10 fv-brutal-hover"
+          : "border-brand-primary bg-brand-primary text-ink-inverse fv-brutal-hover-glow"
       } ${isJustUpdated ? "ring-2 ring-brutalist-yellow ring-offset-2" : ""}`}
     >
       <div className="absolute -top-3 -right-3 z-10">

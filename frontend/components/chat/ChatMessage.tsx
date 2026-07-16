@@ -78,7 +78,7 @@ export function ChatMessage({
             type="button"
             onClick={() => setIsEditing(true)}
             aria-label="Edit message"
-            className="absolute right-0 top-0 rounded-md p-1.5 text-[var(--fv-text-muted)] opacity-0 transition-opacity hover:bg-white/[0.06] hover:text-[var(--fv-text-soft)] group-hover:opacity-100"
+            className="absolute right-0 top-0 rounded-md p-1.5 text-[var(--fv-text-muted)] opacity-0 transition-opacity hover:bg-[var(--fv-hover-overlay)] hover:text-[var(--fv-text-soft)] group-hover:opacity-100"
           >
             <Pencil className="h-3.5 w-3.5" />
           </button>

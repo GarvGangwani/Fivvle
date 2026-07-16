@@ -141,12 +141,12 @@ export function DashedCurvedEdge({
         d={pathD}
         fill="none"
         strokeWidth={1.5}
-        stroke="#777587"
+        stroke="var(--fv-canvas-edge)"
         strokeDasharray="6 8"
         style={style}
       />
-      <circle cx={startPoint.x} cy={startPoint.y} r={3.5} fill="#777587" />
-      <circle cx={endPoint.x} cy={endPoint.y} r={3.5} fill="#777587" />
+      <circle cx={startPoint.x} cy={startPoint.y} r={3.5} fill="var(--fv-canvas-edge)" />
+      <circle cx={endPoint.x} cy={endPoint.y} r={3.5} fill="var(--fv-canvas-edge)" />
     </g>
   );
 }

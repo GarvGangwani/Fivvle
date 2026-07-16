@@ -49,7 +49,7 @@ function confidenceClass(confidence: Finding["confidence"]): string {
     case "medium":
       return "bg-[rgba(245,158,11,0.15)] text-[var(--fv-warning)] ring-[rgba(245,158,11,0.3)]";
     case "low":
-      return "bg-white/10 text-[var(--fv-text-soft)] ring-white/10";
+      return "bg-[var(--fv-hover-overlay)] text-[var(--fv-text-soft)] ring-[var(--fv-border)]";
   }
 }
 
@@ -64,7 +64,7 @@ function recommendationClass(rec: OverallRecommendation): string {
     case "kill":
       return "bg-[rgba(239,68,68,0.15)] text-red-300 ring-[rgba(239,68,68,0.3)]";
     case "too_vague_to_recommend":
-      return "bg-white/10 text-[var(--fv-text-soft)] ring-white/10";
+      return "bg-[var(--fv-hover-overlay)] text-[var(--fv-text-soft)] ring-[var(--fv-border)]";
   }
 }
 

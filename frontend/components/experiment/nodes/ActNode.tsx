@@ -37,8 +37,7 @@ export function ActNode({ data }: NodeProps<ActNodeData>) {
     <div
       className={joinClasses(
         "group rounded-md border-2 border-border-master bg-surface-card shadow-brutal-md w-64 p-4 transition-all z-20",
-        !isLocked &&
-          "cursor-grab hover:bg-brand-primary-soft hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5",
+        !isLocked && "cursor-grab fv-brutal-hover",
         isLocked && "opacity-40 cursor-not-allowed",
         showFocusRing && "ring-2 ring-brand-primary ring-offset-2",
       )}

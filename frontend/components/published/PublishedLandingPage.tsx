@@ -25,15 +25,17 @@ export function PublishedLandingPage({ data }: PublishedLandingPageProps) {
 
   return (
     <PreviewErrorBoundary variant="published">
-      <TemplateRenderer
-        copy={copy}
-        page={page}
-        projectName={data.project_name}
-        templateId={templateId}
-        isPublished
-        ctaConfig={ctaConfig}
-        publicationSlug={data.slug}
-      />
+      <div data-theme="light">
+        <TemplateRenderer
+          copy={copy}
+          page={page}
+          projectName={data.project_name}
+          templateId={templateId}
+          isPublished
+          ctaConfig={ctaConfig}
+          publicationSlug={data.slug}
+        />
+      </div>
     </PreviewErrorBoundary>
   );
 }

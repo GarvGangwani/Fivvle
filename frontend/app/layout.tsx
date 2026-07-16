@@ -40,7 +40,7 @@ export default function RootLayout({
         />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var m=localStorage.getItem("fivvle-reduced-motion");if(m==="true")document.documentElement.setAttribute("data-reduced-motion","true");document.documentElement.setAttribute("data-theme","light");}catch(e){document.documentElement.setAttribute("data-theme","light");}})();`,
+            __html: `(function(){try{var m=localStorage.getItem("fivvle-reduced-motion");if(m==="true")document.documentElement.setAttribute("data-reduced-motion","true");var pref=localStorage.getItem("fivvle-theme")||"system";var resolved=pref;if(pref==="system"){resolved=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";}document.documentElement.setAttribute("data-theme",resolved);}catch(e){document.documentElement.setAttribute("data-theme","light");}})();`,
           }}
         />
       </head>
