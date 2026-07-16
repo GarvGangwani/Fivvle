@@ -19,7 +19,7 @@ export function AppSideRail() {
   // notifications feature deferred — tracked-work #33
 
   const iconClass = (active: boolean) =>
-    `flex h-12 w-12 items-center justify-center border-2 transition-colors ${
+    `flex h-12 w-12 items-center justify-center rounded-sm border-2 transition-colors ${
       active
         ? "border-border-master bg-brand-primary text-ink-inverse shadow-brutal-sm"
         : "border-transparent text-ink-secondary hover:border-border-master hover:bg-surface-elevated hover:text-ink-primary"

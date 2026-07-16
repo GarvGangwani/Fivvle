@@ -56,7 +56,7 @@ export function StatusBadge({ status, forcePill }: StatusBadgeProps) {
 
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-1.5 border-2 border-border-master px-2 py-1 font-label-md text-label-md uppercase ${styles.container}`}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-sm border-2 border-border-master px-2 py-1 font-label-md text-label-md uppercase ${styles.container}`}
     >
       <span
         className={`h-2 w-2 shrink-0 rounded-full ${styles.dot} ${

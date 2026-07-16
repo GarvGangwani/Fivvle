@@ -87,7 +87,7 @@ function RefinementLogViewer({ logEntries }: { logEntries: LogEntry[] }) {
 
   if (logEntries.length === 0) {
     return (
-      <div className="border-2 border-dashed border-border-master p-4">
+      <div className="rounded-md border-2 border-dashed border-border-master p-4">
         <p className="font-body text-body-sm text-ink-tertiary italic">
           Questions and your answers will appear here as you go.
         </p>
@@ -253,7 +253,7 @@ export function LiveWorkspacePanel({
       </div>
 
       {isReadyToFinalize ? (
-        <div className="mb-4 border-2 border-brutalist-yellow bg-brutalist-yellow/20 p-3 flex items-start gap-3">
+        <div className="mb-4 rounded-md border-2 border-brutalist-yellow bg-brutalist-yellow/20 p-3 flex items-start gap-3">
           <span
             className="material-symbols-outlined text-ink-primary shrink-0 mt-0.5"
             style={{ fontSize: 20 }}
@@ -295,7 +295,7 @@ export function LiveWorkspacePanel({
         <div className="font-mono text-mono-sm uppercase text-ink-tertiary mb-2">
           ORIGIN · FROM SPARK v{experiment.current_spark_version || 1}
         </div>
-        <div className="border-2 border-dashed border-border-master p-3 bg-surface-elevated">
+        <div className="rounded-md border-2 border-dashed border-border-master p-3 bg-surface-elevated">
           <p className="font-body text-body-sm text-ink-secondary italic line-clamp-3">
             &ldquo;{experiment.raw_idea?.trim() || "No idea captured in Spark yet."}
             &rdquo;
@@ -306,7 +306,7 @@ export function LiveWorkspacePanel({
       <div className="flex-1" />
 
       {error ? (
-        <div className="border-2 border-status-critical bg-status-critical/10 p-3 mb-4">
+        <div className="rounded-md border-2 border-status-critical bg-status-critical/10 p-3 mb-4">
           <p className="font-body text-body-sm text-status-critical">{error}</p>
         </div>
       ) : null}
@@ -316,7 +316,7 @@ export function LiveWorkspacePanel({
           type="button"
           onClick={() => setFinalizeConfirm(true)}
           disabled={!canFinalize || finalizing}
-          className={`w-full px-6 py-4 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-md hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 ${
+          className={`w-full rounded-sm px-6 py-4 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-md hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 ${
             isFinalized && !wipDiffers
               ? "bg-status-success text-ink-inverse"
               : "bg-brutalist-yellow text-ink-primary"
@@ -346,7 +346,7 @@ export function LiveWorkspacePanel({
         <button
           type="button"
           onClick={() => setResetConfirm(true)}
-          className="w-full border-2 border-border-master bg-surface-card px-6 py-3 font-label-md text-label-md uppercase tracking-wider hover:shadow-brutal-sm transition-all"
+          className="w-full rounded-sm border-2 border-border-master bg-surface-card px-6 py-3 font-label-md text-label-md uppercase tracking-wider hover:shadow-brutal-sm transition-all"
         >
           RESET SESSION
         </button>

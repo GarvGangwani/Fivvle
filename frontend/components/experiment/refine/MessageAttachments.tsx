@@ -25,10 +25,10 @@ export function MessageAttachments({ attachments }: Props) {
       {attachments.map((attachment) => (
         <li
           key={attachment.id}
-          className="border-2 border-border-master bg-surface-card h-14 flex items-center gap-2 px-2 max-w-full"
+          className="rounded-sm border-2 border-border-master bg-surface-card h-14 flex items-center gap-2 px-2 max-w-full"
         >
           {isImageKind(attachment) && attachment.previewUrl ? (
-            <div className="w-12 h-12 border-2 border-border-master overflow-hidden shrink-0 bg-surface-elevated">
+            <div className="w-12 h-12 rounded-sm border-2 border-border-master overflow-hidden shrink-0 bg-surface-elevated">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={attachment.previewUrl}
@@ -37,7 +37,7 @@ export function MessageAttachments({ attachments }: Props) {
               />
             </div>
           ) : (
-            <div className="w-12 h-12 border-2 border-border-master bg-surface-elevated flex items-center justify-center shrink-0">
+            <div className="w-12 h-12 rounded-sm border-2 border-border-master bg-surface-elevated flex items-center justify-center shrink-0">
               <span
                 className="material-symbols-outlined text-ink-secondary"
                 style={{ fontSize: 22 }}

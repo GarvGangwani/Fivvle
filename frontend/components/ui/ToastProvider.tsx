@@ -68,7 +68,7 @@ function ToastItem({
 
   return (
     <div
-      className="pointer-events-auto rounded-full px-4 py-2 text-sm font-medium shadow-lg transition-all duration-300 ease-out"
+      className="pointer-events-auto rounded-md px-4 py-2 text-sm font-medium shadow-lg transition-all duration-300 ease-out"
       style={{
         opacity: visible ? 1 : 0,
         transform: visible ? "translateY(0)" : "translateY(8px)",

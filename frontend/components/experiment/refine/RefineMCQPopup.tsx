@@ -152,7 +152,7 @@ export function RefineMCQPopup({
     <div
       ref={popupRef}
       style={{ left: position.x, top: position.y }}
-      className="fixed z-[60] w-96 bg-brand-primary text-ink-inverse border-2 border-border-master shadow-brutal-lg"
+      className="fixed z-[60] w-96 rounded-md bg-brand-primary text-ink-inverse border-2 border-border-master shadow-brutal-lg"
     >
       <div
         onMouseDown={handleDragStart}
@@ -201,7 +201,7 @@ export function RefineMCQPopup({
                 key={`${letter}-${option}`}
                 type="button"
                 onClick={() => toggleOption(i)}
-                className={`w-full flex items-stretch border-2 transition-all ${
+                className={`w-full flex items-stretch rounded-sm border-2 transition-all ${
                   isSelected
                     ? "border-brutalist-yellow bg-brutalist-yellow text-ink-primary"
                     : "border-ink-inverse bg-ink-primary text-ink-inverse hover:bg-ink-inverse/10"
@@ -236,7 +236,7 @@ export function RefineMCQPopup({
           })}
 
           <div
-            className={`w-full flex items-stretch border-2 transition-all ${
+            className={`w-full flex items-stretch rounded-sm border-2 transition-all ${
               hasCustom
                 ? "border-brutalist-yellow bg-brutalist-yellow text-ink-primary"
                 : customFocused
@@ -289,7 +289,7 @@ export function RefineMCQPopup({
           type="button"
           onClick={handleSubmit}
           disabled={!canSubmit}
-          className="mt-4 w-full bg-brutalist-yellow text-ink-primary px-6 py-3 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-md hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+          className="mt-4 w-full rounded-sm bg-brutalist-yellow text-ink-primary px-6 py-3 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-md hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
         >
           <span
             className="material-symbols-outlined"

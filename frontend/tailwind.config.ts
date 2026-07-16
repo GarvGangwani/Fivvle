@@ -68,11 +68,15 @@ const config: Config = {
       },
 
       borderRadius: {
-        DEFAULT: "0px",
-        sm: "0px",
-        md: "0px",
-        lg: "0px",
-        xl: "0px",
+        DEFAULT: "var(--fv-radius-md)",
+        none: "0px",
+        xs: "var(--fv-radius-xs)",
+        sm: "var(--fv-radius-sm)",
+        md: "var(--fv-radius-md)",
+        lg: "var(--fv-radius-lg)",
+        xl: "var(--fv-radius-xl)",
+        "2xl": "var(--fv-radius-xl)",
+        pill: "var(--fv-radius-pill)",
         full: "9999px",
       },
 

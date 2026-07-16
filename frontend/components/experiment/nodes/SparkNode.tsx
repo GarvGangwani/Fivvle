@@ -24,7 +24,7 @@ export function SparkNode({ data }: NodeProps<SparkNodeData>) {
   return (
     <div
       className={joinClasses(
-        "border-2 border-border-master bg-surface-card shadow-brutal-md w-64 p-4 cursor-pointer transition-all",
+        "rounded-md border-2 border-border-master bg-surface-card shadow-brutal-md w-64 p-4 cursor-pointer transition-all",
         "hover:bg-brand-primary-soft hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5",
         isFocused && "ring-2 ring-brand-primary ring-offset-2",
       )}

@@ -52,7 +52,7 @@ export function ProjectCard({ experiment, archived = false }: ProjectCardProps) 
       tabIndex={0}
       onClick={navigate}
       onKeyDown={handleKeyDown}
-      className={`group flex cursor-pointer flex-col border-2 border-border-master bg-surface-card ${hoverClass} ${
+      className={`group flex cursor-pointer flex-col rounded-md border-2 border-border-master bg-surface-card ${hoverClass} ${
         archived ? "opacity-70" : ""
       }`}
     >
@@ -99,7 +99,7 @@ export function ProjectCard({ experiment, archived = false }: ProjectCardProps) 
             tags.map((tag) => (
               <span
                 key={tag}
-                className="border-2 border-border-master bg-surface-elevated px-2 py-1 font-mono text-mono-sm uppercase text-ink-secondary"
+                className="rounded-sm border-2 border-border-master bg-surface-elevated px-2 py-1 font-mono text-mono-sm uppercase text-ink-secondary"
               >
                 {tag}
               </span>

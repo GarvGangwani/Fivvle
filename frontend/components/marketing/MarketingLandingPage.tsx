@@ -38,7 +38,7 @@ export function MarketingLandingPage() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-24 left-1/2 z-[60] -translate-x-1/2 border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md text-ink-primary shadow-brutal-md md:bottom-8"
+          className="fixed bottom-24 left-1/2 z-[60] -translate-x-1/2 rounded-md border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md text-ink-primary shadow-brutal-md md:bottom-8"
         >
           {toastMessage}
         </div>

@@ -47,7 +47,7 @@ export function CanvasActivityPanel({ experimentId }: Props) {
 
   return (
     <aside
-      className={`fixed right-6 top-20 z-20 border-2 border-border-master bg-surface-card shadow-brutal-md transition-all ${
+      className={`fixed right-6 top-20 z-20 rounded-md border-2 border-border-master bg-surface-card shadow-brutal-md transition-all ${
         collapsed ? "w-10" : "w-80"
       }`}
     >
@@ -85,7 +85,7 @@ export function CanvasActivityPanel({ experimentId }: Props) {
               items.map((item) => (
                 <div
                   key={`${item.event_type}-${item.id}`}
-                  className="flex items-stretch gap-2 border-2 border-border-master bg-surface-elevated p-2"
+                  className="flex items-stretch gap-2 rounded-sm border-2 border-border-master bg-surface-elevated p-2"
                 >
                   <div
                     className={`w-1 shrink-0 ${

@@ -46,7 +46,7 @@ export function CanvasComposerPill({ experimentId, focusedAct }: Props) {
 
   return (
     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4">
-      <div className="flex items-center gap-3 bg-surface-card border-2 border-brand-primary shadow-brutal-md px-4 py-3">
+      <div className="flex items-center gap-3 rounded-md bg-surface-card border-2 border-brand-primary shadow-brutal-md px-4 py-3">
         <span className="material-symbols-outlined text-brand-primary" aria-hidden="true">
           auto_awesome
         </span>
@@ -63,7 +63,7 @@ export function CanvasComposerPill({ experimentId, focusedAct }: Props) {
           type="button"
           onClick={() => void handleSubmit()}
           disabled={loading}
-          className="bg-ink-primary text-ink-inverse px-6 py-2 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-sm hover:shadow-brutal-md hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none transition-all disabled:opacity-60"
+          className="rounded-sm bg-ink-primary text-ink-inverse px-6 py-2 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-sm hover:shadow-brutal-md hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none transition-all disabled:opacity-60"
         >
           {loading ? "..." : "SEND"}
         </button>

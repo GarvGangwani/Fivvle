@@ -36,7 +36,7 @@ export function ActNode({ data }: NodeProps<ActNodeData>) {
   return (
     <div
       className={joinClasses(
-        "group border-2 border-border-master bg-surface-card shadow-brutal-md w-64 p-4 transition-all z-20",
+        "group rounded-md border-2 border-border-master bg-surface-card shadow-brutal-md w-64 p-4 transition-all z-20",
         !isLocked &&
           "cursor-grab hover:bg-brand-primary-soft hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5",
         isLocked && "opacity-40 cursor-not-allowed",
@@ -116,7 +116,7 @@ export function ActNode({ data }: NodeProps<ActNodeData>) {
                   data.onRerun?.();
                 }}
                 disabled={data.rerunning}
-                className="w-full bg-brand-primary text-ink-inverse px-3 py-2 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-sm hover:shadow-brutal-md transition-all disabled:opacity-50"
+                className="w-full rounded-sm bg-brand-primary text-ink-inverse px-3 py-2 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-sm hover:shadow-brutal-md transition-all disabled:opacity-50"
               >
                 {data.rerunning
                   ? "RE-RUNNING..."

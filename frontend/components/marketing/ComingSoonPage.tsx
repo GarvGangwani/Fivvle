@@ -72,7 +72,7 @@ export function ComingSoonPage({
       <MarketingNav />
       <main className="canvas-grid-bg relative flex flex-1 flex-col border-b-2 border-border-master pt-16">
         <div className="flex flex-1 items-center justify-center px-gutter py-24">
-          <article className="mx-auto w-full max-w-2xl border-2 border-border-master bg-surface-card p-12 shadow-brutal-md">
+          <article className="mx-auto w-full max-w-2xl rounded-md border-2 border-border-master bg-surface-card p-12 shadow-brutal-md">
             <p className="font-label-md text-label-md uppercase text-brand-primary">
               {eyebrow}
             </p>
@@ -95,7 +95,7 @@ export function ComingSoonPage({
                     disabled={status === "done"}
                     placeholder="you@company.com"
                     autoComplete="email"
-                    className="w-full border-2 border-border-master bg-canvas-bg px-4 py-3 font-body-md text-body-md shadow-brutal-sm focus:border-brand-primary focus:outline-none disabled:opacity-60"
+                    className="w-full rounded-md border-2 border-border-master bg-canvas-bg px-4 py-3 font-body-md text-body-md shadow-brutal-sm focus:border-brand-primary focus:outline-none disabled:opacity-60"
                   />
                 </label>
                 <button

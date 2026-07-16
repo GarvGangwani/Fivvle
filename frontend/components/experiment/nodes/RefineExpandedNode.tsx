@@ -60,7 +60,7 @@ export function RefineExpandedNode({ data }: NodeProps<RefineExpandedData>) {
 
   return (
     <div
-      className="w-[560px] bg-surface-card border-2 border-border-master shadow-brutal-lg flex flex-col overflow-hidden"
+      className="w-[560px] rounded-md bg-surface-card border-2 border-border-master shadow-brutal-lg flex flex-col overflow-hidden"
       style={{ maxHeight: "80vh", minHeight: "500px" }}
     >
       <div className="bg-ink-primary text-ink-inverse flex items-center justify-between px-4 py-3 shrink-0 cursor-grab active:cursor-grabbing">

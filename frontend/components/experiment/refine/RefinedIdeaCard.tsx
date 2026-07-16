@@ -35,7 +35,7 @@ export function RefinedIdeaCard({
 
   return (
     <div
-      className={`relative border-2 shadow-brutal-lg transition-all ${
+      className={`relative rounded-lg border-2 shadow-brutal-lg transition-all ${
         isFinalized && !wipDiffers
           ? "border-status-success bg-status-success/10"
           : "border-brand-primary bg-brand-primary text-ink-inverse"
@@ -43,7 +43,7 @@ export function RefinedIdeaCard({
     >
       <div className="absolute -top-3 -right-3 z-10">
         {isFinalized && !wipDiffers ? (
-          <div className="bg-status-success text-ink-inverse px-3 py-1 border-2 border-border-master shadow-brutal-sm font-mono text-mono-sm uppercase font-bold flex items-center gap-1">
+          <div className="rounded-sm bg-status-success text-ink-inverse px-3 py-1 border-2 border-border-master shadow-brutal-sm font-mono text-mono-sm uppercase font-bold flex items-center gap-1">
             <span
               className="material-symbols-outlined"
               style={{ fontSize: 14 }}
@@ -54,7 +54,7 @@ export function RefinedIdeaCard({
             FINALIZED
           </div>
         ) : (
-          <div className="bg-brutalist-yellow text-ink-primary px-3 py-1 border-2 border-border-master shadow-brutal-sm font-mono text-mono-sm uppercase font-bold">
+          <div className="rounded-sm bg-brutalist-yellow text-ink-primary px-3 py-1 border-2 border-border-master shadow-brutal-sm font-mono text-mono-sm uppercase font-bold">
             {wipDiffers ? "UPDATED WIP" : "WIP"}
           </div>
         )}

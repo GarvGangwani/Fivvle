@@ -25,7 +25,7 @@ export function UsageSidebarCard({
   );
 
   return (
-    <div className="flex h-full min-h-[280px] flex-col border-2 border-border-master bg-surface-elevated p-6 shadow-brutal-md lg:min-h-[320px]">
+    <div className="flex h-full min-h-[280px] flex-col rounded-md border-2 border-border-master bg-surface-elevated p-6 shadow-brutal-md lg:min-h-[320px]">
       <div className="text-center">
         <span
           className="material-symbols-outlined text-[36px] text-brand-primary"

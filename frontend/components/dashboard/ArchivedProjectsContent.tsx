@@ -123,7 +123,7 @@ export function ArchivedProjectsContent() {
       ) : null}
 
       {experiments.length === 0 ? (
-        <div className="border-2 border-border-master bg-surface-card p-10 text-center shadow-brutal-md">
+        <div className="rounded-md border-2 border-border-master bg-surface-card p-10 text-center shadow-brutal-md">
           <p className="font-headline text-headline-md text-ink-primary">
             No archived experiments
           </p>

@@ -65,7 +65,7 @@ export function HomeOverviewContent() {
   if (sorted.length === 0) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center py-12">
-        <div className="max-w-xl border-2 border-border-master bg-surface-card p-10 text-center shadow-brutal-md">
+        <div className="max-w-xl rounded-md border-2 border-border-master bg-surface-card p-10 text-center shadow-brutal-md">
           <p className="font-label-md text-label-md uppercase text-ink-tertiary">
             WELCOME
           </p>

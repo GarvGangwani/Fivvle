@@ -62,10 +62,12 @@
   --fv-success: #22c55e;
   --fv-warning: #f59e0b;
   --fv-danger: #ef4444;
+  --fv-radius-xs: 4px;
   --fv-radius-sm: 8px;
   --fv-radius-md: 12px;
   --fv-radius-lg: 16px;
   --fv-radius-xl: 20px;
+  --fv-radius-pill: 9999px;
   --fv-bg: #f4f6fb;
   --fv-surface: #ffffff;
   --fv-surface-2: #eef1f8;
@@ -582,7 +584,7 @@ body:has([data-fivvle-public-landing]) {
 .fv-btn-primary {
   background: var(--fv-accent);
   border: none;
-  border-radius: 12px;
+  border-radius: var(--fv-radius-md);
   color: var(--fv-on-accent);
   font-weight: 600;
   cursor: pointer;
@@ -610,7 +612,7 @@ body:has([data-fivvle-public-landing]) {
 .fv-btn-ghost {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--fv-border-strong);
-  border-radius: 8px;
+  border-radius: var(--fv-radius-sm);
   color: var(--fv-text-soft);
   cursor: pointer;
   transition: all 0.15s;
@@ -625,7 +627,7 @@ body:has([data-fivvle-public-landing]) {
 .fv-input {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  border-radius: var(--fv-radius-md);
   color: var(--fv-text);
   outline: none;
   transition: border-color 0.2s;
@@ -823,7 +825,7 @@ body:has([data-fivvle-public-landing]) {
 .fv-icon-btn {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
+  border-radius: var(--fv-radius-sm);
   width: 34px;
   height: 34px;
   display: flex;

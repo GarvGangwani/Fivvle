@@ -11,7 +11,7 @@ type CoreShellData = {
 
 export function CoreShellNode({ data }: NodeProps<CoreShellData>) {
   return (
-    <div className="bg-brand-primary text-ink-inverse border-2 border-border-master shadow-brutal-md w-80 p-8 z-20">
+    <div className="bg-brand-primary text-ink-inverse rounded-md border-2 border-border-master shadow-brutal-md w-80 p-8 z-20">
       <div className="flex justify-between items-start mb-4">
         <span className="bg-surface-card text-ink-primary px-2 py-0.5 font-mono text-mono-sm uppercase tracking-widest">
           ACTIVE SHELL

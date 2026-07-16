@@ -106,7 +106,7 @@ const BRUTALIST_MARKDOWN_COMPONENTS: Components = {
     );
   },
   pre: ({ children }) => (
-    <pre className="bg-ink-primary text-ink-inverse p-4 font-mono text-mono-md overflow-x-auto border-2 border-border-master my-3">
+    <pre className="bg-ink-primary text-ink-inverse p-4 font-mono text-mono-md overflow-x-auto rounded-md border-2 border-border-master my-3">
       {children}
     </pre>
   ),
@@ -234,7 +234,7 @@ function UserMessage({
   return (
     <div className="flex justify-end gap-3 mb-6">
       <div className="max-w-[75%] flex flex-col items-end">
-        <div className="border-2 border-border-master bg-surface-card shadow-brutal-sm p-4">
+        <div className="rounded-md border-2 border-border-master bg-surface-card shadow-brutal-sm p-4">
           {message.content ? (
             <p className="font-body text-body-md whitespace-pre-wrap">
               {message.content}
@@ -310,7 +310,7 @@ function AssistantMessage({
         </p>
         <div
           className={[
-            "border-2 border-border-master border-l-4 bg-brand-primary-soft shadow-brutal-sm p-4",
+            "rounded-md border-2 border-border-master border-l-4 bg-brand-primary-soft shadow-brutal-sm p-4",
             isCompletionSignal
               ? "border-l-brutalist-yellow"
               : "border-l-brand-primary",
