@@ -12,6 +12,9 @@ export type ActNodeData = {
   validationPercent?: number;
   isRunning: boolean;
   isFocused?: boolean;
+  isLocked?: boolean;
+  unlockRequirement?: string;
+  /** @deprecated Prefer isLocked — kept for temporary back-compat */
   isDisabled?: boolean;
   isStale?: boolean;
   basedOnVersion?: number | null;
@@ -27,18 +30,25 @@ function joinClasses(...parts: Array<string | false | undefined>): string {
 
 export function ActNode({ data }: NodeProps<ActNodeData>) {
   const isActive = data.isRunning;
-  const showFocusRing = Boolean(data.isFocused) || isActive;
+  const isLocked = Boolean(data.isLocked ?? data.isDisabled);
+  const showFocusRing = !isLocked && (Boolean(data.isFocused) || isActive);
 
   return (
     <div
       className={joinClasses(
-        "group border-2 border-border-master bg-surface-card shadow-brutal-md w-64 p-4 cursor-grab transition-all z-20",
-        "hover:bg-brand-primary-soft hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5",
+        "group border-2 border-border-master bg-surface-card shadow-brutal-md w-64 p-4 transition-all z-20",
+        !isLocked &&
+          "cursor-grab hover:bg-brand-primary-soft hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5",
+        isLocked && "opacity-40 cursor-not-allowed",
         showFocusRing && "ring-2 ring-brand-primary ring-offset-2",
-        data.isDisabled && "opacity-50",
       )}
     >
-      <div className={joinClasses("flex items-center gap-2 mb-3", isActive && "text-brand-primary")}>
+      <div
+        className={joinClasses(
+          "flex items-center gap-2 mb-3",
+          isActive && "text-brand-primary",
+        )}
+      >
         <div
           className={joinClasses(
             "w-2 h-2 rounded-full",
@@ -59,17 +69,22 @@ export function ActNode({ data }: NodeProps<ActNodeData>) {
           <p className="text-mono-sm font-bold text-ink-primary/50 uppercase">
             {data.metricLabel}
           </p>
-          <p className="font-headline text-headline-md leading-none">{data.metricValue}</p>
+          <p className="font-headline text-headline-md leading-none uppercase">
+            {isLocked ? "LOCKED" : data.metricValue}
+          </p>
         </div>
         <span
-          className="material-symbols-outlined text-ink-primary/20 group-hover:text-ink-primary"
+          className={joinClasses(
+            "material-symbols-outlined text-ink-primary/20",
+            !isLocked && "group-hover:text-ink-primary",
+          )}
           aria-hidden="true"
         >
-          {data.icon}
+          {isLocked ? "lock" : data.icon}
         </span>
       </div>
 
-      {data.validationPercent !== undefined ? (
+      {data.validationPercent !== undefined && !isLocked ? (
         <div className="mt-4 bg-ink-primary/5 p-2">
           <span className="text-mono-sm font-black uppercase">
             {data.validationPercent}% VALIDATED
@@ -77,7 +92,7 @@ export function ActNode({ data }: NodeProps<ActNodeData>) {
         </div>
       ) : null}
 
-      {data.isStale ? (
+      {data.isStale && !isLocked ? (
         <div className="mt-3 border-t-2 border-brutalist-yellow bg-brutalist-yellow/20 p-2 -mx-4 -mb-4">
           <div className="flex items-center gap-2 px-4">
             <span
