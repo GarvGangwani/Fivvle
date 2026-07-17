@@ -10,9 +10,13 @@ import type {
   ExperimentAnalytics,
   ExperimentChatMessagesResponse,
   ChatEditTurnResponse,
+  EvidenceChatFeedbackResponse,
   EvidenceChatMessagesResponse,
+  EvidenceChatRegenerateRequest,
+  EvidenceChatRegenerateResponse,
   EvidenceChatSendRequest,
   EvidenceChatSendResponse,
+  EvidenceChatVerdict,
   ExperimentDetail,
   ExperimentSummary,
   SearchResult,
@@ -393,6 +397,28 @@ export async function sendEvidenceChatMessage(
   return apiFetch<EvidenceChatSendResponse>(
     `/experiments/${experimentId}/evidence-chat`,
     { method: "POST", body },
+  );
+}
+
+export async function regenerateEvidenceChatMessage(
+  experimentId: string,
+  assistantMessageId: string,
+  body: EvidenceChatRegenerateRequest,
+): Promise<EvidenceChatRegenerateResponse> {
+  return apiFetch<EvidenceChatRegenerateResponse>(
+    `/experiments/${experimentId}/evidence-chat/messages/${assistantMessageId}/regenerate`,
+    { method: "POST", body },
+  );
+}
+
+export async function sendEvidenceChatFeedback(
+  experimentId: string,
+  messageId: string,
+  verdict: EvidenceChatVerdict,
+): Promise<EvidenceChatFeedbackResponse> {
+  return apiFetch<EvidenceChatFeedbackResponse>(
+    `/experiments/${experimentId}/evidence-chat/messages/${messageId}/feedback`,
+    { method: "POST", body: { verdict } },
   );
 }
 

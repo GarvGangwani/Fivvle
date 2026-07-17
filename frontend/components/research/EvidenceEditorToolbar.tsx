@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import {
   Bold,
@@ -7,7 +8,9 @@ import {
   Underline as UnderlineIcon,
   RemoveFormatting,
   Ban,
+  ChevronDown,
 } from "lucide-react";
+import type { SaveStatus } from "@/components/research/EvidenceReportEditor";
 
 const FONT_SIZES = ["12", "14", "16", "18", "24"] as const;
 const DEFAULT_FONT_SIZE = "16";
@@ -88,8 +91,15 @@ function Divider() {
   return <span aria-hidden="true" className="mx-1 h-6 w-px bg-border-master" />;
 }
 
-export function EvidenceEditorToolbar({ editor }: { editor: Editor | null }) {
-  if (!editor) return null;
+/**
+ * Font-size picker. Its own component so the open/click-outside state lives
+ * below the toolbar's `if (!editor) return null` early exit (hooks can't sit
+ * above a conditional return). The menu is absolutely positioned + z-20 so it
+ * layers over the editor body below.
+ */
+function FontSizeDropdown({ editor }: { editor: Editor }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
 
   const currentFontSize =
     (editor.getAttributes("textStyle").fontSize as string | undefined)?.replace(
@@ -97,14 +107,96 @@ export function EvidenceEditorToolbar({ editor }: { editor: Editor | null }) {
       "",
     ) ?? DEFAULT_FONT_SIZE;
 
+  useEffect(() => {
+    if (!open) return;
+    function onDocMouseDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [open]);
+
   function applyFontSize(value: string) {
-    if (!editor) return;
     if (value === DEFAULT_FONT_SIZE) {
       editor.chain().focus().unsetFontSize().run();
-      return;
+    } else {
+      editor.chain().focus().setFontSize(`${value}px`).run();
     }
-    editor.chain().focus().setFontSize(`${value}px`).run();
+    setOpen(false);
   }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="Font size"
+        title="Font size"
+        className="flex h-8 items-center gap-1 border-2 border-border-master bg-surface-card px-2 font-mono text-mono-sm text-ink-primary transition-shadow hover:shadow-brutal-sm"
+      >
+        <span className="tabular-nums">{currentFontSize}</span>
+        <ChevronDown className="h-3.5 w-3.5" />
+      </button>
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Font size"
+          className="absolute left-0 top-full z-20 mt-1 flex w-16 flex-col border-2 border-border-master bg-surface-card shadow-brutal-sm"
+        >
+          {FONT_SIZES.map((size) => (
+            <button
+              key={size}
+              type="button"
+              role="option"
+              aria-selected={size === currentFontSize}
+              onClick={() => applyFontSize(size)}
+              className={`px-2 py-1.5 text-left font-mono text-mono-sm ${
+                size === currentFontSize
+                  ? "bg-brand-primary text-ink-inverse"
+                  : "text-ink-primary hover:bg-surface-muted"
+              }`}
+            >
+              {size}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function saveStatusLabel(status: SaveStatus, lastSavedAt: Date | null): string {
+  switch (status) {
+    case "saving":
+      return "Saving…";
+    case "unsaved":
+      return "Unsaved changes";
+    case "error":
+      return "Save failed — will retry on next edit";
+    case "saved":
+      return lastSavedAt
+        ? `Saved • ${lastSavedAt.toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit",
+          })}`
+        : "Saved";
+    default:
+      return "";
+  }
+}
+
+export function EvidenceEditorToolbar({
+  editor,
+  status,
+  lastSavedAt,
+}: {
+  editor: Editor | null;
+  status: SaveStatus;
+  lastSavedAt: Date | null;
+}) {
+  if (!editor) return null;
 
   return (
     <div className="flex flex-wrap items-center gap-1 border-2 border-border-master bg-surface-card p-2 shadow-brutal-sm">
@@ -132,21 +224,7 @@ export function EvidenceEditorToolbar({ editor }: { editor: Editor | null }) {
 
       <Divider />
 
-      <label className="sr-only" htmlFor="evidence-font-size">
-        Font size
-      </label>
-      <select
-        id="evidence-font-size"
-        value={currentFontSize}
-        onChange={(e) => applyFontSize(e.target.value)}
-        className="h-8 border-2 border-border-master bg-surface-card px-1 font-mono text-mono-sm text-ink-primary"
-      >
-        {FONT_SIZES.map((size) => (
-          <option key={size} value={size}>
-            {size}
-          </option>
-        ))}
-      </select>
+      <FontSizeDropdown editor={editor} />
 
       <Divider />
 
@@ -198,6 +276,18 @@ export function EvidenceEditorToolbar({ editor }: { editor: Editor | null }) {
       >
         <RemoveFormatting className="h-4 w-4" />
       </ToolbarButton>
+
+      <div className="ml-auto flex items-center gap-1">
+        <Divider />
+        <span
+          aria-live="polite"
+          className={`whitespace-nowrap px-1 font-mono text-mono-sm uppercase ${
+            status === "error" ? "text-status-critical" : "text-ink-tertiary"
+          }`}
+        >
+          {saveStatusLabel(status, lastSavedAt)}
+        </span>
+      </div>
     </div>
   );
 }

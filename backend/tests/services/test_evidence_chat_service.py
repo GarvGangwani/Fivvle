@@ -225,7 +225,7 @@ async def test_send_happy_path_persists_turn_and_creates_thread(
     # LLM call used the evidence-chat prompt name + phase.
     assert mock_complete.await_count == 1
     kwargs = mock_complete.call_args.kwargs
-    assert kwargs["prompt_name"] == "evidence_chat_v1"
+    assert kwargs["prompt_name"] == "evidence_chat_v2"
     assert kwargs["phase"] == "evidence_chat"
     assert kwargs["max_tokens"] == 1024
 

@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import type { OverallRecommendation, ValidationReport } from "@/lib/types";
 import { getValidationReport } from "@/lib/api";
-import { resolveReportScores } from "@/lib/validation-report-scores";
-import { ReportScoreSection } from "@/components/research/ReportScoreSection";
 import {
   EvidenceReportEditor,
   type EvidenceSelection,
@@ -63,7 +61,7 @@ export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
 
   if (loading) {
     return (
-      <div className="h-full overflow-y-auto p-4">
+      <div className="h-full overflow-hidden p-4">
         <div className="fv-skeleton h-full min-h-[400px] w-full" />
       </div>
     );
@@ -71,7 +69,7 @@ export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
 
   if (error || !report) {
     return (
-      <div className="h-full overflow-y-auto p-4">
+      <div className="h-full overflow-hidden p-4">
         <div className="border-2 border-border-master bg-surface-card p-4 font-mono text-mono-sm uppercase text-status-critical shadow-brutal-sm">
           {error ?? "Validation report unavailable."}
         </div>
@@ -79,52 +77,45 @@ export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
     );
   }
 
-  const scores = resolveReportScores(report);
   const showRecommendation =
     report.overall_recommendation !== "too_vague_to_recommend";
 
   return (
-    <div className="h-full overflow-y-auto p-4">
-      <div className="grid gap-4 lg:grid-cols-[35%_65%]">
+    <div className="h-full overflow-hidden p-4">
+      <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[35%_65%]">
         <EvidenceChatPane
           experimentId={experimentId}
+          report={report}
           selection={selection}
           onClearSelection={() => setSelection(null)}
         />
 
-        <div className="space-y-4">
-          {stale && <StalenessBanner />}
-
-          <div className="flex flex-wrap items-center gap-3">
-            {showRecommendation && (
+        {/* Report pane: pinned header (recommendation only) + independently
+            scrolling body. Own flex column so it scrolls apart from the chat. */}
+        <div className="flex h-full min-h-0 flex-col">
+          {showRecommendation && (
+            <div className="shrink-0 pb-3">
               <span
-                className={`border-2 border-border-master px-3 py-1 font-mono text-mono-sm uppercase shadow-brutal-sm ${recommendationBadgeClass(
+                className={`inline-block border-2 border-border-master px-3 py-1 font-mono text-mono-sm uppercase shadow-brutal-sm ${recommendationBadgeClass(
                   report.overall_recommendation,
                 )}`}
               >
                 {formatRecommendation(report.overall_recommendation)}
               </span>
-            )}
-            <span className="inline-flex items-center gap-2 border-2 border-border-master bg-surface-card px-3 py-1 font-mono text-mono-sm uppercase text-ink-primary shadow-brutal-sm">
-              Overall
-              <strong className="text-base">{scores.overall}</strong>
-            </span>
+            </div>
+          )}
+
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+            {stale && <StalenessBanner />}
+
+            <EvidenceReportEditor
+              experimentId={experimentId}
+              onStaleChange={setStale}
+              onSelectionChange={setSelection}
+            />
+
+            <EvidenceSourcesBook report={report} />
           </div>
-
-          <ReportScoreSection
-            report={report}
-            sections={scores.sections}
-            overall={scores.overall}
-            derived={scores.derived}
-          />
-
-          <EvidenceReportEditor
-            experimentId={experimentId}
-            onStaleChange={setStale}
-            onSelectionChange={setSelection}
-          />
-
-          <EvidenceSourcesBook report={report} />
         </div>
       </div>
     </div>
