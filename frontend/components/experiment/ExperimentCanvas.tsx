@@ -35,6 +35,7 @@ import {
   DEFAULT_POSITIONS,
   MIN_CANVAS_ZOOM,
   formatCanvasMetric,
+  getNodeLockState,
   getPhasesComplete,
   isActRunning,
   snapOutOfExclusionZone,
@@ -84,20 +85,22 @@ const nodeTypes: NodeTypes = {
 };
 
 const edgeTypes: EdgeTypes = {
-  // Experiment: curved bezier behind same key for easy revert.
   "dashed-straight": DashedCurvedEdge,
 };
 
-const INITIAL_EDGES: Edge[] = SATELLITE_IDS.map((id) => ({
-  id: `e-${id}`,
-  source: id,
-  sourceHandle: "out",
-  target: "core",
-  targetHandle: "core-anchor",
-  type: "dashed-straight",
-  selectable: false,
-  focusable: false,
-}));
+function buildSatelliteEdges(experiment: Experiment): Edge[] {
+  return SATELLITE_IDS.map((id) => ({
+    id: `e-${id}`,
+    source: id,
+    sourceHandle: "out",
+    target: "core",
+    targetHandle: "core-anchor",
+    type: "dashed-straight",
+    selectable: false,
+    focusable: false,
+    data: { isLocked: getNodeLockState(id, experiment).isLocked },
+  }));
+}
 
 const FRAME_CANVAS_DURATION_MS = 200;
 
@@ -266,6 +269,14 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     return { x: refinePos.x + 340, y: refinePos.y };
   }, [positions]);
 
+  useEffect(() => {
+    if (!refinePanelOpen) return;
+    if (!getNodeLockState("refine", experiment).isLocked) return;
+    setRefinePanelOpen(false);
+    setRefinePanelPosition(null);
+    setRefineFullscreen(false);
+  }, [experiment, refinePanelOpen]);
+
   // When the panel is open but local position is unset (URL deep-link / popstate),
   // wait until layout has loaded so we read spark-expanded from backend-synced state.
   useEffect(() => {
@@ -366,6 +377,15 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   }, [setRefineUrl]);
 
   const openRefinePanel = useCallback(() => {
+    const lockState = getNodeLockState("refine", experiment);
+    if (lockState.isLocked) {
+      toast(
+        lockState.unlockRequirement ??
+          "Save your idea in Spark first to unlock Refine.",
+        "info",
+      );
+      return;
+    }
     if (refinePanelOpen) return;
     const savedPos = positions[REFINE_EXPANDED_ID];
     setRefinePanelPosition(savedPos ?? computeInitialRefinePosition());
@@ -374,7 +394,14 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     setSparkFullscreen(false);
     setSparkPanelPosition(null);
     setRefineUrl(true);
-  }, [refinePanelOpen, positions, computeInitialRefinePosition, setRefineUrl]);
+  }, [
+    refinePanelOpen,
+    positions,
+    computeInitialRefinePosition,
+    setRefineUrl,
+    experiment,
+    toast,
+  ]);
 
   const openRefineFullscreen = useCallback(() => {
     setRefineFullscreen(true);
@@ -436,7 +463,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
 
   const buildNodes = useCallback((): Node[] => {
     const currentSparkVersion = experiment.current_spark_version ?? 0;
-    const refineLocked = currentSparkVersion < 1;
     const phaseStale = {
       refine: {
         isStale: Boolean(experiment.refine_is_stale),
@@ -495,6 +521,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
           id in phaseStale
             ? phaseStale[id as keyof typeof phaseStale]
             : null;
+        const lockState = getNodeLockState(id, experiment);
         return {
           id,
           type: "actNode" as const,
@@ -507,8 +534,10 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
             metricLabel: config.metricLabel,
             metricValue: metrics[id],
             isRunning: isActRunning(id, experiment.status),
-            isFocused: id === "refine" ? refinePanelOpen || refineFullscreen : false,
-            isDisabled: id === "refine" ? refineLocked : false,
+            isFocused:
+              id === "refine" ? refinePanelOpen || refineFullscreen : false,
+            isLocked: lockState.isLocked,
+            unlockRequirement: lockState.unlockRequirement,
             isStale: stale?.isStale ?? false,
             basedOnVersion: stale?.basedOnVersion ?? null,
             currentSparkVersion,
@@ -602,11 +631,17 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes());
-  const [edges, , onEdgesChange] = useEdgesState(INITIAL_EDGES);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(
+    buildSatelliteEdges(experiment),
+  );
 
   useEffect(() => {
     setNodes(buildNodes());
   }, [buildNodes, setNodes]);
+
+  useEffect(() => {
+    setEdges(buildSatelliteEdges(experiment));
+  }, [experiment, setEdges]);
 
   const frameCanvas = useCallback(() => {
     const zoom = Math.max(MIN_CANVAS_ZOOM, DEFAULT_CANVAS_ZOOM);
@@ -654,22 +689,31 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
     if (node.id === SPARK_EXPANDED_ID || node.id === REFINE_EXPANDED_ID) return;
+
+    const lockState = getNodeLockState(node.id, experiment);
+    if (lockState.isLocked) {
+      toast(
+        lockState.unlockRequirement ?? "This phase isn't unlocked yet.",
+        "info",
+      );
+      return;
+    }
+
     setFocusedNodeId(node.id);
     if (node.id === "spark") {
       openSparkPanel();
       return;
     }
     if (node.id === "refine") {
-      const sparkVersion = experiment.current_spark_version ?? 0;
-      if (sparkVersion < 1) {
-        toast("Save your idea in Spark first to unlock Refine.", "info");
-        return;
-      }
       openRefinePanel();
       return;
     }
     if (node.id === "resources") {
       setResourcesOpen(true);
+      return;
+    }
+    if (node.id === "evidence") {
+      setOverlayAct("evidence");
       return;
     }
     if (node.id !== "core") {

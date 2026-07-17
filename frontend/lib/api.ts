@@ -183,6 +183,55 @@ export async function getValidationReport(
   return apiFetch<ValidationReport>(`/experiments/${id}/validation-report`);
 }
 
+export interface EditedDocResponse {
+  doc: object;
+  version: number;
+  source: "generated" | "persisted";
+  is_stale_since_regeneration: boolean;
+}
+
+/** Raised when a PATCH to the edited-doc endpoint loses the CAS race (409). */
+export class EditedDocVersionConflict extends ApiError {
+  public current_version: number;
+
+  constructor(current_version: number, body: unknown, requestId: string | null) {
+    super(409, body, requestId);
+    this.name = "EditedDocVersionConflict";
+    this.current_version = current_version;
+  }
+}
+
+export async function getEditedDoc(
+  experimentId: string,
+): Promise<EditedDocResponse> {
+  return apiFetch<EditedDocResponse>(
+    `/experiments/${experimentId}/validation-report/edited-doc`,
+  );
+}
+
+export async function patchEditedDoc(
+  experimentId: string,
+  body: { doc: object; base_version: number },
+): Promise<EditedDocResponse> {
+  try {
+    return await apiFetch<EditedDocResponse>(
+      `/experiments/${experimentId}/validation-report/edited-doc`,
+      { method: "PATCH", body },
+    );
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 409) {
+      const detail = (err.body as { detail?: { current_version?: number } })
+        ?.detail;
+      const current =
+        typeof detail?.current_version === "number"
+          ? detail.current_version
+          : 0;
+      throw new EditedDocVersionConflict(current, err.body, err.requestId);
+    }
+    throw err;
+  }
+}
+
 export async function listExperiments(options?: {
   archived?: boolean;
 }): Promise<ExperimentSummary[]> {

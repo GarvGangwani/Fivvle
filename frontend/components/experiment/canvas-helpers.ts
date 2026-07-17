@@ -1,4 +1,105 @@
-import type { NodePosition, SatelliteNodeId } from "@/lib/types";
+import type { Experiment, NodePosition, SatelliteNodeId } from "@/lib/types";
+
+export type NodeLockState = {
+  isLocked: boolean;
+  unlockRequirement?: string;
+};
+
+const LANDING_PAGE_CREATED = new Set([
+  "LANDING_DRAFT",
+  "LANDING_LIVE",
+  "INSIGHT_GENERATING",
+  "INSIGHT_READY",
+  "INSIGHT_FAILED",
+  "ANALYZING",
+  "ARCHIVED",
+  "COMPLETED",
+]);
+
+function hasRefinedIdeaPayload(experiment: Experiment): boolean {
+  if (experiment.refined_idea_current != null) return true;
+  const idea = experiment.refined_idea;
+  if (idea == null) return false;
+  if (typeof idea === "string") return idea.trim().length > 0;
+  return Boolean(
+    idea.refined_one_liner?.trim() || idea.headline?.trim(),
+  );
+}
+
+/**
+ * Workflow lock for canvas satellites. Spark + Resources are always open.
+ * Evidence / Launch / Signal keys on GET /experiments/{id} fields + status.
+ */
+export function getNodeLockState(
+  nodeId: string,
+  experiment: Experiment,
+): NodeLockState {
+  switch (nodeId) {
+    case "spark":
+    case "resources":
+      return { isLocked: false };
+
+    case "refine":
+      if ((experiment.current_spark_version ?? 0) < 1) {
+        return {
+          isLocked: true,
+          unlockRequirement:
+            "Save your idea in Spark first to unlock Refine.",
+        };
+      }
+      return { isLocked: false };
+
+    case "evidence": {
+      const unlocked =
+        experiment.status === "REFINED" ||
+        REFINED_OR_LATER.has(experiment.status) ||
+        hasRefinedIdeaPayload(experiment);
+      if (!unlocked) {
+        return {
+          isLocked: true,
+          unlockRequirement:
+            "Finalize your refinement to unlock Evidence.",
+        };
+      }
+      return { isLocked: false };
+    }
+
+    case "launch": {
+      // Canvas detail exposes validation_report summary + evidence_atom_count
+      // (no validation_report_id). Status RESEARCH_READY+ also implies evidence ran.
+      const hasValidationReport =
+        experiment.validation_report != null ||
+        (experiment.evidence_atom_count ?? 0) > 0 ||
+        RESEARCH_READY_OR_LATER.has(experiment.status);
+      if (!hasValidationReport) {
+        return {
+          isLocked: true,
+          unlockRequirement:
+            "Complete Evidence research to unlock Launch.",
+        };
+      }
+      return { isLocked: false };
+    }
+
+    case "signal": {
+      // No landing_page_id on canvas Experiment; LANDING_DRAFT / LIVE (+ later)
+      // means a page was generated. landing_page_view_count alone is not enough
+      // (can be 0 on a live unused page).
+      const hasLandingPage = LANDING_PAGE_CREATED.has(experiment.status);
+      if (!hasLandingPage) {
+        return {
+          isLocked: true,
+          unlockRequirement:
+            "Deploy your Launch page to unlock Signal.",
+        };
+      }
+      return { isLocked: false };
+    }
+
+    default:
+      return { isLocked: false };
+  }
+}
 
 export const DEFAULT_POSITIONS: Record<SatelliteNodeId, NodePosition> = {
   spark: { x: -250, y: -430 },

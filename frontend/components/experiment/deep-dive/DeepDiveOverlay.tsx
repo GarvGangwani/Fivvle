@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { EvidenceStagePanel } from "@/components/research/EvidenceStagePanel";
 
 type Props = {
   isOpen: boolean;
@@ -9,7 +10,7 @@ type Props = {
   experimentId: string;
 };
 
-export function DeepDiveOverlay({ isOpen, onClose, act }: Props) {
+export function DeepDiveOverlay({ isOpen, onClose, act, experimentId }: Props) {
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -22,8 +23,8 @@ export function DeepDiveOverlay({ isOpen, onClose, act }: Props) {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] bg-canvas-bg">
-      <div className="flex h-16 items-center justify-between border-b-2 border-border-master px-6">
+    <div className="fixed inset-0 z-[70] flex flex-col bg-canvas-bg">
+      <div className="flex h-16 shrink-0 items-center justify-between border-b-2 border-border-master px-6">
         <button
           type="button"
           onClick={onClose}
@@ -43,14 +44,20 @@ export function DeepDiveOverlay({ isOpen, onClose, act }: Props) {
           ✕
         </button>
       </div>
-      <div className="p-24 text-center">
-        <div className="mb-2 font-label-md text-label-md uppercase text-brand-primary">
-          COMING IN STEP 6
+      {act === "evidence" ? (
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <EvidenceStagePanel experimentId={experimentId} />
         </div>
-        <h2 className="font-display text-display-lg uppercase text-ink-primary">
-          {act} deep-dive
-        </h2>
-      </div>
+      ) : (
+        <div className="p-24 text-center">
+          <div className="mb-2 font-label-md text-label-md uppercase text-brand-primary">
+            COMING IN STEP 6
+          </div>
+          <h2 className="font-display text-display-lg uppercase text-ink-primary">
+            {act} deep-dive
+          </h2>
+        </div>
+      )}
     </div>
   );
 }
