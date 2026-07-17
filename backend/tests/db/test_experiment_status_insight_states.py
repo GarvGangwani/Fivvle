@@ -26,7 +26,10 @@ def test_existing_states_preserved() -> None:
 
 
 def test_experiment_status_count() -> None:
-    assert len(list(ExperimentStatus)) == 20
+    # 22 members: SPARK, DRAFT, REFINING, REFINED (4); research umbrella +
+    # 5 sub-states + VOICES + 2 terminal (9); LANDING_* (3); INSIGHT_* (3);
+    # ANALYZING, COMPLETED, ARCHIVED (3).
+    assert len(list(ExperimentStatus)) == 22
 
 
 def test_models_import_with_new_enum_members() -> None:

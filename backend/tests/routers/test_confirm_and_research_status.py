@@ -225,14 +225,21 @@ class TestGetPhasesCompleted:
         assert ExperimentStatus.RESEARCH_SEARCHING in completed
         assert len(completed) == 3
 
-    def test_synthesizing_returns_five_prior_phases(self) -> None:
-        completed = get_phases_completed(ExperimentStatus.RESEARCH_SYNTHESIZING)
+    def test_voices_returns_five_prior_phases(self) -> None:
+        completed = get_phases_completed(ExperimentStatus.RESEARCH_VOICES)
         assert ExperimentStatus.RESEARCH_REFLECTING in completed
         assert len(completed) == 5
 
-    def test_ready_returns_six_prior_phases(self) -> None:
-        completed = get_phases_completed(ExperimentStatus.RESEARCH_READY)
+    def test_synthesizing_returns_six_prior_phases(self) -> None:
+        completed = get_phases_completed(ExperimentStatus.RESEARCH_SYNTHESIZING)
+        assert ExperimentStatus.RESEARCH_REFLECTING in completed
+        assert ExperimentStatus.RESEARCH_VOICES in completed
         assert len(completed) == 6
+
+    def test_ready_returns_seven_prior_phases(self) -> None:
+        completed = get_phases_completed(ExperimentStatus.RESEARCH_READY)
+        assert ExperimentStatus.RESEARCH_VOICES in completed
+        assert len(completed) == 7
 
     def test_failed_returns_empty(self) -> None:
         # Can't determine where failure occurred from status alone.
