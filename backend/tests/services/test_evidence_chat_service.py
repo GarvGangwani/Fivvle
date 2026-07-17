@@ -28,6 +28,7 @@ from app.db.models.user import User
 from app.db.models.validation_report import ValidationReport
 from app.services.evidence_chat_service import (
     EvidenceChatNotFound,
+    _build_report_skeleton,
     list_evidence_chat_messages,
     send_evidence_chat_message,
 )
@@ -403,3 +404,30 @@ async def test_list_messages_other_user_raises_not_found(
 
     with pytest.raises(EvidenceChatNotFound):
         await list_evidence_chat_messages(db_session, other, experiment.id)
+
+
+# ---------------------------------------------------------------------------
+# Legacy-report skeleton (overall_score=None, section_scores=[])
+# ---------------------------------------------------------------------------
+
+
+def test_legacy_report_skeleton_omits_score_lines() -> None:
+    """Legacy reports predate the scoring engine: no 'Overall score:' line and
+    no 'Section scores:' block should appear in the skeleton."""
+    from app.schemas.validation_report import ValidationReport as ValidationReportSchema
+
+    report = ValidationReportSchema.model_validate(_raw_report_dict()).model_copy(
+        update={"overall_score": None, "section_scores": []}
+    )
+    experiment = SimpleNamespace(
+        refined_idea_current=None, refined_idea=None, name="Legacy Project"
+    )
+
+    skeleton = _build_report_skeleton(experiment, report)
+
+    assert "Overall score:" not in skeleton
+    assert "Section scores:" not in skeleton
+    # Other sections still render.
+    assert "Overall recommendation:" in skeleton
+    assert "Research questions:" in skeleton
+    assert "Research limitations:" in skeleton

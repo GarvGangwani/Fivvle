@@ -147,14 +147,19 @@ def _build_report_skeleton(
         lines.append("")
 
     lines.append(f"Overall recommendation: {report.overall_recommendation}")
-    lines.append(f"Overall score: {report.overall_score}/100")
+    # Legacy reports predate the scoring engine (overall_score=None,
+    # section_scores=[]). Omit both entirely rather than emit "None/100" or an
+    # empty header — same spirit as the distribution/regulatory/voices omissions.
+    if report.overall_score is not None:
+        lines.append(f"Overall score: {report.overall_score}/100")
     lines.append("")
 
-    lines.append("Section scores:")
-    # Preserve stored order — do NOT sort.
-    for section in report.section_scores:
-        lines.append(f"- {section.label}: {section.score}/100")
-    lines.append("")
+    if report.section_scores:
+        lines.append("Section scores:")
+        # Preserve stored order — do NOT sort.
+        for section in report.section_scores:
+            lines.append(f"- {section.label}: {section.score}/100")
+        lines.append("")
 
     lines.append("Research questions:")
     for qf in report.questions_and_findings:
