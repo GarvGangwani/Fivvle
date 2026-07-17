@@ -19,9 +19,11 @@ from app.dispatchers.http import HttpDispatcher
 from app.dispatchers.in_process import InProcessDispatcher
 from app.dispatchers.in_process_insight import InProcessInsightDispatcher
 from app.dispatchers.in_process_landing_page import InProcessLandingPageDispatcher
+from app.dispatchers.launch_kit import InProcessLaunchKitDispatcher
 from app.dispatchers.protocol import (
     InsightDispatcher,
     LandingPageDispatcher,
+    LaunchKitDispatcher,
     ResearchDispatcher,
 )
 
@@ -119,6 +121,36 @@ def get_landing_page_dispatcher(settings: Settings) -> LandingPageDispatcher:
         raise NotImplementedError(
             "HttpLandingPageDispatcher is not yet implemented. "
             "Deferred per ADR 0022. "
+            "Set DISPATCHER_MODE=in_process until the Cloud Function ships."
+        )
+
+    raise ValueError(  # pragma: no cover
+        f"Unknown DISPATCHER_MODE: {settings.dispatcher_mode!r}. "
+        "Allowed values: 'in_process', 'http'."
+    )
+
+
+def get_launch_kit_dispatcher(settings: Settings) -> LaunchKitDispatcher:
+    """Construct and return the configured LaunchKitDispatcher.
+
+    Args:
+        settings: The application settings singleton (from get_settings()).
+
+    Returns:
+        A LaunchKitDispatcher implementation selected by settings.dispatcher_mode.
+
+    Raises:
+        NotImplementedError: If dispatcher_mode="http" (HttpLaunchKitDispatcher
+            deferred — no Cloud Function for LaunchKit yet).
+    """
+    if settings.dispatcher_mode == "in_process":
+        from app.db.session import get_sessionmaker  # noqa: PLC0415
+
+        return InProcessLaunchKitDispatcher(get_sessionmaker=get_sessionmaker)
+
+    if settings.dispatcher_mode == "http":
+        raise NotImplementedError(
+            "HttpLaunchKitDispatcher is not yet implemented. "
             "Set DISPATCHER_MODE=in_process until the Cloud Function ships."
         )
 

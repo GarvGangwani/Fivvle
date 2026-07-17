@@ -109,11 +109,13 @@ async def lifespan(app: FastAPI):  # type: ignore[type-arg]
         get_dispatcher,
         get_insight_dispatcher,
         get_landing_page_dispatcher,
+        get_launch_kit_dispatcher,
     )
 
     app.state.dispatcher = get_dispatcher(settings)
     app.state.insight_dispatcher = get_insight_dispatcher(settings)
     app.state.landing_page_dispatcher = get_landing_page_dispatcher(settings)
+    app.state.launch_kit_dispatcher = get_launch_kit_dispatcher(settings)
     logger.info(
         "research dispatcher initialised",
         dispatcher_mode=settings.dispatcher_mode,
