@@ -24,7 +24,7 @@ const CONFIDENCE_POINTS: Record<QuestionFindings["findings"][number]["confidence
   low: 48,
 };
 
-const SECTION_LABELS: Record<ReportSectionId, string> = {
+export const SECTION_LABELS: Record<ReportSectionId, string> = {
   market: "Market demand",
   competition: "Competition",
   distribution: "Distribution",

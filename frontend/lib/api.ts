@@ -1,6 +1,7 @@
 import type { User as FirebaseUser } from "firebase/auth";
 import { getFirebaseAuth } from "./firebase";
 import { handleSessionExpired } from "./session-expired";
+import { createSSEParser, type SSEEvent } from "./sse-parser";
 import type {
   ArchiveExperimentResponse,
   ChatHistoryMessage,
@@ -10,12 +11,16 @@ import type {
   ExperimentAnalytics,
   ExperimentChatMessagesResponse,
   ChatEditTurnResponse,
+  EvidenceChatActivateResponse,
+  EvidenceChatEditRequest,
+  EvidenceChatEditResponse,
   EvidenceChatFeedbackResponse,
   EvidenceChatMessagesResponse,
   EvidenceChatRegenerateRequest,
   EvidenceChatRegenerateResponse,
   EvidenceChatSendRequest,
   EvidenceChatSendResponse,
+  EvidenceChatStreamDone,
   EvidenceChatVerdict,
   ExperimentDetail,
   ExperimentSummary,
@@ -63,6 +68,28 @@ type FetchOptions = {
   signal?: AbortSignal;
 };
 
+/**
+ * Resolve the Firebase auth header. Single source of truth for token
+ * acquisition — used by apiFetch and by hand-rolled fetches (e.g. SSE streaming)
+ * that can't route through apiFetch. Triggers the session-expired flow and
+ * throws a 401 ApiError when there is no signed-in user.
+ */
+export async function getAuthHeader(
+  idToken?: string,
+): Promise<Record<string, string>> {
+  let token = idToken;
+  if (!token) {
+    const auth = getFirebaseAuth();
+    const user = auth.currentUser;
+    if (!user) {
+      await handleSessionExpired();
+      throw new ApiError(401, { error: "Not authenticated" }, null);
+    }
+    token = await user.getIdToken();
+  }
+  return { Authorization: `Bearer ${token}` };
+}
+
 export async function apiFetch<T>(
   path: string,
   opts: FetchOptions = {},
@@ -74,17 +101,7 @@ export async function apiFetch<T>(
   };
 
   if (authenticated) {
-    let token = idToken;
-    if (!token) {
-      const auth = getFirebaseAuth();
-      const user = auth.currentUser;
-      if (!user) {
-        await handleSessionExpired();
-        throw new ApiError(401, { error: "Not authenticated" }, null);
-      }
-      token = await user.getIdToken();
-    }
-    headers["Authorization"] = `Bearer ${token}`;
+    Object.assign(headers, await getAuthHeader(idToken));
   }
 
   let response: Response;
@@ -420,6 +437,138 @@ export async function sendEvidenceChatFeedback(
     `/experiments/${experimentId}/evidence-chat/messages/${messageId}/feedback`,
     { method: "POST", body: { verdict } },
   );
+}
+
+export async function editEvidenceChatMessage(
+  experimentId: string,
+  userMessageId: string,
+  body: EvidenceChatEditRequest,
+): Promise<EvidenceChatEditResponse> {
+  return apiFetch<EvidenceChatEditResponse>(
+    `/experiments/${experimentId}/evidence-chat/messages/${userMessageId}/edit`,
+    { method: "POST", body },
+  );
+}
+
+export async function activateEvidenceChatBranch(
+  experimentId: string,
+  messageId: string,
+): Promise<EvidenceChatActivateResponse> {
+  return apiFetch<EvidenceChatActivateResponse>(
+    `/experiments/${experimentId}/evidence-chat/messages/${messageId}/activate`,
+    { method: "POST" },
+  );
+}
+
+export interface StreamEvidenceCallbacks {
+  onToken: (text: string) => void;
+  onDone: (payload: EvidenceChatStreamDone) => void;
+  onError: (message: string) => void;
+}
+
+/**
+ * Stream an evidence-chat reply over SSE (fetch + ReadableStream, manual frame
+ * parsing). Tokens arrive via `onToken`; completion via `onDone`; a server-side
+ * `error` frame or a mid-stream network drop via `onError`. A non-OK initial
+ * response throws an ApiError (surface it before any tokens). An aborted
+ * `signal` (component unmount) resolves silently with no callback.
+ */
+export async function streamEvidenceChatMessage(
+  experimentId: string,
+  body: EvidenceChatSendRequest,
+  callbacks: StreamEvidenceCallbacks,
+  signal?: AbortSignal,
+): Promise<void> {
+  const authHeader = await getAuthHeader();
+
+  let response: Response;
+  try {
+    response = await fetch(
+      apiUrl(`/experiments/${experimentId}/evidence-chat/stream`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify(body),
+        signal,
+      },
+    );
+  } catch (err) {
+    if (signal?.aborted) return;
+    throw new ApiError(
+      0,
+      { error: err instanceof Error ? err.message : "Network error" },
+      null,
+    );
+  }
+
+  const requestId = response.headers.get("X-Request-ID");
+  if (!response.ok || !response.body) {
+    let parsed: unknown = null;
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const raw = await response.text();
+      parsed = raw ? JSON.parse(raw) : null;
+    } else {
+      parsed = await response.text();
+    }
+    let retryAfterSeconds: number | null = null;
+    if (response.status === 429) {
+      const retryAfter = response.headers.get("Retry-After");
+      if (retryAfter !== null) {
+        const n = parseInt(retryAfter, 10);
+        retryAfterSeconds = Number.isNaN(n) ? null : n;
+      }
+    }
+    if (response.status === 401) {
+      await handleSessionExpired();
+    }
+    throw new ApiError(response.status, parsed, requestId, retryAfterSeconds);
+  }
+
+  const dispatch = (event: SSEEvent): void => {
+    if (event.event === "token") {
+      try {
+        const data = JSON.parse(event.data) as { text?: string };
+        if (typeof data.text === "string") callbacks.onToken(data.text);
+      } catch {
+        /* ignore malformed token frame */
+      }
+    } else if (event.event === "done") {
+      try {
+        callbacks.onDone(JSON.parse(event.data) as EvidenceChatStreamDone);
+      } catch {
+        callbacks.onError("The reply finished but couldn't be read — retry");
+      }
+    } else if (event.event === "error") {
+      let message = "Evidence chat failed, please try again";
+      try {
+        const data = JSON.parse(event.data) as { message?: string };
+        if (typeof data.message === "string" && data.message.trim()) {
+          message = data.message;
+        }
+      } catch {
+        /* keep the default message */
+      }
+      callbacks.onError(message);
+    }
+  };
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const parser = createSSEParser();
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      for (const event of parser.push(decoder.decode(value, { stream: true }))) {
+        dispatch(event);
+      }
+    }
+    for (const event of parser.flush()) dispatch(event);
+  } catch {
+    if (signal?.aborted) return;
+    callbacks.onError("Connection lost — retry");
+  }
 }
 
 export async function finalizeRefinement(

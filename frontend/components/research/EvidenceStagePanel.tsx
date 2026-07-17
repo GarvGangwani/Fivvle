@@ -1,10 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { OverallRecommendation, ValidationReport } from "@/lib/types";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+  OverallRecommendation,
+  RefCitation,
+  ValidationReport,
+} from "@/lib/types";
 import { getValidationReport } from "@/lib/api";
 import {
   EvidenceReportEditor,
+  type EvidenceReportEditorHandle,
   type EvidenceSelection,
 } from "@/components/research/EvidenceReportEditor";
 import { EvidenceChatPane } from "@/components/research/EvidenceChatPane";
@@ -37,6 +42,11 @@ export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const [selection, setSelection] = useState<EvidenceSelection | null>(null);
+  const editorRef = useRef<EvidenceReportEditorHandle>(null);
+
+  const handleFocusReference = useCallback((anchor: RefCitation) => {
+    editorRef.current?.focusReference(anchor);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,6 +98,7 @@ export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
           report={report}
           selection={selection}
           onClearSelection={() => setSelection(null)}
+          onFocusReference={handleFocusReference}
         />
 
         {/* Report pane: pinned header (recommendation only) + independently
@@ -109,6 +120,7 @@ export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
             {stale && <StalenessBanner />}
 
             <EvidenceReportEditor
+              ref={editorRef}
               experimentId={experimentId}
               onStaleChange={setStale}
               onSelectionChange={setSelection}

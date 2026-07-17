@@ -19,6 +19,8 @@ in prompts as untrusted data.
 from __future__ import annotations
 
 import time
+from collections.abc import AsyncGenerator
+from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any, Literal, TypeVar, cast
 from uuid import UUID
@@ -714,6 +716,210 @@ async def complete(
             error_type=type(exc).__name__,
         )
         raise
+
+
+@dataclass
+class StreamUsage:
+    """Mutable sink populated by ``complete_stream`` as tokens arrive.
+
+    The caller reads it after (or during) iteration to persist the assistant
+    message and — via ``log_streamed_call`` — the LLMCall row. Fields default to
+    zero so an aborted/failed stream still yields a valid (partial) accounting.
+    """
+
+    provider: str = ""
+    model: str = ""
+    text_parts: list[str] = field(default_factory=list)
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    cached_input_tokens: int | None = None
+    request_id: str | None = None
+    started_at: float = 0.0
+
+    @property
+    def text(self) -> str:
+        return "".join(self.text_parts)
+
+
+async def complete_stream(
+    *,
+    provider: ProviderName,
+    model: str,
+    system: str,
+    user: str,
+    usage: StreamUsage,
+    max_tokens: int = 4096,
+    temperature: float = 0.7,
+) -> AsyncGenerator[str, None]:
+    """Streaming plain-text completion. Yields text chunks as they arrive.
+
+    Unlike ``complete``, this does NOT write the LLMCall row itself — the caller
+    (a streaming endpoint's generator that owns its own session) is responsible
+    for calling ``log_streamed_call`` on success, error, AND cancellation so cost
+    accounting survives client disconnects. ``usage`` is populated in place as
+    tokens/usage arrive; the caller reads it in every terminal branch.
+
+    Retry / circuit-breaker guard ONLY the initial connection setup. Once tokens
+    begin to flow there is no mid-stream retry — replaying a half-streamed
+    response would duplicate tokens to the client.
+    """
+    if not is_known_model(provider, model):
+        _logger.warning("llm stream using unknown model", provider=provider, model=model)
+
+    usage.provider = provider
+    usage.model = model
+    usage.started_at = time.perf_counter()
+
+    if provider in ("kimi", "groq"):
+        if provider == "kimi":
+            client = _get_kimi_client()
+
+            async def _open_stream():
+                msgs: list[dict[str, str]] = []
+                if system and system.strip():
+                    msgs.append({"role": "system", "content": system})
+                msgs.append({"role": "user", "content": user})
+                return await client.chat.completions.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=0.6,
+                    extra_body={"thinking": {"type": "disabled"}},
+                    messages=msgs,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                )
+
+            breaker_name: ProviderName = "kimi"
+        else:
+            client = _get_groq_client()
+
+            async def _open_stream():
+                return await client.chat.completions.create(
+                    model=model,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    messages=[
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user},
+                    ],
+                    stream=True,
+                    stream_options={"include_usage": True},
+                )
+
+            breaker_name = "groq"
+
+        @retry_async()
+        async def _open_with_retry():
+            return await get_breaker(breaker_name).call(_open_stream)
+
+        stream = await _open_with_retry()
+        async for chunk in stream:
+            chunk_usage = getattr(chunk, "usage", None)
+            if chunk_usage is not None:
+                usage.prompt_tokens = getattr(chunk_usage, "prompt_tokens", 0) or 0
+                usage.completion_tokens = (
+                    getattr(chunk_usage, "completion_tokens", 0) or 0
+                )
+                if provider == "kimi":
+                    kc = _extract_kimi_cached_tokens(chunk_usage)
+                    usage.cached_input_tokens = kc or None
+            rid = getattr(chunk, "id", None)
+            if rid:
+                usage.request_id = str(rid)
+            choices = getattr(chunk, "choices", None) or []
+            if choices:
+                delta = getattr(choices[0], "delta", None)
+                piece = getattr(delta, "content", None) if delta is not None else None
+                if piece:
+                    usage.text_parts.append(piece)
+                    yield piece
+
+    elif provider == "anthropic":
+        client = _get_anthropic_client()
+
+        async def _open_stream():
+            return client.messages.stream(
+                model=model,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            )
+
+        @retry_async()
+        async def _open_with_retry():
+            return await get_breaker("anthropic").call(_open_stream)
+
+        manager = await _open_with_retry()
+        async with manager as stream:
+            async for piece in stream.text_stream:
+                if piece:
+                    usage.text_parts.append(piece)
+                    yield piece
+            final = await stream.get_final_message()
+            usage.prompt_tokens = final.usage.input_tokens
+            usage.completion_tokens = final.usage.output_tokens
+            usage.request_id = final.id
+
+    else:
+        raise ValueError(f"unknown provider: {provider}")
+
+
+async def log_streamed_call(
+    db: AsyncSession,
+    *,
+    usage: StreamUsage,
+    prompt_name: str,
+    experiment_id: UUID | None = None,
+    phase: str | None = None,
+) -> Decimal:
+    """Write the single LLMCall row for a streamed completion (any terminal path).
+
+    Computes cost from whatever usage was observed (may be zero on an early
+    failure or cancellation) and persists one row on the CALLER's session — the
+    caller commits. Returns the computed cost for logging.
+    """
+    latency_ms = (
+        int((time.perf_counter() - usage.started_at) * 1000)
+        if usage.started_at
+        else 0
+    )
+    if usage.provider == "kimi":
+        cost_usd = compute_cost_usd(
+            usage.provider,
+            usage.model,
+            usage.prompt_tokens,
+            usage.completion_tokens,
+            cached_input_tokens=usage.cached_input_tokens,
+        )
+        log_kwargs: dict[str, Any] = {
+            "cached_input_tokens": usage.cached_input_tokens,
+            "cache_creation_input_tokens": None,
+        }
+    else:
+        cost_usd = compute_cost_usd(
+            usage.provider,
+            usage.model,
+            usage.prompt_tokens,
+            usage.completion_tokens,
+        )
+        log_kwargs = {}
+
+    await _log_llm_call(
+        db,
+        experiment_id=experiment_id,
+        phase=phase,
+        provider=usage.provider,
+        model=usage.model,
+        prompt_name=prompt_name,
+        prompt_tokens=usage.prompt_tokens,
+        completion_tokens=usage.completion_tokens,
+        cost_usd=cost_usd,
+        latency_ms=latency_ms,
+        request_id=usage.request_id,
+        **log_kwargs,
+    )
+    return cost_usd
 
 
 ImageMediaType = Literal["image/png", "image/jpeg", "image/webp"]
