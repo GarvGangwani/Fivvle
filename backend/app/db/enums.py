@@ -104,6 +104,9 @@ class ChatTurnKind(StrEnum):
     PIPELINE_PROGRESS = "pipeline_progress"
     PIPELINE_COMPLETE = "pipeline_complete"
     PIPELINE_FAILED = "pipeline_failed"
+    # Founder chatting with a completed validation report (Evidence surface).
+    # Isolated thread — never mixed with refinement/discussion history.
+    EVIDENCE_CHAT = "evidence_chat"
 
 
 class DispatchTrigger(StrEnum):
