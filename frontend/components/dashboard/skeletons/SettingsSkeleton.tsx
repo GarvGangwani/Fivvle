@@ -16,7 +16,7 @@ export function SettingsSkeleton() {
         {[0, 1, 2].map((i) => (
           <div
             key={i}
-            className="space-y-4 border-2 border-border-master bg-surface-card p-6"
+            className="space-y-4 rounded-md border-2 border-border-master bg-surface-card p-6"
           >
             <BrutalistSkeleton className="h-4 w-32" />
             <BrutalistSkeleton className="h-3 w-full" />

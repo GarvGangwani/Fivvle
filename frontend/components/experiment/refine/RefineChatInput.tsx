@@ -147,7 +147,7 @@ export function RefineChatInput({
   };
 
   return (
-    <div className="border-2 border-border-master bg-surface-card shadow-brutal-md nodrag">
+    <div className="rounded-md border-2 border-border-master bg-surface-card shadow-brutal-md nodrag">
       {attachments.length > 0 || uploadError ? (
         <div className="px-3 pt-3 space-y-2">
           {attachments.length > 0 ? (
@@ -155,7 +155,7 @@ export function RefineChatInput({
               {attachments.map((item) => (
                 <li
                   key={item.id}
-                  className="border-2 border-border-master bg-surface-elevated h-14 flex items-center gap-2 px-2 max-w-full"
+                  className="rounded-sm border-2 border-border-master bg-surface-elevated h-14 flex items-center gap-2 px-2 max-w-full"
                 >
                   {item.previewUrl ? (
                     <div className="w-12 h-12 border-2 border-border-master overflow-hidden shrink-0">
@@ -251,7 +251,7 @@ export function RefineChatInput({
             type="button"
             onClick={() => void handleSend()}
             disabled={!canSend}
-            className="bg-brand-primary text-ink-inverse px-6 py-2 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-sm hover:shadow-brutal-md hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="rounded-sm bg-brand-primary text-ink-inverse px-6 py-2 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-sm hover:shadow-brutal-md hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {sending ? "SENDING..." : "SEND"}
           </button>

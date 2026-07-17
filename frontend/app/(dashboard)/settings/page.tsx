@@ -38,7 +38,7 @@ export default function SettingsPage() {
 
       <section
         id="profile"
-        className="border-2 border-border-master bg-surface-card p-8 shadow-brutal-md"
+        className="rounded-md border-2 border-border-master bg-surface-card p-8 shadow-brutal-md"
       >
         <div className="mb-2 font-label-md text-label-md uppercase text-brand-primary">
           PROFILE
@@ -71,7 +71,7 @@ export default function SettingsPage() {
 
       <section
         id="billing"
-        className="border-2 border-border-master bg-surface-card p-8 shadow-brutal-md"
+        className="rounded-md border-2 border-border-master bg-surface-card p-8 shadow-brutal-md"
       >
         <div className="mb-2 font-label-md text-label-md uppercase text-brand-primary">
           BILLING
@@ -95,7 +95,7 @@ export default function SettingsPage() {
 
       <section
         id="preferences"
-        className="border-2 border-border-master bg-surface-card p-8 shadow-brutal-md"
+        className="rounded-md border-2 border-border-master bg-surface-card p-8 shadow-brutal-md"
       >
         <div className="mb-2 font-label-md text-label-md uppercase text-brand-primary">
           PREFERENCES
@@ -110,7 +110,7 @@ export default function SettingsPage() {
 
       <section
         id="danger"
-        className="border-2 border-status-critical bg-surface-card p-8 shadow-brutal-md"
+        className="rounded-md border-2 border-status-critical bg-surface-card p-8 shadow-brutal-md"
       >
         <div className="mb-2 font-label-md text-label-md uppercase text-status-critical">
           DANGER ZONE

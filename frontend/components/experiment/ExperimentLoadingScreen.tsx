@@ -24,7 +24,7 @@ export function ExperimentLoadingScreen({ projectName }: Props) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-canvas-bg p-6">
       <div className="pointer-events-none absolute inset-0 canvas-grid-bg opacity-30" />
 
-      <div className="relative flex w-full max-w-md flex-col gap-6 border-2 border-border-master bg-surface-card p-8 shadow-brutal-lg">
+      <div className="relative flex w-full max-w-md flex-col gap-6 rounded-lg border-2 border-border-master bg-surface-card p-8 shadow-brutal-lg">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 flex-col">
             <span className="mb-2 font-mono text-mono-sm uppercase tracking-wider text-brand-primary">
@@ -46,7 +46,7 @@ export function ExperimentLoadingScreen({ projectName }: Props) {
         </div>
 
         <div className="w-full">
-          <div className="relative h-4 w-full overflow-hidden border-2 border-border-master bg-surface-card">
+          <div className="relative h-4 w-full overflow-hidden rounded-sm border-2 border-border-master bg-surface-card">
             <div
               className="h-full bg-brand-primary transition-all duration-300 ease-out"
               style={{ width: `${progress}%` }}

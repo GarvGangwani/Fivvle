@@ -20,7 +20,7 @@ export function ExperimentsListSkeleton() {
         {[0, 1, 2, 3, 4, 5].map((i) => (
           <div
             key={i}
-            className="space-y-3 border-2 border-border-master bg-surface-card p-4"
+            className="space-y-3 rounded-md border-2 border-border-master bg-surface-card p-4"
           >
             <BrutalistSkeleton className="h-4 w-24" />
             <BrutalistSkeleton className="h-6 w-full" />

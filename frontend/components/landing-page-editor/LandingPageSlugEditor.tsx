@@ -166,7 +166,7 @@ export function LandingPageSlugEditor({
         className={
           embedded
             ? undefined
-            : "rounded-lg border border-[var(--fv-border)] bg-white/[0.02] p-3"
+            : "rounded-lg border border-[var(--fv-border)] bg-[var(--fv-hover-overlay)] p-3"
         }
       >
         {!embedded ? (
@@ -212,7 +212,7 @@ export function LandingPageSlugEditor({
       className={
         embedded
           ? "space-y-3"
-          : "space-y-3 rounded-lg border border-[var(--fv-border)] bg-white/[0.02] p-3"
+          : "space-y-3 rounded-lg border border-[var(--fv-border)] bg-[var(--fv-hover-overlay)] p-3"
       }
     >
       <div className="flex items-center justify-between gap-2">
@@ -229,7 +229,7 @@ export function LandingPageSlugEditor({
         </button>
       </div>
 
-      <div className="flex overflow-hidden rounded-lg border border-[var(--fv-border)] bg-white/[0.03]">
+      <div className="flex overflow-hidden rounded-lg border border-[var(--fv-border)] bg-[var(--fv-surface-2)]">
         <input
           type="text"
           value={draftSlug}

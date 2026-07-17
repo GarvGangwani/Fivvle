@@ -12,7 +12,7 @@ export function AttachmentRow({ attachment, onDelete }: Props) {
   const subtitle = getSubtitle(attachment);
 
   return (
-    <li className="border-2 border-border-master bg-surface-card h-16 flex items-center gap-3 px-3 nodrag">
+    <li className="rounded-md border-2 border-border-master bg-surface-card h-16 flex items-center gap-3 px-3 nodrag">
       <AttachmentThumb attachment={attachment} />
       <div className="flex-1 min-w-0">
         <AttachmentTitle attachment={attachment} />
@@ -45,7 +45,7 @@ function AttachmentThumb({ attachment }: { attachment: ExperimentAttachment }) {
     !imgError
   ) {
     return (
-      <div className="w-12 h-12 border-2 border-border-master bg-surface-elevated overflow-hidden shrink-0">
+      <div className="w-12 h-12 rounded-sm border-2 border-border-master bg-surface-elevated overflow-hidden shrink-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={attachment.file_url}
@@ -62,7 +62,7 @@ function AttachmentThumb({ attachment }: { attachment: ExperimentAttachment }) {
   const iconColor = getIconColorForType(attachment.attachment_type);
 
   return (
-    <div className="w-12 h-12 border-2 border-border-master bg-surface-elevated flex items-center justify-center shrink-0">
+    <div className="w-12 h-12 rounded-sm border-2 border-border-master bg-surface-elevated flex items-center justify-center shrink-0">
       <span
         className={`material-symbols-outlined ${iconColor}`}
         style={{ fontSize: 24 }}

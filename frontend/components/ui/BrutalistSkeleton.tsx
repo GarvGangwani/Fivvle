@@ -9,8 +9,9 @@ export function BrutalistSkeleton({
   variant = "block",
   animate = true,
 }: Props) {
-  const base = "bg-surface-elevated border-2 border-border-master";
-  const shape = variant === "circle" ? "rounded-full" : "";
+  const base =
+    "bg-surface-elevated border-2 border-border-master rounded-md";
+  const shape = variant === "circle" ? "!rounded-full" : "";
   const shimmer = animate ? "animate-pulse motion-reduce:animate-none" : "";
 
   return (

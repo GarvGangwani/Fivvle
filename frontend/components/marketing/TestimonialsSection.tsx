@@ -57,7 +57,7 @@ export function TestimonialsSection() {
               </p>
               <div className="mt-6 flex items-center gap-3 border-t-2 border-border-subtle pt-4">
                 <div
-                  className={`flex h-12 w-12 shrink-0 items-center justify-center border-2 border-border-master font-headline text-base font-bold ${item.tileClassName}`}
+                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-sm border-2 border-border-master font-headline text-base font-bold ${item.tileClassName}`}
                   role="img"
                   aria-label={`${item.name}, ${item.role}`}
                 >

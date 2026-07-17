@@ -85,7 +85,7 @@ export function PressureTestSection({
         type="button"
         onClick={() => setEditingMessageId(currentBlock.messageId)}
         aria-label="Edit answers"
-        className="rounded-md p-1.5 text-[var(--fv-text-muted)] transition-colors hover:bg-white/[0.06] hover:text-[var(--fv-text-soft)]"
+        className="rounded-md p-1.5 text-[var(--fv-text-muted)] transition-colors hover:bg-[var(--fv-hover-overlay)] hover:text-[var(--fv-text-soft)]"
       >
         <Pencil className="h-3.5 w-3.5" />
       </button>

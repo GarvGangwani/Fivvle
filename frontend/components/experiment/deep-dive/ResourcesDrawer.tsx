@@ -53,7 +53,7 @@ export function ResourcesDrawer({
 
   return (
     <aside
-      className={`fixed bottom-0 right-0 top-0 z-[65] w-96 border-l-2 border-border-master bg-surface-card shadow-brutal-xl transition-transform ${
+      className={`fixed bottom-0 right-0 top-0 z-[65] w-96 rounded-l-md border-l-2 border-border-master bg-surface-card shadow-brutal-xl transition-transform ${
         open ? "translate-x-0" : "translate-x-full"
       }`}
     >

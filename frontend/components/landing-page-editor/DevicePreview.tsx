@@ -526,24 +526,26 @@ export function DevicePreview({
 
   if (isFullscreen && isEditor) {
     return (
-      <div className="fixed inset-0 z-[200] flex flex-col bg-[var(--fv-bg)]">
-        <button
-          type="button"
-          onClick={() => setIsFullscreen(false)}
-          className="fv-btn-ghost fixed top-4 right-4 z-[201] inline-flex items-center gap-2 px-3 py-2"
-          aria-label="Exit full screen"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <div className="flex h-full min-h-0 flex-1 flex-col pt-14">
-          <ScaledPreview
-            device={device}
-            landscape={landscape}
-            isFullscreen
-            previewPayload={previewPayload}
+      <div data-theme="light" className="contents">
+        <div className="fixed inset-0 z-[200] flex flex-col bg-[var(--fv-bg)]">
+          <button
+            type="button"
+            onClick={() => setIsFullscreen(false)}
+            className="fv-btn-ghost fixed top-4 right-4 z-[201] inline-flex items-center gap-2 px-3 py-2"
+            aria-label="Exit full screen"
           >
-            {children}
-          </ScaledPreview>
+            <X className="h-4 w-4" />
+          </button>
+          <div className="flex h-full min-h-0 flex-1 flex-col pt-14">
+            <ScaledPreview
+              device={device}
+              landscape={landscape}
+              isFullscreen
+              previewPayload={previewPayload}
+            >
+              {children}
+            </ScaledPreview>
+          </div>
         </div>
       </div>
     );
@@ -551,23 +553,27 @@ export function DevicePreview({
 
   if (isFullscreen && !isEditor) {
     return (
-      <div className={`${styles.stage} ${styles.stageFullscreen}`}>
-        {toolbar}
-        {preview}
+      <div data-theme="light" className="contents">
+        <div className={`${styles.stage} ${styles.stageFullscreen}`}>
+          {toolbar}
+          {preview}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className={styles.stage}>
-      {mobileFluid && saveStatus !== "idle" ? (
-        <div className={styles.mobileSaveBar}>
-          <PreviewSaveStatusBadge status={saveStatus} errorDetail={saveErrorDetail} />
-        </div>
-      ) : null}
-      {editorToolbar}
-      {toolbar}
-      {preview}
+    <div data-theme="light" className="flex h-full min-h-0 flex-col">
+      <div className={styles.stage}>
+        {mobileFluid && saveStatus !== "idle" ? (
+          <div className={styles.mobileSaveBar}>
+            <PreviewSaveStatusBadge status={saveStatus} errorDetail={saveErrorDetail} />
+          </div>
+        ) : null}
+        {editorToolbar}
+        {toolbar}
+        {preview}
+      </div>
     </div>
   );
 }

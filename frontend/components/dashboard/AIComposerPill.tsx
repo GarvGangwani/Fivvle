@@ -88,7 +88,7 @@ export function AIComposerPill() {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-28 left-1/2 z-50 hidden max-w-xl -translate-x-1/2 border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md text-ink-primary shadow-brutal-md md:block"
+          className="fixed bottom-28 left-1/2 z-50 hidden max-w-xl -translate-x-1/2 rounded-md border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md text-ink-primary shadow-brutal-md md:block"
         >
           {toast}
         </div>

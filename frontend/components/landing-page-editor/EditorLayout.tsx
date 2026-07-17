@@ -548,7 +548,7 @@ export function EditorLayout({
           <>
             <Link
               href={`/experiment/${experimentId}`}
-              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] font-medium text-[var(--fv-text-muted)] no-underline transition-colors hover:bg-white/[0.04] hover:text-[var(--fv-text)]"
+              className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-[13px] font-medium text-[var(--fv-text-muted)] no-underline transition-colors hover:bg-[var(--fv-hover-overlay)] hover:text-[var(--fv-text)]"
             >
               <ArrowLeft className="h-4 w-4" />
               <span className="hidden sm:inline">Back</span>

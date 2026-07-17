@@ -18,7 +18,7 @@ export function LogEntryCard({ entry }: Props) {
     entry.selectedIndices.length > 0 || Boolean(entry.customAddedText);
 
   return (
-    <div className="border-2 border-border-master bg-surface-card p-4 min-h-[240px]">
+    <div className="rounded-md border-2 border-border-master bg-surface-card p-4 min-h-[240px]">
       <div className="mb-3 pb-3 border-b border-border-master/30">
         <div className="font-mono text-mono-sm uppercase text-ink-tertiary mb-1">
           QUESTION

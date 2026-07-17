@@ -100,7 +100,7 @@ export function SparkFullscreenModal({
       <div className="mx-auto grid flex-1 max-w-7xl grid-cols-1 gap-6 overflow-auto p-6 lg:grid-cols-5 w-full">
         <div className="lg:col-span-3">
           {experiment.refinement_started_at ? (
-            <div className="mb-4 border-2 border-brutalist-yellow bg-brutalist-yellow/20 p-3">
+            <div className="mb-4 rounded-md border-2 border-brutalist-yellow bg-brutalist-yellow/20 p-3">
               <p className="font-body text-body-sm text-ink-primary">
                 <strong>Note:</strong> You&apos;ve already started Refine.
                 Editing your idea won&apos;t automatically re-run it.
@@ -122,13 +122,13 @@ export function SparkFullscreenModal({
             onChange={(e) => setIdea(e.target.value)}
             rows={14}
             placeholder="What are you thinking of building?"
-            className="h-[min(60vh,520px)] w-full border-2 border-border-master bg-surface-card p-4 font-body text-body-lg focus:outline-none focus:shadow-brutal-primary resize-none"
+            className="h-[min(60vh,520px)] w-full rounded-md border-2 border-border-master bg-surface-card p-4 font-body text-body-lg focus:outline-none focus:shadow-brutal-primary resize-none"
           />
           <p className="mt-2 font-mono text-mono-sm text-ink-tertiary">
             {idea.length} CHARACTERS
           </p>
         </div>
-        <div className="border-2 border-border-master bg-surface-card p-4 lg:col-span-2">
+        <div className="rounded-md border-2 border-border-master bg-surface-card p-4 lg:col-span-2">
           <div className="mb-3 flex items-center justify-between">
             <label className="font-label-md text-label-md uppercase text-ink-primary">
               ATTACHMENTS ({attachments.items.length})
@@ -137,7 +137,7 @@ export function SparkFullscreenModal({
               <button
                 type="button"
                 onClick={() => setAddMenuOpen((v) => !v)}
-                className="border-2 border-border-master bg-surface-card px-3 py-1 font-label-md text-label-md uppercase shadow-brutal-sm"
+                className="rounded-sm border-2 border-border-master bg-surface-card px-3 py-1 font-label-md text-label-md uppercase shadow-brutal-sm"
               >
                 + ADD
               </button>
@@ -194,7 +194,7 @@ export function SparkFullscreenModal({
           type="button"
           onClick={() => void handleSave()}
           disabled={!isDirty || saving}
-          className="bg-brand-primary text-ink-inverse px-8 py-3 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-md hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          className="rounded-sm bg-brand-primary text-ink-inverse px-8 py-3 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-md hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed transition-all"
         >
           {saving
             ? "SAVING..."

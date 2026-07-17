@@ -780,7 +780,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
             defaultEdgeOptions={{
               type: "dashed-straight",
               style: {
-                stroke: "#777587",
+                stroke: "var(--fv-canvas-edge)",
                 strokeWidth: 1.5,
                 strokeDasharray: "6 8",
               },

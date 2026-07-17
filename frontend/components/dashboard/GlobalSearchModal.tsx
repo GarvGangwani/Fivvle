@@ -82,7 +82,7 @@ export function GlobalSearchModal() {
       onClick={closeSearch}
     >
       <div
-        className="w-full max-w-2xl border-2 border-border-master bg-surface-card p-6 shadow-brutal-lg"
+        className="w-full max-w-2xl rounded-md border-2 border-border-master bg-surface-card p-6 shadow-brutal-lg"
         role="dialog"
         aria-modal="true"
         aria-label="Search experiments"

@@ -55,7 +55,7 @@ export function ShareLinksPanel({
               <span className="shrink-0 text-[13px] text-[var(--fv-text-soft)] sm:w-28">
                 {label}
               </span>
-              <code className="min-w-0 flex-1 truncate rounded-lg bg-white/[0.03] px-3 py-2 font-mono text-[12px] text-[var(--fv-text-muted)]">
+              <code className="min-w-0 flex-1 truncate rounded-lg bg-[var(--fv-surface-2)] px-3 py-2 font-mono text-[12px] text-[var(--fv-text-muted)]">
                 {url}
               </code>
               <button

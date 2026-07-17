@@ -64,7 +64,7 @@ export function AddAttachmentMenu({ experimentId, onAdd, onClose }: Props) {
 
   if (mode === "menu") {
     return (
-      <div className="absolute right-0 top-full mt-1 w-56 bg-surface-card border-2 border-border-master shadow-brutal-md z-50">
+      <div className="absolute right-0 top-full mt-1 w-56 rounded-md bg-surface-card border-2 border-border-master shadow-brutal-md z-50">
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
@@ -109,7 +109,7 @@ export function AddAttachmentMenu({ experimentId, onAdd, onClose }: Props) {
   }
 
   return (
-    <div className="absolute right-0 top-full mt-1 w-80 bg-surface-card border-2 border-border-master shadow-brutal-md p-4 z-50 nodrag">
+    <div className="absolute right-0 top-full mt-1 w-80 rounded-md bg-surface-card border-2 border-border-master shadow-brutal-md p-4 z-50 nodrag">
       <label className="font-label-md text-label-md uppercase block mb-1">
         TITLE
       </label>
@@ -118,7 +118,7 @@ export function AddAttachmentMenu({ experimentId, onAdd, onClose }: Props) {
         value={linkTitle}
         onChange={(e) => setLinkTitle(e.target.value)}
         placeholder="e.g. Competitor pricing page"
-        className="w-full border-2 border-border-master bg-surface-card px-3 py-2 mb-3 font-body text-body-sm focus:shadow-brutal-primary focus:outline-none"
+        className="w-full rounded-md border-2 border-border-master bg-surface-card px-3 py-2 mb-3 font-body text-body-sm focus:shadow-brutal-primary focus:outline-none"
         autoFocus
       />
       <label className="font-label-md text-label-md uppercase block mb-1">
@@ -129,7 +129,7 @@ export function AddAttachmentMenu({ experimentId, onAdd, onClose }: Props) {
         value={linkUrl}
         onChange={(e) => setLinkUrl(e.target.value)}
         placeholder="https://..."
-        className="w-full border-2 border-border-master bg-surface-card px-3 py-2 mb-3 font-body text-body-sm focus:shadow-brutal-primary focus:outline-none"
+        className="w-full rounded-md border-2 border-border-master bg-surface-card px-3 py-2 mb-3 font-body text-body-sm focus:shadow-brutal-primary focus:outline-none"
       />
       {error ? (
         <p className="mb-2 font-body text-body-sm text-status-critical">{error}</p>
@@ -138,7 +138,7 @@ export function AddAttachmentMenu({ experimentId, onAdd, onClose }: Props) {
         <button
           type="button"
           onClick={() => setMode("menu")}
-          className="flex-1 border-2 border-border-master bg-surface-card px-3 py-2 font-label-md text-label-md uppercase shadow-brutal-sm hover:shadow-brutal-md transition-all"
+          className="flex-1 rounded-sm border-2 border-border-master bg-surface-card px-3 py-2 font-label-md text-label-md uppercase shadow-brutal-sm hover:shadow-brutal-md transition-all"
         >
           BACK
         </button>
@@ -146,7 +146,7 @@ export function AddAttachmentMenu({ experimentId, onAdd, onClose }: Props) {
           type="button"
           onClick={() => void handleLinkSubmit()}
           disabled={!isValidUrl(linkUrl) || !linkTitle.trim() || busy}
-          className="flex-1 bg-brand-primary text-ink-inverse px-3 py-2 border-2 border-border-master font-label-md text-label-md uppercase shadow-brutal-sm hover:shadow-brutal-md disabled:opacity-50 transition-all"
+          className="flex-1 rounded-sm bg-brand-primary text-ink-inverse px-3 py-2 border-2 border-border-master font-label-md text-label-md uppercase shadow-brutal-sm hover:shadow-brutal-md disabled:opacity-50 transition-all"
         >
           {busy ? "ADDING…" : "ADD LINK"}
         </button>

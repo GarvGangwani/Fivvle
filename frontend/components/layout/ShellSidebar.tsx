@@ -6,9 +6,11 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Archive,
   BarChart3,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  Sun,
   Ticket,
 } from "lucide-react";
 import { listExperiments } from "@/lib/api";
@@ -19,6 +21,7 @@ import { EXPERIMENTS_CHANGED_EVENT } from "@/lib/experiment-events";
 import { formatRelativeTime } from "@/lib/format-time";
 import { getExperimentDisplayName } from "@/lib/experiment-name";
 import { useSidebar } from "@/lib/sidebar-context";
+import { usePreferences } from "@/lib/preferences-context";
 import type { ExperimentSummary } from "@/lib/types";
 
 function getStatusDotColor(status: string): string {
@@ -62,6 +65,7 @@ export function ShellSidebar() {
   const activeId = getExperimentIdFromPath(pathname);
   const { user, isAdmin } = useAuth();
   const { collapsed, toggle } = useSidebar();
+  const { resolvedTheme, setThemeMode } = usePreferences();
   const [experiments, setExperiments] = useState<ExperimentSummary[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -89,6 +93,12 @@ export function ShellSidebar() {
   }, [fetchExperiments]);
 
   const userName = getUserDisplayName(user?.displayName, user?.email);
+  const switchToLight = resolvedTheme === "dark";
+  const themeToggleLabel = switchToLight ? "Switch to Light" : "Switch to Dark";
+
+  const toggleTheme = () => {
+    setThemeMode(switchToLight ? "light" : "dark");
+  };
 
   return (
     <aside
@@ -197,7 +207,7 @@ export function ShellSidebar() {
                     className={`relative mx-auto flex h-10 w-10 items-center justify-center rounded-lg text-[13px] font-semibold no-underline transition-colors ${
                       isActive
                         ? "bg-[color-mix(in_srgb,var(--fv-accent)_14%,transparent)] text-[var(--fv-accent)] ring-1 ring-[color-mix(in_srgb,var(--fv-accent)_35%,transparent)]"
-                        : "text-[var(--fv-text-soft)] hover:bg-white/[0.05]"
+                        : "text-[var(--fv-text-soft)] hover:bg-[var(--fv-hover-overlay)]"
                     }`}
                   >
                     {projectInitial(displayName)}
@@ -300,6 +310,26 @@ export function ShellSidebar() {
           collapsed ? "p-3" : "p-4"
         }`}
       >
+        <button
+          type="button"
+          onClick={toggleTheme}
+          title={themeToggleLabel}
+          aria-label={themeToggleLabel}
+          className={`fv-sidebar-item flex w-full items-center text-[13px] ${
+            collapsed
+              ? "mx-auto mb-3 h-10 w-10 justify-center rounded-lg p-0"
+              : "mb-3 gap-2 px-3 py-2.5"
+          }`}
+        >
+          {switchToLight ? (
+            <Sun className="h-4 w-4 shrink-0 text-[var(--fv-text-muted)]" />
+          ) : (
+            <Moon className="h-4 w-4 shrink-0 text-[var(--fv-text-muted)]" />
+          )}
+          {!collapsed && (
+            <span className="text-[var(--fv-text-muted)]">{themeToggleLabel}</span>
+          )}
+        </button>
         {collapsed ? (
           <div title={userName} aria-label={userName}>
             <UserAvatar

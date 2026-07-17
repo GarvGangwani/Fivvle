@@ -72,7 +72,7 @@ export function WaitlistForm() {
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="mt-2 w-full border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md shadow-brutal-sm focus:border-brand-primary focus:outline-none"
+              className="mt-2 w-full rounded-md border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md shadow-brutal-sm focus:border-brand-primary focus:outline-none"
               placeholder="you@company.com"
               autoComplete="email"
             />

@@ -91,7 +91,7 @@ export function PricingSection() {
                 }`}
               >
                 {tier.highlighted ? (
-                  <span className="absolute right-4 top-4 rotate-12 border-2 border-border-master bg-brutalist-yellow px-2 py-1 font-label-md text-label-md uppercase text-ink-primary shadow-brutal-sm">
+                  <span className="absolute right-4 top-4 rotate-12 rounded-sm border-2 border-border-master bg-brutalist-yellow px-2 py-1 font-label-md text-label-md uppercase text-ink-primary shadow-brutal-sm">
                     MOST POPULAR
                   </span>
                 ) : null}
