@@ -24,6 +24,7 @@ from app.db.models.external_api_call import ExternalAPICall
 from app.db.models.insight_report import InsightReport
 from app.db.models.landing_page import LandingPage
 from app.db.models.landing_page_v2 import LandingPageV2Spec
+from app.db.models.launch_kit import LaunchKit
 from app.db.models.llm_call import LLMCall
 from app.db.models.page_view import PageView
 from app.db.models.payment_order import PaymentOrder
@@ -54,6 +55,7 @@ __all__ = [
     "InsightReport",
     "LandingPage",
     "LandingPageV2Spec",
+    "LaunchKit",
     "LLMCall",
     "PageView",
     "PaymentOrder",
