@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Integer, func
+from sqlalchemy import DateTime, ForeignKey, Integer, func, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -57,6 +57,27 @@ class ValidationReport(Base):
         DateTime(timezone=True),
         server_default=func.now(),
         nullable=False,
+    )
+
+    # --- Founder-editable overlay (Evidence editable-doc surface) ---
+    # raw_report stays immutable; edited_doc is a separate ProseMirror-doc JSON
+    # blob the founder edits. NULL until the first PATCH, at which point the
+    # server-rendered doc is persisted and versioned. See
+    # app/services/validation_report_editor.py.
+    edited_doc: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # Optimistic-concurrency counter. 0 for never-edited rows (server default
+    # backfills existing rows); incremented on every successful PATCH.
+    edited_doc_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=text("0"),
+    )
+    # Set to now() on each successful PATCH. Compared against generated_at to
+    # detect edits made before a research regeneration (staleness signal).
+    edited_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
 
     # --- Relationships ---

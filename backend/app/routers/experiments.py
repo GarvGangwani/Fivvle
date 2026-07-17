@@ -96,7 +96,16 @@ from app.schemas.experiment import (
 )
 from app.schemas.refinement import RefinedIdea
 from app.schemas.validation_report import ValidationReport as ValidationReportSchema
+from app.schemas.validation_report_edited_doc import (
+    EditedDocPatchRequest,
+    EditedDocResponse,
+)
 from app.schemas.tags import UpdateExperimentTagsRequest
+from app.services.validation_report_editor import (
+    EditedDocVersionConflict,
+    apply_edited_doc_patch,
+    build_edited_doc_response,
+)
 from app.services.tag_service import validate_tags
 from app.services.analytics_aggregator import (
     LandingPageNotLiveError,
@@ -992,6 +1001,32 @@ async def get_research_status(
 # ---------------------------------------------------------------------------
 
 
+async def _load_owned_validation_report(
+    db: AsyncSession,
+    experiment_id: UUID,
+    user_id: UUID,
+) -> ValidationReport:
+    """Load a ValidationReport row after verifying the caller owns the experiment.
+
+    Ownership failure returns the same 404 as a non-existent experiment (never
+    reveal existence for another user, per AGENTS.md).
+    """
+    exp_result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+    experiment = exp_result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != user_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+
+    report_result = await db.execute(
+        select(ValidationReport).where(ValidationReport.experiment_id == experiment_id),
+    )
+    report = report_result.scalar_one_or_none()
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Validation report not found"
+        )
+    return report
+
+
 @router.get(
     "/{experiment_id}/validation-report",
     response_model=ValidationReportResponse,
@@ -1018,6 +1053,50 @@ async def get_validation_report(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Validation report not found")
 
     return ValidationReportSchema.model_validate(report.raw_report)
+
+
+@router.get(
+    "/{experiment_id}/validation-report/edited-doc",
+    response_model=EditedDocResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def get_validation_report_edited_doc(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> EditedDocResponse:
+    report = await _load_owned_validation_report(db, experiment_id, current_user.id)
+    return EditedDocResponse(**build_edited_doc_response(report))
+
+
+@router.patch(
+    "/{experiment_id}/validation-report/edited-doc",
+    response_model=EditedDocResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def patch_validation_report_edited_doc(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: EditedDocPatchRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> EditedDocResponse:
+    report = await _load_owned_validation_report(db, experiment_id, current_user.id)
+    try:
+        apply_edited_doc_patch(report, doc=body.doc, base_version=body.base_version)
+    except EditedDocVersionConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"message": "edited_doc_version conflict", "current_version": exc.current_version},
+        ) from exc
+    await db.commit()
+    await db.refresh(report)
+    return EditedDocResponse(**build_edited_doc_response(report))
 
 
 @router.get(
