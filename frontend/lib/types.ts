@@ -339,6 +339,8 @@ export interface EvidenceChatSendRequest {
   message: string;
   selection_text?: string | null;
   selection_question_id?: string | null;
+  /** Branch parent. Omit to hang off the current active leaf. */
+  parent_message_id?: string | null;
 }
 
 export interface EvidenceChatSendResponse {
@@ -347,10 +349,22 @@ export interface EvidenceChatSendResponse {
   thread_id: string;
 }
 
+/** Position of a message within its sibling group (same parent). */
+export interface SiblingInfo {
+  sibling_index: number;
+  sibling_count: number;
+  /** Ordered (oldest→newest) sibling ids, so the client can activate one by id. */
+  sibling_ids: string[];
+}
+
 export interface EvidenceChatMessagesResponse {
   thread_id: string | null;
   experiment_id: string;
+  active_leaf_message_id: string | null;
+  /** Active branch only, root→leaf. */
   messages: ChatHistoryMessage[];
+  /** message id → sibling position, for branch-navigation controls. */
+  sibling_info: Record<string, SiblingInfo>;
 }
 
 export type EvidenceChatVerdict = "up" | "down";
@@ -375,6 +389,44 @@ export interface EvidenceChatRegenerateResponse {
   assistant_message: ChatHistoryMessage;
   thread_id: string;
 }
+
+export interface EvidenceChatEditRequest {
+  content: string;
+  selection_text?: string | null;
+  selection_question_id?: string | null;
+}
+
+export interface EvidenceChatEditResponse {
+  new_user_message: ChatHistoryMessage;
+  new_assistant_message: ChatHistoryMessage;
+  thread_id: string;
+  active_leaf_message_id: string;
+  sibling_info: Record<string, SiblingInfo>;
+}
+
+export interface EvidenceChatActivateResponse {
+  thread_id: string;
+  active_leaf_message_id: string;
+}
+
+/** `done` SSE frame payload from the evidence-chat streaming endpoint. */
+export interface EvidenceChatStreamDone {
+  assistant_message_id: string;
+  user_message_id: string;
+  thread_id: string;
+  sibling_info: Record<string, SiblingInfo>;
+}
+
+/**
+ * In-report reference emitted by the v3 prompt as `[ref: <anchor>]`. Resolved
+ * client-side against the report and, on click, focused in the editor. Section
+ * refs never navigate the editor (scores were removed from the doc).
+ */
+export type RefCitation =
+  | { kind: "question"; value: string }
+  | { kind: "competitor"; value: string }
+  | { kind: "section"; value: string }
+  | { kind: "limitation"; value: string };
 
 export interface Citation {
   url: string;

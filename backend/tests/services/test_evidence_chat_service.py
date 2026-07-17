@@ -29,7 +29,10 @@ from app.db.models.validation_report import ValidationReport
 from app.services.evidence_chat_service import (
     EvidenceChatNotFound,
     _build_report_skeleton,
+    activate_evidence_chat_branch,
+    edit_evidence_chat_message,
     list_evidence_chat_messages,
+    regenerate_evidence_chat_message,
     send_evidence_chat_message,
 )
 
@@ -212,8 +215,13 @@ async def test_send_happy_path_persists_turn_and_creates_thread(
     assert result.assistant_message.content == "Per q2, competitors use per-seat pricing."
     assert result.user_message.turn_kind == ChatTurnKind.EVIDENCE_CHAT
     assert result.assistant_message.turn_kind == ChatTurnKind.EVIDENCE_CHAT
+    # First turn: user has no parent; assistant hangs off the user message.
     assert result.user_message.parent_message_id is None
-    assert result.assistant_message.parent_message_id is None
+    assert result.assistant_message.parent_message_id == result.user_message.id
+    # The assistant reply becomes the thread's active leaf.
+    thread_after = await db_session.get(ChatThread, result.thread_id)
+    assert thread_after is not None
+    assert thread_after.active_leaf_message_id == result.assistant_message.id
 
     # Thread created + linked on the experiment.
     await db_session.refresh(experiment)
@@ -225,7 +233,7 @@ async def test_send_happy_path_persists_turn_and_creates_thread(
     # LLM call used the evidence-chat prompt name + phase.
     assert mock_complete.await_count == 1
     kwargs = mock_complete.call_args.kwargs
-    assert kwargs["prompt_name"] == "evidence_chat_v2"
+    assert kwargs["prompt_name"] == "evidence_chat_v3"
     assert kwargs["phase"] == "evidence_chat"
     assert kwargs["max_tokens"] == 1024
 
@@ -387,11 +395,11 @@ async def test_list_messages_empty_before_first_turn(db_session: AsyncSession) -
     user = await _persist_user(db_session)
     experiment = await _persist_experiment_with_report(db_session, user)
 
-    thread_id, messages = await list_evidence_chat_messages(
-        db_session, user, experiment.id
-    )
-    assert thread_id is None
-    assert messages == []
+    result = await list_evidence_chat_messages(db_session, user, experiment.id)
+    assert result.thread_id is None
+    assert result.active_leaf_message_id is None
+    assert result.messages == []
+    assert result.sibling_info == {}
 
 
 @pytest.mark.asyncio
@@ -404,6 +412,124 @@ async def test_list_messages_other_user_raises_not_found(
 
     with pytest.raises(EvidenceChatNotFound):
         await list_evidence_chat_messages(db_session, other, experiment.id)
+
+
+# ---------------------------------------------------------------------------
+# Branching: edit, regenerate, activate, active-branch loader
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@patch(_LLM_PATCH_TARGET, new_callable=AsyncMock)
+async def test_edit_creates_sibling_and_preserves_original(
+    mock_complete: AsyncMock, db_session: AsyncSession
+) -> None:
+    mock_complete.return_value = _fake_llm_result("original reply")
+    user = await _persist_user(db_session)
+    experiment = await _persist_experiment_with_report(db_session, user)
+
+    first = await send_evidence_chat_message(
+        db_session, user, experiment.id, "Original question about competition."
+    )
+
+    mock_complete.return_value = _fake_llm_result("edited reply")
+    edited = await edit_evidence_chat_message(
+        db_session,
+        user,
+        experiment.id,
+        first.user_message.id,
+        "Edited question about pricing.",
+    )
+
+    # New user is a sibling of the original (same parent = None here).
+    assert edited.new_user_message.id != first.user_message.id
+    assert edited.new_user_message.parent_message_id == first.user_message.parent_message_id
+    assert edited.new_assistant_message.parent_message_id == edited.new_user_message.id
+    assert edited.active_leaf_message_id == edited.new_assistant_message.id
+
+    # Original user message + its assistant reply still exist.
+    original_still = await db_session.get(ChatMessage, first.user_message.id)
+    original_reply_still = await db_session.get(ChatMessage, first.assistant_message.id)
+    assert original_still is not None
+    assert original_reply_still is not None
+
+    # sibling_info reports 2 siblings for the new user message.
+    info = edited.sibling_info[str(edited.new_user_message.id)]
+    assert info["sibling_count"] == 2
+    assert info["sibling_index"] == 1
+
+    # Active branch is the edited path.
+    branch = await list_evidence_chat_messages(db_session, user, experiment.id)
+    ids = [m.id for m in branch.messages]
+    assert ids == [edited.new_user_message.id, edited.new_assistant_message.id]
+    assert branch.active_leaf_message_id == edited.new_assistant_message.id
+    assert branch.sibling_info[str(edited.new_user_message.id)]["sibling_count"] == 2
+
+
+@pytest.mark.asyncio
+@patch(_LLM_PATCH_TARGET, new_callable=AsyncMock)
+async def test_regenerate_creates_sibling_not_delete(
+    mock_complete: AsyncMock, db_session: AsyncSession
+) -> None:
+    mock_complete.return_value = _fake_llm_result("first reply")
+    user = await _persist_user(db_session)
+    experiment = await _persist_experiment_with_report(db_session, user)
+
+    first = await send_evidence_chat_message(
+        db_session, user, experiment.id, "Tell me about pricing."
+    )
+
+    mock_complete.return_value = _fake_llm_result("regenerated reply")
+    regen = await regenerate_evidence_chat_message(
+        db_session, user, experiment.id, first.assistant_message.id
+    )
+
+    # New assistant is a sibling (same parent user message), old one preserved.
+    assert regen.assistant_message.id != first.assistant_message.id
+    assert regen.assistant_message.parent_message_id == first.user_message.id
+    old_still = await db_session.get(ChatMessage, first.assistant_message.id)
+    assert old_still is not None
+
+    # Active leaf moved to the regenerated reply.
+    thread = await db_session.get(ChatThread, first.thread_id)
+    assert thread is not None
+    assert thread.active_leaf_message_id == regen.assistant_message.id
+
+
+@pytest.mark.asyncio
+@patch(_LLM_PATCH_TARGET, new_callable=AsyncMock)
+async def test_activate_resolves_to_leaf(
+    mock_complete: AsyncMock, db_session: AsyncSession
+) -> None:
+    mock_complete.return_value = _fake_llm_result("first reply")
+    user = await _persist_user(db_session)
+    experiment = await _persist_experiment_with_report(db_session, user)
+
+    first = await send_evidence_chat_message(
+        db_session, user, experiment.id, "First question."
+    )
+
+    # Edit branches away; active leaf is now the edited assistant.
+    mock_complete.return_value = _fake_llm_result("edited reply")
+    await edit_evidence_chat_message(
+        db_session, user, experiment.id, first.user_message.id, "Edited question."
+    )
+
+    # Activating the ORIGINAL user message walks forward to the original
+    # assistant reply (its branch leaf) and sets it active.
+    result = await activate_evidence_chat_branch(
+        db_session, user, experiment.id, first.user_message.id
+    )
+    assert result.active_leaf_message_id == first.assistant_message.id
+
+    thread = await db_session.get(ChatThread, first.thread_id)
+    assert thread is not None
+    assert thread.active_leaf_message_id == first.assistant_message.id
+
+    # And the loader now returns the original branch.
+    branch = await list_evidence_chat_messages(db_session, user, experiment.id)
+    ids = [m.id for m in branch.messages]
+    assert ids == [first.user_message.id, first.assistant_message.id]
 
 
 # ---------------------------------------------------------------------------

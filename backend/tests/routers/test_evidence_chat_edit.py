@@ -1,29 +1,22 @@
-"""Integration tests for the evidence-chat regenerate endpoint.
+"""Integration tests for the evidence-chat edit endpoint.
 
 Endpoint:
-- POST /experiments/{id}/evidence-chat/messages/{assistant_message_id}/regenerate
+- POST /experiments/{id}/evidence-chat/messages/{user_message_id}/edit
 
-Uses the real Postgres DB (TestClient + conftest fixtures). The LLM call is
-mocked. Mirrors tests/routers/test_evidence_chat_endpoints.py.
+Editing a user message branches: a new user message is created as a SIBLING of
+the original (same parent), re-answered, and the active leaf moves to the new
+reply. The original message and its subtree are preserved.
 
-Covered:
-- 401 unauthenticated.
-- 200 happy path — regenerated reply is a SIBLING (original preserved), no
-  user_message in response, active leaf moved to the new reply.
-- 404 wrong owner.
-- 404 target message not in this experiment's evidence thread.
-- 400 wrong role (target is a user message).
-- 400 wrong turn_kind (assistant message that isn't evidence_chat).
-- 400 no parent user message found.
+Uses the real Postgres DB (TestClient + conftest fixtures); the LLM is mocked.
 """
 
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 from uuid import UUID, uuid4
 
 from fastapi.testclient import TestClient
@@ -40,7 +33,7 @@ def _sync_user(client: TestClient) -> str:
     return resp.json()["id"]
 
 
-def _create_experiment(client: TestClient, name: str = "Evidence Regen Test") -> str:
+def _create_experiment(client: TestClient, name: str = "Evidence Edit Test") -> str:
     resp = client.post("/experiments", json={"name": name}, headers=_AUTH_HEADER)
     assert resp.status_code == 201, resp.json()
     return resp.json()["id"]
@@ -146,58 +139,21 @@ def _seed_validation_report(experiment_id: str, raw_report: dict[str, Any]) -> N
     asyncio.get_event_loop().run_until_complete(_run())
 
 
-def _seed_thread(
-    experiment_id: str,
-    user_id: str,
-    messages: list[tuple[str, str | None]],
-) -> list[str]:
-    """Create an evidence thread, link it to the experiment, seed messages.
-
-    `messages` is a list of (role, turn_kind) — turn_kind may be None. Messages
-    are timestamped in list order (1s apart). Returns the created message ids.
-    """
+def _message_exists(message_id: str) -> bool:
+    from sqlalchemy import select
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-    from app.db.enums import ChatRole, ChatTurnKind
     from app.db.models.chat_message import ChatMessage
-    from app.db.models.chat_thread import ChatThread
-    from app.db.models.experiment import Experiment
 
-    role_map = {"user": ChatRole.USER, "assistant": ChatRole.ASSISTANT}
-    kind_map = {
-        "evidence_chat": ChatTurnKind.EVIDENCE_CHAT,
-        "normal_chat": ChatTurnKind.NORMAL_CHAT,
-        None: None,
-    }
-
-    async def _run() -> list[str]:
+    async def _run() -> bool:
         engine = create_async_engine(get_settings().database_url, pool_size=1, max_overflow=0)
         sm = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
         try:
             async with sm() as session:
-                thread = ChatThread(user_id=UUID(user_id), title="Evidence chat: seeded")
-                session.add(thread)
-                await session.flush()
-                experiment = await session.get(Experiment, UUID(experiment_id))
-                assert experiment is not None
-                experiment.evidence_thread_id = thread.id
-                base = datetime.now(UTC)
-                ids: list[str] = []
-                for i, (role, kind) in enumerate(messages):
-                    msg = ChatMessage(
-                        thread_id=thread.id,
-                        role=role_map[role],
-                        content=f"seeded {role} {i}",
-                        experiment_id=UUID(experiment_id),
-                        turn_kind=kind_map[kind],
-                        parent_message_id=None,
-                        created_at=base + timedelta(seconds=i),
-                    )
-                    session.add(msg)
-                    await session.flush()
-                    ids.append(str(msg.id))
-                await session.commit()
-                return ids
+                result = await session.execute(
+                    select(ChatMessage).where(ChatMessage.id == UUID(message_id))
+                )
+                return result.scalar_one_or_none() is not None
         finally:
             await engine.dispose()
 
@@ -205,71 +161,76 @@ def _seed_thread(
 
 
 def _mock_llm(text: str) -> Any:
+    from unittest.mock import AsyncMock
+
     m = AsyncMock()
     m.return_value = SimpleNamespace(text=text)
     return m
 
 
-def _send(client: TestClient, exp_id: str) -> dict[str, Any]:
+def _send(client: TestClient, exp_id: str, message: str = "Original question.") -> dict[str, Any]:
     with patch(_LLM_PATCH_TARGET, _mock_llm("Original reply grounded in q2.")):
         resp = client.post(
             f"/experiments/{exp_id}/evidence-chat",
-            json={"message": "Tell me about the competition."},
+            json={"message": message},
             headers=_AUTH_HEADER,
         )
     assert resp.status_code == 200, resp.json()
     return resp.json()
 
 
-def _regen_url(exp_id: str, message_id: str) -> str:
-    return f"/experiments/{exp_id}/evidence-chat/messages/{message_id}/regenerate"
+def _edit_url(exp_id: str, message_id: str) -> str:
+    return f"/experiments/{exp_id}/evidence-chat/messages/{message_id}/edit"
 
 
 # ---------------------------------------------------------------------------
 
 
-def test_regenerate_unauthenticated_returns_401(client: TestClient) -> None:
-    resp = client.post(_regen_url(str(uuid4()), str(uuid4())), json={})
+def test_edit_unauthenticated_returns_401(client: TestClient) -> None:
+    resp = client.post(_edit_url(str(uuid4()), str(uuid4())), json={"content": "x"})
     assert resp.status_code == 401
 
 
-def test_regenerate_happy_path_returns_200(
+def test_edit_creates_sibling_original_preserved(
     client: TestClient, mock_firebase: None
 ) -> None:
     _sync_user(client)
     exp_id = _create_experiment(client)
     _seed_validation_report(exp_id, _raw_report_dict())
     sent = _send(client, exp_id)
-    assistant_id = sent["assistant_message"]["id"]
+    original_user_id = sent["user_message"]["id"]
+    original_assistant_id = sent["assistant_message"]["id"]
 
-    with patch(_LLM_PATCH_TARGET, _mock_llm("Fresh regenerated reply.")):
+    with patch(_LLM_PATCH_TARGET, _mock_llm("Edited reply about pricing.")):
         resp = client.post(
-            _regen_url(exp_id, assistant_id), json={}, headers=_AUTH_HEADER
+            _edit_url(exp_id, original_user_id),
+            json={"content": "Edited question about pricing."},
+            headers=_AUTH_HEADER,
         )
     assert resp.status_code == 200, resp.json()
     body = resp.json()
-    assert body["assistant_message"]["content"] == "Fresh regenerated reply."
-    assert body["assistant_message"]["turn_kind"] == "evidence_chat"
-    assert body["thread_id"] == sent["thread_id"]
-    assert "user_message" not in body
-    # Branch-aware: the new reply is a SIBLING with a different id; the old one
-    # is preserved (NOT delete-replaced).
-    new_assistant_id = body["assistant_message"]["id"]
-    assert new_assistant_id != assistant_id
 
-    # The active branch now shows the regenerated reply, and the assistant has
-    # two siblings (original + regenerated).
+    new_user_id = body["new_user_message"]["id"]
+    new_assistant_id = body["new_assistant_message"]["id"]
+    assert body["new_user_message"]["content"] == "Edited question about pricing."
+    assert body["new_assistant_message"]["content"] == "Edited reply about pricing."
+    assert new_user_id != original_user_id
+    assert body["active_leaf_message_id"] == new_assistant_id
+    assert body["sibling_info"][new_user_id]["sibling_count"] == 2
+
+    # Original user message AND its assistant reply still exist in the DB.
+    assert _message_exists(original_user_id) is True
+    assert _message_exists(original_assistant_id) is True
+
+    # Active branch is the edited path.
     msgs = client.get(
         f"/experiments/{exp_id}/evidence-chat/messages", headers=_AUTH_HEADER
     ).json()
+    assert [m["id"] for m in msgs["messages"]] == [new_user_id, new_assistant_id]
     assert msgs["active_leaf_message_id"] == new_assistant_id
-    branch_ids = [m["id"] for m in msgs["messages"]]
-    assert new_assistant_id in branch_ids
-    assert assistant_id not in branch_ids  # original is off the active branch
-    assert msgs["sibling_info"][new_assistant_id]["sibling_count"] == 2
 
 
-def test_regenerate_wrong_owner_returns_404(
+def test_edit_wrong_role_returns_400(
     client: TestClient, mock_firebase: None
 ) -> None:
     _sync_user(client)
@@ -277,11 +238,27 @@ def test_regenerate_wrong_owner_returns_404(
     _seed_validation_report(exp_id, _raw_report_dict())
     assistant_id = _send(client, exp_id)["assistant_message"]["id"]
 
+    # Editing an assistant message is not allowed.
+    resp = client.post(
+        _edit_url(exp_id, assistant_id),
+        json={"content": "nope"},
+        headers=_AUTH_HEADER,
+    )
+    assert resp.status_code == 400
+
+
+def test_edit_wrong_owner_returns_404(
+    client: TestClient, mock_firebase: None
+) -> None:
+    _sync_user(client)
+    exp_id = _create_experiment(client)
+    _seed_validation_report(exp_id, _raw_report_dict())
+    user_msg_id = _send(client, exp_id)["user_message"]["id"]
+
     from app.auth.dependencies import get_current_user
     from app.main import app
 
-    other = MagicMock()
-    other.id = uuid4()
+    other = SimpleNamespace(id=uuid4())
 
     async def _fake_other() -> object:
         return other
@@ -289,65 +266,27 @@ def test_regenerate_wrong_owner_returns_404(
     app.dependency_overrides[get_current_user] = _fake_other
     try:
         resp = client.post(
-            _regen_url(exp_id, assistant_id), json={}, headers=_AUTH_HEADER
+            _edit_url(exp_id, user_msg_id),
+            json={"content": "hijack"},
+            headers=_AUTH_HEADER,
         )
     finally:
         app.dependency_overrides.clear()
     assert resp.status_code == 404
 
 
-def test_regenerate_message_not_in_experiment_thread_returns_404(
+def test_edit_empty_content_returns_422(
     client: TestClient, mock_firebase: None
 ) -> None:
     _sync_user(client)
-    exp1 = _create_experiment(client, "Exp One")
-    _seed_validation_report(exp1, _raw_report_dict())
-    assistant_id = _send(client, exp1)["assistant_message"]["id"]
+    exp_id = _create_experiment(client)
+    _seed_validation_report(exp_id, _raw_report_dict())
+    user_msg_id = _send(client, exp_id)["user_message"]["id"]
 
-    exp2 = _create_experiment(client, "Exp Two")
-    _seed_validation_report(exp2, _raw_report_dict())
-    _send(client, exp2)  # gives exp2 its own evidence thread
-
-    # exp1's assistant id under exp2 → not in exp2's thread → 404.
     resp = client.post(
-        _regen_url(exp2, assistant_id), json={}, headers=_AUTH_HEADER
+        _edit_url(exp_id, user_msg_id),
+        json={"content": "   "},
+        headers=_AUTH_HEADER,
     )
-    assert resp.status_code == 404
-
-
-def test_regenerate_wrong_role_returns_400(
-    client: TestClient, mock_firebase: None
-) -> None:
-    _sync_user(client)
-    exp_id = _create_experiment(client)
-    _seed_validation_report(exp_id, _raw_report_dict())
-    user_id = _send(client, exp_id)["user_message"]["id"]
-
-    resp = client.post(_regen_url(exp_id, user_id), json={}, headers=_AUTH_HEADER)
-    assert resp.status_code == 400
-
-
-def test_regenerate_wrong_turn_kind_returns_400(
-    client: TestClient, mock_firebase: None
-) -> None:
-    uid = _sync_user(client)
-    exp_id = _create_experiment(client)
-    _seed_validation_report(exp_id, _raw_report_dict())
-    # Thread has a user message (parent exists) then an assistant NORMAL_CHAT.
-    ids = _seed_thread(exp_id, uid, [("user", "evidence_chat"), ("assistant", "normal_chat")])
-
-    resp = client.post(_regen_url(exp_id, ids[1]), json={}, headers=_AUTH_HEADER)
-    assert resp.status_code == 400
-
-
-def test_regenerate_no_parent_user_returns_400(
-    client: TestClient, mock_firebase: None
-) -> None:
-    uid = _sync_user(client)
-    exp_id = _create_experiment(client)
-    _seed_validation_report(exp_id, _raw_report_dict())
-    # Lone assistant evidence-chat message, no preceding user message.
-    ids = _seed_thread(exp_id, uid, [("assistant", "evidence_chat")])
-
-    resp = client.post(_regen_url(exp_id, ids[0]), json={}, headers=_AUTH_HEADER)
-    assert resp.status_code == 400
+    # Pydantic min_length=1 passes (3 spaces), service sanitizes to empty → 422.
+    assert resp.status_code == 422

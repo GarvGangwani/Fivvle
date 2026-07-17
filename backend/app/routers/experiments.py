@@ -26,6 +26,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, Response, UploadFile, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -96,6 +97,9 @@ from app.schemas.experiment import (
 )
 from app.schemas.chat import ChatMessageItem
 from app.schemas.evidence_chat import (
+    EvidenceChatActivateResponse,
+    EvidenceChatEditRequest,
+    EvidenceChatEditResponse,
     EvidenceChatMessagesResponse,
     EvidenceChatRegenerateRequest,
     EvidenceChatRegenerateResponse,
@@ -116,9 +120,13 @@ from app.schemas.tags import UpdateExperimentTagsRequest
 from app.services.evidence_chat_service import (
     EvidenceChatInvalidTarget,
     EvidenceChatNotFound,
+    activate_evidence_chat_branch,
+    edit_evidence_chat_message,
     list_evidence_chat_messages,
+    prepare_evidence_stream,
     regenerate_evidence_chat_message,
     send_evidence_chat_message,
+    stream_evidence_reply,
     upsert_evidence_chat_feedback,
 )
 from app.services.validation_report_editor import (
@@ -1141,11 +1149,16 @@ async def send_evidence_chat(
             body.message,
             selection_text=body.selection_text,
             selection_question_id=body.selection_question_id,
+            parent_message_id=body.parent_message_id,
         )
     except EvidenceChatNotFound:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
         ) from None
+    except EvidenceChatInvalidTarget as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
@@ -1167,6 +1180,27 @@ async def send_evidence_chat(
     )
 
 
+def _evidence_items_with_siblings(
+    messages: list,
+    sibling_info: dict[str, dict[str, int]],
+) -> list[ChatMessageItem]:
+    """Build ChatMessageItems, merging per-message sibling position when present."""
+    items: list[ChatMessageItem] = []
+    for msg in messages:
+        info = sibling_info.get(str(msg.id))
+        if info is not None:
+            items.append(
+                ChatMessageItem.from_orm_message(
+                    msg,
+                    sibling_count=info["sibling_count"],
+                    sibling_index=info["sibling_index"],
+                )
+            )
+        else:
+            items.append(ChatMessageItem.from_orm_message(msg))
+    return items
+
+
 @router.get(
     "/{experiment_id}/evidence-chat/messages",
     response_model=EvidenceChatMessagesResponse,
@@ -1181,17 +1215,17 @@ async def get_evidence_chat_messages(
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> EvidenceChatMessagesResponse:
     try:
-        thread_id, messages = await list_evidence_chat_messages(
-            db, current_user, experiment_id
-        )
+        result = await list_evidence_chat_messages(db, current_user, experiment_id)
     except EvidenceChatNotFound:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
         ) from None
     return EvidenceChatMessagesResponse(
-        thread_id=thread_id,
+        thread_id=result.thread_id,
         experiment_id=experiment_id,
-        messages=[ChatMessageItem.from_orm_message(m) for m in messages],
+        active_leaf_message_id=result.active_leaf_message_id,
+        messages=_evidence_items_with_siblings(result.messages, result.sibling_info),
+        sibling_info=result.sibling_info,
     )
 
 
@@ -1271,6 +1305,150 @@ async def submit_evidence_chat_feedback(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
         ) from exc
     return EvidenceChatFeedbackResponse(message_id=row.message_id, verdict=row.verdict)
+
+
+@router.post(
+    "/{experiment_id}/evidence-chat/stream",
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def stream_evidence_chat(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: EvidenceChatSendRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StreamingResponse:
+    """Stream an evidence-chat reply as SSE (token/done/error frames).
+
+    The user message is persisted + committed here (request session) BEFORE the
+    stream starts, so a mid-stream disconnect never loses it. The generator owns
+    the assistant persist + LLMCall accounting on its own session.
+    """
+    try:
+        prep = await prepare_evidence_stream(
+            db,
+            current_user,
+            experiment_id,
+            body.message,
+            selection_text=body.selection_text,
+            selection_question_id=body.selection_question_id,
+            parent_message_id=body.parent_message_id,
+        )
+    except EvidenceChatNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
+        ) from None
+    except EvidenceChatInvalidTarget as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+    return StreamingResponse(
+        stream_evidence_reply(prep),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post(
+    "/{experiment_id}/evidence-chat/messages/{user_message_id}/edit",
+    response_model=EvidenceChatEditResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def edit_evidence_chat(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    user_message_id: UUID,
+    body: EvidenceChatEditRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> EvidenceChatEditResponse:
+    """Edit a user message: branch a sibling, re-answer, move the active leaf."""
+    try:
+        result = await edit_evidence_chat_message(
+            db,
+            current_user,
+            experiment_id,
+            user_message_id,
+            body.content,
+            selection_text=body.selection_text,
+            selection_question_id=body.selection_question_id,
+        )
+    except EvidenceChatNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Message not found"
+        ) from None
+    except EvidenceChatInvalidTarget as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    except Exception as exc:
+        _logger.error(
+            "evidence chat edit failed",
+            error_type=type(exc).__name__,
+            experiment_id=str(experiment_id),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Evidence chat edit failed, please try again",
+        ) from exc
+    return EvidenceChatEditResponse(
+        new_user_message=ChatMessageItem.from_orm_message(result.new_user_message),
+        new_assistant_message=ChatMessageItem.from_orm_message(
+            result.new_assistant_message
+        ),
+        thread_id=result.thread_id,
+        active_leaf_message_id=result.active_leaf_message_id,
+        sibling_info=result.sibling_info,
+    )
+
+
+@router.post(
+    "/{experiment_id}/evidence-chat/messages/{message_id}/activate",
+    response_model=EvidenceChatActivateResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def activate_evidence_chat(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    message_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> EvidenceChatActivateResponse:
+    """Switch the active branch to the leaf of the branch containing message_id."""
+    try:
+        result = await activate_evidence_chat_branch(
+            db, current_user, experiment_id, message_id
+        )
+    except EvidenceChatNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Message not found"
+        ) from None
+    except EvidenceChatInvalidTarget as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    return EvidenceChatActivateResponse(
+        thread_id=result.thread_id,
+        active_leaf_message_id=result.active_leaf_message_id,
+    )
 
 
 @router.get(

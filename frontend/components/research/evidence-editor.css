@@ -77,3 +77,9 @@
 .evidence-prose mark {
   padding: 0 2px;
 }
+
+.evidence-prose .evidence-ref-flash {
+  background-color: color-mix(in oklab, var(--fv-accent) 20%, transparent);
+  border-radius: 2px;
+  transition: background-color 200ms ease-in-out;
+}
