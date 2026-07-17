@@ -15,8 +15,10 @@ import type { SaveStatus } from "@/components/research/EvidenceReportEditor";
 const FONT_SIZES = ["12", "14", "16", "18", "24"] as const;
 const DEFAULT_FONT_SIZE = "16";
 
-const TEXT_COLORS: { color: string; label: string }[] = [
-  { color: "#000000", label: "Black text" },
+type TextColor = { color: string | null; label: string };
+
+const TEXT_COLORS: TextColor[] = [
+  { color: null, label: "Default text" },
   { color: "#4f46e5", label: "Indigo text" },
   { color: "#EF4444", label: "Red text" },
   { color: "#22C55E", label: "Green text" },
@@ -67,7 +69,7 @@ function SwatchButton({
   onClick,
   label,
 }: {
-  color: string;
+  color: string | null;
   active: boolean;
   onClick: () => void;
   label: string;
@@ -79,11 +81,13 @@ function SwatchButton({
       aria-label={label}
       aria-pressed={active}
       title={label}
-      className={`h-7 w-7 border-2 transition-shadow hover:shadow-brutal-sm ${
+      className={`flex h-7 w-7 items-center justify-center border-2 transition-shadow hover:shadow-brutal-sm ${
         active ? "border-brand-primary" : "border-border-master"
-      }`}
-      style={{ backgroundColor: color }}
-    />
+      } ${color === null ? "bg-surface-card text-ink-primary" : ""}`}
+      style={color === null ? undefined : { backgroundColor: color }}
+    >
+      {color === null ? <Ban className="h-4 w-4" aria-hidden="true" /> : null}
+    </button>
   );
 }
 
@@ -231,19 +235,21 @@ export function EvidenceEditorToolbar({
       <div className="flex items-center gap-1" role="group" aria-label="Text color">
         {TEXT_COLORS.map(({ color, label }) => (
           <SwatchButton
-            key={color}
+            key={color ?? "default"}
             color={color}
             label={label}
-            active={editor.isActive("textStyle", { color })}
-            onClick={() => editor.chain().focus().setColor(color).run()}
+            active={
+              color === null
+                ? !editor.getAttributes("textStyle").color
+                : editor.isActive("textStyle", { color })
+            }
+            onClick={() =>
+              color === null
+                ? editor.chain().focus().unsetColor().run()
+                : editor.chain().focus().setColor(color).run()
+            }
           />
         ))}
-        <ToolbarButton
-          onClick={() => editor.chain().focus().unsetColor().run()}
-          label="Default text color"
-        >
-          <Ban className="h-4 w-4" />
-        </ToolbarButton>
       </div>
 
       <Divider />

@@ -53,7 +53,7 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
   });
 
   return (
-    <div className="w-[560px] bg-surface-card border-2 border-border-master shadow-brutal-lg">
+    <div className="w-[560px] rounded-md bg-surface-card border-2 border-border-master shadow-brutal-lg">
       <div className="bg-ink-primary text-ink-inverse flex items-center justify-between px-4 py-3 cursor-grab active:cursor-grabbing">
         <div className="flex items-center gap-3">
           <span
@@ -119,7 +119,7 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
           onChange={(e) => setIdea(e.target.value)}
           placeholder="What are you thinking of building? Just write it out plainly. Fivvle will help you refine it in the next phase."
           rows={6}
-          className="nodrag nowheel w-full border-2 border-border-master bg-surface-card p-3 font-body text-body-md placeholder:text-ink-tertiary focus:shadow-brutal-primary focus:outline-none resize-none cursor-text"
+          className="nodrag nowheel w-full rounded-md border-2 border-border-master bg-surface-card p-3 font-body text-body-md placeholder:text-ink-tertiary focus:shadow-brutal-primary focus:outline-none resize-none cursor-text"
         />
         <p className="mt-2 font-mono text-mono-sm text-ink-tertiary">
           {idea.length} CHARACTERS
@@ -135,7 +135,7 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
             <button
               type="button"
               onClick={() => setAddMenuOpen((v) => !v)}
-              className="border-2 border-border-master bg-surface-card px-3 py-1 font-label-md text-label-md uppercase shadow-brutal-sm hover:shadow-brutal-md hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all"
+              className="rounded-sm border-2 border-border-master bg-surface-card px-3 py-1 font-label-md text-label-md uppercase shadow-brutal-sm hover:shadow-brutal-md hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all"
             >
               + ADD
             </button>
@@ -179,7 +179,7 @@ export function SparkExpandedNode({ data }: NodeProps<SparkExpandedData>) {
           type="button"
           onClick={() => void handleSave()}
           disabled={!isDirty || saving}
-          className="w-full bg-brand-primary text-ink-inverse px-6 py-3 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-md hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-brutal-sm disabled:translate-x-0 disabled:translate-y-0 transition-all"
+          className="w-full rounded-sm bg-brand-primary text-ink-inverse px-6 py-3 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-md hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-brutal-sm disabled:translate-x-0 disabled:translate-y-0 transition-all"
         >
           {saving
             ? "SAVING..."

@@ -100,7 +100,7 @@ export function TypeConfirmDialog({
             onChange={(e) => setTyped(e.target.value)}
             autoComplete="off"
             spellCheck={false}
-            className="fv-input w-full rounded-lg border border-[var(--fv-border)] bg-white/[0.03] px-3 py-2.5 font-mono text-[13px]"
+            className="fv-input w-full rounded-lg border border-[var(--fv-border)] bg-[var(--fv-surface-2)] px-3 py-2.5 font-mono text-[13px]"
             placeholder={confirmWord}
           />
         </div>

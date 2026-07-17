@@ -90,7 +90,7 @@ export default async function PublicLandingPageRoute({
   if (!data) notFound();
 
   return (
-    <div data-fivvle-public-landing className="min-h-screen">
+    <div data-fivvle-public-landing data-theme="light" className="min-h-screen">
       <PageViewBeacon slug={slug} sourceTag={sourceTag} />
       <Suspense fallback={null}>
         <PublishedLandingPage data={data} />

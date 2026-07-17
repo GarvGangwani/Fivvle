@@ -10,7 +10,7 @@ import { marketingButtonClass } from "@/components/marketing/marketing-styles";
 import { getFirebaseAuth } from "@/lib/firebase";
 
 const inputClassName =
-  "mt-2 w-full border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md text-ink-primary shadow-brutal-sm transition-shadow focus:border-brand-primary focus:shadow-brutal-primary focus:outline-none disabled:opacity-60";
+  "mt-2 w-full rounded-md border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md text-ink-primary shadow-brutal-sm transition-shadow focus:border-brand-primary focus:shadow-brutal-primary focus:outline-none disabled:opacity-60";
 
 function formatPasswordResetError(err: unknown): string {
   if (err instanceof FirebaseError) {

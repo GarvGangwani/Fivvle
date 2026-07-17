@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
-  darkMode: "class", // kept for future, not used
+  darkMode: ["class", "[data-theme='dark']"],
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
@@ -10,34 +10,34 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Brand
-        "brand-primary": "#4f46e5",
-        "brand-primary-deep": "#1e00a9",
-        "brand-primary-soft": "#e2dfff",
-        "brutalist-yellow": "#FFFF00",
+        // Brand — routed through accent tokens
+        "brand-primary": "var(--fv-accent)",
+        "brand-primary-deep": "var(--fv-brand-deep)",
+        "brand-primary-soft": "var(--fv-brand-soft)",
+        "brutalist-yellow": "var(--fv-yellow)",
 
         // Surfaces
-        "canvas-bg": "#FAFAFA",
-        "surface-card": "#FFFFFF",
-        "surface-muted": "#F5F2FF",
-        "surface-elevated": "#EAE6F4",
+        "canvas-bg": "var(--fv-canvas-bg)",
+        "surface-card": "var(--fv-surface-card)",
+        "surface-muted": "var(--fv-surface-muted)",
+        "surface-elevated": "var(--fv-surface-elevated-brutal)",
 
         // Text
-        "ink-primary": "#1B1B24",
-        "ink-secondary": "#464555",
-        "ink-tertiary": "#777587",
-        "ink-inverse": "#FFFFFF",
+        "ink-primary": "var(--fv-ink-primary)",
+        "ink-secondary": "var(--fv-ink-secondary)",
+        "ink-tertiary": "var(--fv-ink-tertiary)",
+        "ink-inverse": "var(--fv-ink-inverse)",
 
         // Structural
-        "border-master": "#000000",
-        "border-subtle": "#E5E7EB",
+        "border-master": "var(--fv-border-master)",
+        "border-subtle": "var(--fv-border-subtle)",
 
         // Status
-        "status-active": "#4f46e5",
-        "status-staging": "#777587",
+        "status-active": "var(--fv-accent)",
+        "status-staging": "var(--fv-ink-tertiary)",
         "status-success": "#16A34A",
         "status-critical": "#BA1A1A",
-        "status-warning": "#FFFF00",
+        "status-warning": "var(--fv-yellow)",
 
         // Legacy fv-* tokens — CSS variables used by unmigrated screens
         fv: {
@@ -68,11 +68,15 @@ const config: Config = {
       },
 
       borderRadius: {
-        DEFAULT: "0px",
-        sm: "0px",
-        md: "0px",
-        lg: "0px",
-        xl: "0px",
+        DEFAULT: "var(--fv-radius-md)",
+        none: "0px",
+        xs: "var(--fv-radius-xs)",
+        sm: "var(--fv-radius-sm)",
+        md: "var(--fv-radius-md)",
+        lg: "var(--fv-radius-lg)",
+        xl: "var(--fv-radius-xl)",
+        "2xl": "var(--fv-radius-xl)",
+        pill: "var(--fv-radius-pill)",
         full: "9999px",
       },
 
@@ -83,11 +87,11 @@ const config: Config = {
       },
 
       boxShadow: {
-        "brutal-sm": "3px 3px 0px 0px #000000",
-        "brutal-md": "4px 4px 0px 0px #000000",
-        "brutal-lg": "6px 6px 0px 0px #000000",
-        "brutal-xl": "8px 8px 0px 0px #000000",
-        "brutal-primary": "4px 4px 0px 0px #4f46e5",
+        "brutal-sm": "3px 3px 0 0 var(--fv-shadow-color)",
+        "brutal-md": "4px 4px 0 0 var(--fv-shadow-color)",
+        "brutal-lg": "6px 6px 0 0 var(--fv-shadow-color)",
+        "brutal-xl": "8px 8px 0 0 var(--fv-shadow-color)",
+        "brutal-primary": "4px 4px 0 0 var(--fv-shadow-color-primary)",
       },
 
       spacing: {

@@ -16,7 +16,7 @@ const THEME_STORAGE_KEY = "fivvle-theme";
 const REDUCED_MOTION_STORAGE_KEY = "fivvle-reduced-motion";
 
 function readThemeMode(): ThemeMode {
-  if (typeof window === "undefined") return "dark";
+  if (typeof window === "undefined") return "system";
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
     if (stored === "light" || stored === "dark" || stored === "system") {
@@ -25,7 +25,7 @@ function readThemeMode(): ThemeMode {
   } catch {
     /* ignore */
   }
-  return "dark";
+  return "system";
 }
 
 function readReducedMotion(): boolean {
@@ -40,7 +40,7 @@ function readReducedMotion(): boolean {
 function resolveTheme(mode: ThemeMode): "light" | "dark" {
   if (mode === "light") return "light";
   if (mode === "dark") return "dark";
-  if (typeof window === "undefined") return "dark";
+  if (typeof window === "undefined") return "light";
   return window.matchMedia("(prefers-color-scheme: dark)").matches
     ? "dark"
     : "light";
@@ -70,8 +70,8 @@ interface PreferencesContextValue {
 const PreferencesContext = createContext<PreferencesContextValue | null>(null);
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
-  const [themeMode, setThemeModeState] = useState<ThemeMode>("dark");
-  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("dark");
+  const [themeMode, setThemeModeState] = useState<ThemeMode>("system");
+  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
   const [reducedMotion, setReducedMotionState] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 

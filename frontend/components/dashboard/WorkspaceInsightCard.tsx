@@ -24,7 +24,7 @@ export function WorkspaceInsightCard({
 
   if (!hasExperiments || !experiment) {
     return (
-      <div className="flex min-h-[280px] flex-col justify-between border-2 border-border-master bg-brand-primary p-6 pb-8 text-ink-inverse shadow-brutal-md lg:min-h-[320px]">
+      <div className="flex min-h-[280px] flex-col justify-between rounded-md border-2 border-border-master bg-brand-primary p-6 pb-8 text-ink-inverse shadow-brutal-md lg:min-h-[320px]">
         <div>
           <p className="font-label-md text-label-md uppercase opacity-70">
             LATEST SIGNAL
@@ -52,7 +52,7 @@ export function WorkspaceInsightCard({
   const dataPoint = getInsightDataPoint(experiment);
 
   return (
-    <div className="flex min-h-[280px] flex-col justify-between border-2 border-border-master bg-brand-primary p-6 pb-8 text-ink-inverse shadow-brutal-md lg:min-h-[320px]">
+    <div className="flex min-h-[280px] flex-col justify-between rounded-md border-2 border-border-master bg-brand-primary p-6 pb-8 text-ink-inverse shadow-brutal-md lg:min-h-[320px]">
       <div>
         <p className="font-label-md text-label-md uppercase opacity-70">
           LATEST SIGNAL

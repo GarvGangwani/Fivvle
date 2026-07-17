@@ -4,7 +4,7 @@ export function LiveActivityBadge() {
 
   return (
     <aside
-      className="absolute bottom-8 left-8 z-20 hidden max-w-xs border-2 border-border-master bg-surface-card p-4 shadow-brutal-md lg:block"
+      className="absolute bottom-8 left-8 z-20 hidden max-w-xs rounded-md border-2 border-border-master bg-surface-card p-4 shadow-brutal-md lg:block"
       aria-label="Live validation activity"
     >
       <div className="flex items-center gap-2">

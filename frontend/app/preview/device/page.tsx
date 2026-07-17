@@ -71,7 +71,7 @@ export default function DevicePreviewFramePage() {
   }
 
   return (
-    <div data-fivvle-public-landing>
+    <div data-fivvle-public-landing data-theme="light">
       <TemplateRenderer
         copy={payload.copy}
         page={payload.page}

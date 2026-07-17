@@ -9,7 +9,7 @@ export function AuthCard({ children, size = "default" }: AuthCardProps) {
 
   return (
     <div
-      className={`w-full border-2 border-border-master bg-surface-card p-8 shadow-brutal-lg ${widthClass}`}
+      className={`w-full rounded-lg border-2 border-border-master bg-surface-card p-8 shadow-brutal-lg ${widthClass}`}
     >
       {children}
     </div>

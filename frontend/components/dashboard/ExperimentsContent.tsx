@@ -31,7 +31,7 @@ const STATUS_FILTER_OPTIONS: StatusFilter[] = [
 ];
 
 const DROPDOWN_CLASSES =
-  "border-2 border-border-master bg-surface-card shadow-brutal-sm px-4 py-3 " +
+  "rounded-sm border-2 border-border-master bg-surface-card shadow-brutal-sm px-4 py-3 " +
   "font-label-md text-label-md uppercase tracking-wider text-ink-primary " +
   "appearance-none pr-10 cursor-pointer " +
   "hover:shadow-brutal-md hover:-translate-x-0.5 hover:-translate-y-0.5 " +
@@ -208,7 +208,7 @@ export function ExperimentsContent() {
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Search experiments by title, idea, or tag..."
-            className="w-full border-2 border-border-master bg-surface-card py-3 pl-11 pr-4 font-body-md text-body-md text-ink-primary placeholder:text-ink-tertiary focus:border-brand-primary focus:outline-none"
+            className="w-full rounded-md border-2 border-border-master bg-surface-card py-3 pl-11 pr-4 font-body-md text-body-md text-ink-primary placeholder:text-ink-tertiary focus:border-brand-primary focus:outline-none"
           />
         </label>
         <div className="flex items-center gap-4">
@@ -241,7 +241,7 @@ export function ExperimentsContent() {
       ) : null}
 
       {displayed.length === 0 ? (
-        <div className="border-2 border-border-master bg-surface-card p-10 text-center shadow-brutal-md">
+        <div className="rounded-md border-2 border-border-master bg-surface-card p-10 text-center shadow-brutal-md">
           <p className="font-headline text-headline-md text-ink-primary">
             No experiments match your filters
           </p>

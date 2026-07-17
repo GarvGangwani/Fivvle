@@ -27,7 +27,7 @@ export function BrutalistConfirm({
 
   return createPortal(
     <div className="fixed inset-0 z-[60] bg-ink-primary/50 flex items-center justify-center p-8">
-      <div className="max-w-md w-full bg-surface-card border-2 border-border-master shadow-brutal-lg">
+      <div className="max-w-md w-full rounded-md bg-surface-card border-2 border-border-master shadow-brutal-lg">
         <div className="p-6">
           <h3 className="font-headline text-headline-md uppercase mb-3">
             {title}
@@ -39,7 +39,7 @@ export function BrutalistConfirm({
             type="button"
             onClick={onCancel}
             disabled={loading}
-            className="flex-1 border-2 border-border-master bg-surface-card px-6 py-3 font-label-md text-label-md uppercase shadow-brutal-sm hover:shadow-brutal-md hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all disabled:opacity-50"
+            className="flex-1 rounded-sm border-2 border-border-master bg-surface-card px-6 py-3 font-label-md text-label-md uppercase shadow-brutal-sm hover:shadow-brutal-md hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all disabled:opacity-50"
           >
             {cancelLabel}
           </button>
@@ -47,7 +47,7 @@ export function BrutalistConfirm({
             type="button"
             onClick={() => void onConfirm()}
             disabled={loading}
-            className={`flex-1 px-6 py-3 border-2 border-border-master font-label-md text-label-md uppercase text-ink-inverse shadow-brutal-md hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none transition-all disabled:opacity-50 ${
+            className={`flex-1 rounded-sm px-6 py-3 border-2 border-border-master font-label-md text-label-md uppercase text-ink-inverse shadow-brutal-md hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none transition-all disabled:opacity-50 ${
               variant === "critical" ? "bg-status-critical" : "bg-brand-primary"
             }`}
           >
