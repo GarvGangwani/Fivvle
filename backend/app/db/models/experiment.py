@@ -143,6 +143,16 @@ class Experiment(Base):
         nullable=True,
         index=True,
     )
+    # Evidence-chat thread (founder Q&A over the completed validation report).
+    # Separate from thread_id so evidence chat never mixes with refinement/
+    # discussion history. Created on the first evidence-chat message. Mirrors
+    # thread_id exactly (FK → chat_threads, SET NULL on delete, indexed).
+    evidence_thread_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("chat_threads.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     # Audit: user_confirm (/confirm) vs auto_fire (chat refinement complete).
     dispatch_trigger: Mapped[DispatchTrigger | None] = mapped_column(
         SQLEnum(

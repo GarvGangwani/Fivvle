@@ -94,6 +94,12 @@ from app.schemas.experiment import (
     RenameExperimentRequest,
     ResearchStatusResponse,
 )
+from app.schemas.chat import ChatMessageItem
+from app.schemas.evidence_chat import (
+    EvidenceChatMessagesResponse,
+    EvidenceChatSendRequest,
+    EvidenceChatSendResponse,
+)
 from app.schemas.refinement import RefinedIdea
 from app.schemas.validation_report import ValidationReport as ValidationReportSchema
 from app.schemas.validation_report_edited_doc import (
@@ -101,6 +107,11 @@ from app.schemas.validation_report_edited_doc import (
     EditedDocResponse,
 )
 from app.schemas.tags import UpdateExperimentTagsRequest
+from app.services.evidence_chat_service import (
+    EvidenceChatNotFound,
+    list_evidence_chat_messages,
+    send_evidence_chat_message,
+)
 from app.services.validation_report_editor import (
     EditedDocVersionConflict,
     apply_edited_doc_patch,
@@ -1097,6 +1108,82 @@ async def patch_validation_report_edited_doc(
     await db.commit()
     await db.refresh(report)
     return EditedDocResponse(**build_edited_doc_response(report))
+
+
+@router.post(
+    "/{experiment_id}/evidence-chat",
+    response_model=EvidenceChatSendResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def send_evidence_chat(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: EvidenceChatSendRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> EvidenceChatSendResponse:
+    try:
+        result = await send_evidence_chat_message(
+            db,
+            current_user,
+            experiment_id,
+            body.message,
+            selection_text=body.selection_text,
+            selection_question_id=body.selection_question_id,
+        )
+    except EvidenceChatNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
+        ) from None
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    except Exception as exc:
+        _logger.error(
+            "evidence chat turn failed",
+            error_type=type(exc).__name__,
+            experiment_id=str(experiment_id),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Evidence chat failed, please try again",
+        ) from exc
+    return EvidenceChatSendResponse(
+        user_message=ChatMessageItem.from_orm_message(result.user_message),
+        assistant_message=ChatMessageItem.from_orm_message(result.assistant_message),
+        thread_id=result.thread_id,
+    )
+
+
+@router.get(
+    "/{experiment_id}/evidence-chat/messages",
+    response_model=EvidenceChatMessagesResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def get_evidence_chat_messages(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> EvidenceChatMessagesResponse:
+    try:
+        thread_id, messages = await list_evidence_chat_messages(
+            db, current_user, experiment_id
+        )
+    except EvidenceChatNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
+        ) from None
+    return EvidenceChatMessagesResponse(
+        thread_id=thread_id,
+        experiment_id=experiment_id,
+        messages=[ChatMessageItem.from_orm_message(m) for m in messages],
+    )
 
 
 @router.get(

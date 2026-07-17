@@ -23,9 +23,8 @@ import { EvidenceEditorToolbar } from "@/components/research/EvidenceEditorToolb
 import "./evidence-editor.css";
 
 const AUTOSAVE_DEBOUNCE_MS = 1200;
-const SAVED_INDICATOR_MS = 2000;
 
-type SaveStatus = "idle" | "saving" | "saved";
+type SaveStatus = "idle" | "unsaved" | "saving" | "saved" | "error";
 
 interface EvidenceReportEditorProps {
   experimentId: string;
@@ -41,11 +40,11 @@ export function EvidenceReportEditor({
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [status, setStatus] = useState<SaveStatus>("idle");
+  const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
   const versionRef = useRef(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -74,12 +73,8 @@ export function EvidenceReportEditor({
       });
       versionRef.current = resp.version;
       onStaleChange?.(resp.is_stale_since_regeneration);
+      setLastSavedAt(new Date());
       setStatus("saved");
-      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
-      savedTimerRef.current = setTimeout(
-        () => setStatus("idle"),
-        SAVED_INDICATOR_MS,
-      );
     } catch (err) {
       if (err instanceof EditedDocVersionConflict) {
         try {
@@ -88,14 +83,15 @@ export function EvidenceReportEditor({
           versionRef.current = fresh.version;
           onStaleChange?.(fresh.is_stale_since_regeneration);
           toast("Report was updated elsewhere — reloaded", "info");
+          setStatus("saved");
         } catch {
           toast("Could not reload the latest report.", "error");
+          setStatus("error");
         }
-        setStatus("idle");
         return;
       }
       toast("Could not save your changes. Retrying on next edit.", "error");
-      setStatus("idle");
+      setStatus("error");
     }
   }, [editor, experimentId, onStaleChange, toast]);
 
@@ -118,6 +114,10 @@ export function EvidenceReportEditor({
         editor.commands.setContent(resp.doc as JSONContent, false);
         versionRef.current = resp.version;
         onStaleChange?.(resp.is_stale_since_regeneration);
+        // Persisted-on-load shows "Saved" with no timestamp (the endpoint
+        // doesn't return edited_at). Generated stays idle until first edit.
+        setLastSavedAt(null);
+        setStatus(resp.source === "persisted" ? "saved" : "idle");
         setLoading(false);
       } catch {
         if (cancelled) return;
@@ -132,7 +132,10 @@ export function EvidenceReportEditor({
 
   useEffect(() => {
     if (!editor) return;
-    const handler = () => scheduleSave();
+    const handler = () => {
+      setStatus("unsaved");
+      scheduleSave();
+    };
     editor.on("update", handler);
     return () => {
       editor.off("update", handler);
@@ -142,7 +145,6 @@ export function EvidenceReportEditor({
   useEffect(() => {
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
     };
   }, []);
 
@@ -168,6 +170,22 @@ export function EvidenceReportEditor({
     return <div className="fv-skeleton h-[380px] w-full" />;
   }
 
+  const statusText =
+    status === "saving"
+      ? "Saving…"
+      : status === "unsaved"
+        ? "Unsaved changes"
+        : status === "error"
+          ? "Save failed — will retry on next edit"
+          : status === "saved"
+            ? lastSavedAt
+              ? `Saved • ${lastSavedAt.toLocaleTimeString([], {
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}`
+              : "Saved"
+            : "";
+
   return (
     <div className="relative">
       <div className="sticky top-0 z-10">
@@ -176,9 +194,11 @@ export function EvidenceReportEditor({
 
       <div
         aria-live="polite"
-        className="pointer-events-none absolute right-2 top-14 z-20 font-mono text-mono-sm uppercase text-ink-tertiary"
+        className={`pointer-events-none absolute right-2 top-14 z-20 font-mono text-mono-sm uppercase ${
+          status === "error" ? "text-status-critical" : "text-ink-tertiary"
+        }`}
       >
-        {status === "saving" ? "Saving…" : status === "saved" ? "Saved" : ""}
+        {statusText}
       </div>
 
       <div className="mt-2 border-2 border-border-master bg-surface-card p-4 shadow-brutal-sm">
