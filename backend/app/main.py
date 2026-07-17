@@ -62,6 +62,7 @@ from app.routers.search import router as search_router
 from app.routers.users import router as users_router
 from app.routers.wallet import router as wallet_router
 from app.routers.landing_page_v2 import router as landing_page_v2_router
+from app.routers.launch_kit import router as launch_kit_router
 
 settings = get_settings()
 
@@ -230,6 +231,7 @@ app.include_router(search_router)
 app.include_router(wallet_router)
 app.include_router(landing_page_v2_router)
 app.include_router(experiments_router)
+app.include_router(launch_kit_router)
 app.include_router(canvas_layout_router)
 app.include_router(experiment_resources_router)
 app.include_router(experiment_attachments_router)
