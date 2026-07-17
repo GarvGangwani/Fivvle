@@ -331,6 +331,28 @@ export interface ExperimentChatMessagesResponse {
   messages: ChatHistoryMessage[];
 }
 
+// --- Evidence chat (founder Q&A over a completed validation report) ---
+// Reuses ChatHistoryMessage; evidence chat is a flat thread so the tree fields
+// (parent_message_id/sibling_*) just carry their defaults.
+
+export interface EvidenceChatSendRequest {
+  message: string;
+  selection_text?: string | null;
+  selection_question_id?: string | null;
+}
+
+export interface EvidenceChatSendResponse {
+  user_message: ChatHistoryMessage;
+  assistant_message: ChatHistoryMessage;
+  thread_id: string;
+}
+
+export interface EvidenceChatMessagesResponse {
+  thread_id: string | null;
+  experiment_id: string;
+  messages: ChatHistoryMessage[];
+}
+
 export interface Citation {
   url: string;
   title: string;
@@ -445,7 +467,8 @@ export type ChatTurnKind =
   | "dispatch_announce"
   | "pipeline_progress"
   | "pipeline_complete"
-  | "pipeline_failed";
+  | "pipeline_failed"
+  | "evidence_chat";
 
 export interface ChatMessage {
   id: string;

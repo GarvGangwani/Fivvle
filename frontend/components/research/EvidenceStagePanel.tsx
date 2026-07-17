@@ -5,7 +5,11 @@ import type { OverallRecommendation, ValidationReport } from "@/lib/types";
 import { getValidationReport } from "@/lib/api";
 import { resolveReportScores } from "@/lib/validation-report-scores";
 import { ReportScoreSection } from "@/components/research/ReportScoreSection";
-import { EvidenceReportEditor } from "@/components/research/EvidenceReportEditor";
+import {
+  EvidenceReportEditor,
+  type EvidenceSelection,
+} from "@/components/research/EvidenceReportEditor";
+import { EvidenceChatPane } from "@/components/research/EvidenceChatPane";
 import { EvidenceSourcesBook } from "@/components/research/EvidenceSourcesBook";
 import { StalenessBanner } from "@/components/research/StalenessBanner";
 
@@ -29,34 +33,12 @@ function recommendationBadgeClass(rec: OverallRecommendation): string {
   }
 }
 
-function ChatPlaceholder() {
-  return (
-    <div className="border-2 border-border-master bg-surface-card p-4 shadow-brutal-sm">
-      <h2 className="font-mono text-mono-sm uppercase text-ink-primary">
-        Chat with report
-      </h2>
-      <p className="mt-2 text-sm text-ink-secondary">
-        Coming soon — chat about specific findings, highlights, and sources.
-      </p>
-      <label className="sr-only" htmlFor="evidence-chat-placeholder">
-        Chat with report (coming soon)
-      </label>
-      <input
-        id="evidence-chat-placeholder"
-        type="text"
-        disabled
-        placeholder="Chat coming in the next PR"
-        className="mt-4 w-full border-2 border-border-master bg-surface-muted px-3 py-2 text-sm text-ink-tertiary"
-      />
-    </div>
-  );
-}
-
 export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
+  const [selection, setSelection] = useState<EvidenceSelection | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,7 +86,11 @@ export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
   return (
     <div className="h-full overflow-y-auto p-4">
       <div className="grid gap-4 lg:grid-cols-[35%_65%]">
-        <ChatPlaceholder />
+        <EvidenceChatPane
+          experimentId={experimentId}
+          selection={selection}
+          onClearSelection={() => setSelection(null)}
+        />
 
         <div className="space-y-4">
           {stale && <StalenessBanner />}
@@ -135,6 +121,7 @@ export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
           <EvidenceReportEditor
             experimentId={experimentId}
             onStaleChange={setStale}
+            onSelectionChange={setSelection}
           />
 
           <EvidenceSourcesBook report={report} />
