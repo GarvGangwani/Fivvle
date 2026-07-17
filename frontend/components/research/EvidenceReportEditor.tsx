@@ -25,7 +25,7 @@ import "./evidence-editor.css";
 
 const AUTOSAVE_DEBOUNCE_MS = 1200;
 
-type SaveStatus = "idle" | "unsaved" | "saving" | "saved" | "error";
+export type SaveStatus = "idle" | "unsaved" | "saving" | "saved" | "error";
 
 /** Question blocks are H2 rendered as "Q<N>. …" by PR 1's renderer. */
 const QUESTION_HEADING_RE = /^Q(\d+)\./;
@@ -229,35 +229,14 @@ export function EvidenceReportEditor({
     return <div className="fv-skeleton h-[380px] w-full" />;
   }
 
-  const statusText =
-    status === "saving"
-      ? "Saving…"
-      : status === "unsaved"
-        ? "Unsaved changes"
-        : status === "error"
-          ? "Save failed — will retry on next edit"
-          : status === "saved"
-            ? lastSavedAt
-              ? `Saved • ${lastSavedAt.toLocaleTimeString([], {
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}`
-              : "Saved"
-            : "";
-
   return (
     <div className="relative">
       <div className="sticky top-0 z-10">
-        <EvidenceEditorToolbar editor={editor} />
-      </div>
-
-      <div
-        aria-live="polite"
-        className={`pointer-events-none absolute right-2 top-14 z-20 font-mono text-mono-sm uppercase ${
-          status === "error" ? "text-status-critical" : "text-ink-tertiary"
-        }`}
-      >
-        {statusText}
+        <EvidenceEditorToolbar
+          editor={editor}
+          status={status}
+          lastSavedAt={lastSavedAt}
+        />
       </div>
 
       <div className="mt-2 border-2 border-border-master bg-surface-card p-4 shadow-brutal-sm">

@@ -11,6 +11,7 @@ from app.db.models.chat_attachment import ChatAttachment
 from app.db.models.chat_message import ChatMessage
 from app.db.models.chat_thread import ChatThread
 from app.db.models.coupon import Coupon
+from app.db.models.evidence_chat_feedback import EvidenceChatFeedback
 from app.db.models.coupon_redemption import CouponRedemption
 from app.db.models.experiment_attachment import ExperimentAttachment
 from app.db.models.experiment_canvas_layout import ExperimentCanvasLayout
@@ -39,6 +40,7 @@ __all__ = [
     "ChatThread",
     "Coupon",
     "CouponRedemption",
+    "EvidenceChatFeedback",
     "Experiment",
     "ExperimentAttachment",
     "ExperimentCanvasLayout",

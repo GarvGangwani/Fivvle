@@ -97,8 +97,14 @@ from app.schemas.experiment import (
 from app.schemas.chat import ChatMessageItem
 from app.schemas.evidence_chat import (
     EvidenceChatMessagesResponse,
+    EvidenceChatRegenerateRequest,
+    EvidenceChatRegenerateResponse,
     EvidenceChatSendRequest,
     EvidenceChatSendResponse,
+)
+from app.schemas.evidence_chat_feedback import (
+    EvidenceChatFeedbackRequest,
+    EvidenceChatFeedbackResponse,
 )
 from app.schemas.refinement import RefinedIdea
 from app.schemas.validation_report import ValidationReport as ValidationReportSchema
@@ -108,9 +114,12 @@ from app.schemas.validation_report_edited_doc import (
 )
 from app.schemas.tags import UpdateExperimentTagsRequest
 from app.services.evidence_chat_service import (
+    EvidenceChatInvalidTarget,
     EvidenceChatNotFound,
     list_evidence_chat_messages,
+    regenerate_evidence_chat_message,
     send_evidence_chat_message,
+    upsert_evidence_chat_feedback,
 )
 from app.services.validation_report_editor import (
     EditedDocVersionConflict,
@@ -1184,6 +1193,84 @@ async def get_evidence_chat_messages(
         experiment_id=experiment_id,
         messages=[ChatMessageItem.from_orm_message(m) for m in messages],
     )
+
+
+@router.post(
+    "/{experiment_id}/evidence-chat/messages/{assistant_message_id}/regenerate",
+    response_model=EvidenceChatRegenerateResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def regenerate_evidence_chat(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    assistant_message_id: UUID,
+    body: EvidenceChatRegenerateRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> EvidenceChatRegenerateResponse:
+    try:
+        result = await regenerate_evidence_chat_message(
+            db,
+            current_user,
+            experiment_id,
+            assistant_message_id,
+            selection_text=body.selection_text,
+            selection_question_id=body.selection_question_id,
+        )
+    except EvidenceChatNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Message not found"
+        ) from None
+    except EvidenceChatInvalidTarget as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    except Exception as exc:
+        _logger.error(
+            "evidence chat regenerate failed",
+            error_type=type(exc).__name__,
+            experiment_id=str(experiment_id),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Evidence chat regenerate failed, please try again",
+        ) from exc
+    return EvidenceChatRegenerateResponse(
+        assistant_message=ChatMessageItem.from_orm_message(result.assistant_message),
+        thread_id=result.thread_id,
+    )
+
+
+@router.post(
+    "/{experiment_id}/evidence-chat/messages/{message_id}/feedback",
+    response_model=EvidenceChatFeedbackResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def submit_evidence_chat_feedback(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    message_id: UUID,
+    body: EvidenceChatFeedbackRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> EvidenceChatFeedbackResponse:
+    try:
+        row = await upsert_evidence_chat_feedback(
+            db, current_user, experiment_id, message_id, body.verdict
+        )
+    except EvidenceChatNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Message not found"
+        ) from None
+    except EvidenceChatInvalidTarget as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    return EvidenceChatFeedbackResponse(message_id=row.message_id, verdict=row.verdict)
 
 
 @router.get(

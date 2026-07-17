@@ -43,3 +43,23 @@ class EvidenceChatMessagesResponse(BaseModel):
     thread_id: UUID | None
     experiment_id: UUID
     messages: list[ChatMessageItem]
+
+
+class EvidenceChatRegenerateRequest(BaseModel):
+    """POST body for regenerating an assistant reply.
+
+    Same shape as EvidenceChatSendRequest minus `message` — the parent user
+    message supplies the question; only the selection anchor may change.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    selection_text: Annotated[str, Field(max_length=4000)] | None = None
+    selection_question_id: Annotated[str, Field(pattern=r"^q[1-7]$")] | None = None
+
+
+class EvidenceChatRegenerateResponse(BaseModel):
+    """POST response: the new assistant message (the user message is unchanged)."""
+
+    assistant_message: ChatMessageItem
+    thread_id: UUID

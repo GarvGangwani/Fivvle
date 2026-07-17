@@ -353,6 +353,29 @@ export interface EvidenceChatMessagesResponse {
   messages: ChatHistoryMessage[];
 }
 
+export type EvidenceChatVerdict = "up" | "down";
+
+export interface EvidenceChatFeedbackRequest {
+  verdict: EvidenceChatVerdict;
+}
+
+export interface EvidenceChatFeedbackResponse {
+  message_id: string;
+  verdict: EvidenceChatVerdict;
+}
+
+// Same shape as EvidenceChatSendRequest minus `message` — the parent user
+// message supplies the question; only the selection anchor may change.
+export interface EvidenceChatRegenerateRequest {
+  selection_text?: string | null;
+  selection_question_id?: string | null;
+}
+
+export interface EvidenceChatRegenerateResponse {
+  assistant_message: ChatHistoryMessage;
+  thread_id: string;
+}
+
 export interface Citation {
   url: string;
   title: string;

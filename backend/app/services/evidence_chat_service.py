@@ -33,6 +33,7 @@ from app.config import get_settings
 from app.db.enums import ChatRole, ChatTurnKind
 from app.db.models.chat_message import ChatMessage
 from app.db.models.chat_thread import ChatThread
+from app.db.models.evidence_chat_feedback import EvidenceChatFeedback
 from app.db.models.experiment import Experiment
 from app.db.models.user import User
 from app.db.models.validation_report import ValidationReport
@@ -79,6 +80,14 @@ class EvidenceChatNotFound(Exception):
 
     Mapped to HTTP 404 by the router — never reveal existence for another user
     (AGENTS.md "Authentication and authorization").
+    """
+
+
+class EvidenceChatInvalidTarget(Exception):
+    """Target message is not a regeneratable/rateable assistant evidence-chat turn.
+
+    Mapped to HTTP 400 by the router: wrong role, wrong turn_kind, or (for
+    regenerate) no parent user message to re-answer.
     """
 
 
@@ -453,3 +462,197 @@ async def list_evidence_chat_messages(
 
     messages = await _load_evidence_history(db, experiment.evidence_thread_id)
     return experiment.evidence_thread_id, messages
+
+
+async def _load_thread_message(
+    db: AsyncSession, thread_id: UUID, message_id: UUID
+) -> ChatMessage | None:
+    """Load a message and confirm it belongs to the given thread (else None)."""
+    result = await db.execute(select(ChatMessage).where(ChatMessage.id == message_id))
+    message = result.scalar_one_or_none()
+    if message is None or message.thread_id != thread_id:
+        return None
+    return message
+
+
+async def regenerate_evidence_chat_message(
+    db: AsyncSession,
+    current_user: User,
+    experiment_id: UUID,
+    assistant_message_id: UUID,
+    selection_text: str | None = None,
+    selection_question_id: str | None = None,
+) -> EvidenceChatResult:
+    """Regenerate one assistant reply in place, re-answering its parent question.
+
+    Deletes the target assistant message and inserts a fresh one for the same
+    parent user message, using the (possibly new) selection anchor. The parent
+    user message is untouched. Returns it as ``user_message`` for symmetry with
+    send, though the endpoint only surfaces the new assistant message.
+
+    Raises:
+        EvidenceChatNotFound: experiment/report/thread/message not found or not
+            owned (404). Never leaks existence across users.
+        EvidenceChatInvalidTarget: target is not an assistant evidence-chat
+            message, or it has no parent user message (400).
+        LLM provider errors propagate (mapped to 502); the turn rolls back.
+    """
+    experiment, report_row = await _load_owned_experiment_and_report(
+        db, current_user, experiment_id
+    )
+    if experiment.evidence_thread_id is None:
+        raise EvidenceChatNotFound("Evidence thread not found")
+
+    assistant = await _load_thread_message(
+        db, experiment.evidence_thread_id, assistant_message_id
+    )
+    if assistant is None:
+        raise EvidenceChatNotFound("Message not found")
+    if (
+        assistant.role != ChatRole.ASSISTANT
+        or assistant.turn_kind != ChatTurnKind.EVIDENCE_CHAT
+    ):
+        raise EvidenceChatInvalidTarget(
+            "Target is not an assistant evidence-chat message"
+        )
+
+    parent_result = await db.execute(
+        select(ChatMessage)
+        .where(
+            ChatMessage.thread_id == experiment.evidence_thread_id,
+            ChatMessage.turn_kind == ChatTurnKind.EVIDENCE_CHAT,
+            ChatMessage.role == ChatRole.USER,
+            ChatMessage.created_at < assistant.created_at,
+        )
+        .order_by(ChatMessage.created_at.desc())
+        .limit(1)
+    )
+    parent_user = parent_result.scalar_one_or_none()
+    if parent_user is None:
+        raise EvidenceChatInvalidTarget("No parent user message found")
+
+    parent_created_at = parent_user.created_at
+
+    # Delete the old reply, then build context exactly as send would: history is
+    # everything BEFORE the parent question (so we don't feed the turn we're
+    # re-answering, nor any later turns, back to the model).
+    await db.delete(assistant)
+    await db.flush()
+
+    report = ValidationReportSchema.model_validate(report_row.raw_report)
+    all_msgs = await _load_evidence_history(db, experiment.evidence_thread_id)
+    history = [m for m in all_msgs if m.created_at < parent_created_at]
+
+    skeleton = _build_report_skeleton(experiment, report)
+    selected_context = _build_selected_context(
+        report, parent_user.content, selection_text, selection_question_id
+    )
+    history_str = _render_history(history)
+    user_prompt = build_evidence_chat_user_prompt(
+        report_skeleton=skeleton,
+        selected_context=selected_context,
+        chat_history=history_str,
+        user_message=parent_user.content,
+    )
+
+    settings = get_settings()
+    result = await llm_client.complete(
+        db,
+        provider=settings.refinement_provider,
+        model=settings.refinement_model,
+        prompt_name=PROMPT_NAME_EVIDENCE_CHAT,
+        system=EVIDENCE_CHAT_SYSTEM_PROMPT,
+        user=user_prompt,
+        max_tokens=_MAX_TOKENS,
+        temperature=_TEMPERATURE,
+        experiment_id=experiment.id,
+        phase="evidence_chat",
+    )
+    assistant_text = result.text.strip() or (
+        "I couldn't generate a response for that. Please try rephrasing your question."
+    )
+
+    new_assistant = ChatMessage(
+        thread_id=experiment.evidence_thread_id,
+        role=ChatRole.ASSISTANT,
+        content=assistant_text,
+        experiment_id=experiment.id,
+        turn_kind=ChatTurnKind.EVIDENCE_CHAT,
+        parent_message_id=None,
+    )
+    db.add(new_assistant)
+    await db.flush()
+    await db.commit()
+    await db.refresh(new_assistant)
+    await db.refresh(parent_user)
+
+    _logger.info(
+        "evidence chat regenerated",
+        experiment_id=str(experiment.id),
+        thread_id=str(experiment.evidence_thread_id),
+        used_selection=bool(selection_text and selection_text.strip()),
+    )
+
+    return EvidenceChatResult(
+        user_message=parent_user,
+        assistant_message=new_assistant,
+        thread_id=experiment.evidence_thread_id,
+    )
+
+
+async def upsert_evidence_chat_feedback(
+    db: AsyncSession,
+    current_user: User,
+    experiment_id: UUID,
+    message_id: UUID,
+    verdict: str,
+) -> EvidenceChatFeedback:
+    """Record (or update) the founder's thumbs verdict for an assistant message.
+
+    One verdict per message (UNIQUE on message_id) — a second click upserts.
+
+    Raises:
+        EvidenceChatNotFound: experiment/report/thread/message not found or not
+            owned (404).
+        EvidenceChatInvalidTarget: message is not an assistant evidence-chat
+            message (400).
+    """
+    experiment, _ = await _load_owned_experiment_and_report(
+        db, current_user, experiment_id
+    )
+    if experiment.evidence_thread_id is None:
+        raise EvidenceChatNotFound("Evidence thread not found")
+
+    message = await _load_thread_message(
+        db, experiment.evidence_thread_id, message_id
+    )
+    if message is None:
+        raise EvidenceChatNotFound("Message not found")
+    if (
+        message.role != ChatRole.ASSISTANT
+        or message.turn_kind != ChatTurnKind.EVIDENCE_CHAT
+    ):
+        raise EvidenceChatInvalidTarget(
+            "Feedback target must be an assistant evidence-chat message"
+        )
+
+    existing_result = await db.execute(
+        select(EvidenceChatFeedback).where(
+            EvidenceChatFeedback.message_id == message_id
+        )
+    )
+    row = existing_result.scalar_one_or_none()
+    if row is not None:
+        row.verdict = verdict
+        row.user_id = current_user.id
+    else:
+        row = EvidenceChatFeedback(
+            message_id=message_id,
+            user_id=current_user.id,
+            verdict=verdict,
+        )
+        db.add(row)
+    await db.flush()
+    await db.commit()
+    await db.refresh(row)
+    return row
