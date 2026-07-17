@@ -8,15 +8,18 @@ LaunchKit artifact table (Launch phase, PR 1). Mirrors the ValidationReport
 editable-doc pattern:
 
 - id             UUID  PK
+- landing_page_id UUID NOT NULL  FK → landing_pages.id (ON DELETE CASCADE), UNIQUE
 - experiment_id  UUID  NOT NULL  FK → experiments.id (ON DELETE CASCADE), UNIQUE
-- landing_page_id UUID NOT NULL  FK → landing_pages.id (ON DELETE CASCADE)
 - raw_report     JSONB NOT NULL  (immutable assembled LaunchKit payload)
 - edited_doc     JSONB NULL      (founder-edited overlay)
 - version        INTEGER NOT NULL DEFAULT 1  (optimistic concurrency)
 - edited_at      TIMESTAMPTZ NULL
 - generated_at   TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp()
 
-UNIQUE(experiment_id) enforces the 1:1 relationship with Experiment.
+UNIQUE(landing_page_id) enforces "no launch kit without a landing page" (1:1 with
+LandingPage). UNIQUE(experiment_id) keeps the 1:1 with Experiment for convenient
+relationship access and to survive edge cases where the LandingPage is deleted
+first.
 """
 
 from typing import Sequence, Union
@@ -64,6 +67,9 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("experiment_id", name="uq_launch_kits_experiment_id"),
+        sa.UniqueConstraint(
+            "landing_page_id", name="uq_launch_kits_landing_page_id"
+        ),
     )
     op.create_index(
         "ix_launch_kits_experiment_id",

@@ -295,7 +295,25 @@ def test_generate_missing_landing_page_409(
 ) -> None:
     _sync_user(client)
     experiment_id = _create_refined_experiment(client)
-    # Allowed status but no landing page row.
+    # Allowed status (INSIGHT_READY) but no landing page row → still 409.
+    _set_status(experiment_id, ExperimentStatus.INSIGHT_READY)
+
+    resp = client.post(
+        f"/experiments/{experiment_id}/generate-launch-kit", headers=_AUTH_HEADER
+    )
+
+    assert resp.status_code == 409
+    assert fake_dispatcher.dispatched == []
+
+
+def test_generate_rejects_completed_status_409(
+    client: TestClient, mock_firebase: None, fake_dispatcher: FakeLaunchKitDispatcher
+) -> None:
+    # COMPLETED is intentionally NOT in the allowed set (spec revision): the gate
+    # is the landing/insight band only.
+    _sync_user(client)
+    experiment_id = _create_refined_experiment(client)
+    _seed_landing_page(experiment_id)
     _set_status(experiment_id, ExperimentStatus.COMPLETED)
 
     resp = client.post(

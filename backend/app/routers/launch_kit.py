@@ -47,9 +47,11 @@ _logger = get_logger(__name__)
 
 router = APIRouter(prefix="/experiments", tags=["launch-kit"])
 
-# A launch kit can be (re)generated once the experiment has a landing page and is
-# at or past LANDING_DRAFT. Everything earlier (RESEARCH_READY, LANDING_GENERATING,
-# and prior research states) is rejected with 409.
+# A launch kit can be (re)generated once the landing page is ready: status in the
+# landing/insight band below. RESEARCH_READY and LANDING_GENERATING (and any other
+# status) are rejected with 409 — the founder generates the landing page first.
+# No LANDING_FAILED / LAUNCH_KIT_FAILED status exists; a soft-failed generation
+# leaves status untouched and the founder retries the endpoint.
 _LAUNCH_KIT_ALLOWED_STATUSES: frozenset[ExperimentStatus] = frozenset(
     {
         ExperimentStatus.LANDING_DRAFT,
@@ -57,9 +59,6 @@ _LAUNCH_KIT_ALLOWED_STATUSES: frozenset[ExperimentStatus] = frozenset(
         ExperimentStatus.INSIGHT_GENERATING,
         ExperimentStatus.INSIGHT_READY,
         ExperimentStatus.INSIGHT_FAILED,
-        ExperimentStatus.ANALYZING,
-        ExperimentStatus.COMPLETED,
-        ExperimentStatus.ARCHIVED,
     }
 )
 _LANDING_NOT_READY_MESSAGE = "Landing page must be ready before generating a launch kit."

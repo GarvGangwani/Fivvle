@@ -43,12 +43,13 @@ class LaunchKit(Base):
         nullable=False,
         index=True,
     )
-    # The landing page this kit was generated against. CASCADE so a landing-page
-    # deletion clears the stale kit (in practice both are removed via the
-    # experiment cascade, but this keeps the FK safe under any deletion order).
+    # The landing page this kit was generated against. This FK is the true
+    # invariant: "no launch kit without a landing page." unique=True enforces the
+    # 1:1 with LandingPage; CASCADE clears the kit if the landing page is deleted.
     landing_page_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("landing_pages.id", ondelete="CASCADE"),
+        unique=True,
         nullable=False,
     )
     # Verbatim assembled LaunchKit payload (deterministic parts + LLM subset).
