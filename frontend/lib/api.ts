@@ -10,6 +10,9 @@ import type {
   ExperimentAnalytics,
   ExperimentChatMessagesResponse,
   ChatEditTurnResponse,
+  EvidenceChatMessagesResponse,
+  EvidenceChatSendRequest,
+  EvidenceChatSendResponse,
   ExperimentDetail,
   ExperimentSummary,
   SearchResult,
@@ -372,6 +375,24 @@ export async function getExperimentChatMessages(
 ): Promise<ExperimentChatMessagesResponse> {
   return apiFetch<ExperimentChatMessagesResponse>(
     `/chat/experiments/${experimentId}/messages`,
+  );
+}
+
+export async function getEvidenceChatMessages(
+  experimentId: string,
+): Promise<EvidenceChatMessagesResponse> {
+  return apiFetch<EvidenceChatMessagesResponse>(
+    `/experiments/${experimentId}/evidence-chat/messages`,
+  );
+}
+
+export async function sendEvidenceChatMessage(
+  experimentId: string,
+  body: EvidenceChatSendRequest,
+): Promise<EvidenceChatSendResponse> {
+  return apiFetch<EvidenceChatSendResponse>(
+    `/experiments/${experimentId}/evidence-chat`,
+    { method: "POST", body },
   );
 }
 

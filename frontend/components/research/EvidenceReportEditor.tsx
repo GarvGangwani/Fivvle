@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   EditorContent,
   useEditor,
+  type Editor,
   type JSONContent,
 } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -26,15 +27,52 @@ const AUTOSAVE_DEBOUNCE_MS = 1200;
 
 type SaveStatus = "idle" | "unsaved" | "saving" | "saved" | "error";
 
+/** Question blocks are H2 rendered as "Q<N>. …" by PR 1's renderer. */
+const QUESTION_HEADING_RE = /^Q(\d+)\./;
+
+/**
+ * Walk to the nearest heading of level <= 2 that starts at/before the selection
+ * anchor. PR 1's renderer emits question blocks as H2 whose text starts with
+ * "Q<N>." and every other section as H1. So: an H1 (a different section) resets
+ * to null; a matching H2 sets the (lowercase) question id. Founder-edited
+ * headings that drop the "Q<N>." prefix resolve to null (accepted fallback).
+ */
+function resolveQuestionId(editor: Editor, from: number): string | null {
+  let questionId: string | null = null;
+  editor.state.doc.nodesBetween(0, from, (node) => {
+    if (node.type.name !== "heading") return;
+    const level = node.attrs.level as number;
+    if (level > 2) return;
+    if (level === 1) {
+      questionId = null;
+      return;
+    }
+    const match = QUESTION_HEADING_RE.exec(node.textContent);
+    questionId = match ? `q${match[1]}` : null;
+  });
+  return questionId;
+}
+
+export interface EvidenceSelection {
+  text: string;
+  question_id: string | null;
+}
+
 interface EvidenceReportEditorProps {
   experimentId: string;
   /** Lifts staleness up so the panel can render the banner above the header. */
   onStaleChange?: (stale: boolean) => void;
+  /**
+   * Lifts the current text selection up so the chat pane can anchor a question.
+   * Fires null when the selection is empty (from === to) or whitespace-only.
+   */
+  onSelectionChange?: (selection: EvidenceSelection | null) => void;
 }
 
 export function EvidenceReportEditor({
   experimentId,
   onStaleChange,
+  onSelectionChange,
 }: EvidenceReportEditorProps) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -141,6 +179,27 @@ export function EvidenceReportEditor({
       editor.off("update", handler);
     };
   }, [editor, scheduleSave]);
+
+  useEffect(() => {
+    if (!editor || !onSelectionChange) return;
+    const handler = () => {
+      const { from, to } = editor.state.selection;
+      if (from === to) {
+        onSelectionChange(null);
+        return;
+      }
+      const text = editor.state.doc.textBetween(from, to, "\n", " ").trim();
+      if (!text) {
+        onSelectionChange(null);
+        return;
+      }
+      onSelectionChange({ text, question_id: resolveQuestionId(editor, from) });
+    };
+    editor.on("selectionUpdate", handler);
+    return () => {
+      editor.off("selectionUpdate", handler);
+    };
+  }, [editor, onSelectionChange]);
 
   useEffect(() => {
     return () => {
