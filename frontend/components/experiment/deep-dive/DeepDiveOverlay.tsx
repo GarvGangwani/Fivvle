@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Experiment } from "@/types/experiment";
 import { ApiError, publishProject } from "@/lib/api";
-import { useToast } from "@/components/ui/Toast";
+import { useToast } from "@/components/ui/ToastProvider";
 import { LaunchStagePanel } from "@/components/launch/LaunchStagePanel";
 import { PublishConfirmDialog } from "@/components/launch/PublishConfirmDialog";
 import { DeepDiveShell } from "./DeepDiveShell";
