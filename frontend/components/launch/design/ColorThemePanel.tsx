@@ -118,7 +118,7 @@ export function ColorThemePanel({
         type="button"
         disabled={disabled || !canUndo}
         onClick={undo}
-        className="border-2 border-border-master bg-white px-2 py-1 font-label-sm text-label-sm uppercase tracking-wider disabled:opacity-40"
+        className="border-2 border-border-master bg-surface-elevated px-2 py-1 font-label-sm text-label-sm uppercase tracking-wider disabled:opacity-40"
       >
         Undo
       </button>
@@ -126,7 +126,7 @@ export function ColorThemePanel({
         type="button"
         disabled={disabled}
         onClick={reset}
-        className="border-2 border-border-master bg-white px-2 py-1 font-label-sm text-label-sm uppercase tracking-wider disabled:opacity-40"
+        className="border-2 border-border-master bg-surface-elevated px-2 py-1 font-label-sm text-label-sm uppercase tracking-wider disabled:opacity-40"
       >
         Reset
       </button>
@@ -171,7 +171,7 @@ export function ColorThemePanel({
                   className={`flex-1 border-2 border-border-master px-2 py-1.5 font-label-sm text-label-sm uppercase tracking-wider transition-all disabled:opacity-50 ${
                     active
                       ? "bg-brutalist-yellow text-ink-primary shadow-brutal-sm"
-                      : "bg-white text-ink-primary hover:-translate-y-0.5"
+                      : "bg-surface-elevated text-ink-primary hover:-translate-y-0.5"
                   }`}
                 >
                   {mode}
@@ -301,7 +301,7 @@ function HexField({
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className={`min-w-0 flex-1 border-2 border-border-master bg-white px-2 py-1.5 font-mono text-body-sm uppercase outline-none focus:border-brand-primary disabled:opacity-50 ${
+          className={`min-w-0 flex-1 border-2 border-border-master bg-surface-elevated px-2 py-1.5 font-mono text-body-sm uppercase outline-none focus:border-brand-primary disabled:opacity-50 ${
             invalid ? "border-status-critical" : ""
           }`}
         />

@@ -60,7 +60,7 @@ export function StartupUrlCard({
           >
             {publicHost}
           </a>
-          <p className="mt-1 font-mono text-mono-sm uppercase text-ink-primary/50">
+          <p className="mt-1 font-mono text-mono-sm uppercase text-ink-tertiary">
             {isLive
               ? "Live — changing the URL updates your public link."
               : "Draft — publish to make this URL live."}
@@ -68,7 +68,7 @@ export function StartupUrlCard({
         </div>
 
         {/* fv-* slug editor — brutalist border wrapper only (A1) */}
-        <div className="border-2 border-border-master bg-white p-3 shadow-brutal-sm">
+        <div className="border-2 border-border-master bg-surface-elevated p-3 shadow-brutal-sm">
           <LandingPageSlugEditor
             experimentId={experimentId}
             currentSlug={slug}

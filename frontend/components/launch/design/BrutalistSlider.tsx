@@ -34,7 +34,7 @@ export function BrutalistSlider({
             {label}
           </p>
           {hint ? (
-            <p className="mt-0.5 font-mono text-mono-sm uppercase text-ink-primary/50">
+            <p className="mt-0.5 font-mono text-mono-sm uppercase text-ink-tertiary">
               {hint}
             </p>
           ) : null}

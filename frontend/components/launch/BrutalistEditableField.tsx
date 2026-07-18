@@ -64,7 +64,7 @@ export function BrutalistEditableField({
       ? "text-status-critical"
       : len >= softCap || len >= warnAt
         ? "text-brand-primary"
-        : "text-ink-primary/40";
+        : "text-ink-tertiary";
 
   const locked = disabled || saving;
 
@@ -72,7 +72,7 @@ export function BrutalistEditableField({
     <div className={className}>
       <div
         onInput={handleInput}
-        className="border-2 border-border-master bg-white p-3 shadow-brutal-md focus-within:border-brand-primary"
+        className="border-2 border-border-master bg-surface-elevated p-3 shadow-brutal-md focus-within:border-brand-primary"
       >
         <EditableCopy
           key={remountKey}
@@ -86,7 +86,7 @@ export function BrutalistEditableField({
         />
       </div>
       <div className="mt-1 flex items-center justify-between">
-        <span className="font-mono text-mono-sm uppercase text-ink-primary/40">
+        <span className="font-mono text-mono-sm uppercase text-ink-tertiary">
           {saving ? "Saving…" : "\u00a0"}
         </span>
         <span className={`font-mono text-mono-sm ${counterClass}`}>

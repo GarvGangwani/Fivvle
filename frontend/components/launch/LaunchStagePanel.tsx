@@ -354,7 +354,7 @@ function KitGenerateState({ onGenerate }: { onGenerate: () => void }) {
     <KitShell>
       <div className="flex flex-col items-center gap-4 text-center">
         <span
-          className="material-symbols-outlined text-ink-primary/40"
+          className="material-symbols-outlined text-ink-tertiary"
           style={{ fontSize: 40, fontVariationSettings: "'FILL' 1" }}
           aria-hidden="true"
         >

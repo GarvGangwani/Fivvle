@@ -62,9 +62,9 @@ export function LivePagePreviewPanel({
             <span className="h-3 w-3 rounded-full border border-black bg-green-400" />
           </div>
 
-          <div className="flex min-w-0 flex-1 items-center gap-2 border border-black bg-white px-3 py-1">
+          <div className="flex min-w-0 flex-1 items-center gap-2 border border-border-master bg-surface-elevated px-3 py-1">
             <span
-              className="material-symbols-outlined shrink-0 text-ink-primary/50"
+              className="material-symbols-outlined shrink-0 text-ink-tertiary"
               style={{ fontSize: 12 }}
               aria-hidden="true"
             >
@@ -117,7 +117,7 @@ export function LivePagePreviewPanel({
             <iframe
               src={previewUrl}
               title="Landing page preview"
-              className="block border-2 border-black bg-white shadow-brutal-xl"
+              className="block border-2 border-border-master bg-surface-card shadow-brutal-xl"
               style={{
                 width: viewport === "mobile" ? 375 : "100%",
                 height: viewport === "mobile" ? 667 : 800,
@@ -174,7 +174,7 @@ function PreviewCard({
   return (
     <div className="mx-auto flex max-w-md flex-col items-center gap-3 border-2 border-border-master bg-surface-card p-10 text-center shadow-brutal-md">
       <span
-        className="material-symbols-outlined text-ink-primary/40"
+        className="material-symbols-outlined text-ink-tertiary"
         style={{ fontSize: 40 }}
         aria-hidden="true"
       >

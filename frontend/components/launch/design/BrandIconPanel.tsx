@@ -131,13 +131,13 @@ export function BrandIconPanel({
               className={`border-2 border-border-master p-2.5 text-left transition-all disabled:opacity-50 ${
                 active
                   ? "bg-brutalist-yellow shadow-brutal-sm"
-                  : "bg-white hover:-translate-y-0.5 hover:shadow-brutal-sm"
+                  : "bg-surface-elevated hover:-translate-y-0.5 hover:shadow-brutal-sm"
               }`}
             >
               <p className="font-label-sm text-label-sm uppercase tracking-wider text-ink-primary">
                 {m.label}
               </p>
-              <p className="mt-0.5 font-mono text-mono-sm uppercase text-ink-primary/50">
+              <p className="mt-0.5 font-mono text-mono-sm uppercase text-ink-tertiary">
                 {m.hint}
               </p>
             </button>
@@ -151,7 +151,7 @@ export function BrandIconPanel({
             <p className="font-label-sm text-label-sm uppercase text-ink-primary/60">
               Upload logo
             </p>
-            <p className="mt-0.5 font-mono text-mono-sm uppercase text-ink-primary/40">
+            <p className="mt-0.5 font-mono text-mono-sm uppercase text-ink-tertiary">
               PNG, JPEG, or WebP · max {MAX_MB} MB
             </p>
             <input
@@ -163,7 +163,7 @@ export function BrandIconPanel({
               onChange={(e) => void handleUpload(e.target.files?.[0] ?? null)}
             />
             {uploading ? (
-              <p className="mt-1 font-mono text-mono-sm uppercase text-ink-primary/50">
+              <p className="mt-1 font-mono text-mono-sm uppercase text-ink-tertiary">
                 Uploading…
               </p>
             ) : null}
@@ -190,7 +190,7 @@ export function BrandIconPanel({
                   logo_url: v.trim() || undefined,
                 });
               }}
-              className="w-full border-2 border-border-master bg-white px-2 py-1.5 font-mono text-body-sm outline-none focus:border-brand-primary disabled:opacity-50"
+              className="w-full border-2 border-border-master bg-surface-elevated px-2 py-1.5 font-mono text-body-sm outline-none focus:border-brand-primary disabled:opacity-50"
             />
           </div>
         </div>
@@ -215,13 +215,13 @@ export function BrandIconPanel({
                 logo_emoji: v.trim() || undefined,
               });
             }}
-            className="w-20 border-2 border-border-master bg-white px-2 py-1.5 text-center text-2xl outline-none focus:border-brand-primary disabled:opacity-50"
+            className="w-20 border-2 border-border-master bg-surface-elevated px-2 py-1.5 text-center text-2xl outline-none focus:border-brand-primary disabled:opacity-50"
           />
         </div>
       ) : null}
 
       {currentMode === "initials" ? (
-        <p className="mb-4 font-mono text-mono-sm uppercase text-ink-primary/50">
+        <p className="mb-4 font-mono text-mono-sm uppercase text-ink-tertiary">
           Using initials: {projectInitials(projectName)}
         </p>
       ) : null}
@@ -241,7 +241,7 @@ export function BrandIconPanel({
         />
       </div>
 
-      <div className="border-2 border-border-master bg-white p-3">
+      <div className="border-2 border-border-master bg-surface-elevated p-3">
         <p className="mb-2 font-label-sm text-label-sm uppercase tracking-wider text-ink-primary/60">
           Preview
         </p>

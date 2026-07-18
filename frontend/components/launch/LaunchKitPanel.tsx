@@ -161,7 +161,7 @@ export function LaunchKitPanel({
               First Channel
             </span>
             <span
-              className="material-symbols-outlined text-ink-primary/40"
+              className="material-symbols-outlined text-ink-tertiary"
               style={{ fontSize: 18 }}
               aria-hidden="true"
             >
@@ -181,7 +181,7 @@ export function LaunchKitPanel({
               {CHANNEL_LABELS[launchKit.first_channel]}
             </span>
             <span
-              className="material-symbols-outlined text-ink-primary/50"
+              className="material-symbols-outlined text-ink-tertiary"
               aria-hidden="true"
             >
               expand_more
@@ -195,7 +195,7 @@ export function LaunchKitPanel({
             onClose={() => setChannelOpen(false)}
           />
           {showChannelChangeNotice ? (
-            <p className="mt-2 font-mono text-mono-sm text-ink-primary/50">
+            <p className="mt-2 font-mono text-mono-sm text-ink-tertiary">
               Rationale and share copy still reflect the previous channel.
               Regenerate the kit to refresh.
             </p>

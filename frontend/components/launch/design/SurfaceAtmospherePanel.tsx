@@ -38,7 +38,7 @@ export function SurfaceAtmospherePanel({ page, disabled, onChange }: Props) {
           <p className="font-label-sm text-label-sm uppercase tracking-wider text-ink-primary">
             Background texture
           </p>
-          <p className="mt-0.5 font-mono text-mono-sm uppercase text-ink-primary/50">
+          <p className="mt-0.5 font-mono text-mono-sm uppercase text-ink-tertiary">
             Pick a surface style, then dial intensity below.
           </p>
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -133,7 +133,7 @@ function OptionChip({
       className={`border-2 border-border-master px-2.5 py-1.5 font-label-sm text-label-sm uppercase tracking-wider transition-all disabled:opacity-50 ${
         active
           ? "bg-brutalist-yellow text-ink-primary shadow-brutal-sm"
-          : "bg-white text-ink-primary hover:-translate-y-0.5"
+          : "bg-surface-elevated text-ink-primary hover:-translate-y-0.5"
       }`}
     >
       {label}

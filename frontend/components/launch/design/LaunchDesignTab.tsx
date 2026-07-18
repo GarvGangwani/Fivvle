@@ -261,7 +261,7 @@ export function LaunchDesignTab({
         <p className="font-headline text-headline-md uppercase tracking-tighter text-ink-primary">
           Design
         </p>
-        <span className="font-mono text-mono-sm uppercase text-ink-primary/40">
+        <span className="font-mono text-mono-sm uppercase text-ink-tertiary">
           {saving ? "saving…" : "\u00a0"}
         </span>
       </div>

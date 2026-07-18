@@ -22,7 +22,7 @@ export function ShareWithTrackingCard({
       title="Share with tracking"
       defaultOpen
       headerActions={
-        <span className="font-mono text-mono-sm uppercase text-ink-primary/50">
+        <span className="font-mono text-mono-sm uppercase text-ink-tertiary">
           {SHARE_CHANNELS.length} channel links
         </span>
       }

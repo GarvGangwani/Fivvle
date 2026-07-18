@@ -41,7 +41,7 @@ export function TemplatePanel({
               className={`relative border-2 border-border-master p-2 text-left transition-all disabled:opacity-50 ${
                 active
                   ? "bg-brutalist-yellow shadow-brutal-sm"
-                  : "bg-white hover:-translate-y-0.5 hover:shadow-brutal-sm"
+                  : "bg-surface-elevated hover:-translate-y-0.5 hover:shadow-brutal-sm"
               }`}
             >
               {active ? (

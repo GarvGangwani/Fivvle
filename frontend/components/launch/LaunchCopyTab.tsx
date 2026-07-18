@@ -146,7 +146,7 @@ function BrutalistInput({
 }) {
   const over = value.length > maxLength;
   const shared =
-    "w-full border-2 border-border-master bg-white px-3 py-2 font-body text-body-sm text-ink-primary outline-none focus:border-brand-primary disabled:opacity-50";
+    "w-full border-2 border-border-master bg-surface-elevated px-3 py-2 font-body text-body-sm text-ink-primary outline-none focus:border-brand-primary disabled:opacity-50";
 
   return (
     <div>
@@ -170,12 +170,12 @@ function BrutalistInput({
         />
       )}
       <div className="mt-1 flex items-center justify-between">
-        <span className="font-mono text-mono-sm uppercase text-ink-primary/40">
+        <span className="font-mono text-mono-sm uppercase text-ink-tertiary">
           {saving ? "saving…" : "\u00a0"}
         </span>
         <span
           className={`font-mono text-mono-sm ${
-            over ? "text-status-critical" : "text-ink-primary/40"
+            over ? "text-status-critical" : "text-ink-tertiary"
           }`}
         >
           {value.length} / {maxLength}
@@ -509,7 +509,7 @@ export function LaunchCopyTab({
               className={`shrink-0 border-2 border-border-master px-2.5 py-1.5 font-label-sm text-label-sm uppercase tracking-wider transition-all ${
                 active
                   ? "bg-brutalist-yellow text-ink-primary shadow-brutal-sm"
-                  : "bg-white text-ink-primary hover:-translate-y-0.5 hover:shadow-brutal-sm"
+                  : "bg-surface-elevated text-ink-primary hover:-translate-y-0.5 hover:shadow-brutal-sm"
               }`}
             >
               {section.label}
@@ -757,7 +757,7 @@ function SectionBody({
                     features: features.filter((_, i) => i !== index),
                   })
                 }
-                className="font-mono text-mono-sm uppercase text-ink-primary/50 hover:text-status-critical disabled:opacity-40"
+                className="font-mono text-mono-sm uppercase text-ink-tertiary hover:text-status-critical disabled:opacity-40"
               >
                 Remove
               </button>
@@ -1035,7 +1035,7 @@ function StringListEditor({
               type="button"
               disabled={disabled || items.length <= 1}
               onClick={() => onChange(items.filter((_, i) => i !== index))}
-              className="self-end font-mono text-mono-sm uppercase text-ink-primary/50 hover:text-status-critical disabled:opacity-40"
+              className="self-end font-mono text-mono-sm uppercase text-ink-tertiary hover:text-status-critical disabled:opacity-40"
             >
               Remove
             </button>
@@ -1084,7 +1084,7 @@ function QaListEditor({
               type="button"
               disabled={disabled || items.length <= minItems}
               onClick={() => onChange(items.filter((_, i) => i !== index))}
-              className="font-mono text-mono-sm uppercase text-ink-primary/50 hover:text-status-critical disabled:opacity-40"
+              className="font-mono text-mono-sm uppercase text-ink-tertiary hover:text-status-critical disabled:opacity-40"
             >
               Remove
             </button>
