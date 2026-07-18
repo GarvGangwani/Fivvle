@@ -10,7 +10,6 @@ import {
   type PreviewState,
 } from "@/components/launch/LivePagePreviewPanel";
 import { LaunchKitPanel } from "@/components/launch/LaunchKitPanel";
-import { FloatingLaunchAskBar } from "@/components/launch/FloatingLaunchAskBar";
 import {
   LaunchTabs,
   type LaunchTabId,
@@ -239,7 +238,7 @@ export function LaunchStagePanel({
         />
       </div>
 
-      {/* Right ~30% — tab surface + ask bar */}
+      {/* Right ~30% — tab surface */}
       <div className="relative z-10 flex w-[30%] min-w-0 flex-col border-l-2 border-border-master">
         <LaunchTabs activeTab={activeTab} onTabChange={setActiveTab} />
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -271,9 +270,6 @@ export function LaunchStagePanel({
           ) : (
             renderKitColumn()
           )}
-        </div>
-        <div className="shrink-0 border-t-2 border-border-master p-4">
-          <FloatingLaunchAskBar />
         </div>
       </div>
     </div>
