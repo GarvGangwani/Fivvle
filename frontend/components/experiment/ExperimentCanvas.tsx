@@ -716,6 +716,10 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       setOverlayAct("evidence");
       return;
     }
+    if (node.id === "launch") {
+      setOverlayAct("launch");
+      return;
+    }
     if (node.id !== "core") {
       toast(`${node.id.toUpperCase()} deep-dive coming soon — Step 6.`, "info");
     }
