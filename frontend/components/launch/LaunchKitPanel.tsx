@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ShareLinksPanel } from "@/components/distribution/ShareLinksPanel";
 import { BrutalistEditableField } from "@/components/launch/BrutalistEditableField";
 import { ChannelSelectPopover } from "@/components/launch/ChannelSelectPopover";
+import { DesignCollapsibleCard } from "@/components/launch/design/DesignCollapsibleCard";
 import { ShareCopyEditor } from "@/components/launch/ShareCopyEditor";
 import type {
   LaunchChannel,
@@ -26,6 +27,7 @@ type Props = {
     options?: { fieldKey?: string },
   ) => Promise<void>;
   isSaving: (fieldKey: string) => boolean;
+  checkReadinessItem: (id: string) => Promise<void>;
 };
 
 export function LaunchKitPanel({
@@ -35,6 +37,7 @@ export function LaunchKitPanel({
   experimentName,
   onPatch,
   isSaving,
+  checkReadinessItem,
 }: Props) {
   const [channelOpen, setChannelOpen] = useState(false);
   /** Channel present when this panel mounted — notice only after a founder change. */
@@ -46,6 +49,14 @@ export function LaunchKitPanel({
   const checklist = launchKit.readiness_checklist;
   const checkedCount = checklist.filter((item) => item.checked_at !== null)
     .length;
+
+  // Auto-tick landing_live on mount and whenever the page becomes live.
+  // checkReadinessItem is idempotent — skips if already checked.
+  // Quirk: manual untick while still live only re-ticks on next mount / transition.
+  useEffect(() => {
+    if (!isLive) return;
+    void checkReadinessItem("landing_live");
+  }, [isLive, checkReadinessItem]);
 
   function toggleChecklistItem(id: string, currentlyChecked: boolean) {
     const fieldKey = `readiness:${id}`;
@@ -71,6 +82,14 @@ export function LaunchKitPanel({
     );
   }
 
+  function tickShareCopyReady() {
+    void checkReadinessItem("share_copy_ready");
+  }
+
+  function tickTrackingOn() {
+    void checkReadinessItem("tracking_on");
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Header — tab strip already labels Kit; micro-copy only */}
@@ -82,7 +101,7 @@ export function LaunchKitPanel({
 
       {/* Body */}
       <div className="min-h-0 flex-1 space-y-8 overflow-y-auto p-6">
-        {/* Readiness checklist */}
+        {/* Readiness checklist — stays expanded */}
         <section className="border-2 border-border-master bg-surface-card p-4 shadow-brutal-md">
           <div className="mb-4 flex items-center justify-between">
             <span className="font-label-md text-label-md uppercase text-ink-primary">
@@ -135,7 +154,7 @@ export function LaunchKitPanel({
           </ul>
         </section>
 
-        {/* First channel */}
+        {/* First channel — name + selector always visible; rationale collapsed */}
         <section className="border-2 border-border-master bg-surface-card p-4 shadow-brutal-md">
           <div className="mb-3 flex items-center justify-between">
             <span className="font-label-md text-label-md uppercase text-ink-primary">
@@ -182,30 +201,27 @@ export function LaunchKitPanel({
             </p>
           ) : null}
           <div className="mt-4">
-            <span className="mb-2 block font-label-sm text-label-sm uppercase text-ink-primary/60">
-              Why this channel
-            </span>
-            <BrutalistEditableField
-              value={launchKit.first_channel_rationale}
-              softCap={RATIONALE_MAX}
-              hardCap={RATIONALE_MAX}
-              saving={isSaving("first_channel_rationale")}
-              minRows={3}
-              onSave={(text) =>
-                void onPatch(
-                  { first_channel_rationale: text },
-                  { fieldKey: "first_channel_rationale" },
-                )
-              }
-            />
+            {/* Nested card: DesignCollapsibleCard owns its border; no extra chrome */}
+            <DesignCollapsibleCard title="Why this channel" defaultOpen={false}>
+              <BrutalistEditableField
+                value={launchKit.first_channel_rationale}
+                softCap={RATIONALE_MAX}
+                hardCap={RATIONALE_MAX}
+                saving={isSaving("first_channel_rationale")}
+                minRows={3}
+                onSave={(text) =>
+                  void onPatch(
+                    { first_channel_rationale: text },
+                    { fieldKey: "first_channel_rationale" },
+                  )
+                }
+              />
+            </DesignCollapsibleCard>
           </div>
         </section>
 
-        {/* First cohort */}
-        <section className="border-2 border-border-master bg-surface-card p-4 shadow-brutal-md">
-          <span className="mb-3 block font-label-md text-label-md uppercase text-ink-primary">
-            First Cohort
-          </span>
+        {/* First cohort — fully collapsed by default */}
+        <DesignCollapsibleCard title="First cohort" defaultOpen={false}>
           <BrutalistEditableField
             value={launchKit.first_cohort_hint}
             softCap={COHORT_HINT_MAX}
@@ -219,12 +235,17 @@ export function LaunchKitPanel({
               )
             }
           />
-        </section>
+        </DesignCollapsibleCard>
 
-        {/* Share copy */}
+        {/* Share copy — stays expanded; post actions + auto-tick callbacks */}
         <ShareCopyEditor
           variants={launchKit.share_copy_variants}
           isSaving={(index) => isSaving(`share_copy:${index}`)}
+          experimentName={experimentName}
+          slug={slug}
+          isLive={isLive}
+          onCopied={tickShareCopyReady}
+          onPosted={tickShareCopyReady}
           onSaveVariant={(index, text) =>
             void onPatch(
               { share_copy_variants: [{ index, text }] },
@@ -243,6 +264,7 @@ export function LaunchKitPanel({
               slug={slug}
               experimentName={experimentName}
               showDescription={false}
+              onLinkCopied={tickTrackingOn}
             />
           </section>
         ) : (

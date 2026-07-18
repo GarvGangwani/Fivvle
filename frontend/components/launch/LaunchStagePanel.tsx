@@ -66,6 +66,7 @@ export function LaunchStagePanel({
     refresh,
     patch,
     isSaving,
+    checkReadinessItem,
   } = useLaunchKit(experimentId, {
     onConflict: (message) => toast(message, "info"),
     onError: (message) => toast(message, "error"),
@@ -308,6 +309,7 @@ export function LaunchStagePanel({
         experimentName={experimentName}
         onPatch={patch}
         isSaving={isSaving}
+        checkReadinessItem={checkReadinessItem}
       />
     );
   }

@@ -31,6 +31,14 @@ export type UseLaunchKit = {
   ) => Promise<void>;
   /** True while a PATCH for this field key is in flight. */
   isSaving: (fieldKey: string) => boolean;
+  /**
+   * Idempotent auto-tick: checks an item if currently unchecked. Never unchecks.
+   *
+   * Quirk: if a founder manually unticks an auto-ticked item (e.g. `landing_live`
+   * while the page is still live), it will not re-tick until the next call
+   * (typically next Kit mount or `isLive` transition). Auto-tick only ever checks.
+   */
+  checkReadinessItem: (id: string) => Promise<void>;
 };
 
 type Options = {
@@ -268,6 +276,24 @@ export function useLaunchKit(
     [savingKeys],
   );
 
+  const checkReadinessItem = useCallback(
+    async (id: string) => {
+      const kit = kitRef.current;
+      if (!kit) return;
+      const item = kit.readiness_checklist.find((r) => r.id === id);
+      if (!item || item.checked_at !== null) return;
+      await patch(
+        {
+          readiness_checklist: [
+            { id, checked_at: new Date().toISOString() },
+          ],
+        },
+        { fieldKey: `readiness:${id}` },
+      );
+    },
+    [patch],
+  );
+
   return {
     launchKit,
     version,
@@ -277,5 +303,6 @@ export function useLaunchKit(
     refresh,
     patch,
     isSaving,
+    checkReadinessItem,
   };
 }
