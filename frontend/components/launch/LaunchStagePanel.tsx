@@ -17,7 +17,8 @@ import {
 } from "@/components/launch/LaunchTabs";
 import { LaunchCopyTab } from "@/components/launch/LaunchCopyTab";
 import { LaunchDesignTab } from "@/components/launch/design/LaunchDesignTab";
-import { LaunchShareTabPlaceholder } from "@/components/launch/LaunchShareTabPlaceholder";
+import { LaunchShareTab } from "@/components/launch/share/LaunchShareTab";
+import { getExperimentDisplayName } from "@/lib/experiment-name";
 
 /** Statuses where a LandingPage row exists (mirrors canvas-helpers LANDING_PAGE_CREATED). */
 const LANDING_READY_STATUSES = new Set([
@@ -74,6 +75,7 @@ export function LaunchStagePanel({
   const [statusReloadKey, setStatusReloadKey] = useState(0);
   const [slug, setSlug] = useState<string | null>(null);
   const [isLive, setIsLive] = useState(false);
+  const [experimentName, setExperimentName] = useState("Untitled project");
   const [pendingLandingGenerate, setPendingLandingGenerate] = useState(false);
   const [kitGenerating, setKitGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState<LaunchTabId>("kit");
@@ -92,6 +94,7 @@ export function LaunchStagePanel({
         const experiment = await getExperiment(experimentId);
         if (cancelled) return;
         setStatus(experiment.status);
+        setExperimentName(getExperimentDisplayName(experiment));
       } catch {
         if (cancelled) return;
         setStatus((prev) => prev ?? "RESEARCH_READY");
@@ -239,7 +242,16 @@ export function LaunchStagePanel({
               onGenerateLandingPage={handleGenerateLandingPage}
             />
           ) : activeTab === "share" ? (
-            <LaunchShareTabPlaceholder />
+            <LaunchShareTab
+              experimentId={experimentId}
+              slug={slug}
+              isLive={isLive}
+              experimentName={experimentName}
+              landingReady={landingReady}
+              landingGenerating={landingGenerating}
+              onGenerateLandingPage={handleGenerateLandingPage}
+              onSlugSaved={setSlug}
+            />
           ) : (
             renderKitColumn()
           )}
@@ -287,7 +299,7 @@ export function LaunchStagePanel({
         launchKit={launchKit}
         slug={slug}
         isLive={isLive}
-        experimentName="your project"
+        experimentName={experimentName}
         onPublishClick={handlePublishClick}
         onPatch={patch}
         isSaving={isSaving}
