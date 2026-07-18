@@ -54,7 +54,7 @@ type Props = {
 export function LaunchStagePanel({
   experimentId,
   onLandingStateChange,
-  onPublishClick,
+  onPublishClick: _onPublishClick,
   landingRefreshKey = 0,
 }: Props) {
   const { toast } = useToast();
@@ -78,12 +78,22 @@ export function LaunchStagePanel({
   const [experimentName, setExperimentName] = useState("Untitled project");
   const [pendingLandingGenerate, setPendingLandingGenerate] = useState(false);
   const [kitGenerating, setKitGenerating] = useState(false);
-  const [activeTab, setActiveTab] = useState<LaunchTabId>("kit");
+  const [activeTab, setActiveTab] = useState<LaunchTabId>("copy");
   const kitPollCount = useRef(0);
+  const defaultTabSettledRef = useRef(false);
 
   const landingReady = status !== null && LANDING_READY_STATUSES.has(status);
   const landingGenerating =
     status === "LANDING_GENERATING" || pendingLandingGenerate;
+
+  // One-shot default tab: Copy pre-publish, Kit when already live.
+  // Founder tab clicks after this win for the rest of the session.
+  useEffect(() => {
+    if (defaultTabSettledRef.current) return;
+    if (status === null) return;
+    defaultTabSettledRef.current = true;
+    setActiveTab(status === "LANDING_LIVE" ? "kit" : "copy");
+  }, [status]);
 
   // Experiment status — orthogonal to LaunchKit; fetched here and re-fetched via
   // statusReloadKey while a generation is in flight, or after publish.
@@ -195,10 +205,6 @@ export function LaunchStagePanel({
     }
   }, [experimentId, toast]);
 
-  const handlePublishClick = useCallback(() => {
-    onPublishClick?.();
-  }, [onPublishClick]);
-
   const previewState: PreviewState = landingGenerating
     ? "generating"
     : landingReady
@@ -300,7 +306,6 @@ export function LaunchStagePanel({
         slug={slug}
         isLive={isLive}
         experimentName={experimentName}
-        onPublishClick={handlePublishClick}
         onPatch={patch}
         isSaving={isSaving}
       />
@@ -308,23 +313,14 @@ export function LaunchStagePanel({
   }
 }
 
-/** Header + body frame shared by the kit fallback states (LAUNCH KIT chrome). */
+/** Header frame for kit fallback states — micro-copy only (tab strip owns the label). */
 function KitShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 border-b-2 border-border-master bg-surface-elevated p-6">
-        <div className="flex items-center gap-2">
-          <span
-            className="material-symbols-outlined text-ink-primary"
-            style={{ fontVariationSettings: "'FILL' 1" }}
-            aria-hidden="true"
-          >
-            rocket_launch
-          </span>
-          <h2 className="font-headline text-headline-md uppercase tracking-tighter text-ink-primary">
-            Launch Kit
-          </h2>
-        </div>
+      <div className="shrink-0 border-b-2 border-border-master bg-surface-elevated px-6 py-4">
+        <p className="font-mono text-mono-sm uppercase text-ink-primary/60">
+          Ready to put this in front of people
+        </p>
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center p-6">
         {children}
