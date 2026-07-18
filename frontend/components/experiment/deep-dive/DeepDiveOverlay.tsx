@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Experiment } from "@/types/experiment";
-import { publishProject } from "@/lib/api";
-import { ApiError } from "@/lib/api-client";
+import { ApiError, publishProject } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 import { LaunchStagePanel } from "@/components/launch/LaunchStagePanel";
 import { PublishConfirmDialog } from "@/components/launch/PublishConfirmDialog";
