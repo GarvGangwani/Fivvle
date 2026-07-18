@@ -107,6 +107,8 @@ type Props = {
   /** True while LaunchStagePanel is waiting on first/regen generate. */
   landingGenerating?: boolean;
   onGenerateLandingPage: () => void;
+  /** Fired after a successful landing-page PATCH (autosave or regen). */
+  onLandingPageSaved?: () => void;
 };
 
 function sectionPresent(copy: CopyJson, id: RegeneratableSectionId): boolean {
@@ -199,6 +201,7 @@ export function LaunchCopyTab({
   experimentId,
   landingGenerating = false,
   onGenerateLandingPage,
+  onLandingPageSaved,
 }: Props) {
   const { toast } = useToast();
   const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
@@ -345,6 +348,7 @@ export function LaunchCopyTab({
             if (!controller.signal.aborted) {
               setPage(patch.page_json);
               setSaving(false);
+              onLandingPageSaved?.();
             }
           })
           .catch(() => {
@@ -356,7 +360,13 @@ export function LaunchCopyTab({
           });
       }, 500);
     },
-    [experimentId, experimentStatus, landingGenerating, toast],
+    [
+      experimentId,
+      experimentStatus,
+      landingGenerating,
+      onLandingPageSaved,
+      toast,
+    ],
   );
 
   const applyCopy = useCallback(
@@ -406,6 +416,7 @@ export function LaunchCopyTab({
         copy_json: result.copy,
         page_json: result.page,
       });
+      onLandingPageSaved?.();
       toast(
         `${section.charAt(0).toUpperCase()}${section.slice(1)} regenerated`,
         "success",

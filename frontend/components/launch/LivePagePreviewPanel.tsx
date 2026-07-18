@@ -20,6 +20,8 @@ export type PreviewState = "generate" | "generating" | "draft" | "live";
 type Props = {
   previewState: PreviewState;
   slug: string | null;
+  /** Bumps on Copy/Design PATCH success so the iframe reloads past cache. */
+  cacheBust?: number;
   onGenerateLandingPage: () => void;
 };
 
@@ -32,6 +34,7 @@ const DOT_GRID_STYLE: React.CSSProperties = {
 export function LivePagePreviewPanel({
   previewState,
   slug,
+  cacheBust = 0,
   onGenerateLandingPage,
 }: Props) {
   const [viewport, setViewport] = useState<Viewport>("desktop");
@@ -39,7 +42,9 @@ export function LivePagePreviewPanel({
   const publicUrl =
     previewState === "live" && slug ? buildPublicLandingPageUrl(slug) : null;
   const previewUrl =
-    previewState === "live" && slug ? buildInAppPreviewUrl(slug) : null;
+    previewState === "live" && slug
+      ? `${buildInAppPreviewUrl(slug)}?v=${cacheBust}`
+      : null;
 
   // URL bar never shows a fake/live URL for a non-live page (Edit 1, rule 4).
   // Always the shareable public subdomain URL — not the in-app iframe path.

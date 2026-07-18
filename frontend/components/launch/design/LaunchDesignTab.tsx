@@ -28,6 +28,8 @@ type Props = {
   experimentId: string;
   landingGenerating?: boolean;
   onGenerateLandingPage: () => void;
+  /** Fired after a successful page_json / template_id PATCH. */
+  onLandingPageSaved?: () => void;
 };
 
 /**
@@ -38,6 +40,7 @@ export function LaunchDesignTab({
   experimentId,
   landingGenerating = false,
   onGenerateLandingPage,
+  onLandingPageSaved,
 }: Props) {
   const { toast } = useToast();
   const [loadState, setLoadState] = useState<LoadState>({ kind: "loading" });
@@ -166,6 +169,7 @@ export function LaunchDesignTab({
           .then(() => {
             if (!controller.signal.aborted) {
               setSaving(false);
+              onLandingPageSaved?.();
             }
           })
           .catch(() => {
@@ -177,7 +181,13 @@ export function LaunchDesignTab({
           });
       }, 500);
     },
-    [experimentId, experimentStatus, landingGenerating, toast],
+    [
+      experimentId,
+      experimentStatus,
+      landingGenerating,
+      onLandingPageSaved,
+      toast,
+    ],
   );
 
   const handlePageChange = useCallback(

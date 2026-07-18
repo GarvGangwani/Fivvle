@@ -80,8 +80,14 @@ export function LaunchStagePanel({
   const [pendingLandingGenerate, setPendingLandingGenerate] = useState(false);
   const [kitGenerating, setKitGenerating] = useState(false);
   const [activeTab, setActiveTab] = useState<LaunchTabId>("copy");
+  /** Bumps iframe `?v=` after Copy/Design PATCH so preview picks up edits. */
+  const [previewCacheBust, setPreviewCacheBust] = useState(0);
   const kitPollCount = useRef(0);
   const defaultTabSettledRef = useRef(false);
+
+  const bumpPreviewCache = useCallback(() => {
+    setPreviewCacheBust(Date.now());
+  }, []);
 
   const landingReady = status !== null && LANDING_READY_STATUSES.has(status);
   const landingGenerating =
@@ -228,6 +234,7 @@ export function LaunchStagePanel({
         <LivePagePreviewPanel
           previewState={previewState}
           slug={slug}
+          cacheBust={previewCacheBust}
           onGenerateLandingPage={handleGenerateLandingPage}
         />
       </div>
@@ -241,12 +248,14 @@ export function LaunchStagePanel({
               experimentId={experimentId}
               landingGenerating={landingGenerating}
               onGenerateLandingPage={handleGenerateLandingPage}
+              onLandingPageSaved={bumpPreviewCache}
             />
           ) : activeTab === "design" ? (
             <LaunchDesignTab
               experimentId={experimentId}
               landingGenerating={landingGenerating}
               onGenerateLandingPage={handleGenerateLandingPage}
+              onLandingPageSaved={bumpPreviewCache}
             />
           ) : activeTab === "share" ? (
             <LaunchShareTab
