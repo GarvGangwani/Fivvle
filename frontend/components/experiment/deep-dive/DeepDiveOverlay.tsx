@@ -1,64 +1,72 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { Experiment } from "@/types/experiment";
-import { ApiError, publishProject } from "@/lib/api";
-import { useToast } from "@/components/ui/ToastProvider";
-import { LaunchStagePanel } from "@/components/launch/LaunchStagePanel";
+import { EvidenceStagePanel } from "@/components/research/EvidenceStagePanel";
+import {
+  LaunchStagePanel,
+  type LaunchLandingReport,
+} from "@/components/launch/LaunchStagePanel";
 import { PublishConfirmDialog } from "@/components/launch/PublishConfirmDialog";
-import { DeepDiveShell } from "./DeepDiveShell";
-import { DeepDiveSidebar } from "./DeepDiveSidebar";
-import { DeepDiveMain } from "./DeepDiveMain";
-import type { DeepDiveSection } from "./types";
+import { getExperiment } from "@/lib/api";
+import { useToast } from "@/components/ui/ToastProvider";
 
-interface DeepDiveOverlayProps {
-  experiment: Experiment;
-  initialSection?: DeepDiveSection;
+type Props = {
+  isOpen: boolean;
   onClose: () => void;
-  /** Called after a successful publish so the parent can refresh experiment state. */
-  onExperimentUpdated?: () => void | Promise<void>;
-}
+  act: "evidence" | "launch" | "signal";
+  experimentId: string;
+};
 
-export function DeepDiveOverlay({
-  experiment,
-  initialSection = "overview",
-  onClose,
-  onExperimentUpdated,
-}: DeepDiveOverlayProps) {
+export function DeepDiveOverlay({ isOpen, onClose, act, experimentId }: Props) {
   const { toast } = useToast();
-  const [activeSection, setActiveSection] = useState<DeepDiveSection>(initialSection);
+  const [launchLanding, setLaunchLanding] =
+    useState<LaunchLandingReport | null>(null);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
-  const [publishing, setPublishing] = useState(false);
+  const [landingRefreshKey, setLandingRefreshKey] = useState(0);
+  const [projectName, setProjectName] = useState("your project");
 
-  const isLive = experiment.status === "LANDING_LIVE";
-  const canPublish = experiment.status === "LANDING_DRAFT" && Boolean(experiment.landing_page);
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (showPublishDialog) {
+          setShowPublishDialog(false);
+          return;
+        }
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, onClose, showPublishDialog]);
+
+  useEffect(() => {
+    setLaunchLanding(null);
+    setShowPublishDialog(false);
+  }, [isOpen, act]);
+
+  useEffect(() => {
+    if (!isOpen || act !== "launch") return;
+    let cancelled = false;
+    void getExperiment(experimentId)
+      .then((exp) => {
+        if (!cancelled && exp.name) setProjectName(exp.name);
+      })
+      .catch(() => {
+        /* keep fallback name */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, act, experimentId]);
 
   const handlePublishClick = useCallback(() => {
-    if (!canPublish || publishing) return;
+    if (launchLanding?.status !== "LANDING_DRAFT") return;
     setShowPublishDialog(true);
-  }, [canPublish, publishing]);
-
-  const handlePublishConfirm = useCallback(
-    async (ctaMode: "waitlist" | "coming_soon") => {
-      setPublishing(true);
-      try {
-        await publishProject(experiment.id, { cta_mode: ctaMode });
-        toast("Your page is live.", "success");
-        setShowPublishDialog(false);
-        await onExperimentUpdated?.();
-      } catch (err) {
-        const message =
-          err instanceof ApiError ? err.message : "Could not publish. Try again.";
-        toast(message, "error");
-      } finally {
-        setPublishing(false);
-      }
-    },
-    [experiment.id, onExperimentUpdated, toast],
-  );
+  }, [launchLanding?.status]);
 
   const handleCopyLiveLink = useCallback(async () => {
-    const slug = experiment.landing_page?.slug;
+    const slug = launchLanding?.slug;
     if (!slug) {
       toast("Live link is not ready yet.", "error");
       return;
@@ -70,67 +78,115 @@ export function DeepDiveOverlay({
     } catch {
       toast("Could not copy link.", "error");
     }
-  }, [experiment.landing_page?.slug, toast]);
+  }, [launchLanding?.slug, toast]);
 
-  // Escape to close
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        if (showPublishDialog) {
-          setShowPublishDialog(false);
-          return;
-        }
-        onClose();
-      }
-    }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, showPublishDialog]);
+  const handlePublished = useCallback(
+    (result: { slug: string; public_url: string }) => {
+      setShowPublishDialog(false);
+      toast("Your page is live.", "success");
+      setLandingRefreshKey((k) => k + 1);
+      setLaunchLanding((prev) =>
+        prev
+          ? { ...prev, status: "LANDING_LIVE", slug: result.slug, isLive: true }
+          : {
+              status: "LANDING_LIVE",
+              slug: result.slug,
+              isLive: true,
+            },
+      );
+      void navigator.clipboard.writeText(result.public_url).catch(() => {
+        /* non-fatal */
+      });
+    },
+    [toast],
+  );
 
-  // Lock body scroll
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
+  if (!isOpen) return null;
 
-  if (activeSection === "launch") {
-    return (
-      <>
-        <DeepDiveShell onClose={onClose}>
-          <LaunchStagePanel
-            experiment={experiment}
-            onBack={onClose}
-            onPublish={handlePublishClick}
-            publishing={publishing}
-            isLive={isLive}
-            onCopyLiveLink={isLive ? handleCopyLiveLink : undefined}
-          />
-        </DeepDiveShell>
-        {showPublishDialog ? (
-          <PublishConfirmDialog
-            open={showPublishDialog}
-            publishing={publishing}
-            onConfirm={handlePublishConfirm}
-            onCancel={() => {
-              if (!publishing) setShowPublishDialog(false);
-            }}
-          />
-        ) : null}
-      </>
-    );
-  }
+  const isLive = Boolean(launchLanding?.isLive && launchLanding.slug);
+  const publishLabel = isLive
+    ? `Live at /${launchLanding!.slug}`
+    : "Publish landing page";
+  const publishEnabled = launchLanding?.status === "LANDING_DRAFT";
 
   return (
-    <DeepDiveShell onClose={onClose}>
-      <DeepDiveSidebar
-        experiment={experiment}
-        activeSection={activeSection}
-        onSectionChange={setActiveSection}
-      />
-      <DeepDiveMain experiment={experiment} section={activeSection} />
-    </DeepDiveShell>
+    <>
+      <div className="fixed inset-0 z-[70] flex flex-col bg-canvas-bg">
+        <div className="flex h-16 shrink-0 items-center justify-between border-b-2 border-border-master px-6">
+          <button
+            type="button"
+            onClick={onClose}
+            className="font-label-md text-label-sm uppercase text-ink-primary"
+          >
+            ← Back to canvas
+          </button>
+
+          {act === "launch" ? (
+            <span className="border-b-2 border-border-master pb-1 font-headline text-headline-md uppercase tracking-tighter text-ink-primary">
+              Phase 04: Launch
+            </span>
+          ) : (
+            <h2 className="font-display text-display-sm uppercase text-ink-primary">
+              {act} deep-dive
+            </h2>
+          )}
+
+          <div className="flex items-center gap-3">
+            {act === "launch" ? (
+              <button
+                type="button"
+                onClick={isLive ? () => void handleCopyLiveLink() : handlePublishClick}
+                disabled={!isLive && !publishEnabled}
+                className="rounded-none border-2 border-border-master bg-surface-card px-3 py-1.5 font-label-md text-label-sm uppercase text-ink-primary shadow-brutal-md transition-all enabled:hover:-translate-y-0.5 disabled:opacity-50"
+              >
+                {publishLabel}
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={onClose}
+              className="font-label-md text-label-sm uppercase text-ink-primary"
+              aria-label="Close overlay"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+
+        {act === "evidence" ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <EvidenceStagePanel experimentId={experimentId} />
+          </div>
+        ) : act === "launch" ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <LaunchStagePanel
+              experimentId={experimentId}
+              onLandingStateChange={setLaunchLanding}
+              onPublishClick={handlePublishClick}
+              landingRefreshKey={landingRefreshKey}
+            />
+          </div>
+        ) : (
+          <div className="p-24 text-center">
+            <div className="mb-2 font-label-md text-label-md uppercase text-brand-primary">
+              COMING IN STEP 6
+            </div>
+            <h2 className="font-display text-display-lg uppercase text-ink-primary">
+              {act} deep-dive
+            </h2>
+          </div>
+        )}
+      </div>
+
+      {showPublishDialog ? (
+        <PublishConfirmDialog
+          open={showPublishDialog}
+          experimentId={experimentId}
+          projectName={projectName}
+          onClose={() => setShowPublishDialog(false)}
+          onPublished={handlePublished}
+        />
+      ) : null}
+    </>
   );
 }
