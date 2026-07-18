@@ -99,11 +99,19 @@ def get_insight_dispatcher(settings: Settings) -> InsightDispatcher:
     )
 
 
-def get_landing_page_dispatcher(settings: Settings) -> LandingPageDispatcher:
+def get_landing_page_dispatcher(
+    settings: Settings,
+    *,
+    launch_kit_dispatcher: LaunchKitDispatcher | None = None,
+) -> LandingPageDispatcher:
     """Construct and return the configured LandingPageDispatcher.
 
     Args:
         settings: The application settings singleton (from get_settings()).
+        launch_kit_dispatcher: Optional LaunchKit dispatcher to auto-trigger
+            after a successful landing page generation. When omitted, one is
+            constructed via get_launch_kit_dispatcher (defensive default for
+            callers that predate the injection).
 
     Returns:
         A LandingPageDispatcher implementation selected by settings.dispatcher_mode.
@@ -115,7 +123,12 @@ def get_landing_page_dispatcher(settings: Settings) -> LandingPageDispatcher:
     if settings.dispatcher_mode == "in_process":
         from app.db.session import get_sessionmaker  # noqa: PLC0415
 
-        return InProcessLandingPageDispatcher(get_sessionmaker=get_sessionmaker)
+        if launch_kit_dispatcher is None:
+            launch_kit_dispatcher = get_launch_kit_dispatcher(settings)
+        return InProcessLandingPageDispatcher(
+            get_sessionmaker=get_sessionmaker,
+            launch_kit_dispatcher=launch_kit_dispatcher,
+        )
 
     if settings.dispatcher_mode == "http":
         raise NotImplementedError(
