@@ -6,8 +6,8 @@ import {
   ApiError,
   getLandingPage,
   publishProject,
-  type LandingPage,
 } from "@/lib/api";
+import type { LandingPage } from "@/lib/types";
 import { LandingPageSlugEditor } from "@/components/landing-page-editor/LandingPageSlugEditor";
 
 type Props = {
