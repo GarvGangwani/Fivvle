@@ -7,6 +7,9 @@ Public surface:
         (insert or regenerate) → return the assembled LaunchKit.
   - get_launch_kit(db, experiment_id) -> LaunchKitEnvelope | None
   - patch_launch_kit(db, experiment_id, expected_version, patch) -> LaunchKitEnvelope
+  - regenerate_variant(db, experiment_id, surface) -> LaunchKitEnvelope
+        LLM rewrite of one share-copy surface into edited_doc; server bumps
+        version (no client CAS). Never mutates raw_report.
 
 Deterministic helpers (pure, unit-testable, no I/O):
   - pick_first_channel(refined_idea, validation_report) -> LaunchChannel
@@ -45,7 +48,9 @@ from app.db.models.validation_report import ValidationReport as ValidationReport
 from app.llm.prompts.launch_kit import (
     LAUNCH_KIT_CACHE_BREAKPOINTS,
     LAUNCH_KIT_PROMPT_NAME,
+    LAUNCH_KIT_REGEN_PROMPT_NAME,
     LAUNCH_KIT_SYSTEM_PROMPT,
+    build_launch_kit_regen_user_prompt,
     build_launch_kit_user_prompt,
 )
 from app.logging_config import get_logger
@@ -55,7 +60,9 @@ from app.schemas.launch_kit import (
     LaunchKitEnvelope,
     LaunchKitLLMOutput,
     LaunchKitPatch,
+    LaunchKitRegenLLMOutput,
     ReadinessItem,
+    ShareSurface,
 )
 from app.schemas.refinement import RefinedIdea
 from app.schemas.validation_report import ValidationReport
@@ -63,6 +70,7 @@ from app.schemas.validation_report import ValidationReport
 _logger = get_logger(__name__)
 
 _LAUNCH_KIT_MAX_TOKENS = 4096
+_LAUNCH_KIT_REGEN_MAX_TOKENS = 1024
 # 0.6 — Kimi k2.6 requires temperature=0.6 when thinking is disabled (ADR 0018).
 _LAUNCH_KIT_TEMPERATURE = 0.6
 
@@ -489,4 +497,96 @@ async def patch_launch_kit(
     row.edited_at = datetime.now(timezone.utc)
     await db.flush()
 
+    return LaunchKitEnvelope(launch_kit=updated, version=row.version)
+
+
+async def regenerate_variant(
+    db: AsyncSession,
+    experiment_id: UUID,
+    *,
+    surface: ShareSurface,
+) -> LaunchKitEnvelope:
+    """Rewrite one share-copy surface via LLM; server bumps version.
+
+    Loads ``edited_doc or raw_report``, replaces the matching surface's text,
+    bumps ``regenerated_count`` on that variant only, writes ``edited_doc``,
+    bumps ``version``, sets ``founder_edited=true``. Never rewrites
+    ``raw_report``.
+
+    Raises:
+      LaunchKitNotFoundError — no launch kit exists.
+      ValueError — surface not present in the kit's share_copy_variants.
+      LaunchKitLLMError — the launch_kit_regen_v1 LLM call failed.
+      LaunchKitPreconditionError — missing experiment context for the LLM.
+    """
+    row = await _fetch_launch_kit_row(db, experiment_id)
+    if row is None:
+        raise LaunchKitNotFoundError(
+            f"No launch kit for experiment {experiment_id}"
+        )
+
+    current = LaunchKit.model_validate(row.edited_doc or row.raw_report)
+    target = next(
+        (v for v in current.share_copy_variants if v.surface == surface),
+        None,
+    )
+    if target is None:
+        raise ValueError(f"share_copy surface {surface.value!r} not found in kit")
+
+    settings = get_settings()
+    provider, model = _launch_kit_provider_and_model(settings)
+    typed_provider = cast(llm_client.ProviderName, provider)
+
+    experiment = await _fetch_experiment(db, experiment_id)
+    validation_report = await _fetch_validation_report(db, experiment_id)
+    refined_idea = _parse_refined_idea(experiment)
+
+    try:
+        llm_output, llm_result = await llm_client.complete_structured(
+            db,
+            provider=typed_provider,
+            model=model,
+            prompt_name=LAUNCH_KIT_REGEN_PROMPT_NAME,
+            system=LAUNCH_KIT_SYSTEM_PROMPT,
+            user=build_launch_kit_regen_user_prompt(
+                refined_idea,
+                validation_report,
+                current.first_channel,
+                experiment.target_geography,
+                surface=surface,
+                previous_text=target.text,
+            ),
+            response_model=LaunchKitRegenLLMOutput,
+            max_tokens=_LAUNCH_KIT_REGEN_MAX_TOKENS,
+            temperature=_LAUNCH_KIT_TEMPERATURE,
+            experiment_id=experiment_id,
+            phase="launch_kit",
+            cache_breakpoints=LAUNCH_KIT_CACHE_BREAKPOINTS,
+        )
+    except Exception as exc:
+        raise LaunchKitLLMError(
+            f"LaunchKit regen LLM call failed for experiment {experiment_id}"
+        ) from exc
+
+    updated = current.model_copy(deep=True)
+    for variant in updated.share_copy_variants:
+        if variant.surface == surface:
+            variant.text = llm_output.text
+            variant.regenerated_count = variant.regenerated_count + 1
+            break
+    updated.founder_edited = True
+
+    row.edited_doc = updated.model_dump(mode="json")
+    row.version = row.version + 1
+    row.edited_at = datetime.now(timezone.utc)
+    await db.flush()
+
+    _logger.info(
+        "launch kit variant regenerated",
+        experiment_id=str(experiment_id),
+        surface=surface.value,
+        version=row.version,
+        cost_usd=str(llm_result.cost_usd),
+        latency_ms=llm_result.latency_ms,
+    )
     return LaunchKitEnvelope(launch_kit=updated, version=row.version)

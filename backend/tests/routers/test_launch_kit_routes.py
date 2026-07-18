@@ -467,3 +467,71 @@ def test_patch_bad_variant_index_400(client: TestClient, mock_firebase: None) ->
         },
     )
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /launch-kit/regenerate-variant
+# ---------------------------------------------------------------------------
+
+
+def test_regen_variant_200(client: TestClient, mock_firebase: None) -> None:
+    from app.schemas.launch_kit import LaunchKitEnvelope  # noqa: PLC0415
+
+    _sync_user(client)
+    experiment_id = _create_refined_experiment(client)
+    landing_page_id = _seed_landing_page(experiment_id)
+    kit = _launch_kit(landing_page_id)
+    kit.share_copy_variants[0].text = "Regenerated tweet copy."
+    kit.share_copy_variants[0].regenerated_count = 1
+    kit.founder_edited = True
+
+    with patch(
+        "app.routers.launch_kit.regenerate_variant",
+        new_callable=AsyncMock,
+        return_value=LaunchKitEnvelope(launch_kit=kit, version=2),
+    ):
+        resp = client.post(
+            f"/experiments/{experiment_id}/launch-kit/regenerate-variant",
+            headers=_AUTH_HEADER,
+            json={"surface": "tweet"},
+        )
+
+    assert resp.status_code == 200, resp.json()
+    body = resp.json()
+    assert body["version"] == 2
+    tweet = next(
+        v for v in body["launch_kit"]["share_copy_variants"] if v["surface"] == "tweet"
+    )
+    assert tweet["text"] == "Regenerated tweet copy."
+    assert tweet["regenerated_count"] == 1
+
+
+def test_regen_variant_404_when_kit_missing(
+    client: TestClient, mock_firebase: None
+) -> None:
+    _sync_user(client)
+    experiment_id = _create_refined_experiment(client)
+
+    resp = client.post(
+        f"/experiments/{experiment_id}/launch-kit/regenerate-variant",
+        headers=_AUTH_HEADER,
+        json={"surface": "tweet"},
+    )
+    assert resp.status_code == 404
+
+
+def test_regen_variant_400_unknown_surface_in_kit(
+    client: TestClient, mock_firebase: None
+) -> None:
+    _sync_user(client)
+    experiment_id = _create_refined_experiment(client)
+    landing_page_id = _seed_landing_page(experiment_id)
+    _seed_launch_kit(experiment_id, landing_page_id)
+
+    # Seeded kit has tweet/dm_opener/linkedin_post — not reddit_post.
+    resp = client.post(
+        f"/experiments/{experiment_id}/launch-kit/regenerate-variant",
+        headers=_AUTH_HEADER,
+        json={"surface": "reddit_post"},
+    )
+    assert resp.status_code == 400

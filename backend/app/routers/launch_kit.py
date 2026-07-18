@@ -1,4 +1,4 @@
-"""LaunchKit router — generate / get / patch the launch package for an experiment.
+"""LaunchKit router — generate / get / patch / regen the launch package.
 
 Endpoints (all under /experiments/{experiment_id}):
   - POST  /generate-launch-kit  → 202, dispatches async generation (idempotent
@@ -6,6 +6,9 @@ Endpoints (all under /experiments/{experiment_id}):
   - GET   /launch-kit           → 200 LaunchKitEnvelope or 404.
   - PATCH /launch-kit           → 200 LaunchKitEnvelope, optimistic-concurrency
         edit (compare-and-swap on ``version``).
+  - POST  /launch-kit/regenerate-variant → 200 LaunchKitEnvelope. Server bumps
+        version; body is ``{surface}`` only. Regen writes over any concurrent
+        edits to the target surface. Other surfaces and metadata are preserved.
 
 Per .cursorrules «API Design»: handlers are thin; domain logic lives in
 app.services.launch_kit_service. Per AGENTS.md: authentication via
@@ -35,12 +38,15 @@ from app.schemas.launch_kit import (
     LaunchKitEnvelope,
     LaunchKitGenerateResponse,
     LaunchKitPatchRequest,
+    LaunchKitRegenRequest,
 )
 from app.services.launch_kit_service import (
+    LaunchKitLLMError,
     LaunchKitNotFoundError,
     LaunchKitVersionConflictError,
     get_launch_kit,
     patch_launch_kit,
+    regenerate_variant,
 )
 
 _logger = get_logger(__name__)
@@ -202,6 +208,57 @@ async def patch_launch_kit_endpoint(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc),
+        ) from exc
+
+    await db.commit()
+    return envelope
+
+
+@router.post(
+    "/{experiment_id}/launch-kit/regenerate-variant",
+    response_model=LaunchKitEnvelope,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def regenerate_variant_endpoint(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: LaunchKitRegenRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> LaunchKitEnvelope:
+    """Rewrite one share-copy surface; server bumps version.
+
+    Regen writes over any concurrent edits to the target surface. Other
+    surfaces and metadata are preserved.
+    """
+    await _get_owned_experiment(
+        db, experiment_id=experiment_id, user_id=current_user.id
+    )
+    try:
+        envelope = await regenerate_variant(
+            db, experiment_id, surface=body.surface
+        )
+    except LaunchKitNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Launch kit not found",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+    except LaunchKitLLMError as exc:
+        _logger.error(
+            "launch kit regen failed",
+            experiment_id=str(experiment_id),
+            surface=body.surface.value,
+            error_type=type(exc).__name__,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Failed to regenerate share copy, please try again",
         ) from exc
 
     await db.commit()

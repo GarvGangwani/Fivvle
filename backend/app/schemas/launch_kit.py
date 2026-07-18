@@ -174,3 +174,23 @@ class LaunchKitPatchRequest(BaseModel):
 
     version: int = Field(ge=1)
     patch: LaunchKitPatch
+
+
+class LaunchKitRegenRequest(BaseModel):
+    """POST /launch-kit/regenerate-variant body.
+
+    Server-side version bump only — no client ``version``. The click is atomic;
+    CAS is for concurrent PATCH races, not regen.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    surface: ShareSurface
+
+
+class LaunchKitRegenLLMOutput(BaseModel):
+    """Single-variant output from ``launch_kit_regen_v1``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=1, max_length=1200)

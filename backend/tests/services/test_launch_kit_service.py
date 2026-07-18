@@ -32,6 +32,7 @@ from app.schemas.launch_kit import (
     LaunchKit,
     LaunchKitLLMOutput,
     LaunchKitPatch,
+    LaunchKitRegenLLMOutput,
     ReadinessItemPatch,
     ShareCopyVariant,
     ShareCopyVariantPatch,
@@ -39,6 +40,7 @@ from app.schemas.launch_kit import (
 )
 from app.schemas.refinement import RefinedIdea
 from app.services.launch_kit_service import (
+    LaunchKitNotFoundError,
     LaunchKitPreconditionError,
     LaunchKitVersionConflictError,
     _apply_patch,
@@ -48,6 +50,7 @@ from app.services.launch_kit_service import (
     get_launch_kit,
     patch_launch_kit,
     pick_first_channel,
+    regenerate_variant,
 )
 
 _LLM_PATCH_TARGET = "app.services.launch_kit_service.llm_client.complete_structured"
@@ -545,3 +548,122 @@ async def test_patch_launch_kit_version_conflict(db_session: AsyncSession) -> No
             expected_version=99,
             patch=LaunchKitPatch(first_cohort_hint="stale write"),
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_firebase")
+async def test_regenerate_variant_happy_path(db_session: AsyncSession) -> None:
+    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+
+    user = await _persist_user(db_session)
+    experiment = await _persist_experiment(db_session, user)
+
+    with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = (_llm_output(), _llm_result())
+        await generate_launch_kit(db_session, experiment.id)
+        await db_session.commit()
+
+        mock_llm.return_value = (
+            LaunchKitRegenLLMOutput(text="Fresh LinkedIn rewrite."),
+            _llm_result(),
+        )
+        envelope = await regenerate_variant(
+            db_session, experiment.id, surface=ShareSurface.LINKEDIN_POST
+        )
+        await db_session.commit()
+
+    assert envelope.version == 2
+    assert envelope.launch_kit.founder_edited is True
+    variants = envelope.launch_kit.share_copy_variants
+    linkedin = next(v for v in variants if v.surface == ShareSurface.LINKEDIN_POST)
+    tweet = next(v for v in variants if v.surface == ShareSurface.TWEET)
+    assert linkedin.text == "Fresh LinkedIn rewrite."
+    assert linkedin.regenerated_count == 1
+    assert tweet.text == "Ready-to-post copy for tweet."
+    assert tweet.regenerated_count == 0
+
+    row = (
+        await db_session.execute(
+            select(LaunchKitRow).where(LaunchKitRow.experiment_id == experiment.id)
+        )
+    ).scalar_one()
+    assert row.edited_doc is not None
+    assert row.raw_report["share_copy_variants"][0]["text"].startswith(
+        "Ready-to-post copy"
+    )
+    assert mock_llm.call_args.kwargs["prompt_name"] == "launch_kit_regen_v1"
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_firebase")
+async def test_regenerate_variant_preserves_raw_report_column(
+    db_session: AsyncSession,
+) -> None:
+    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+
+    user = await _persist_user(db_session)
+    experiment = await _persist_experiment(db_session, user)
+
+    with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = (_llm_output(), _llm_result())
+        await generate_launch_kit(db_session, experiment.id)
+        await db_session.commit()
+
+        row_before = (
+            await db_session.execute(
+                select(LaunchKitRow).where(LaunchKitRow.experiment_id == experiment.id)
+            )
+        ).scalar_one()
+        raw_before = dict(row_before.raw_report)
+
+        mock_llm.return_value = (
+            LaunchKitRegenLLMOutput(text="Another rewrite."),
+            _llm_result(),
+        )
+        await regenerate_variant(
+            db_session, experiment.id, surface=ShareSurface.TWEET
+        )
+        await db_session.commit()
+
+    row_after = (
+        await db_session.execute(
+            select(LaunchKitRow).where(LaunchKitRow.experiment_id == experiment.id)
+        )
+    ).scalar_one()
+    assert row_after.raw_report == raw_before
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_firebase")
+async def test_regenerate_variant_missing_kit_raises(
+    db_session: AsyncSession,
+) -> None:
+    user = await _persist_user(db_session)
+    experiment = await _persist_experiment(db_session, user)
+
+    with pytest.raises(LaunchKitNotFoundError):
+        await regenerate_variant(
+            db_session, experiment.id, surface=ShareSurface.TWEET
+        )
+
+
+@pytest.mark.asyncio
+@pytest.mark.usefixtures("mock_firebase")
+async def test_regenerate_variant_unknown_surface_raises(
+    db_session: AsyncSession,
+) -> None:
+    from unittest.mock import AsyncMock, patch  # noqa: PLC0415
+
+    user = await _persist_user(db_session)
+    experiment = await _persist_experiment(db_session, user)
+
+    with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_llm:
+        mock_llm.return_value = (_llm_output(), _llm_result())
+        await generate_launch_kit(db_session, experiment.id)
+        await db_session.commit()
+
+        with pytest.raises(ValueError, match="reddit_post"):
+            await regenerate_variant(
+                db_session, experiment.id, surface=ShareSurface.REDDIT_POST
+            )
+    assert mock_llm.await_count == 1  # generate only; regen never called LLM
