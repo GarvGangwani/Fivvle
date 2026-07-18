@@ -11,6 +11,13 @@ import {
 } from "@/components/launch/LivePagePreviewPanel";
 import { LaunchKitPanel } from "@/components/launch/LaunchKitPanel";
 import { FloatingLaunchAskBar } from "@/components/launch/FloatingLaunchAskBar";
+import {
+  LaunchTabs,
+  type LaunchTabId,
+} from "@/components/launch/LaunchTabs";
+import { LaunchCopyTab } from "@/components/launch/LaunchCopyTab";
+import { LaunchDesignTabPlaceholder } from "@/components/launch/LaunchDesignTabPlaceholder";
+import { LaunchShareTabPlaceholder } from "@/components/launch/LaunchShareTabPlaceholder";
 
 /** Statuses where a LandingPage row exists (mirrors canvas-helpers LANDING_PAGE_CREATED). */
 const LANDING_READY_STATUSES = new Set([
@@ -69,6 +76,7 @@ export function LaunchStagePanel({
   const [isLive, setIsLive] = useState(false);
   const [pendingLandingGenerate, setPendingLandingGenerate] = useState(false);
   const [kitGenerating, setKitGenerating] = useState(false);
+  const [activeTab, setActiveTab] = useState<LaunchTabId>("kit");
   const kitPollCount = useRef(0);
 
   const landingReady = status !== null && LANDING_READY_STATUSES.has(status);
@@ -214,10 +222,23 @@ export function LaunchStagePanel({
         />
       </div>
 
-      {/* Right ~30% — launch kit + ask bar */}
+      {/* Right ~30% — tab surface + ask bar */}
       <div className="relative z-10 flex w-[30%] min-w-0 flex-col border-l-2 border-border-master">
-        <div className="flex min-h-0 flex-1 flex-col">
-          {renderKitColumn()}
+        <LaunchTabs activeTab={activeTab} onTabChange={setActiveTab} />
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          {activeTab === "copy" ? (
+            <LaunchCopyTab
+              experimentId={experimentId}
+              landingGenerating={landingGenerating}
+              onGenerateLandingPage={handleGenerateLandingPage}
+            />
+          ) : activeTab === "design" ? (
+            <LaunchDesignTabPlaceholder />
+          ) : activeTab === "share" ? (
+            <LaunchShareTabPlaceholder />
+          ) : (
+            renderKitColumn()
+          )}
         </div>
         <div className="shrink-0 border-t-2 border-border-master p-4">
           <FloatingLaunchAskBar />
