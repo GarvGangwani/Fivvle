@@ -81,6 +81,14 @@ const previewDeviceHeaders = securityHeaders.map((header) =>
     : header,
 );
 
+// Launch (and other) in-app previews embed /e/[slug] in a same-origin iframe.
+// Public subdomain URLs stay unframable (global DENY). See buildInAppPreviewUrl.
+const publicLandingPreviewHeaders = securityHeaders.map((header) =>
+  header.key === "X-Frame-Options"
+    ? { key: "X-Frame-Options", value: "SAMEORIGIN" }
+    : header,
+);
+
 // Public landing pages use per-project subdomains ({slug}.fivvle.io). Middleware
 // rewrites those hosts to /e/[slug]. See frontend/docs/LANDING_PAGE_SUBDOMAINS.md.
 
@@ -111,6 +119,10 @@ module.exports = {
       {
         source: "/preview/device",
         headers: previewDeviceHeaders,
+      },
+      {
+        source: "/e/:path*",
+        headers: publicLandingPreviewHeaders,
       },
     ];
   },

@@ -117,6 +117,16 @@ export function buildPublicLandingPageUrl(
   return url.toString();
 }
 
+/**
+ * Same-origin path for in-app iframe previews (Launch overlay, etc.).
+ * Relative so it resolves against the parent document origin — works in
+ * dev and prod without env-specific hosts. Public share URLs still use
+ * buildPublicLandingPageUrl (subdomain).
+ */
+export function buildInAppPreviewUrl(slug: string): string {
+  return `/e/${slug}`;
+}
+
 /** True when the host is a project landing subdomain. */
 export function isProjectLandingHost(host: string): boolean {
   return resolveProjectSlugFromHost(host) !== null;

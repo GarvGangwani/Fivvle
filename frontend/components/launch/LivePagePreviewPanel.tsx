@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { buildPublicLandingPageUrl } from "@/lib/landing-host";
+import {
+  buildInAppPreviewUrl,
+  buildPublicLandingPageUrl,
+} from "@/lib/landing-host";
 
 type Viewport = "mobile" | "desktop";
 
@@ -10,7 +13,7 @@ type Viewport = "mobile" | "desktop";
  * - generating: LANDING_GENERATING → building state, parent polls for the flip.
  * - draft:      LANDING_DRAFT (built, not live) → no live URL to iframe; the real
  *               draft preview arrives in PR 3 via the design-edit toggle (D6 / Option A).
- * - live:       LANDING_LIVE+ → iframe the public URL.
+ * - live:       LANDING_LIVE+ → iframe same-origin /e/{slug}; URL bar shows public URL.
  */
 export type PreviewState = "generate" | "generating" | "draft" | "live";
 
@@ -35,8 +38,11 @@ export function LivePagePreviewPanel({
 
   const publicUrl =
     previewState === "live" && slug ? buildPublicLandingPageUrl(slug) : null;
+  const previewUrl =
+    previewState === "live" && slug ? buildInAppPreviewUrl(slug) : null;
 
   // URL bar never shows a fake/live URL for a non-live page (Edit 1, rule 4).
+  // Always the shareable public subdomain URL — not the in-app iframe path.
   const urlBarLabel =
     previewState === "live" && publicUrl
       ? publicUrl
@@ -102,14 +108,14 @@ export function LivePagePreviewPanel({
         className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-12"
         style={DOT_GRID_STYLE}
       >
-        {previewState === "live" && publicUrl ? (
+        {previewState === "live" && previewUrl ? (
           <div
             className={
               viewport === "mobile" ? "mx-auto w-[375px]" : "mx-auto w-full"
             }
           >
             <iframe
-              src={publicUrl}
+              src={previewUrl}
               title="Landing page preview"
               className="block border-2 border-black bg-white shadow-brutal-xl"
               style={{
