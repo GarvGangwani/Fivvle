@@ -16,7 +16,7 @@ import {
   type LaunchTabId,
 } from "@/components/launch/LaunchTabs";
 import { LaunchCopyTab } from "@/components/launch/LaunchCopyTab";
-import { LaunchDesignTabPlaceholder } from "@/components/launch/LaunchDesignTabPlaceholder";
+import { LaunchDesignTab } from "@/components/launch/design/LaunchDesignTab";
 import { LaunchShareTabPlaceholder } from "@/components/launch/LaunchShareTabPlaceholder";
 
 /** Statuses where a LandingPage row exists (mirrors canvas-helpers LANDING_PAGE_CREATED). */
@@ -233,7 +233,11 @@ export function LaunchStagePanel({
               onGenerateLandingPage={handleGenerateLandingPage}
             />
           ) : activeTab === "design" ? (
-            <LaunchDesignTabPlaceholder />
+            <LaunchDesignTab
+              experimentId={experimentId}
+              landingGenerating={landingGenerating}
+              onGenerateLandingPage={handleGenerateLandingPage}
+            />
           ) : activeTab === "share" ? (
             <LaunchShareTabPlaceholder />
           ) : (
