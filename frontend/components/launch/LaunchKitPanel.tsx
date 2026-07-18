@@ -39,7 +39,11 @@ export function LaunchKitPanel({
   isSaving,
 }: Props) {
   const [channelOpen, setChannelOpen] = useState(false);
+  /** Channel present when this panel mounted — notice only after a founder change. */
+  const channelAtMountRef = useRef(launchKit.first_channel);
   const channelAnchorRef = useRef<HTMLButtonElement>(null);
+  const showChannelChangeNotice =
+    launchKit.first_channel !== channelAtMountRef.current;
 
   const checklist = launchKit.readiness_checklist;
   const checkedCount = checklist.filter((item) => item.checked_at !== null)
@@ -185,10 +189,12 @@ export function LaunchKitPanel({
             onSelect={handleChannelSelect}
             onClose={() => setChannelOpen(false)}
           />
-          <p className="mt-2 font-mono text-mono-sm text-ink-primary/50">
-            Rationale and share copy still reflect the previous channel.
-            Regenerate the kit to refresh.
-          </p>
+          {showChannelChangeNotice ? (
+            <p className="mt-2 font-mono text-mono-sm text-ink-primary/50">
+              Rationale and share copy still reflect the previous channel.
+              Regenerate the kit to refresh.
+            </p>
+          ) : null}
           <div className="mt-4">
             <span className="mb-2 block font-label-sm text-label-sm uppercase text-ink-primary/60">
               Why this channel
