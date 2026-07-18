@@ -21,7 +21,6 @@ type Props = {
   slug: string | null;
   isLive: boolean;
   experimentName: string;
-  onPublishClick: () => void;
   onPatch: (
     update: LaunchKitPatch,
     options?: { fieldKey?: string },
@@ -34,7 +33,6 @@ export function LaunchKitPanel({
   slug,
   isLive,
   experimentName,
-  onPublishClick,
   onPatch,
   isSaving,
 }: Props) {
@@ -75,21 +73,9 @@ export function LaunchKitPanel({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Header */}
-      <div className="shrink-0 border-b-2 border-border-master bg-surface-elevated p-6">
-        <div className="flex items-center gap-2">
-          <span
-            className="material-symbols-outlined text-ink-primary"
-            style={{ fontVariationSettings: "'FILL' 1" }}
-            aria-hidden="true"
-          >
-            rocket_launch
-          </span>
-          <h2 className="font-headline text-headline-md uppercase tracking-tighter text-ink-primary">
-            Launch Kit
-          </h2>
-        </div>
-        <p className="mt-1 font-mono text-mono-sm uppercase text-ink-primary/60">
+      {/* Header — tab strip already labels Kit; micro-copy only */}
+      <div className="shrink-0 border-b-2 border-border-master bg-surface-elevated px-6 py-4">
+        <p className="font-mono text-mono-sm uppercase text-ink-primary/60">
           Ready to put this in front of people
         </p>
       </div>
@@ -269,24 +255,6 @@ export function LaunchKitPanel({
             </p>
           </section>
         )}
-      </div>
-
-      {/* Footer */}
-      <div className="mt-auto shrink-0 bg-ink-primary p-6">
-        <button
-          type="button"
-          onClick={onPublishClick}
-          className="group flex w-full items-center justify-center gap-2 font-label-md text-label-md uppercase tracking-wider text-ink-inverse"
-        >
-          {isLive ? "Copy live URL" : "Publish landing page"}
-          <span
-            className="material-symbols-outlined transition-transform group-hover:translate-x-1"
-            style={{ fontSize: 18 }}
-            aria-hidden="true"
-          >
-            arrow_forward
-          </span>
-        </button>
       </div>
     </div>
   );
