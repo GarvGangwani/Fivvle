@@ -319,6 +319,8 @@ export interface ChatHistoryMessage {
     custom_added_text?: string | null;
     answered_question_from_message_id?: string;
   } | null;
+  /** Structured tool_call / tool_result payload (universal chat agent shape). */
+  tool_payload?: Record<string, unknown> | null;
   parent_message_id?: string | null;
   sibling_index?: number;
   sibling_count?: number;
@@ -532,7 +534,7 @@ export interface LandingPageSlugAvailability {
 
 // --- Chat types (POST /chat/turn, ADR 0019) ---
 
-export type ChatRole = "user" | "assistant";
+export type ChatRole = "user" | "assistant" | "tool_call" | "tool_result";
 
 export type ChatTurnKind =
   | "normal_chat"
@@ -543,7 +545,23 @@ export type ChatTurnKind =
   | "pipeline_progress"
   | "pipeline_complete"
   | "pipeline_failed"
-  | "evidence_chat";
+  | "evidence_chat"
+  | "universal_chat";
+
+// --- Universal chat (canvas coach / future agent) ---
+
+export interface UniversalChatSendResponse {
+  user_message: ChatHistoryMessage;
+  assistant_message: ChatHistoryMessage;
+  thread_id: string;
+}
+
+export interface UniversalChatMessagesResponse {
+  thread_id: string | null;
+  experiment_id: string;
+  active_leaf_message_id: string | null;
+  messages: ChatHistoryMessage[];
+}
 
 export interface ChatMessage {
   id: string;

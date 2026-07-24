@@ -23,7 +23,7 @@ export function CanvasToolbar({ onReset, onFitView }: Props) {
   }, [open]);
 
   return (
-    <div ref={menuRef} className="absolute bottom-6 right-6 z-20 flex flex-col items-end gap-2">
+    <div ref={menuRef} className="absolute bottom-6 left-6 z-20 flex flex-col items-start gap-2">
       {open ? (
         <div className="rounded-md border-2 border-border-master bg-surface-card shadow-brutal-md">
           <button

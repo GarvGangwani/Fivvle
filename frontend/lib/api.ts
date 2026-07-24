@@ -33,6 +33,8 @@ import type {
   LandingPagePatch,
   LandingPageSlugAvailability,
   ResearchStatus,
+  UniversalChatMessagesResponse,
+  UniversalChatSendResponse,
   ValidationReport,
   WaitlistSignupsResponse,
 } from "./types";
@@ -404,6 +406,24 @@ export async function getEvidenceChatMessages(
 ): Promise<EvidenceChatMessagesResponse> {
   return apiFetch<EvidenceChatMessagesResponse>(
     `/experiments/${experimentId}/evidence-chat/messages`,
+  );
+}
+
+export async function getUniversalChatMessages(
+  experimentId: string,
+): Promise<UniversalChatMessagesResponse> {
+  return apiFetch<UniversalChatMessagesResponse>(
+    `/experiments/${experimentId}/chat/universal/messages`,
+  );
+}
+
+export async function sendUniversalChatMessage(
+  experimentId: string,
+  message: string,
+): Promise<UniversalChatSendResponse> {
+  return apiFetch<UniversalChatSendResponse>(
+    `/experiments/${experimentId}/chat/universal`,
+    { method: "POST", body: { message } },
   );
 }
 

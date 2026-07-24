@@ -26,9 +26,8 @@ import {
 import type { CanvasNodeId, Experiment, SatelliteNodeId } from "@/lib/types";
 import { ACT_CONFIG } from "./act-config";
 import { BlueprintDecor } from "./BlueprintDecor";
-import { CanvasActivityPanel } from "./CanvasActivityPanel";
-import { CanvasComposerPill } from "./CanvasComposerPill";
 import { CanvasToolbar } from "./CanvasToolbar";
+import { UniversalChatDock } from "./UniversalChatDock";
 import {
   CORE_NODE_CENTER,
   DEFAULT_CANVAS_ZOOM,
@@ -157,7 +156,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     y: number;
   } | null>(null);
   const [refineFullscreen, setRefineFullscreen] = useState(false);
-  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [evidenceRerunning, setEvidenceRerunning] = useState(false);
   const { setCenter, fitView } = useReactFlow();
@@ -699,7 +697,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       return;
     }
 
-    setFocusedNodeId(node.id);
     if (node.id === "spark") {
       openSparkPanel();
       return;
@@ -791,7 +788,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
             onMove={handleMove}
           >
             <Controls
-              className="brutalist-controls !left-6 !bottom-24 z-20"
+              className="brutalist-controls !left-6 !bottom-16 z-20"
               showInteractive={false}
             />
           </ReactFlow>
@@ -844,10 +841,9 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       ) : null}
 
       <CanvasToolbar onReset={handleResetLayout} onFitView={handleFitView} />
-      <CanvasActivityPanel experimentId={experiment.id} />
-      <CanvasComposerPill
+      <UniversalChatDock
         experimentId={experiment.id}
-        focusedAct={focusedNodeId}
+        projectName={experiment.name}
       />
       <DeepDiveOverlay
         isOpen={overlayAct !== null}
