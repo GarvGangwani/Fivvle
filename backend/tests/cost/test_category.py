@@ -14,6 +14,8 @@ def test_refinement_phases_map_to_refinement_category() -> None:
         "chat_normal",
         "chat_discussion",
         "chat_attachment",
+        "evidence_chat",
+        "universal_chat",
     ):
         assert resolve_cost_category_from_phase(phase) is CostCategory.REFINEMENT
 

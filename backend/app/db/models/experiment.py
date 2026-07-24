@@ -153,6 +153,15 @@ class Experiment(Base):
         nullable=True,
         index=True,
     )
+    # Universal chat thread (canvas coach / future agent). Separate from
+    # thread_id and evidence_thread_id so histories never mix. Created on the
+    # first universal-chat message. Mirrors evidence_thread_id exactly.
+    universal_thread_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("chat_threads.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     # Audit: user_confirm (/confirm) vs auto_fire (chat refinement complete).
     dispatch_trigger: Mapped[DispatchTrigger | None] = mapped_column(
         SQLEnum(

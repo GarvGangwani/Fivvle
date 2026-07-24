@@ -101,6 +101,9 @@ class ChatMessageItem(BaseModel):
     turn_kind: ChatTurnKind | None
     clarifying_questions: list[ClarifyingQuestion] | None = None
     metadata: dict | None = None
+    # Present for tool_call / tool_result rows; null for user/assistant.
+    # See ChatMessage.tool_payload docstring for expected shapes.
+    tool_payload: dict | None = None
     parent_message_id: UUID | None = None
     sibling_count: int = 1
     sibling_index: int = 0
@@ -126,6 +129,7 @@ class ChatMessageItem(BaseModel):
             turn_kind=getattr(message, "turn_kind", None),
             clarifying_questions=clarifying,
             metadata=getattr(message, "metadata_json", None),
+            tool_payload=getattr(message, "tool_payload", None),
             parent_message_id=getattr(message, "parent_message_id", None),
             sibling_count=sibling_count,
             sibling_index=sibling_index,
