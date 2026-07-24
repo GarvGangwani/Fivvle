@@ -134,12 +134,12 @@
 
 [data-theme="dark"] {
   /* --fv-* app tokens */
-  --fv-bg: #0e0b1e;
-  --fv-surface: #17132b;
-  --fv-surface-2: #1d1836;
-  --fv-surface-elevated: #221d3e;
-  --fv-border: rgba(167, 139, 250, 0.14);
-  --fv-border-strong: rgba(167, 139, 250, 0.22);
+  --fv-bg: #0a0a0a;
+  --fv-surface: #141414;
+  --fv-surface-2: #1a1a1a;
+  --fv-surface-elevated: #1f1f1f;
+  --fv-border: rgba(255, 255, 255, 0.10);
+  --fv-border-strong: rgba(255, 255, 255, 0.16);
   --fv-text: #f5f5f5;
   --fv-text-soft: #c7c7c7;
   --fv-text-muted: #9a9a9a;
@@ -152,10 +152,10 @@
   --fv-accent-muted: color-mix(in srgb, var(--fv-accent) 18%, transparent);
 
   /* Brutalist surface palette */
-  --fv-canvas-bg: #0e0b1e;
-  --fv-surface-card: #17132b;
-  --fv-surface-elevated-brutal: #221d3e;
-  --fv-surface-muted: #191533;
+  --fv-canvas-bg: #0a0a0a;
+  --fv-surface-card: #141414;
+  --fv-surface-elevated-brutal: #1f1f1f;
+  --fv-surface-muted: #171717;
 
   /* Ink flips for dark */
   --fv-ink-primary: #f5f5f5;
@@ -164,9 +164,9 @@
   --fv-ink-inverse: #0e0b1e;
 
   /* Structure */
-  --fv-border-master: #423c5e;
+  --fv-border-master: #2a2a2a;
   --fv-border-subtle: #2a2540;
-  --fv-shadow-color: #7c3aed;
+  --fv-shadow-color: transparent;
   --fv-shadow-color-primary: #a78bfa;
 
   /* Brand soft/deep */
@@ -182,8 +182,8 @@
   --fv-code-border: rgba(167, 139, 250, 0.18);
 
   /* Canvas specifics */
-  --fv-canvas-dot: rgba(167, 139, 250, 0.1);
-  --fv-canvas-edge: #4a4266;
+  --fv-canvas-dot: rgba(255, 255, 255, 0.08);
+  --fv-canvas-edge: #2e2e2e;
 
   /* Semantic */
   --fv-success: #34d399;
