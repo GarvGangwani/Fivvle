@@ -122,9 +122,12 @@ export function buildPublicLandingPageUrl(
  * Relative so it resolves against the parent document origin — works in
  * dev and prod without env-specific hosts. Public share URLs still use
  * buildPublicLandingPageUrl (subdomain).
+ *
+ * Always includes `preview=1` so `/e/[slug]` omits the page-view beacon
+ * (founders must not inflate their own metrics via the Launch iframe).
  */
 export function buildInAppPreviewUrl(slug: string): string {
-  return `/e/${slug}`;
+  return `/e/${slug}?preview=1`;
 }
 
 /** True when the host is a project landing subdomain. */

@@ -14,7 +14,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.enums import DispatchTrigger, ExperimentStage, ExperimentStatus
+from app.db.enums import DispatchTrigger, ExperimentStage, ExperimentStatus, FounderDecision
 
 if TYPE_CHECKING:
     from app.db.models.external_api_call import ExternalAPICall
@@ -162,6 +162,33 @@ class Experiment(Base):
             native_enum=False,
             length=20,
         ),
+        nullable=True,
+    )
+    # Founder-recorded Signal decision (proceed/iterate/pivot/kill). Distinct from
+    # API field `verdict` (validation-report overall_recommendation) and from the
+    # AI InsightRecommendation on InsightReport. Nullable until the founder records.
+    founder_decision: Mapped[FounderDecision | None] = mapped_column(
+        SQLEnum(
+            FounderDecision,
+            name="founder_decision",
+            native_enum=False,
+            length=20,
+        ),
+        nullable=True,
+    )
+    founder_decision_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # Optional free-text rationale. Cap matches Experiment.why_now (String(500)).
+    founder_decision_note: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+    # Optimistic concurrency for amendable decisions. NULL = never recorded;
+    # first write accepts base_version=0 and sets this to 1.
+    founder_decision_version: Mapped[int | None] = mapped_column(
+        Integer,
         nullable=True,
     )
 

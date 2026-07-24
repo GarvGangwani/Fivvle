@@ -1,13 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { Archive } from "lucide-react";
+import { ArchiveProjectDialog } from "@/components/experiment/ArchiveProjectDialog";
 import { EvidenceStagePanel } from "@/components/research/EvidenceStagePanel";
 import {
   LaunchStagePanel,
   type LaunchLandingReport,
 } from "@/components/launch/LaunchStagePanel";
 import { PublishConfirmDialog } from "@/components/launch/PublishConfirmDialog";
+import { SignalStagePanel } from "@/components/signal/SignalStagePanel";
 import { getExperiment } from "@/lib/api";
+import type { ExperimentStatus, FounderDecision } from "@/lib/types";
 import { useToast } from "@/components/ui/ToastProvider";
 
 type Props = {
@@ -15,20 +19,53 @@ type Props = {
   onClose: () => void;
   act: "evidence" | "launch" | "signal";
   experimentId: string;
+  /** Canvas-owned experiment.status — single source of truth on screen. */
+  experimentStatus: ExperimentStatus;
+  projectName: string;
+  founderDecision?: FounderDecision | null;
+  founderDecisionAt?: string | null;
+  founderDecisionNote?: string | null;
+  founderDecisionVersion?: number | null;
+  /** Refresh canvas experiment after publish / decision / archive. */
+  onExperimentRefresh?: () => Promise<void>;
+  /** Plain act switch to Launch (no tab targeting — Kit deep-link deferred). */
+  onOpenLaunch: () => void;
 };
 
-export function DeepDiveOverlay({ isOpen, onClose, act, experimentId }: Props) {
+export function DeepDiveOverlay({
+  isOpen,
+  onClose,
+  act,
+  experimentId,
+  experimentStatus,
+  projectName,
+  founderDecision = null,
+  founderDecisionAt = null,
+  founderDecisionNote = null,
+  founderDecisionVersion = null,
+  onExperimentRefresh,
+  onOpenLaunch,
+}: Props) {
   const { toast } = useToast();
   const [launchLanding, setLaunchLanding] =
     useState<LaunchLandingReport | null>(null);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [landingRefreshKey, setLandingRefreshKey] = useState(0);
-  const [projectName, setProjectName] = useState("your project");
+  const [resolvedProjectName, setResolvedProjectName] = useState(projectName);
+
+  useEffect(() => {
+    setResolvedProjectName(projectName);
+  }, [projectName]);
 
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        if (showArchiveDialog) {
+          setShowArchiveDialog(false);
+          return;
+        }
         if (showPublishDialog) {
           setShowPublishDialog(false);
           return;
@@ -38,11 +75,12 @@ export function DeepDiveOverlay({ isOpen, onClose, act, experimentId }: Props) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isOpen, onClose, showPublishDialog]);
+  }, [isOpen, onClose, showPublishDialog, showArchiveDialog]);
 
   useEffect(() => {
     setLaunchLanding(null);
     setShowPublishDialog(false);
+    setShowArchiveDialog(false);
   }, [isOpen, act]);
 
   useEffect(() => {
@@ -50,10 +88,10 @@ export function DeepDiveOverlay({ isOpen, onClose, act, experimentId }: Props) {
     let cancelled = false;
     void getExperiment(experimentId)
       .then((exp) => {
-        if (!cancelled && exp.name) setProjectName(exp.name);
+        if (!cancelled && exp.name) setResolvedProjectName(exp.name);
       })
       .catch(() => {
-        /* keep fallback name */
+        /* keep prop / fallback name */
       });
     return () => {
       cancelled = true;
@@ -97,8 +135,11 @@ export function DeepDiveOverlay({ isOpen, onClose, act, experimentId }: Props) {
       void navigator.clipboard.writeText(result.public_url).catch(() => {
         /* non-fatal */
       });
+      void onExperimentRefresh?.().catch(() => {
+        /* canvas refresh is best-effort; Launch local state already live */
+      });
     },
-    [toast],
+    [toast, onExperimentRefresh],
   );
 
   if (!isOpen) return null;
@@ -108,6 +149,7 @@ export function DeepDiveOverlay({ isOpen, onClose, act, experimentId }: Props) {
     ? `Live at /${launchLanding!.slug}`
     : "Publish landing page";
   const publishEnabled = launchLanding?.status === "LANDING_DRAFT";
+  const canArchive = experimentStatus !== "ARCHIVED";
 
   return (
     <>
@@ -142,6 +184,17 @@ export function DeepDiveOverlay({ isOpen, onClose, act, experimentId }: Props) {
                 {publishLabel}
               </button>
             ) : null}
+            {canArchive ? (
+              <button
+                type="button"
+                onClick={() => setShowArchiveDialog(true)}
+                className="inline-flex items-center gap-1.5 border-2 border-border-master bg-surface-elevated px-3 py-1.5 font-label-md text-label-sm uppercase tracking-wider text-ink-secondary shadow-brutal-sm"
+                aria-label="Archive project"
+              >
+                <Archive className="h-3.5 w-3.5" aria-hidden />
+                Archive
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onClose}
@@ -167,13 +220,19 @@ export function DeepDiveOverlay({ isOpen, onClose, act, experimentId }: Props) {
             />
           </div>
         ) : (
-          <div className="p-24 text-center">
-            <div className="mb-2 font-label-md text-label-md uppercase text-brand-primary">
-              COMING IN STEP 6
-            </div>
-            <h2 className="font-display text-display-lg uppercase text-ink-primary">
-              {act} deep-dive
-            </h2>
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <SignalStagePanel
+              experimentId={experimentId}
+              status={experimentStatus}
+              isOpen={isOpen}
+              act={act}
+              onOpenLaunch={onOpenLaunch}
+              onExperimentRefresh={onExperimentRefresh}
+              founderDecision={founderDecision}
+              founderDecisionAt={founderDecisionAt}
+              founderDecisionNote={founderDecisionNote}
+              founderDecisionVersion={founderDecisionVersion}
+            />
           </div>
         )}
       </div>
@@ -182,11 +241,22 @@ export function DeepDiveOverlay({ isOpen, onClose, act, experimentId }: Props) {
         <PublishConfirmDialog
           open={showPublishDialog}
           experimentId={experimentId}
-          projectName={projectName}
+          projectName={resolvedProjectName}
           onClose={() => setShowPublishDialog(false)}
           onPublished={handlePublished}
         />
       ) : null}
+
+      <ArchiveProjectDialog
+        open={showArchiveDialog}
+        experimentId={experimentId}
+        projectName={resolvedProjectName}
+        onClose={() => setShowArchiveDialog(false)}
+        onArchived={() => {
+          void onExperimentRefresh?.();
+          onClose();
+        }}
+      />
     </>
   );
 }

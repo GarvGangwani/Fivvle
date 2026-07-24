@@ -845,6 +845,30 @@ export async function archiveProject(
   return archiveExperiment(id, "manual");
 }
 
+export type FounderDecisionResponse = {
+  founder_decision: FounderDecision;
+  founder_decision_at: string;
+  founder_decision_note: string | null;
+  founder_decision_version: number;
+};
+
+export type RecordFounderDecisionBody = {
+  decision: FounderDecision;
+  note?: string | null;
+  base_version: number;
+};
+
+/** PUT /experiments/{id}/founder-decision — record or amend (CAS on base_version). */
+export async function recordFounderDecision(
+  id: string,
+  body: RecordFounderDecisionBody,
+): Promise<FounderDecisionResponse> {
+  return apiFetch<FounderDecisionResponse>(
+    `/experiments/${id}/founder-decision`,
+    { method: "PUT", body },
+  );
+}
+
 export async function unarchiveExperiment(id: string): Promise<Experiment> {
   return apiFetch<Experiment>(`/experiments/${id}/unarchive`, {
     method: "POST",

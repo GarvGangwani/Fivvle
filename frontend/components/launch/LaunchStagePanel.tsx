@@ -229,7 +229,7 @@ export function LaunchStagePanel({
       </span>
 
       {/* Left ~70% — live page preview */}
-      <div className="relative z-10 w-[70%] min-w-0">
+      <div className="relative z-10 h-full min-h-0 w-[70%] min-w-0 overflow-hidden">
         <LivePagePreviewPanel
           previewState={previewState}
           slug={slug}

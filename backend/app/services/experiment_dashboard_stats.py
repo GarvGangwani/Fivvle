@@ -12,7 +12,6 @@ from app.db.models.experiment import Experiment
 from app.db.models.page_view import PageView
 from app.db.models.waitlist_signup import WaitlistSignup
 from app.schemas.experiment import ExperimentCardStats
-from app.services.wallet_service import list_experiments_with_purchased_service
 
 _LIVE_LANDING_STATUSES = frozenset(
     {
@@ -31,28 +30,24 @@ async def build_experiment_card_stats_map(
     *,
     user_id: UUID,
 ) -> dict[UUID, ExperimentCardStats]:
-    """Return page-view and waitlist counts for live projects with metrics unlocked."""
+    """Return page-view and waitlist counts for live projects.
+
+    Metrics are free once the landing page is live — no purchase gate.
+    ``user_id`` is retained for call-site compatibility (list endpoint).
+    """
+    _ = user_id
     live_ids = [exp.id for exp in experiments if exp.status in _LIVE_LANDING_STATUSES]
     if not live_ids:
         return {}
 
-    unlocked_ids = await list_experiments_with_purchased_service(
-        db,
-        user_id=user_id,
-        service="metricsAnalysis",
-        experiment_ids=live_ids,
-    )
-    if not unlocked_ids:
-        return {}
-
     views_stmt = (
         select(PageView.experiment_id, func.count(PageView.id))
-        .where(PageView.experiment_id.in_(unlocked_ids))
+        .where(PageView.experiment_id.in_(live_ids))
         .group_by(PageView.experiment_id)
     )
     signups_stmt = (
         select(WaitlistSignup.experiment_id, func.count(WaitlistSignup.id))
-        .where(WaitlistSignup.experiment_id.in_(unlocked_ids))
+        .where(WaitlistSignup.experiment_id.in_(live_ids))
         .group_by(WaitlistSignup.experiment_id)
     )
 
@@ -63,7 +58,7 @@ async def build_experiment_card_stats_map(
     signups_by_id = {row[0]: int(row[1]) for row in signups_result.all()}
 
     stats: dict[UUID, ExperimentCardStats] = {}
-    for experiment_id in unlocked_ids:
+    for experiment_id in live_ids:
         stats[experiment_id] = ExperimentCardStats(
             page_views=views_by_id.get(experiment_id, 0),
             waitlist_signups=signups_by_id.get(experiment_id, 0),

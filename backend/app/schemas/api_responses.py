@@ -13,7 +13,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.db.enums import ExperimentStatus
+from app.db.enums import ExperimentStatus, FounderDecision
 from app.schemas.insight import InsightReportOutput, SignupLocationBucket
 from app.schemas.validation_report import ValidationReport
 
@@ -102,6 +102,19 @@ class PublishResponse(BaseModel):
     public_url: str
 
 
+class InsightProgress(BaseModel):
+    """Distance-to-threshold fields from ``compute_insight_threshold``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    views_current: int = Field(ge=0)
+    views_target: int = Field(ge=0)
+    signups_current: int = Field(ge=0)
+    signups_target: int = Field(ge=0)
+    days_current: int = Field(ge=0)
+    days_target: int = Field(ge=0)
+
+
 class AnalyticsResponse(BaseModel):
     """GET /experiments/{id}/analytics — live landing page metrics."""
 
@@ -116,6 +129,8 @@ class AnalyticsResponse(BaseModel):
     conversion_rate_by_source: dict[str, float]
     signups_by_location: list[SignupLocationBucket] = Field(default_factory=list)
     days_live: int = Field(ge=0)
+    insight_threshold_met: bool
+    insight_progress: InsightProgress
 
 
 class MetricsAccessResponse(BaseModel):
@@ -150,6 +165,41 @@ class ArchiveExperimentResponse(BaseModel):
     experiment_id: UUID
     status: ExperimentStatus
 
+
+class RecordFounderDecisionRequest(BaseModel):
+    """PUT /experiments/{id}/founder-decision — record or amend a Signal decision.
+
+    base_version implements optimistic concurrency (compare-and-swap), matching
+    the edited_doc PATCH pattern. First write uses base_version=0 (row has never
+    recorded a decision). Amendments send the version last read.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    decision: FounderDecision
+    note: str | None = Field(
+        default=None,
+        max_length=500,
+        description="Optional rationale. Cap matches Experiment.why_now.",
+    )
+    base_version: int = Field(
+        ge=0,
+        description=(
+            "founder_decision_version last read. Must equal the row's current "
+            "version (treat NULL as 0) or the write is rejected with 409."
+        ),
+    )
+
+
+class FounderDecisionResponse(BaseModel):
+    """Persisted founder decision after a successful record/amend."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    founder_decision: FounderDecision
+    founder_decision_at: datetime
+    founder_decision_note: str | None
+    founder_decision_version: int = Field(ge=1)
 
 class DeleteExperimentRequest(BaseModel):
     """DELETE /experiments/{id} body — permanent project removal."""

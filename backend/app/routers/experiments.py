@@ -34,7 +34,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.dependencies import get_current_user
 from app.config import get_settings
-from app.db.enums import DispatchTrigger, ExperimentStatus
+from app.db.enums import DispatchTrigger, ExperimentStatus, FounderDecision
 from app.db.models.experiment import Experiment
 from app.db.models.insight_report import InsightReport
 from app.db.models.landing_page import LandingPage
@@ -63,7 +63,6 @@ from app.dispatchers.protocol import (
     ResearchDispatcher,
 )
 from app.logging_config import get_logger
-from app.pricing import SERVICE_PRICING
 from app.reliability.rate_limit import AUTH_RATE_LIMIT, limiter, user_key
 from app.schemas.api_responses import (
     AnalyticsResponse,
@@ -71,12 +70,15 @@ from app.schemas.api_responses import (
     ArchiveRequest,
     DeleteExperimentRequest,
     DeleteExperimentResponse,
+    FounderDecisionResponse,
+    InsightProgress,
     InsightReportResponse,
     LandingPagePatchRequest,
     LandingPageResponse,
     LandingPageSlugAvailabilityResponse,
     LogoUploadResponse,
     MetricsAccessResponse,
+    RecordFounderDecisionRequest,
     SectionImageUploadResponse,
     PublishLandingPageRequest,
     PublishResponse,
@@ -139,6 +141,7 @@ from app.services.analytics_aggregator import (
     LandingPageNotLiveError,
     build_analytics_aggregate,
 )
+from app.services.insight_threshold import compute_insight_threshold
 from app.services.dispatch_service import transition_to_researching_and_dispatch
 from app.services.experiment_dashboard_stats import build_experiment_card_stats_map
 from app.services.experiment_service import (
@@ -153,6 +156,11 @@ from app.services.experiment_service import (
     regenerate_refinement,
     update_experiment_raw_idea,
 )
+from app.services.founder_decision_service import (
+    FounderDecisionArchivedError,
+    FounderDecisionVersionConflict,
+    apply_founder_decision,
+)
 from app.services.spark_version_service import fetch_spark_phase_version_info
 from app.services.logo_upload_service import (
     LogoUploadError,
@@ -160,13 +168,7 @@ from app.services.logo_upload_service import (
     upload_landing_page_section_image,
 )
 from app.services.research_phase_mapping import get_phase_label, get_phases_completed
-from app.services.wallet_service import (
-    InsufficientCredits,
-    get_or_create_wallet,
-    has_purchased_service_for_experiment,
-    purchase_service_for_experiment,
-)
-from app.utils.wallet_http import insufficient_credits_http
+from app.services.wallet_service import get_or_create_wallet
 
 _logger = get_logger(__name__)
 
@@ -199,7 +201,7 @@ def _ensure_metrics_access_allowed(experiment: Experiment) -> None:
     if experiment.status == ExperimentStatus.ARCHIVED:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Archived projects cannot unlock metrics.",
+            detail="Archived projects cannot access metrics.",
         )
     if not is_public_landing_page_accessible(experiment.status):
         raise HTTPException(
@@ -325,7 +327,13 @@ class GetExperimentDetailResponse(BaseModel):
     resource_count: int = Field(default=0, ge=0)
     attachment_count: int = Field(default=0, ge=0)
     demand_score: int | None = Field(default=None, ge=0, le=100)
+    # Research validation overall_recommendation (NOT the founder's Signal decision).
     verdict: str | None = None
+    # Founder-recorded Signal decision — distinct from `verdict` above.
+    founder_decision: FounderDecision | None = None
+    founder_decision_at: datetime | None = None
+    founder_decision_note: str | None = None
+    founder_decision_version: int | None = Field(default=None, ge=1)
     spark_last_edited_at: datetime | None = None
     refinement_started_at: datetime | None = None
     current_spark_version: int = 0
@@ -374,6 +382,10 @@ async def _build_experiment_detail_response(
         attachment_count=metrics.attachment_count,
         demand_score=metrics.demand_score,
         verdict=metrics.verdict,
+        founder_decision=experiment.founder_decision,
+        founder_decision_at=experiment.founder_decision_at,
+        founder_decision_note=experiment.founder_decision_note,
+        founder_decision_version=experiment.founder_decision_version,
         spark_last_edited_at=experiment.spark_last_edited_at,
         refinement_started_at=experiment.refinement_started_at,
         current_spark_version=spark_info.current_spark_version,
@@ -728,52 +740,6 @@ async def rerun_evidence(
     )
 
 
-async def _check_min_insight_data(
-    db: AsyncSession, experiment_id: UUID
-) -> tuple[int, int, int]:
-    """Compute (page_view_count, signup_count, days_live) for the experiment.
-
-    Returns the triple even when min-data is not met — the caller decides
-    whether to raise 409 based on these numbers.
-
-    days_live is 0 when LandingPage is missing or live_at is None — in that
-    case the (LANDING_LIVE status precondition) should have blocked the call
-    earlier, but we return 0 defensively.
-    """
-    from datetime import datetime, timezone  # noqa: PLC0415
-
-    from sqlalchemy import func  # noqa: PLC0415
-
-    from app.db.models.landing_page import LandingPage  # noqa: PLC0415
-    from app.db.models.page_view import PageView  # noqa: PLC0415
-    from app.db.models.waitlist_signup import WaitlistSignup  # noqa: PLC0415
-
-    views_stmt = select(func.count(PageView.id)).where(
-        PageView.experiment_id == experiment_id
-    )
-    signups_stmt = select(func.count(WaitlistSignup.id)).where(
-        WaitlistSignup.experiment_id == experiment_id
-    )
-    landing_stmt = select(LandingPage.live_at).where(
-        LandingPage.experiment_id == experiment_id
-    )
-
-    views_result = await db.execute(views_stmt)
-    signups_result = await db.execute(signups_stmt)
-    landing_result = await db.execute(landing_stmt)
-
-    page_view_count = int(views_result.scalar_one() or 0)
-    signup_count = int(signups_result.scalar_one() or 0)
-    live_at = landing_result.scalar_one_or_none()
-
-    if live_at is None:
-        days_live = 0
-    else:
-        days_live = max((datetime.now(timezone.utc) - live_at).days, 0)
-
-    return page_view_count, signup_count, days_live
-
-
 @router.post(
     "/{experiment_id}/generate-insight",
     response_model=GenerateInsightResponse,
@@ -829,13 +795,11 @@ async def generate_insight(
             ),
         )
 
-    page_view_count, signup_count, days_live = await _check_min_insight_data(
-        db, experiment_id
-    )
-    meets_threshold = (
-        page_view_count >= 10 or signup_count >= 1 or days_live >= 7
-    )
-    if not meets_threshold:
+    threshold = await compute_insight_threshold(db, experiment_id)
+    page_view_count = threshold.views_current
+    signup_count = threshold.signups_current
+    days_live = threshold.days_current
+    if not threshold.met:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -1784,18 +1748,18 @@ async def get_metrics_access(
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> MetricsAccessResponse:
+    """Deprecated — analytics is no longer purchase-gated (PR 2).
+
+    ``unlocked`` now means the landing page is live and unarchived, not that
+    the founder paid. Endpoint survives for orphaned UI; delete in PR 5.
+    """
     exp_result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
     experiment = exp_result.scalar_one_or_none()
     if experiment is None or experiment.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
 
-    unlocked = await has_purchased_service_for_experiment(
-        db,
-        user_id=current_user.id,
-        service="metricsAnalysis",
-        experiment_id=experiment_id,
-    )
-    return MetricsAccessResponse(unlocked=unlocked)
+    _ensure_metrics_access_allowed(experiment)
+    return MetricsAccessResponse(unlocked=True)
 
 
 @router.post(
@@ -1811,6 +1775,11 @@ async def unlock_metrics(
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> UnlockMetricsResponse:
+    """Deprecated no-op — metricsAnalysis gating removed in PR 2.
+
+    Metering a founder's own published page is free; no wallet debit and no
+    phantom purchase. Kept for backward compatibility; delete in PR 5.
+    """
     experiment = await _get_owned_experiment_for_update(
         db,
         experiment_id=experiment_id,
@@ -1818,31 +1787,10 @@ async def unlock_metrics(
     )
     _ensure_metrics_access_allowed(experiment)
 
-    lp_result = await db.execute(
-        select(LandingPage).where(LandingPage.experiment_id == experiment_id),
-    )
-    landing_page = lp_result.scalar_one_or_none()
-    if landing_page is None or landing_page.live_at is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Analytics not available until the landing page is published",
-        )
-
-    try:
-        _tx, already_unlocked = await purchase_service_for_experiment(
-            db,
-            user_id=current_user.id,
-            service="metricsAnalysis",
-            experiment_id=experiment_id,
-        )
-    except InsufficientCredits as exc:
-        raise insufficient_credits_http(exc) from exc
-
-    await db.commit()
     wallet = await get_or_create_wallet(db, current_user.id)
     return UnlockMetricsResponse(
         unlocked=True,
-        already_unlocked=already_unlocked,
+        already_unlocked=True,
         credits_balance=wallet.credits_balance,
     )
 
@@ -1865,19 +1813,7 @@ async def get_experiment_analytics(
     if experiment is None or experiment.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
 
-    if not await has_purchased_service_for_experiment(
-        db,
-        user_id=current_user.id,
-        service="metricsAnalysis",
-        experiment_id=experiment_id,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail={
-                "error": "metrics_not_unlocked",
-                "required": SERVICE_PRICING["metricsAnalysis"],
-            },
-        )
+    _ensure_metrics_access_allowed(experiment)
 
     try:
         aggregate = await build_analytics_aggregate(db, experiment_id)
@@ -1886,6 +1822,8 @@ async def get_experiment_analytics(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Analytics not available until the landing page is published",
         ) from None
+
+    threshold = await compute_insight_threshold(db, experiment_id)
 
     return AnalyticsResponse(
         total_page_views=aggregate.total_page_views,
@@ -1897,6 +1835,15 @@ async def get_experiment_analytics(
         conversion_rate_by_source=aggregate.conversion_rate_by_source,
         signups_by_location=aggregate.signups_by_location,
         days_live=aggregate.days_live,
+        insight_threshold_met=threshold.met,
+        insight_progress=InsightProgress(
+            views_current=threshold.views_current,
+            views_target=threshold.views_target,
+            signups_current=threshold.signups_current,
+            signups_target=threshold.signups_target,
+            days_current=threshold.days_current,
+            days_target=threshold.days_target,
+        ),
     )
 
 
@@ -2053,6 +2000,65 @@ async def delete_experiment_endpoint(
     await db.commit()
 
     return DeleteExperimentResponse(experiment_id=experiment_id)
+
+
+@router.put(
+    "/{experiment_id}/founder-decision",
+    response_model=FounderDecisionResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def record_founder_decision(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: RecordFounderDecisionRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> FounderDecisionResponse:
+    """Record or amend the founder's Signal decision (CAS on version).
+
+    Does not archive and does not change experiment.status. Rejects ARCHIVED.
+    """
+    experiment = await _get_owned_experiment_for_update(
+        db,
+        experiment_id=experiment_id,
+        user_id=current_user.id,
+    )
+    try:
+        apply_founder_decision(
+            experiment,
+            decision=body.decision,
+            note=body.note,
+            base_version=body.base_version,
+        )
+    except FounderDecisionArchivedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot record a decision on an archived experiment",
+        ) from exc
+    except FounderDecisionVersionConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "founder_decision_version conflict",
+                "current_version": exc.current_version,
+            },
+        ) from exc
+
+    await db.commit()
+    await db.refresh(experiment)
+
+    assert experiment.founder_decision is not None
+    assert experiment.founder_decision_at is not None
+    assert experiment.founder_decision_version is not None
+
+    return FounderDecisionResponse(
+        founder_decision=experiment.founder_decision,
+        founder_decision_at=experiment.founder_decision_at,
+        founder_decision_note=experiment.founder_decision_note,
+        founder_decision_version=experiment.founder_decision_version,
+    )
 
 
 @router.post(

@@ -13,7 +13,7 @@ const API_BASE =
 
 interface PageProps {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ utm_source?: string }>;
+  searchParams: Promise<{ utm_source?: string; preview?: string }>;
 }
 
 /**
@@ -85,13 +85,18 @@ export default async function PublicLandingPageRoute({
   searchParams,
 }: PageProps) {
   const { slug } = await params;
-  const { utm_source: sourceTag } = await searchParams;
+  const { utm_source: sourceTag, preview } = await searchParams;
   const data = await fetchPublishedPage(slug);
   if (!data) notFound();
 
+  // In-app Launch iframe uses ?preview=1 — do not count founder self-views.
+  const isPreview = Boolean(preview);
+
   return (
     <div data-fivvle-public-landing data-theme="light" className="min-h-screen">
-      <PageViewBeacon slug={slug} sourceTag={sourceTag} />
+      {!isPreview ? (
+        <PageViewBeacon slug={slug} sourceTag={sourceTag} />
+      ) : null}
       <Suspense fallback={null}>
         <PublishedLandingPage data={data} />
       </Suspense>

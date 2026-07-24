@@ -43,7 +43,7 @@ export function LivePagePreviewPanel({
     previewState === "live" && slug ? buildPublicLandingPageUrl(slug) : null;
   const previewUrl =
     previewState === "live" && slug
-      ? `${buildInAppPreviewUrl(slug)}?v=${cacheBust}`
+      ? `${buildInAppPreviewUrl(slug)}&v=${cacheBust}`
       : null;
 
   // URL bar never shows a fake/live URL for a non-live page (Edit 1, rule 4).
@@ -56,6 +56,7 @@ export function LivePagePreviewPanel({
         : "not yet published";
 
   const showToolbar = previewState === "draft" || previewState === "live";
+  const isLivePreview = previewState === "live" && Boolean(previewUrl);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -110,23 +111,25 @@ export function LivePagePreviewPanel({
       ) : null}
 
       <div
-        className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-12"
+        className={
+          isLivePreview
+            ? "flex min-h-0 flex-1 overflow-hidden p-4"
+            : "flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-12"
+        }
         style={DOT_GRID_STYLE}
       >
-        {previewState === "live" && previewUrl ? (
+        {isLivePreview ? (
           <div
             className={
-              viewport === "mobile" ? "mx-auto w-[375px]" : "mx-auto w-full"
+              viewport === "mobile"
+                ? "mx-auto h-full min-h-0 w-[375px]"
+                : "h-full min-h-0 w-full"
             }
           >
             <iframe
-              src={previewUrl}
+              src={previewUrl!}
               title="Landing page preview"
-              className="block border-2 border-border-master bg-surface-card shadow-brutal-xl"
-              style={{
-                width: viewport === "mobile" ? 375 : "100%",
-                height: viewport === "mobile" ? 667 : 800,
-              }}
+              className="block h-full w-full border-2 border-border-master bg-surface-card shadow-brutal-xl"
             />
           </div>
         ) : previewState === "generating" ? (

@@ -110,6 +110,8 @@ class PageViewRequest(BaseModel):
     referrer: str | None = Field(default=None, max_length=2048)
     user_agent: str | None = Field(default=None, max_length=500)
     time_on_page_sec: int | None = Field(default=None, ge=0)
+    # Insurance for in-app preview; Policy A omits the beacon when ?preview=1.
+    preview: bool = False
 
 
 class PageViewResponse(BaseModel):
@@ -247,6 +249,10 @@ async def record_page_view(
     # Invalid slug format — silently accept without DB lookup (no info leak).
     normalized_slug = body.slug.strip().lower()
     if not _SLUG_RE.match(normalized_slug):
+        return PageViewResponse(status="recorded")
+
+    # Soft-skip in-app preview self-views (same response shape, no insert).
+    if body.preview:
         return PageViewResponse(status="recorded")
 
     row = await _fetch_live_landing_page(db, normalized_slug)

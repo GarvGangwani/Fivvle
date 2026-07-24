@@ -35,6 +35,7 @@ SERVICE_PRICING: Final[dict[ServiceKey, int]] = {
     "validationReport": 25,
     "landingPageGeneration": 15,
     "distributionCampaign": 25,
+    # Deprecated unused — metrics gating removed in PR 2; key kept until PR 5 cleanup.
     "metricsAnalysis": 20,
     "competitorAnalysis": 20,
     "reportRegeneration": 10,

@@ -15,7 +15,6 @@ from app.db.models.page_view import PageView
 from app.db.models.user import User
 from app.db.models.waitlist_signup import WaitlistSignup
 from app.services.experiment_dashboard_stats import build_experiment_card_stats_map
-from app.services.wallet_service import purchase_service_for_experiment
 
 
 @pytest.fixture
@@ -55,7 +54,7 @@ async def _experiment(
 
 
 @pytest.mark.asyncio
-async def test_build_experiment_card_stats_map_requires_metrics_unlock(
+async def test_build_experiment_card_stats_map_for_live_without_purchase(
     db_session: AsyncSession,
 ) -> None:
     user, live = await _experiment(db_session, status=ExperimentStatus.LANDING_LIVE)
@@ -71,21 +70,6 @@ async def test_build_experiment_card_stats_map_requires_metrics_unlock(
                 source_tag="direct",
             ),
         ]
-    )
-    await db_session.commit()
-
-    locked_map = await build_experiment_card_stats_map(
-        db_session,
-        [live, draft],
-        user_id=user.id,
-    )
-    assert locked_map == {}
-
-    await purchase_service_for_experiment(
-        db_session,
-        user_id=user.id,
-        service="metricsAnalysis",
-        experiment_id=live.id,
     )
     await db_session.commit()
 

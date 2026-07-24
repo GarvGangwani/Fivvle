@@ -133,57 +133,57 @@
 }
 
 [data-theme="dark"] {
-  /* --fv-* app tokens */
-  --fv-bg: #0e0b1e;
-  --fv-surface: #17132b;
-  --fv-surface-2: #1d1836;
-  --fv-surface-elevated: #221d3e;
-  --fv-border: rgba(167, 139, 250, 0.14);
-  --fv-border-strong: rgba(167, 139, 250, 0.22);
+  /* Page and surfaces — neutral near-black (purple is accent-only) */
+  --fv-bg: #0a0a0a;
+  --fv-surface: #141414;
+  --fv-surface-2: #1a1a1a;
+  --fv-surface-elevated: #1f1f1f;
+  --fv-border: rgba(255, 255, 255, 0.1);
+  --fv-border-strong: rgba(255, 255, 255, 0.16);
   --fv-text: #f5f5f5;
   --fv-text-soft: #c7c7c7;
   --fv-text-muted: #9a9a9a;
   --fv-text-dim: #6b6b6b;
   --fv-inactive: #3a3a3a;
-  --fv-header-bg: rgba(23, 19, 43, 0.88);
-  --fv-hover-overlay: rgba(167, 139, 250, 0.08);
-  --fv-skeleton-base: rgba(167, 139, 250, 0.08);
-  --fv-skeleton-shine: rgba(167, 139, 250, 0.14);
+  --fv-header-bg: rgba(20, 20, 20, 0.88);
+  --fv-hover-overlay: rgba(255, 255, 255, 0.06);
+  --fv-skeleton-base: rgba(255, 255, 255, 0.06);
+  --fv-skeleton-shine: rgba(255, 255, 255, 0.12);
   --fv-accent-muted: color-mix(in srgb, var(--fv-accent) 18%, transparent);
 
-  /* Brutalist surface palette */
-  --fv-canvas-bg: #0e0b1e;
-  --fv-surface-card: #17132b;
-  --fv-surface-elevated-brutal: #221d3e;
-  --fv-surface-muted: #191533;
+  /* Brutalist surface palette — same, neutral */
+  --fv-canvas-bg: #0a0a0a;
+  --fv-surface-card: #141414;
+  --fv-surface-elevated-brutal: #1f1f1f;
+  --fv-surface-muted: #171717;
 
   /* Ink flips for dark */
   --fv-ink-primary: #f5f5f5;
   --fv-ink-secondary: #c7c7c7;
   --fv-ink-tertiary: #8a8a8a;
-  --fv-ink-inverse: #0e0b1e;
+  --fv-ink-inverse: #0a0a0a;
 
-  /* Structure */
-  --fv-border-master: #423c5e;
-  --fv-border-subtle: #2a2540;
-  --fv-shadow-color: #7c3aed;
-  --fv-shadow-color-primary: #a78bfa;
+  /* Structure — neutral borders; card shadows dropped; CTA shadow kept purple */
+  --fv-border-master: #2a2a2a;
+  --fv-border-subtle: #262626;
+  --fv-shadow-color: transparent;
+  --fv-shadow-color-primary: #7c3aed;
 
-  /* Brand soft/deep */
+  /* Brand soft/deep — accent mixes only (not page/card fills) */
   --fv-brand-soft: color-mix(in srgb, var(--fv-accent) 22%, var(--fv-surface));
   --fv-brand-deep: #c4b5fd;
 
-  /* Accents */
-  --fv-yellow: #d9bc1f;
+  /* Accents — slightly brighter gold against neutral #0A0A0A */
+  --fv-yellow: #e5c837;
 
-  /* Code blocks */
-  --fv-code-bg: #1d1836;
-  --fv-code-fg: #e4ddfb;
-  --fv-code-border: rgba(167, 139, 250, 0.18);
+  /* Code blocks — neutral dark surface, cool light text */
+  --fv-code-bg: #171717;
+  --fv-code-fg: #eaeaea;
+  --fv-code-border: rgba(255, 255, 255, 0.12);
 
-  /* Canvas specifics */
-  --fv-canvas-dot: rgba(167, 139, 250, 0.1);
-  --fv-canvas-edge: #4a4266;
+  /* Canvas grid + edges — neutral, low-key */
+  --fv-canvas-dot: rgba(255, 255, 255, 0.08);
+  --fv-canvas-edge: #2e2e2e;
 
   /* Semantic */
   --fv-success: #34d399;
@@ -663,10 +663,7 @@ body:has([data-fivvle-public-landing]) {
 [data-theme="dark"] .fv-brutal-hover:hover {
   border-color: var(--fv-accent);
   background: var(--fv-surface-2);
-  box-shadow:
-    6px 6px 0 0 var(--fv-shadow-color),
-    0 0 0 3px color-mix(in srgb, var(--fv-accent) 20%, transparent);
-  transform: translate(-2px, -2px);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--fv-accent) 18%, transparent);
 }
 
 /* Filled accent surfaces (core node, WIP prize) — glow only, keep fill */

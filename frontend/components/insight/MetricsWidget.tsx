@@ -46,10 +46,6 @@ function readApiErrorDetail(err: unknown): string | null {
   return null;
 }
 
-function meetsInsightThreshold(analytics: ExperimentAnalytics): boolean {
-  return analytics.total_page_views >= 10 || analytics.total_signups >= 1;
-}
-
 function formatPercent(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
 }
@@ -124,7 +120,7 @@ export function MetricsWidget({
   }, [loadAnalytics]);
 
   async function runGenerateInsight() {
-    if (!analytics || !meetsInsightThreshold(analytics)) return;
+    if (!analytics || !analytics.insight_threshold_met) return;
     if (submitInFlightRef.current) return;
     submitInFlightRef.current = true;
     setGenerating(true);
@@ -184,7 +180,7 @@ export function MetricsWidget({
   }
 
   function handleGenerateInsight() {
-    if (!analytics || !meetsInsightThreshold(analytics)) return;
+    if (!analytics || !analytics.insight_threshold_met) return;
     if (
       generating ||
       generationRequested ||
@@ -217,7 +213,7 @@ export function MetricsWidget({
     );
   }
 
-  const thresholdMet = meetsInsightThreshold(analytics);
+  const thresholdMet = analytics.insight_threshold_met;
   const insightGenerating =
     isInsightGenerationInProgress(experimentStatus) || generationRequested;
   const canGenerateInsight =
@@ -356,8 +352,7 @@ export function MetricsWidget({
             </button>
             {!thresholdMet && (
               <p className="mt-2 text-xs text-[var(--fv-text-muted)]">
-                Need at least 10 page views or 1 signup to generate an insight
-                report.
+                Waiting for enough signal to generate an insight report.
               </p>
             )}
           </>

@@ -16,7 +16,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.db.enums import ExperimentStage, ExperimentStatus
+from app.db.enums import ExperimentStage, ExperimentStatus, FounderDecision
 from app.schemas.refinement import RefinedIdea
 
 
@@ -157,4 +157,9 @@ class ExperimentCanvasDetailFields(BaseModel):
     landing_page_view_count: int = Field(default=0, ge=0)
     resource_count: int = Field(default=0, ge=0)
     demand_score: int | None = Field(default=None, ge=0, le=100)
+    # Research validation overall_recommendation (NOT the founder's Signal decision).
     verdict: str | None = None
+    founder_decision: FounderDecision | None = None
+    founder_decision_at: datetime | None = None
+    founder_decision_note: str | None = None
+    founder_decision_version: int | None = Field(default=None, ge=1)
