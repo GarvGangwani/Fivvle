@@ -57,7 +57,7 @@ export function AIComposerPill() {
     <>
       <form
         onSubmit={(event) => void handleSubmit(event)}
-        className="fixed bottom-8 left-1/2 z-50 hidden w-full max-w-2xl -translate-x-1/2 items-center gap-2 rounded-full border-2 border-brand-primary bg-surface-card p-2 shadow-brutal-md md:flex"
+        className="fixed bottom-8 left-1/2 z-50 hidden w-full max-w-2xl -translate-x-1/2 items-center gap-2 rounded-full border-2 border-border-master bg-surface-card p-2 shadow-brutal-md md:flex"
       >
         <span
           className="material-symbols-outlined pl-3 text-brand-primary"
