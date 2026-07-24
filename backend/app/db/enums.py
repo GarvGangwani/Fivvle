@@ -93,6 +93,10 @@ class InsightRecommendation(StrEnum):
 class ChatRole(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"
+    # Agent tool exchange (universal chat and future agent surfaces).
+    # Stored as VARCHAR via native_enum=False — no Postgres ALTER TYPE needed.
+    TOOL_CALL = "tool_call"
+    TOOL_RESULT = "tool_result"
 
 
 class ChatTurnKind(StrEnum):
@@ -107,6 +111,9 @@ class ChatTurnKind(StrEnum):
     # Founder chatting with a completed validation report (Evidence surface).
     # Isolated thread — never mixed with refinement/discussion history.
     EVIDENCE_CHAT = "evidence_chat"
+    # Canvas-wide coach / future agent surface. Isolated via
+    # experiments.universal_thread_id — never mixed with Refine or Evidence.
+    UNIVERSAL_CHAT = "universal_chat"
 
 
 class DispatchTrigger(StrEnum):

@@ -110,6 +110,11 @@ from app.schemas.evidence_chat_feedback import (
     EvidenceChatFeedbackRequest,
     EvidenceChatFeedbackResponse,
 )
+from app.schemas.universal_chat import (
+    UniversalChatMessagesResponse,
+    UniversalChatSendRequest,
+    UniversalChatSendResponse,
+)
 from app.schemas.refinement import RefinedIdea
 from app.schemas.validation_report import ValidationReport as ValidationReportSchema
 from app.schemas.validation_report_edited_doc import (
@@ -128,6 +133,12 @@ from app.services.evidence_chat_service import (
     send_evidence_chat_message,
     stream_evidence_reply,
     upsert_evidence_chat_feedback,
+)
+from app.services.universal_chat_service import (
+    UniversalChatNotFound,
+    UniversalChatUnavailable,
+    list_universal_chat_messages,
+    send_universal_chat_message,
 )
 from app.services.validation_report_editor import (
     EditedDocVersionConflict,
@@ -1448,6 +1459,83 @@ async def activate_evidence_chat(
     return EvidenceChatActivateResponse(
         thread_id=result.thread_id,
         active_leaf_message_id=result.active_leaf_message_id,
+    )
+
+
+@router.post(
+    "/{experiment_id}/chat/universal",
+    response_model=UniversalChatSendResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def send_universal_chat(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: UniversalChatSendRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> UniversalChatSendResponse:
+    try:
+        result = await send_universal_chat_message(
+            db,
+            current_user,
+            experiment_id,
+            body.message,
+        )
+    except UniversalChatNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
+        ) from None
+    except UniversalChatUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    except Exception as exc:
+        _logger.error(
+            "universal chat turn failed",
+            error_type=type(exc).__name__,
+            experiment_id=str(experiment_id),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Universal chat failed, please try again",
+        ) from exc
+    return UniversalChatSendResponse(
+        user_message=ChatMessageItem.from_orm_message(result.user_message),
+        assistant_message=ChatMessageItem.from_orm_message(result.assistant_message),
+        thread_id=result.thread_id,
+    )
+
+
+@router.get(
+    "/{experiment_id}/chat/universal/messages",
+    response_model=UniversalChatMessagesResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def get_universal_chat_messages(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> UniversalChatMessagesResponse:
+    try:
+        result = await list_universal_chat_messages(db, current_user, experiment_id)
+    except UniversalChatNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
+        ) from None
+    return UniversalChatMessagesResponse(
+        thread_id=result.thread_id,
+        experiment_id=experiment_id,
+        active_leaf_message_id=result.active_leaf_message_id,
+        messages=[ChatMessageItem.from_orm_message(m) for m in result.messages],
     )
 
 

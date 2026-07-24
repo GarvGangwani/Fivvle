@@ -77,6 +77,25 @@ class ChatMessage(Base):
         JSONB,
         nullable=True,
     )
+    # Structured payload for tool_call / tool_result roles (agent surfaces).
+    # Expected shapes when tools land (application-enforced, not DB-checked):
+    #   tool_call:   { "tool_name": str, "arguments": dict }
+    #   tool_result: { "tool_name": str, "result": any, "error"?: str }
+    # ``content`` for tool rows is a short human-readable label
+    # (e.g. "Called: <tool_name>" / "Result received"), not empty.
+    #
+    # Tool-row branching semantics (future):
+    # Tool rows (tool_call, tool_result) are always linear children in the
+    # message tree. They MUST NOT have sibling groups. If assistant-message
+    # branching is added later (edit/regenerate on the assistant turn after a
+    # tool exchange), the branching MUST treat the whole
+    # assistant → tool_call → tool_result → assistant sequence as one atomic
+    # unit — regenerating the leading assistant message re-runs the tool
+    # sequence; it does not fork tool_calls into siblings.
+    tool_payload: Mapped[dict | None] = mapped_column(
+        JSONB,
+        nullable=True,
+    )
     parent_message_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
         ForeignKey("chat_messages.id", ondelete="CASCADE"),
