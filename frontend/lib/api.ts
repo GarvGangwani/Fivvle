@@ -33,6 +33,8 @@ import type {
   LandingPagePatch,
   LandingPageSlugAvailability,
   ResearchStatus,
+  UniversalChatMessagesResponse,
+  UniversalChatSendResponse,
   ValidationReport,
   WaitlistSignupsResponse,
 } from "./types";
@@ -404,6 +406,24 @@ export async function getEvidenceChatMessages(
 ): Promise<EvidenceChatMessagesResponse> {
   return apiFetch<EvidenceChatMessagesResponse>(
     `/experiments/${experimentId}/evidence-chat/messages`,
+  );
+}
+
+export async function getUniversalChatMessages(
+  experimentId: string,
+): Promise<UniversalChatMessagesResponse> {
+  return apiFetch<UniversalChatMessagesResponse>(
+    `/experiments/${experimentId}/chat/universal/messages`,
+  );
+}
+
+export async function sendUniversalChatMessage(
+  experimentId: string,
+  message: string,
+): Promise<UniversalChatSendResponse> {
+  return apiFetch<UniversalChatSendResponse>(
+    `/experiments/${experimentId}/chat/universal`,
+    { method: "POST", body: { message } },
   );
 }
 
@@ -843,6 +863,30 @@ export async function archiveProject(
   id: string,
 ): Promise<ArchiveExperimentResponse> {
   return archiveExperiment(id, "manual");
+}
+
+export type FounderDecisionResponse = {
+  founder_decision: FounderDecision;
+  founder_decision_at: string;
+  founder_decision_note: string | null;
+  founder_decision_version: number;
+};
+
+export type RecordFounderDecisionBody = {
+  decision: FounderDecision;
+  note?: string | null;
+  base_version: number;
+};
+
+/** PUT /experiments/{id}/founder-decision — record or amend (CAS on base_version). */
+export async function recordFounderDecision(
+  id: string,
+  body: RecordFounderDecisionBody,
+): Promise<FounderDecisionResponse> {
+  return apiFetch<FounderDecisionResponse>(
+    `/experiments/${id}/founder-decision`,
+    { method: "PUT", body },
+  );
 }
 
 export async function unarchiveExperiment(id: string): Promise<Experiment> {

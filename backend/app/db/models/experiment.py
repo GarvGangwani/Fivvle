@@ -14,13 +14,19 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.db.enums import DispatchTrigger, ExperimentStage, ExperimentStatus
+from app.db.enums import (
+    DispatchTrigger,
+    ExperimentStage,
+    ExperimentStatus,
+    FounderDecision,
+)
 
 if TYPE_CHECKING:
     from app.db.models.external_api_call import ExternalAPICall
     from app.db.models.insight_report import InsightReport
     from app.db.models.landing_page import LandingPage
     from app.db.models.landing_page_v2 import LandingPageV2Spec
+    from app.db.models.launch_kit import LaunchKit
     from app.db.models.llm_call import LLMCall
     from app.db.models.page_view import PageView
     from app.db.models.user import User
@@ -172,6 +178,33 @@ class Experiment(Base):
         ),
         nullable=True,
     )
+    # Founder-recorded Signal decision (proceed/iterate/pivot/kill). Distinct from
+    # API field `verdict` (validation-report overall_recommendation) and from the
+    # AI InsightRecommendation on InsightReport. Nullable until the founder records.
+    founder_decision: Mapped[FounderDecision | None] = mapped_column(
+        SQLEnum(
+            FounderDecision,
+            name="founder_decision",
+            native_enum=False,
+            length=20,
+        ),
+        nullable=True,
+    )
+    founder_decision_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # Optional free-text rationale. Cap matches Experiment.why_now (String(500)).
+    founder_decision_note: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+    # Optimistic concurrency for amendable decisions. NULL = never recorded;
+    # first write accepts base_version=0 and sets this to 1.
+    founder_decision_version: Mapped[int | None] = mapped_column(
+        Integer,
+        nullable=True,
+    )
 
     # --- Relationships ---
     user: Mapped[User] = relationship(back_populates="experiments")
@@ -186,6 +219,11 @@ class Experiment(Base):
         uselist=False,
     )
     landing_page_v2: Mapped[LandingPageV2Spec | None] = relationship(
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    launch_kit: Mapped["LaunchKit | None"] = relationship(
         back_populates="experiment",
         cascade="all, delete-orphan",
         uselist=False,

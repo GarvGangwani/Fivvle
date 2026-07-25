@@ -15,18 +15,22 @@ interface ShareLinksPanelProps {
   slug: string;
   experimentName: string;
   showDescription?: boolean;
+  /** Optional — e.g. Kit auto-tick `tracking_on` after a founder copies a link. */
+  onLinkCopied?: () => void;
 }
 
 export function ShareLinksPanel({
   slug,
   experimentName,
   showDescription = true,
+  onLinkCopied,
 }: ShareLinksPanelProps) {
   const { toast } = useToast();
 
   function handleCopy(url: string, channelLabel: string) {
     void navigator.clipboard.writeText(url).then(() => {
       toast(`${channelLabel} link copied`, "success");
+      onLinkCopied?.();
     });
   }
 

@@ -23,12 +23,11 @@ import {
   createExperimentEvent,
   rerunEvidence,
 } from "@/lib/experiment-api";
-import type { CanvasNodeId, Experiment, SatelliteNodeId } from "@/lib/types";
+import type { CanvasNodeId, Experiment, ExperimentStatus, SatelliteNodeId } from "@/lib/types";
 import { ACT_CONFIG } from "./act-config";
 import { BlueprintDecor } from "./BlueprintDecor";
-import { CanvasActivityPanel } from "./CanvasActivityPanel";
-import { CanvasComposerPill } from "./CanvasComposerPill";
 import { CanvasToolbar } from "./CanvasToolbar";
+import { UniversalChatDock } from "./UniversalChatDock";
 import {
   CORE_NODE_CENTER,
   DEFAULT_CANVAS_ZOOM,
@@ -157,7 +156,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     y: number;
   } | null>(null);
   const [refineFullscreen, setRefineFullscreen] = useState(false);
-  const [focusedNodeId, setFocusedNodeId] = useState<string | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [evidenceRerunning, setEvidenceRerunning] = useState(false);
   const { setCenter, fitView } = useReactFlow();
@@ -178,7 +176,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     (experiment.current_spark_version ?? 0) >= 1 &&
     Boolean(experiment.raw_idea?.trim());
 
-  const onRefineTurnComplete = useCallback(async () => {
+  const onExperimentRefresh = useCallback(async () => {
     if (!onExperimentChange) return;
     const updated = await getExperiment(experiment.id);
     onExperimentChange(updated);
@@ -203,7 +201,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     navigatingMessageId,
     regeneratingMessageId,
   } = useRefineChat(experiment.id, {
-    onTurnComplete: onRefineTurnComplete,
+    onTurnComplete: onExperimentRefresh,
     enableOpener,
   });
 
@@ -699,7 +697,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       return;
     }
 
-    setFocusedNodeId(node.id);
     if (node.id === "spark") {
       openSparkPanel();
       return;
@@ -714,6 +711,14 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     }
     if (node.id === "evidence") {
       setOverlayAct("evidence");
+      return;
+    }
+    if (node.id === "launch") {
+      setOverlayAct("launch");
+      return;
+    }
+    if (node.id === "signal") {
+      setOverlayAct("signal");
       return;
     }
     if (node.id !== "core") {
@@ -791,7 +796,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
             onMove={handleMove}
           >
             <Controls
-              className="brutalist-controls !left-6 !bottom-24 z-20"
+              className="brutalist-controls !left-6 !bottom-16 z-20"
               showInteractive={false}
             />
           </ReactFlow>
@@ -844,16 +849,23 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       ) : null}
 
       <CanvasToolbar onReset={handleResetLayout} onFitView={handleFitView} />
-      <CanvasActivityPanel experimentId={experiment.id} />
-      <CanvasComposerPill
+      <UniversalChatDock
         experimentId={experiment.id}
-        focusedAct={focusedNodeId}
+        projectName={experiment.name}
       />
       <DeepDiveOverlay
         isOpen={overlayAct !== null}
         onClose={closeOverlay}
         act={overlayAct ?? "evidence"}
         experimentId={experiment.id}
+        experimentStatus={experiment.status as ExperimentStatus}
+        projectName={experiment.name?.trim() || "Untitled project"}
+        founderDecision={experiment.founder_decision ?? null}
+        founderDecisionAt={experiment.founder_decision_at ?? null}
+        founderDecisionNote={experiment.founder_decision_note ?? null}
+        founderDecisionVersion={experiment.founder_decision_version ?? null}
+        onExperimentRefresh={onExperimentRefresh}
+        onOpenLaunch={() => setOverlayAct("launch")}
       />
       <ResourcesDrawer
         open={resourcesOpen}

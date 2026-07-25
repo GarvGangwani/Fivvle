@@ -90,6 +90,20 @@ class InsightRecommendation(StrEnum):
     KILL = "kill"
 
 
+class FounderDecision(StrEnum):
+    """Founder-recorded decision on an experiment (Signal Ready).
+
+    Distinct from InsightRecommendation (the AI's suggestion on the insight
+    report). The two may diverge — that divergence is intentional product data.
+    Not related to schemas.business_construction.FounderDecision.
+    """
+
+    PROCEED = "proceed"
+    ITERATE = "iterate"
+    PIVOT = "pivot"
+    KILL = "kill"
+
+
 class ChatRole(StrEnum):
     USER = "user"
     ASSISTANT = "assistant"

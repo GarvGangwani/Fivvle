@@ -19,6 +19,7 @@ from sqlalchemy import select
 
 from app.db.enums import ExperimentStatus
 from app.db.models.experiment import Experiment
+from app.dispatchers.protocol import LaunchKitDispatcher
 from app.services.landing_page_service import (
     LandingPageGenerationError,
     MissingValidationReportError,
@@ -40,8 +41,13 @@ def landing_generation_in_progress(experiment_id: UUID) -> bool:
 
 
 class InProcessLandingPageDispatcher:
-    def __init__(self, get_sessionmaker: object) -> None:
+    def __init__(
+        self,
+        get_sessionmaker: object,
+        launch_kit_dispatcher: LaunchKitDispatcher | None = None,
+    ) -> None:
         self._get_sessionmaker = get_sessionmaker
+        self._launch_kit_dispatcher = launch_kit_dispatcher
 
     async def dispatch(
         self,
@@ -92,6 +98,18 @@ class InProcessLandingPageDispatcher:
                             phase="completed",
                             attempt=attempt,
                         )
+                        if self._launch_kit_dispatcher is not None:
+                            try:
+                                await self._launch_kit_dispatcher.dispatch(
+                                    experiment_id
+                                )
+                            except Exception:  # noqa: BLE001
+                                log.warning(
+                                    "launch kit auto-dispatch failed",
+                                    phase="launch_kit_dispatch_failed",
+                                    experiment_id=str(experiment_id),
+                                    exc_info=True,
+                                )
                         return
                     except MissingValidationReportError as exc:
                         last_error = exc
