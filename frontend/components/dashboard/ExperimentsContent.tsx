@@ -168,12 +168,16 @@ export function ExperimentsContent() {
   }, [loadState, searchResults, statusFilter, sortBy]);
 
   if (loadState.status === "loading") {
-    return <ExperimentsListSkeleton />;
+    return (
+      <div className="px-gutter pb-gutter pt-24">
+        <ExperimentsListSkeleton />
+      </div>
+    );
   }
 
   if (loadState.status === "error") {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="flex items-center justify-center px-gutter pb-20 pt-24">
         <p
           role="alert"
           className="border-2 border-status-critical bg-surface-card px-6 py-4 font-body-md text-body-md text-status-critical"
@@ -185,7 +189,7 @@ export function ExperimentsContent() {
   }
 
   return (
-    <div className="py-8">
+    <div className="px-gutter pb-8 pt-24">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <h1 className="font-display text-display-lg uppercase text-ink-primary">
           YOUR EXPERIMENTS

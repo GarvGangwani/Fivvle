@@ -796,8 +796,9 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
             onMove={handleMove}
           >
             <Controls
-              className="brutalist-controls !left-6 !bottom-16 z-20"
+              className="brutalist-controls"
               showInteractive={false}
+              style={{ left: 24, bottom: 64, margin: 0 }}
             />
           </ReactFlow>
         </>

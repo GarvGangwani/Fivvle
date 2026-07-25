@@ -23,9 +23,13 @@ export function CanvasToolbar({ onReset, onFitView }: Props) {
   }, [open]);
 
   return (
-    <div ref={menuRef} className="absolute bottom-6 left-6 z-20 flex flex-col items-start gap-2">
+    <div
+      ref={menuRef}
+      className="absolute z-20"
+      style={{ left: 24, bottom: 24 }}
+    >
       {open ? (
-        <div className="rounded-md border-2 border-border-master bg-surface-card shadow-brutal-md">
+        <div className="absolute bottom-full left-0 mb-0 min-w-[160px] rounded-md border-2 border-border-master bg-surface-card shadow-brutal-md">
           <button
             type="button"
             onClick={() => {
@@ -51,9 +55,10 @@ export function CanvasToolbar({ onReset, onFitView }: Props) {
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="rounded-sm border-2 border-border-master bg-surface-card px-3 py-2 font-label-md text-label-md uppercase text-ink-primary shadow-brutal-sm hover:shadow-brutal-md"
+        className="flex h-[32px] w-[32px] items-center justify-center rounded-none border-2 border-border-master bg-surface-card font-label-md text-label-md leading-none text-ink-primary shadow-brutal-sm hover:shadow-brutal-md"
         aria-label="Canvas options"
         aria-expanded={open}
+        title="Canvas options"
       >
         ⋯
       </button>

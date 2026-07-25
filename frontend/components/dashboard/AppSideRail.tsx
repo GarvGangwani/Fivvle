@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * ORPHANED by feat/floating-nav — replaced by FloatingAppNav.
+ * Do not remount. Delete in a cleanup PR.
+ */
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Moon, Sun } from "lucide-react";

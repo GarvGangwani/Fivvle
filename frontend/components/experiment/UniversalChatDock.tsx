@@ -219,7 +219,7 @@ export function UniversalChatDock({ experimentId, projectName }: Props) {
 
   if (collapsed) {
     return (
-      <aside className="fixed right-6 top-20 z-20 w-10 rounded-lg border-2 border-border-master bg-[var(--fv-surface-card)] shadow-brutal-md">
+      <aside className="fixed right-6 top-6 z-20 w-10 rounded-lg border-2 border-border-master bg-[var(--fv-surface-card)] shadow-brutal-md">
         <button
           type="button"
           onClick={() => setCollapsedPersisted(false)}
@@ -236,7 +236,7 @@ export function UniversalChatDock({ experimentId, projectName }: Props) {
   }
 
   return (
-    <aside className="fixed bottom-6 right-6 top-20 z-20 flex w-[420px] flex-col overflow-hidden rounded-lg border-2 border-border-master bg-[var(--fv-surface-card)] shadow-brutal-md">
+    <aside className="fixed bottom-6 right-6 top-6 z-20 flex w-[420px] flex-col overflow-hidden rounded-sm border-2 border-border-master bg-[var(--fv-surface-card)] shadow-brutal-md">
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--fv-border)] px-3">
         <h2 className="min-w-0 truncate text-sm font-medium text-[var(--fv-text)]">
           Fivvle

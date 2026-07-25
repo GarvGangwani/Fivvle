@@ -3,7 +3,7 @@ import { BrutalistSkeleton } from "@/components/ui/BrutalistSkeleton";
 export function SettingsSkeleton() {
   return (
     <div
-      className="mx-auto max-w-4xl space-y-12 px-gutter py-12"
+      className="mx-auto max-w-4xl space-y-12 px-gutter pb-12 pt-24"
       aria-busy="true"
       aria-label="Loading settings"
     >
