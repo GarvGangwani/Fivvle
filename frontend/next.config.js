@@ -81,6 +81,14 @@ const previewDeviceHeaders = securityHeaders.map((header) =>
     : header,
 );
 
+// Launch LivePagePreviewPanel iframes /e/{slug}?preview=1 (same-origin).
+// Must override the global DENY — last matching source wins on conflicts.
+const publicLandingFrameHeaders = securityHeaders.map((header) =>
+  header.key === "X-Frame-Options"
+    ? { key: "X-Frame-Options", value: "SAMEORIGIN" }
+    : header,
+);
+
 // Public landing pages use per-project subdomains ({slug}.fivvle.io). Middleware
 // rewrites those hosts to /e/[slug]. See frontend/docs/LANDING_PAGE_SUBDOMAINS.md.
 
@@ -111,6 +119,10 @@ module.exports = {
       {
         source: "/preview/device",
         headers: previewDeviceHeaders,
+      },
+      {
+        source: "/e/:slug*",
+        headers: publicLandingFrameHeaders,
       },
     ];
   },
