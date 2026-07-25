@@ -99,6 +99,30 @@ class LandingPageDispatcher(Protocol):
         ...
 
 
+class LaunchKitDispatcher(Protocol):
+    """Trigger LaunchKit generation for a given experiment.
+
+    Implementations MUST return immediately (202 semantics). The actual work
+    runs asynchronously — either in a background asyncio task (InProcess) or in
+    a Cloud Function invoked over HTTP (deferred; raises NotImplementedError in
+    the factory for now).
+
+    Both implementations call the same launch_kit_service.generate_launch_kit()
+    entry point with the same experiment_id. Unlike the other pipelines, this
+    does NOT drive Experiment.status — the LaunchKit is a side artifact of an
+    already-live experiment.
+    """
+
+    async def dispatch(self, experiment_id: UUID) -> None:
+        """Schedule LaunchKit generation for experiment_id.
+
+        Must not block. Failures to schedule should raise DispatchError so the
+        route handler can return an appropriate error rather than silently
+        dropping the job.
+        """
+        ...
+
+
 class DispatchError(RuntimeError):
     """Raised when a dispatcher cannot schedule the research pipeline.
 

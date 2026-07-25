@@ -57,6 +57,7 @@ from app.routers.experiment_resources import router as experiment_resources_rout
 from app.routers.experiment_spark import router as experiment_spark_router
 from app.routers.experiments import router as experiments_router
 from app.routers.health import router as health_router
+from app.routers.launch_kit import router as launch_kit_router
 from app.routers.public import router as public_router
 from app.routers.search import router as search_router
 from app.routers.users import router as users_router
@@ -109,11 +110,17 @@ async def lifespan(app: FastAPI):  # type: ignore[type-arg]
         get_dispatcher,
         get_insight_dispatcher,
         get_landing_page_dispatcher,
+        get_launch_kit_dispatcher,
     )
 
     app.state.dispatcher = get_dispatcher(settings)
     app.state.insight_dispatcher = get_insight_dispatcher(settings)
-    app.state.landing_page_dispatcher = get_landing_page_dispatcher(settings)
+    launch_kit_dispatcher = get_launch_kit_dispatcher(settings)
+    app.state.launch_kit_dispatcher = launch_kit_dispatcher
+    app.state.landing_page_dispatcher = get_landing_page_dispatcher(
+        settings,
+        launch_kit_dispatcher=launch_kit_dispatcher,
+    )
     logger.info(
         "research dispatcher initialised",
         dispatcher_mode=settings.dispatcher_mode,
@@ -228,6 +235,7 @@ app.include_router(search_router)
 app.include_router(wallet_router)
 app.include_router(landing_page_v2_router)
 app.include_router(experiments_router)
+app.include_router(launch_kit_router)
 app.include_router(canvas_layout_router)
 app.include_router(experiment_resources_router)
 app.include_router(experiment_attachments_router)

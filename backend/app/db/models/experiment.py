@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from app.db.models.insight_report import InsightReport
     from app.db.models.landing_page import LandingPage
     from app.db.models.landing_page_v2 import LandingPageV2Spec
+    from app.db.models.launch_kit import LaunchKit
     from app.db.models.llm_call import LLMCall
     from app.db.models.page_view import PageView
     from app.db.models.user import User
@@ -218,6 +219,11 @@ class Experiment(Base):
         uselist=False,
     )
     landing_page_v2: Mapped[LandingPageV2Spec | None] = relationship(
+        back_populates="experiment",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
+    launch_kit: Mapped["LaunchKit | None"] = relationship(
         back_populates="experiment",
         cascade="all, delete-orphan",
         uselist=False,
