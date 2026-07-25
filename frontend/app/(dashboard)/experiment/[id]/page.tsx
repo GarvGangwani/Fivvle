@@ -71,7 +71,7 @@ export default function ExperimentDetailPage() {
   }
 
   return (
-    <div className="-mx-gutter -mb-gutter h-[calc(100vh-4rem)] min-h-0">
+    <div className="h-screen min-h-0">
       <ExperimentCanvas
         experiment={experiment}
         onExperimentChange={setExperiment}

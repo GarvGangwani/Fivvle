@@ -182,8 +182,8 @@
   --fv-code-border: rgba(167, 139, 250, 0.18);
 
   /* Canvas specifics */
-  --fv-canvas-dot: rgba(255, 255, 255, 0.08);
-  --fv-canvas-edge: #2e2e2e;
+  --fv-canvas-dot: rgba(255, 255, 255, 0.28);
+  --fv-canvas-edge: #a7a7a7;
 
   /* Semantic */
   --fv-success: #34d399;
@@ -1896,14 +1896,25 @@ body:has([data-fivvle-public-landing]) {
     radial-gradient(ellipse 40% 30% at 80% 20%, rgba(167, 139, 250, 0.12), transparent 50%);
 }
 
-/* Experiment canvas — React Flow chrome */
-.brutalist-controls {
+/* Experiment canvas — React Flow chrome
+   Panels default to left/bottom: 0 + 15px margin. We zero the margin and
+   set an explicit 24px inset so the stack matches other floating chrome. */
+.react-flow__controls.brutalist-controls,
+.react-flow__panel.brutalist-controls {
+  position: absolute !important;
+  left: 24px !important;
+  bottom: 64px !important; /* above ⋯ (24 + 32) + 8px gap */
+  margin: 0 !important;
   border: 2px solid var(--fv-border-master) !important;
   background: var(--fv-surface-card) !important;
   box-shadow: 4px 4px 0 0 var(--fv-shadow-color) !important;
+  overflow: hidden;
 }
 
 .brutalist-controls button {
+  width: 28px !important;
+  height: 28px !important;
+  padding: 0 !important;
   border-bottom: 2px solid var(--fv-border-master) !important;
   background: var(--fv-surface-card) !important;
 }

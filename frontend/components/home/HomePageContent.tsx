@@ -11,8 +11,8 @@ function HomeAuthGate() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-canvas-bg md:ml-28">
-        <div className="p-gutter">
+      <div className="min-h-screen bg-canvas-bg">
+        <div className="px-gutter pb-gutter pt-24">
           <DashboardHomeSkeleton />
         </div>
       </div>

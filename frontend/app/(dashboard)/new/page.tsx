@@ -26,7 +26,7 @@ export default function NewExperimentPage() {
   }, [canCreate, name, router]);
 
   return (
-    <div className="mx-auto max-w-2xl px-gutter py-16">
+    <div className="mx-auto max-w-2xl px-gutter pb-16 pt-24">
       <div className="mb-2 font-label-md uppercase text-brand-primary">
         NEW VALIDATION
       </div>

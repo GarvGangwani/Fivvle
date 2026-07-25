@@ -3,12 +3,12 @@
 import type { ReactNode } from "react";
 import { useEffect } from "react";
 import { WalletProvider } from "@/lib/wallet-context";
-import { AppSideRail } from "./AppSideRail";
-import { AppTopNav } from "./AppTopNav";
+import { FloatingAppNav } from "./FloatingAppNav";
 import { GlobalSearchModal } from "./GlobalSearchModal";
 import { SearchModalProvider, useSearchModal } from "./search-modal-context";
 
 // AIComposerPill removed — moves to experiment page in Step 5. Keep the component file.
+// AppTopNav + AppSideRail orphaned by feat/floating-nav — flag for cleanup PR.
 
 interface DashboardShellProps {
   children: ReactNode;
@@ -46,11 +46,8 @@ export function DashboardShell({ children }: DashboardShellProps) {
       <SearchModalProvider>
         <SearchKeyboardShortcuts />
         <div className="min-h-screen bg-canvas-bg text-ink-primary">
-          <AppTopNav />
-          <AppSideRail />
-          <main className="min-h-screen pt-16 md:ml-28 md:pl-gutter md:pr-gutter md:pb-gutter">
-            {children}
-          </main>
+          <FloatingAppNav />
+          <main className="min-h-screen">{children}</main>
           <GlobalSearchModal />
         </div>
       </SearchModalProvider>

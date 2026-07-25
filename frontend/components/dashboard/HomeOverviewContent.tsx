@@ -43,12 +43,16 @@ export function HomeOverviewContent() {
   }, [fetchExperiments]);
 
   if (loadState.status === "loading") {
-    return <DashboardHomeSkeleton />;
+    return (
+      <div className="px-gutter pb-gutter pt-24">
+        <DashboardHomeSkeleton />
+      </div>
+    );
   }
 
   if (loadState.status === "error") {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="flex items-center justify-center px-gutter pb-20 pt-24">
         <p
           role="alert"
           className="border-2 border-status-critical bg-surface-card px-6 py-4 font-body-md text-body-md text-status-critical"
@@ -64,7 +68,7 @@ export function HomeOverviewContent() {
 
   if (sorted.length === 0) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center py-12">
+      <div className="flex min-h-[60vh] items-center justify-center px-gutter pb-12 pt-24">
         <div className="max-w-xl rounded-md border-2 border-border-master bg-surface-card p-10 text-center shadow-brutal-md">
           <p className="font-label-md text-label-md uppercase text-ink-tertiary">
             WELCOME
@@ -92,7 +96,7 @@ export function HomeOverviewContent() {
   const mostActive = sorted[0];
 
   return (
-    <div className="py-8">
+    <div className="px-gutter pb-8 pt-24">
       <h1 className="font-display text-display-lg uppercase text-ink-primary">
         Welcome back, {firstName}
       </h1>

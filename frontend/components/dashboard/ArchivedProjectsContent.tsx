@@ -65,7 +65,7 @@ export function ArchivedProjectsContent() {
 
   if (loadState.status === "loading") {
     return (
-      <div className="py-8">
+      <div className="px-gutter pb-8 pt-24">
         <div className="mb-8 h-10 w-72 animate-pulse bg-surface-elevated motion-reduce:animate-none" />
         <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, index) => (
@@ -81,7 +81,7 @@ export function ArchivedProjectsContent() {
 
   if (loadState.status === "error") {
     return (
-      <div className="flex items-center justify-center py-20">
+      <div className="flex items-center justify-center px-gutter pb-20 pt-24">
         <p
           role="alert"
           className="border-2 border-status-critical bg-surface-card px-6 py-4 font-body-md text-body-md text-status-critical"
@@ -95,7 +95,7 @@ export function ArchivedProjectsContent() {
   const { experiments } = loadState;
 
   return (
-    <div className="py-8">
+    <div className="px-gutter pb-8 pt-24">
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="font-display text-display-lg uppercase text-ink-primary">

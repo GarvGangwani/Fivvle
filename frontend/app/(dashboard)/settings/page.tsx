@@ -26,7 +26,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-12 px-gutter py-12">
+    <div className="mx-auto max-w-4xl space-y-12 px-gutter pb-12 pt-24">
       <div>
         <h1 className="font-display text-display-lg uppercase text-ink-primary">
           SETTINGS
