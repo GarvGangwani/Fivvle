@@ -34,7 +34,7 @@ from sqlalchemy.orm import selectinload
 
 from app.auth.dependencies import get_current_user
 from app.config import get_settings
-from app.db.enums import DispatchTrigger, ExperimentStatus
+from app.db.enums import DispatchTrigger, ExperimentStatus, FounderDecision
 from app.db.models.experiment import Experiment
 from app.db.models.insight_report import InsightReport
 from app.db.models.landing_page import LandingPage
@@ -71,12 +71,15 @@ from app.schemas.api_responses import (
     ArchiveRequest,
     DeleteExperimentRequest,
     DeleteExperimentResponse,
+    FounderDecisionResponse,
+    InsightProgress,
     InsightReportResponse,
     LandingPagePatchRequest,
     LandingPageResponse,
     LandingPageSlugAvailabilityResponse,
     LogoUploadResponse,
     MetricsAccessResponse,
+    RecordFounderDecisionRequest,
     SectionImageUploadResponse,
     PublishLandingPageRequest,
     PublishResponse,
@@ -150,6 +153,7 @@ from app.services.analytics_aggregator import (
     LandingPageNotLiveError,
     build_analytics_aggregate,
 )
+from app.services.insight_threshold import compute_insight_threshold
 from app.services.dispatch_service import transition_to_researching_and_dispatch
 from app.services.experiment_dashboard_stats import build_experiment_card_stats_map
 from app.services.experiment_service import (
@@ -163,6 +167,11 @@ from app.services.experiment_service import (
     infer_status_after_unarchive,
     regenerate_refinement,
     update_experiment_raw_idea,
+)
+from app.services.founder_decision_service import (
+    FounderDecisionArchivedError,
+    FounderDecisionVersionConflict,
+    apply_founder_decision,
 )
 from app.services.spark_version_service import fetch_spark_phase_version_info
 from app.services.logo_upload_service import (
@@ -337,6 +346,11 @@ class GetExperimentDetailResponse(BaseModel):
     attachment_count: int = Field(default=0, ge=0)
     demand_score: int | None = Field(default=None, ge=0, le=100)
     verdict: str | None = None
+    # Founder-recorded Signal decision — distinct from `verdict` above.
+    founder_decision: FounderDecision | None = None
+    founder_decision_at: datetime | None = None
+    founder_decision_note: str | None = None
+    founder_decision_version: int | None = Field(default=None, ge=1)
     spark_last_edited_at: datetime | None = None
     refinement_started_at: datetime | None = None
     current_spark_version: int = 0
@@ -385,6 +399,10 @@ async def _build_experiment_detail_response(
         attachment_count=metrics.attachment_count,
         demand_score=metrics.demand_score,
         verdict=metrics.verdict,
+        founder_decision=experiment.founder_decision,
+        founder_decision_at=experiment.founder_decision_at,
+        founder_decision_note=experiment.founder_decision_note,
+        founder_decision_version=experiment.founder_decision_version,
         spark_last_edited_at=experiment.spark_last_edited_at,
         refinement_started_at=experiment.refinement_started_at,
         current_spark_version=spark_info.current_spark_version,
@@ -1975,6 +1993,8 @@ async def get_experiment_analytics(
             detail="Analytics not available until the landing page is published",
         ) from None
 
+    threshold = await compute_insight_threshold(db, experiment_id)
+
     return AnalyticsResponse(
         total_page_views=aggregate.total_page_views,
         total_signups=aggregate.total_signups,
@@ -1985,6 +2005,15 @@ async def get_experiment_analytics(
         conversion_rate_by_source=aggregate.conversion_rate_by_source,
         signups_by_location=aggregate.signups_by_location,
         days_live=aggregate.days_live,
+        insight_threshold_met=threshold.met,
+        insight_progress=InsightProgress(
+            views_current=threshold.views_current,
+            views_target=threshold.views_target,
+            signups_current=threshold.signups_current,
+            signups_target=threshold.signups_target,
+            days_current=threshold.days_current,
+            days_target=threshold.days_target,
+        ),
     )
 
 
@@ -2141,6 +2170,65 @@ async def delete_experiment_endpoint(
     await db.commit()
 
     return DeleteExperimentResponse(experiment_id=experiment_id)
+
+
+@router.put(
+    "/{experiment_id}/founder-decision",
+    response_model=FounderDecisionResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def record_founder_decision(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: RecordFounderDecisionRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> FounderDecisionResponse:
+    """Record or amend the founder's Signal decision (CAS on version).
+
+    Does not archive and does not change experiment.status. Rejects ARCHIVED.
+    """
+    experiment = await _get_owned_experiment_for_update(
+        db,
+        experiment_id=experiment_id,
+        user_id=current_user.id,
+    )
+    try:
+        apply_founder_decision(
+            experiment,
+            decision=body.decision,
+            note=body.note,
+            base_version=body.base_version,
+        )
+    except FounderDecisionArchivedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot record a decision on an archived experiment",
+        ) from exc
+    except FounderDecisionVersionConflict as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "founder_decision_version conflict",
+                "current_version": exc.current_version,
+            },
+        ) from exc
+
+    await db.commit()
+    await db.refresh(experiment)
+
+    assert experiment.founder_decision is not None
+    assert experiment.founder_decision_at is not None
+    assert experiment.founder_decision_version is not None
+
+    return FounderDecisionResponse(
+        founder_decision=experiment.founder_decision,
+        founder_decision_at=experiment.founder_decision_at,
+        founder_decision_note=experiment.founder_decision_note,
+        founder_decision_version=experiment.founder_decision_version,
+    )
 
 
 @router.post(
