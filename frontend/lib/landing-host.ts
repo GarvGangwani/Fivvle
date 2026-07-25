@@ -117,6 +117,11 @@ export function buildPublicLandingPageUrl(
   return url.toString();
 }
 
+/** In-app iframe preview path (app host), not the public subdomain origin. */
+export function buildInAppPreviewUrl(slug: string): string {
+  return `/e/${slug}?preview=1`;
+}
+
 /** True when the host is a project landing subdomain. */
 export function isProjectLandingHost(host: string): boolean {
   return resolveProjectSlugFromHost(host) !== null;

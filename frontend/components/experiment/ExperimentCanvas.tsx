@@ -23,7 +23,7 @@ import {
   createExperimentEvent,
   rerunEvidence,
 } from "@/lib/experiment-api";
-import type { CanvasNodeId, Experiment, SatelliteNodeId } from "@/lib/types";
+import type { CanvasNodeId, Experiment, ExperimentStatus, SatelliteNodeId } from "@/lib/types";
 import { ACT_CONFIG } from "./act-config";
 import { BlueprintDecor } from "./BlueprintDecor";
 import { CanvasToolbar } from "./CanvasToolbar";
@@ -176,7 +176,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     (experiment.current_spark_version ?? 0) >= 1 &&
     Boolean(experiment.raw_idea?.trim());
 
-  const onRefineTurnComplete = useCallback(async () => {
+  const onExperimentRefresh = useCallback(async () => {
     if (!onExperimentChange) return;
     const updated = await getExperiment(experiment.id);
     onExperimentChange(updated);
@@ -201,7 +201,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     navigatingMessageId,
     regeneratingMessageId,
   } = useRefineChat(experiment.id, {
-    onTurnComplete: onRefineTurnComplete,
+    onTurnComplete: onExperimentRefresh,
     enableOpener,
   });
 
@@ -713,6 +713,14 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       setOverlayAct("evidence");
       return;
     }
+    if (node.id === "launch") {
+      setOverlayAct("launch");
+      return;
+    }
+    if (node.id === "signal") {
+      setOverlayAct("signal");
+      return;
+    }
     if (node.id !== "core") {
       toast(`${node.id.toUpperCase()} deep-dive coming soon — Step 6.`, "info");
     }
@@ -850,6 +858,14 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         onClose={closeOverlay}
         act={overlayAct ?? "evidence"}
         experimentId={experiment.id}
+        experimentStatus={experiment.status as ExperimentStatus}
+        projectName={experiment.name?.trim() || "Untitled project"}
+        founderDecision={experiment.founder_decision ?? null}
+        founderDecisionAt={experiment.founder_decision_at ?? null}
+        founderDecisionNote={experiment.founder_decision_note ?? null}
+        founderDecisionVersion={experiment.founder_decision_version ?? null}
+        onExperimentRefresh={onExperimentRefresh}
+        onOpenLaunch={() => setOverlayAct("launch")}
       />
       <ResourcesDrawer
         open={resourcesOpen}

@@ -229,6 +229,34 @@ export interface ExperimentValidationReportSummary {
   total_citation_count: number;
 }
 
+/**
+ * Mirrors backend `ExperimentStatus` StrEnum in `backend/app/db/enums.py`.
+ * Every member must stay in sync when the backend enum grows.
+ */
+export type ExperimentStatus =
+  | "SPARK"
+  | "DRAFT"
+  | "REFINING"
+  | "REFINED"
+  | "RESEARCHING"
+  | "RESEARCH_PLANNING"
+  | "RESEARCH_SEARCHING"
+  | "RESEARCH_READING"
+  | "RESEARCH_REFLECTING"
+  | "RESEARCH_VOICES"
+  | "RESEARCH_SYNTHESIZING"
+  | "RESEARCH_READY"
+  | "RESEARCH_FAILED"
+  | "LANDING_GENERATING"
+  | "LANDING_DRAFT"
+  | "LANDING_LIVE"
+  | "INSIGHT_GENERATING"
+  | "INSIGHT_READY"
+  | "INSIGHT_FAILED"
+  | "ANALYZING"
+  | "COMPLETED"
+  | "ARCHIVED";
+
 /** GET /experiments/{id} response shape */
 export interface Experiment {
   id: string;
@@ -246,7 +274,12 @@ export interface Experiment {
   resource_count?: number;
   attachment_count?: number;
   demand_score?: number | null;
+  /** Research validation overall_recommendation — not the founder Signal decision. */
   verdict?: string | null;
+  founder_decision?: FounderDecision | null;
+  founder_decision_at?: string | null;
+  founder_decision_note?: string | null;
+  founder_decision_version?: number | null;
   spark_last_edited_at?: string | null;
   refinement_started_at?: string | null;
   current_spark_version?: number;
@@ -634,6 +667,16 @@ export interface SignupLocationBucket {
   count: number;
 }
 
+/** Mirrors backend `InsightProgress` on AnalyticsResponse (snake_case). */
+export interface InsightProgress {
+  views_current: number;
+  views_target: number;
+  signups_current: number;
+  signups_target: number;
+  days_current: number;
+  days_target: number;
+}
+
 export interface ExperimentAnalytics {
   total_page_views: number;
   total_signups: number;
@@ -644,6 +687,8 @@ export interface ExperimentAnalytics {
   conversion_rate_by_source: Record<string, number>;
   signups_by_location: SignupLocationBucket[];
   days_live: number;
+  insight_threshold_met: boolean;
+  insight_progress: InsightProgress;
   warm_network_bias_index?: number;
 }
 
