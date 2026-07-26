@@ -13,6 +13,7 @@ import {
   Maximize2,
   MessageSquare,
   Paperclip,
+  Search,
   X,
 } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
@@ -21,6 +22,25 @@ import {
   sendUniversalChatMessage,
 } from "@/lib/api";
 import type { ChatHistoryMessage } from "@/lib/types";
+
+const TOOL_CALL_LABELS: Record<string, string> = {
+  get_metrics_summary: "Checked the metrics",
+  get_report_summary: "Checked the validation report",
+  get_landing_status: "Checked the landing page",
+};
+
+function toolCallLabel(toolPayload: ChatHistoryMessage["tool_payload"]): string {
+  const name =
+    toolPayload &&
+    typeof toolPayload === "object" &&
+    typeof toolPayload.tool_name === "string"
+      ? toolPayload.tool_name
+      : null;
+  if (name && TOOL_CALL_LABELS[name]) {
+    return TOOL_CALL_LABELS[name];
+  }
+  return "Checked project data";
+}
 
 type Props = {
   experimentId: string;
@@ -173,11 +193,7 @@ export function UniversalChatDock({ experimentId, projectName }: Props) {
       const result = await sendUniversalChatMessage(experimentId, trimmed);
       setMessages((prev) => {
         const withoutOptimistic = prev.filter((m) => m.id !== optimisticId);
-        return [
-          ...withoutOptimistic,
-          result.user_message,
-          result.assistant_message,
-        ];
+        return [...withoutOptimistic, ...result.messages];
       });
       forceScrollRef.current = true;
     } catch {
@@ -425,10 +441,22 @@ function MessageRow({
     );
   }
 
-  // tool_call / tool_result — first-class labels for future agent turns
-  return (
-    <div className="rounded-md border border-[var(--fv-border)] bg-[var(--fv-surface-2)] px-3 py-2 text-xs text-[var(--fv-text-muted)]">
-      {message.content}
-    </div>
-  );
+  if (message.role === "tool_result") {
+    return null;
+  }
+
+  if (message.role === "tool_call") {
+    const label = toolCallLabel(message.tool_payload);
+    return (
+      <div
+        className="-my-2 inline-flex max-w-full items-center gap-1.5 rounded-xs border border-border-master bg-surface-elevated px-2 py-1 text-xs text-ink-tertiary"
+        aria-label={label}
+      >
+        <Search className="h-3.5 w-3.5 shrink-0 text-ink-tertiary" aria-hidden />
+        <span className="truncate">{label}</span>
+      </div>
+    );
+  }
+
+  return null;
 }

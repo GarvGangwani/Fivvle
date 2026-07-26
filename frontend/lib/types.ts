@@ -586,6 +586,8 @@ export type ChatTurnKind =
 export interface UniversalChatSendResponse {
   user_message: ChatHistoryMessage;
   assistant_message: ChatHistoryMessage;
+  /** Ordered rows for this turn (user → tool_call/tool_result → assistant). */
+  messages: ChatHistoryMessage[];
   thread_id: string;
 }
 
