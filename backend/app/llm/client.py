@@ -18,6 +18,7 @@ in prompts as untrusted data.
 
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass, field
@@ -411,6 +412,30 @@ class LLMResult(BaseModel):
     completion_tokens: int
     cost_usd: Decimal
     latency_ms: int
+
+
+class ToolUseRequest(BaseModel):
+    """One Anthropic ``tool_use`` content block, normalized for the agent loop."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    name: str
+    input: dict[str, Any] = Field(default_factory=dict)
+
+
+class ToolsLLMResult(BaseModel):
+    """Result of ``complete_with_tools`` — text and/or tool uses plus cost metadata."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    assistant_text: str | None
+    tool_uses: list[ToolUseRequest] = Field(default_factory=list)
+    # Provider-native assistant message to append verbatim on the next loop turn.
+    # Anthropic: {"role":"assistant","content":[<text|tool_use blocks>]}.
+    # Kimi/OpenAI: {"role":"assistant","content": <str|null>, "tool_calls":[...]}.
+    assistant_turn: dict[str, Any] = Field(default_factory=dict)
+    llm_result: LLMResult
 
 
 def _get_anthropic_client() -> anthropic.AsyncAnthropic:
@@ -1480,5 +1505,302 @@ async def complete_structured(
             prompt_tokens=fail_prompt_tokens,
             completion_tokens=fail_completion_tokens,
             cost_usd=str(fail_cost_usd),
+        )
+        raise
+
+
+def _parse_anthropic_tool_content(
+    content: list[Any],
+) -> tuple[str | None, list[ToolUseRequest], dict[str, Any]]:
+    """Split Anthropic message content into text, tool_uses, and assistant_turn."""
+    text_parts: list[str] = []
+    tool_uses: list[ToolUseRequest] = []
+    content_blocks: list[dict[str, Any]] = []
+
+    for block in content:
+        btype = getattr(block, "type", None)
+        if btype == "text":
+            text = getattr(block, "text", "") or ""
+            text_parts.append(text)
+            content_blocks.append({"type": "text", "text": text})
+        elif btype == "tool_use":
+            raw_input = getattr(block, "input", None)
+            if isinstance(raw_input, dict):
+                tool_input: dict[str, Any] = dict(raw_input)
+            else:
+                tool_input = {}
+            tool_use = ToolUseRequest(
+                id=str(getattr(block, "id", "")),
+                name=str(getattr(block, "name", "")),
+                input=tool_input,
+            )
+            tool_uses.append(tool_use)
+            content_blocks.append(
+                {
+                    "type": "tool_use",
+                    "id": tool_use.id,
+                    "name": tool_use.name,
+                    "input": tool_use.input,
+                }
+            )
+
+    joined = "".join(text_parts).strip()
+    assistant_text = joined if joined else None
+    assistant_turn: dict[str, Any] = {"role": "assistant", "content": content_blocks}
+    return assistant_text, tool_uses, assistant_turn
+
+
+def _parse_kimi_tool_arguments(raw_arguments: object) -> dict[str, Any]:
+    """Parse OpenAI-style tool ``arguments`` JSON string; malformed → ``{}``."""
+    if raw_arguments is None or raw_arguments == "":
+        return {}
+    if isinstance(raw_arguments, dict):
+        return dict(raw_arguments)
+    if not isinstance(raw_arguments, str):
+        return {}
+    try:
+        parsed = json.loads(raw_arguments)
+    except json.JSONDecodeError:
+        return {}
+    if isinstance(parsed, dict):
+        return parsed
+    return {}
+
+
+def _parse_kimi_tool_message(
+    message: object,
+) -> tuple[str | None, list[ToolUseRequest], dict[str, Any]]:
+    """Normalize a Kimi/OpenAI assistant message into the shared tool envelope."""
+    raw_content = getattr(message, "content", None)
+    if isinstance(raw_content, str) and raw_content.strip():
+        assistant_text: str | None = raw_content.strip()
+    else:
+        assistant_text = None
+
+    tool_uses: list[ToolUseRequest] = []
+    tool_calls_out: list[dict[str, Any]] = []
+    raw_tool_calls = getattr(message, "tool_calls", None) or []
+    for tc in raw_tool_calls:
+        fn = getattr(tc, "function", None)
+        name = str(getattr(fn, "name", "") if fn is not None else "")
+        raw_args = getattr(fn, "arguments", None) if fn is not None else None
+        tool_input = _parse_kimi_tool_arguments(raw_args)
+        tool_id = str(getattr(tc, "id", "") or "")
+        tool_uses.append(ToolUseRequest(id=tool_id, name=name, input=tool_input))
+        # Echo OpenAI structure for the next messages.append(assistant_turn).
+        args_str = raw_args if isinstance(raw_args, str) else json.dumps(tool_input)
+        tool_calls_out.append(
+            {
+                "id": tool_id,
+                "type": "function",
+                "function": {"name": name, "arguments": args_str or "{}"},
+            }
+        )
+
+    assistant_turn: dict[str, Any] = {
+        "role": "assistant",
+        "content": raw_content if isinstance(raw_content, str) else None,
+    }
+    if tool_calls_out:
+        assistant_turn["tool_calls"] = tool_calls_out
+    return assistant_text, tool_uses, assistant_turn
+
+
+async def complete_with_tools(
+    db: AsyncSession,
+    *,
+    provider: ProviderName,
+    model: str,
+    prompt_name: str,
+    system: str,
+    messages: list[dict[str, Any]],
+    tools: list[dict[str, Any]],
+    tool_choice: dict[str, Any] | str | None = None,
+    max_tokens: int = 1024,
+    temperature: float = 0.7,
+    experiment_id: UUID | None = None,
+    phase: str | None = None,
+) -> ToolsLLMResult:
+    """Tool-calling completion for Anthropic and Kimi (OpenAI-compatible).
+
+    Returns normalized ``tool_uses`` plus a provider-native ``assistant_turn``
+    for the agent loop to append verbatim. Cost logging matches ``complete``.
+    """
+    if provider not in ("anthropic", "kimi"):
+        raise NotImplementedError(
+            "complete_with_tools supports anthropic and kimi only"
+        )
+
+    if not is_known_model(provider, model):
+        _logger.warning(
+            "llm call using unknown model",
+            provider=provider,
+            model=model,
+        )
+
+    started_at = time.perf_counter()
+    kimi_logged_cached_in: int | None = None
+
+    try:
+        if provider == "anthropic":
+            client = _get_anthropic_client()
+
+            create_kwargs: dict[str, Any] = {
+                "model": model,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "system": system,
+                "messages": messages,
+            }
+            if tools:
+                create_kwargs["tools"] = tools
+            if tool_choice is not None:
+                create_kwargs["tool_choice"] = tool_choice
+
+            async def _do_anthropic_tools_call():
+                return await client.messages.create(**create_kwargs)
+
+            @retry_async()
+            async def _call_anthropic_tools_with_retry():
+                return await get_breaker("anthropic").call(_do_anthropic_tools_call)
+
+            response = await _call_anthropic_tools_with_retry()
+            assistant_text, tool_uses, assistant_turn = _parse_anthropic_tool_content(
+                list(response.content)
+            )
+            prompt_tokens = response.usage.input_tokens
+            completion_tokens = response.usage.output_tokens
+            request_id: str | None = response.id
+            cost_usd = compute_cost_usd(
+                provider, model, prompt_tokens, completion_tokens
+            )
+            log_kwargs: dict[str, Any] = {}
+
+        elif provider == "kimi":
+            client = _get_kimi_client()
+
+            # Kimi K2.6: thinking off; temperature must be exactly 0.6; drop empty system.
+            msgs: list[dict[str, Any]] = []
+            if system and system.strip():
+                msgs.append({"role": "system", "content": system})
+            msgs.extend(messages)
+
+            create_kwargs = {
+                "model": model,
+                "max_tokens": max_tokens,
+                "temperature": 0.6,
+                "extra_body": {"thinking": {"type": "disabled"}},
+                "messages": msgs,
+            }
+            if tools:
+                create_kwargs["tools"] = tools
+            if tool_choice is not None:
+                create_kwargs["tool_choice"] = tool_choice
+
+            async def _do_kimi_tools_call():
+                return await client.chat.completions.create(**create_kwargs)
+
+            @retry_async()
+            async def _call_kimi_tools_with_retry():
+                return await get_breaker("kimi").call(_do_kimi_tools_call)
+
+            response = await _call_kimi_tools_with_retry()
+            choice_msg = response.choices[0].message
+            assistant_text, tool_uses, assistant_turn = _parse_kimi_tool_message(
+                choice_msg
+            )
+            prompt_tokens = response.usage.prompt_tokens if response.usage else 0
+            completion_tokens = (
+                response.usage.completion_tokens if response.usage else 0
+            )
+            request_id = response.id
+            kimi_cached_in = (
+                _extract_kimi_cached_tokens(response.usage) if response.usage else 0
+            )
+            kimi_logged_cached_in = kimi_cached_in if kimi_cached_in else None
+            cost_usd = compute_cost_usd(
+                provider,
+                model,
+                prompt_tokens,
+                completion_tokens,
+                cached_input_tokens=kimi_logged_cached_in,
+            )
+            log_kwargs = {
+                "cached_input_tokens": kimi_logged_cached_in,
+                "cache_creation_input_tokens": None,
+            }
+
+        else:
+            raise ValueError(f"unknown provider: {provider}")
+
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+
+        await _log_llm_call(
+            db,
+            experiment_id=experiment_id,
+            phase=phase,
+            provider=provider,
+            model=model,
+            prompt_name=prompt_name,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cost_usd=cost_usd,
+            latency_ms=latency_ms,
+            request_id=request_id,
+            **log_kwargs,
+        )
+
+        _logger.info(
+            "llm tools call completed",
+            provider=provider,
+            model=model,
+            prompt_name=prompt_name,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            cost_usd=str(cost_usd),
+            latency_ms=latency_ms,
+            tool_use_count=len(tool_uses),
+        )
+
+        return ToolsLLMResult(
+            assistant_text=assistant_text,
+            tool_uses=tool_uses,
+            assistant_turn=assistant_turn,
+            llm_result=LLMResult(
+                text=assistant_text or "",
+                provider=provider,
+                model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                cost_usd=cost_usd,
+                latency_ms=latency_ms,
+            ),
+        )
+
+    except Exception as exc:
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+        try:
+            await _log_llm_call(
+                db,
+                experiment_id=experiment_id,
+                phase=phase,
+                provider=provider,
+                model=model,
+                prompt_name=prompt_name,
+                prompt_tokens=0,
+                completion_tokens=0,
+                cost_usd=Decimal("0"),
+                latency_ms=latency_ms,
+                request_id=None,
+            )
+        except Exception as log_exc:
+            _logger.warning("failed to log failed llm tools call", error=str(log_exc))
+
+        _logger.warning(
+            "llm tools call failed",
+            provider=provider,
+            model=model,
+            prompt_name=prompt_name,
+            error_type=type(exc).__name__,
         )
         raise
