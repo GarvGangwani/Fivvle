@@ -16,6 +16,10 @@ from sqlalchemy.orm import selectinload
 from app.db.enums import ExperimentStatus
 from app.db.models.experiment import Experiment
 from app.schemas.refinement import RefinedIdea
+from app.services.spark_version_service import (
+    SparkPhaseVersionInfo,
+    fetch_spark_phase_version_info,
+)
 
 _RAW_IDEA_MAX = 500
 
@@ -34,6 +38,14 @@ class ExperimentProjectContext:
     has_validation_report: bool
     has_landing_page: bool
     has_insight_report: bool
+    spark_version_current: int
+    refined_idea_version: int
+    refine_is_stale: bool
+    evidence_is_stale: bool
+    launch_is_stale: bool
+    insight_is_stale: bool
+    # Pre-rendered STALENESS line for the prompt; None when nothing is stale.
+    staleness_line: str | None = None
 
     def to_prompt_block(self) -> str:
         """Render as terse markdown for the LLM project_context section."""
@@ -52,6 +64,10 @@ class ExperimentProjectContext:
         lines.append(f"has_validation_report: {str(self.has_validation_report).lower()}")
         lines.append(f"has_landing_page: {str(self.has_landing_page).lower()}")
         lines.append(f"has_insight_report: {str(self.has_insight_report).lower()}")
+        lines.append(f"spark_version_current: {self.spark_version_current}")
+        lines.append(f"refined_idea_version: {self.refined_idea_version}")
+        if self.staleness_line:
+            lines.append(self.staleness_line)
         return "\n".join(lines)
 
     def to_dict(self) -> dict:
@@ -102,6 +118,44 @@ def _truncate(text: str, max_len: int) -> str:
     return cleaned[: max_len - 3].rstrip() + "..."
 
 
+def _format_staleness_line(info: SparkPhaseVersionInfo) -> str | None:
+    """Compact STALENESS note for the coach prompt, or None when all fresh."""
+    phase_labels: list[str] = []
+    reasons: set[str] = set()
+    if info.refine_is_stale:
+        phase_labels.append("refine")
+        reasons.update(info.refine_stale_reasons)
+    if info.evidence_is_stale:
+        phase_labels.append("evidence")
+        reasons.update(info.evidence_stale_reasons)
+    if info.launch_is_stale:
+        phase_labels.append("launch")
+        reasons.update(info.launch_stale_reasons)
+    if info.signal_is_stale:
+        phase_labels.append("insight")
+        reasons.update(info.signal_stale_reasons)
+
+    if not phase_labels:
+        return None
+
+    if "spark" in reasons and "refined_idea" in reasons:
+        changed = "both"
+    elif "refined_idea" in reasons:
+        changed = "refined idea"
+    elif "spark" in reasons:
+        changed = "spark"
+    else:
+        changed = "upstream inputs"
+
+    phases = " / ".join(phase_labels)
+    return (
+        "STALENESS: The user has changed "
+        f"{changed} since generating {phases}. "
+        "Any content from that phase reflects the older version — "
+        "mention this when referring to it."
+    )
+
+
 async def get_experiment_project_context(
     db: AsyncSession,
     experiment: Experiment,
@@ -132,6 +186,8 @@ async def get_experiment_project_context(
     raw = exp.raw_idea.strip() if exp.raw_idea else ""
     raw_idea = _truncate(raw, _RAW_IDEA_MAX) if raw else None
 
+    phase_info = await fetch_spark_phase_version_info(db, exp)
+
     return ExperimentProjectContext(
         experiment_id=str(exp.id),
         status=exp.status.value,
@@ -143,4 +199,11 @@ async def get_experiment_project_context(
         has_validation_report=exp.validation_report is not None,
         has_landing_page=exp.landing_page is not None,
         has_insight_report=exp.insight_report is not None,
+        spark_version_current=phase_info.current_spark_version,
+        refined_idea_version=phase_info.current_refined_idea_version,
+        refine_is_stale=phase_info.refine_is_stale,
+        evidence_is_stale=phase_info.evidence_is_stale,
+        launch_is_stale=phase_info.launch_is_stale,
+        insight_is_stale=phase_info.signal_is_stale,
+        staleness_line=_format_staleness_line(phase_info),
     )

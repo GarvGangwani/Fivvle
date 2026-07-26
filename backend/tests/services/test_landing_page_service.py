@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from app.schemas.landing_page import (
     BrandDirection,
     CustomerIntelligence,
@@ -118,3 +120,71 @@ def test_scrub_competitor_names_from_copy_replaces_known_names() -> None:
     assert scrubbed["comparison"]["competitor_name"] == "The old way"
     assert "notion" not in scrubbed["hero"]["headline"].lower()
     assert "epic" not in scrubbed["hero"]["subheadline"].lower()
+
+
+@pytest.mark.asyncio
+async def test_persist_landing_page_row_stamps_refined_idea_version() -> None:
+    from uuid import uuid4
+
+    from sqlalchemy import select
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from app.config import get_settings
+    from app.db.enums import ExperimentStatus
+    from app.db.models.experiment import Experiment
+    from app.db.models.landing_page import LandingPage
+    from app.db.models.user import User
+    from app.services.landing_page_service import _persist_landing_page_row
+
+    exp_id = uuid4()
+    engine = create_async_engine(get_settings().database_url, pool_size=1, max_overflow=0)
+    sm = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
+    try:
+        async with sm() as session:
+            user = User(
+                firebase_uid=f"lp-riv-{exp_id}",
+                email=f"lp-riv-{exp_id}@example.com",
+                name="t",
+            )
+            session.add(user)
+            await session.flush()
+            experiment = Experiment(
+                id=exp_id,
+                user_id=user.id,
+                raw_idea="idea long enough for landing page stamp test content",
+                refined_idea=_minimal_refined_idea().model_dump(mode="json"),
+                refined_idea_version=4,
+                status=ExperimentStatus.RESEARCH_READY,
+                name="Stamp Test",
+            )
+            session.add(experiment)
+            await session.commit()
+
+        async with sm() as session:
+            experiment = (
+                await session.execute(select(Experiment).where(Experiment.id == exp_id))
+            ).scalar_one()
+            row = await _persist_landing_page_row(
+                session,
+                experiment=experiment,
+                copy_json={"hero": {"headline": "H", "subheadline": "S", "cta": "Join"}},
+                page_json={"meta": {}},
+                template_id="dark-premium",
+                refined_idea=_minimal_refined_idea(),
+                input_model=_minimal_input_model(),
+                page_goal="waitlist",
+            )
+            await session.commit()
+            assert row.refined_idea_version == 4
+
+        async with sm() as session:
+            stored = (
+                await session.execute(
+                    select(LandingPage.refined_idea_version).where(
+                        LandingPage.experiment_id == exp_id
+                    )
+                )
+            ).scalar_one()
+        assert stored == 4
+    finally:
+        await engine.dispose()

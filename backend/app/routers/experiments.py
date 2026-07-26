@@ -93,7 +93,6 @@ from app.schemas.experiment import (
     CreateExperimentRequest,
     ExperimentListItemResponse,
     ExperimentResponse,
-    PatchSparkRequest,
     RegenerateRefinementRequest,
     RenameExperimentRequest,
     ResearchStatusResponse,
@@ -166,7 +165,6 @@ from app.services.experiment_service import (
     fetch_experiment_canvas_metrics,
     infer_status_after_unarchive,
     regenerate_refinement,
-    update_experiment_raw_idea,
 )
 from app.services.founder_decision_service import (
     FounderDecisionArchivedError,
@@ -354,14 +352,23 @@ class GetExperimentDetailResponse(BaseModel):
     spark_last_edited_at: datetime | None = None
     refinement_started_at: datetime | None = None
     current_spark_version: int = 0
+    current_refined_idea_version: int = 0
     refine_spark_version: int | None = None
     evidence_spark_version: int | None = None
     launch_spark_version: int | None = None
     signal_spark_version: int | None = None
+    refine_refined_idea_version: int | None = None
+    evidence_refined_idea_version: int | None = None
+    launch_refined_idea_version: int | None = None
+    signal_refined_idea_version: int | None = None
     refine_is_stale: bool = False
     evidence_is_stale: bool = False
     launch_is_stale: bool = False
     signal_is_stale: bool = False
+    refine_stale_reasons: list[str] = Field(default_factory=list)
+    evidence_stale_reasons: list[str] = Field(default_factory=list)
+    launch_stale_reasons: list[str] = Field(default_factory=list)
+    signal_stale_reasons: list[str] = Field(default_factory=list)
 
 
 async def _build_experiment_detail_response(
@@ -406,14 +413,23 @@ async def _build_experiment_detail_response(
         spark_last_edited_at=experiment.spark_last_edited_at,
         refinement_started_at=experiment.refinement_started_at,
         current_spark_version=spark_info.current_spark_version,
+        current_refined_idea_version=spark_info.current_refined_idea_version,
         refine_spark_version=spark_info.refine_spark_version,
         evidence_spark_version=spark_info.evidence_spark_version,
         launch_spark_version=spark_info.launch_spark_version,
         signal_spark_version=spark_info.signal_spark_version,
+        refine_refined_idea_version=spark_info.refine_refined_idea_version,
+        evidence_refined_idea_version=spark_info.evidence_refined_idea_version,
+        launch_refined_idea_version=spark_info.launch_refined_idea_version,
+        signal_refined_idea_version=spark_info.signal_refined_idea_version,
         refine_is_stale=spark_info.refine_is_stale,
         evidence_is_stale=spark_info.evidence_is_stale,
         launch_is_stale=spark_info.launch_is_stale,
         signal_is_stale=spark_info.signal_is_stale,
+        refine_stale_reasons=spark_info.refine_stale_reasons,
+        evidence_stale_reasons=spark_info.evidence_stale_reasons,
+        launch_stale_reasons=spark_info.launch_stale_reasons,
+        signal_stale_reasons=spark_info.signal_stale_reasons,
     )
 
 
@@ -2302,37 +2318,6 @@ async def unarchive_experiment(
 
     experiment.status = infer_status_after_unarchive(experiment)
     await db.commit()
-
-    return await _build_experiment_detail_response(db, experiment)
-
-
-@router.patch(
-    "/{experiment_id}/spark",
-    response_model=GetExperimentDetailResponse,
-    status_code=status.HTTP_200_OK,
-)
-@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
-async def patch_experiment_spark(
-    request: Request,
-    response: Response,
-    experiment_id: UUID,
-    body: PatchSparkRequest,
-    db: Annotated[AsyncSession, Depends(get_session)],
-    current_user: Annotated[User, Depends(get_current_user)],
-) -> GetExperimentDetailResponse:
-    result = await db.execute(
-        select(Experiment)
-        .options(selectinload(Experiment.validation_report))
-        .where(Experiment.id == experiment_id),
-    )
-    experiment = result.scalar_one_or_none()
-    if experiment is None or experiment.user_id != current_user.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
-
-    try:
-        experiment = await update_experiment_raw_idea(db, experiment, body.raw_idea)
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
     return await _build_experiment_detail_response(db, experiment)
 

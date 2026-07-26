@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import app.llm.client as llm_client
 from app.config import get_settings
+from app.db.models.experiment import Experiment
 from app.db.models.insight_report import InsightReport
 from app.db.models.validation_report import ValidationReport as ValidationReportRow
 from app.llm.prompts.insight import (
@@ -161,6 +162,7 @@ def _persist_insight_row(
     experiment_id: UUID,
     draft: InsightReportOutputDraft,
     spark_version_id: UUID | None = None,
+    refined_idea_version: int | None = None,
 ) -> InsightReport:
     """Build an InsightReport ORM instance from the draft and add it to the session.
 
@@ -178,6 +180,7 @@ def _persist_insight_row(
         recommendation_type=draft.recommendation_type,
         raw_output=draft.model_dump(mode="json"),
         spark_version_id=spark_version_id,
+        refined_idea_version=refined_idea_version,
     )
     db.add(row)
     return row
@@ -278,11 +281,16 @@ async def generate_insight_report(
     from app.services.spark_version_service import get_latest_spark_version_id
 
     spark_version_id = await get_latest_spark_version_id(db, experiment_id)
+    riv_result = await db.execute(
+        select(Experiment.refined_idea_version).where(Experiment.id == experiment_id)
+    )
+    refined_idea_version = riv_result.scalar_one()
     row = _persist_insight_row(
         db,
         experiment_id=experiment_id,
         draft=draft,
         spark_version_id=spark_version_id,
+        refined_idea_version=refined_idea_version,
     )
     await db.flush()  # surface IntegrityError early; caller commits.
 

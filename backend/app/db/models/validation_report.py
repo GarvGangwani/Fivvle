@@ -42,6 +42,7 @@ class ValidationReport(Base):
         ForeignKey("experiment_spark_versions.id"),
         nullable=True,
     )
+    refined_idea_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # --- Kept scalar columns (queryable aggregates, populated in B3) ---
     # clarity_score: B3 synthesizer prompt will output this; B2.4 writes NULL.

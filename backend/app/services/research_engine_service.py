@@ -147,6 +147,7 @@ async def _write_validation_report(
     *,
     reflection_loops_used: int = 0,
     spark_version_id: UUID | None = None,
+    refined_idea_version: int | None = None,
 ) -> None:
     """Upsert a ValidationReport row with the raw_report payload.
 
@@ -159,6 +160,7 @@ async def _write_validation_report(
         reflection_loops_used — refinement waves with ≥1 successful Tavily re-search
         generated_at = now()
         spark_version_id — Spark snapshot this report was generated against
+        refined_idea_version — refined idea counter at generation time
     """
     from sqlalchemy.dialects.postgresql import insert as pg_insert  # noqa: PLC0415
 
@@ -169,6 +171,7 @@ async def _write_validation_report(
         reflection_loops_used=reflection_loops_used,
         generated_at=datetime.now(UTC),
         spark_version_id=spark_version_id,
+        refined_idea_version=refined_idea_version,
     )
     stmt = stmt.on_conflict_do_update(
         index_elements=["experiment_id"],
@@ -178,6 +181,7 @@ async def _write_validation_report(
             "reflection_loops_used": stmt.excluded.reflection_loops_used,
             "generated_at": stmt.excluded.generated_at,
             "spark_version_id": stmt.excluded.spark_version_id,
+            "refined_idea_version": stmt.excluded.refined_idea_version,
         },
     )
     await session.execute(stmt)
@@ -257,6 +261,7 @@ async def run_research_engine_pipeline(
             )
 
             spark_version_id = await get_latest_spark_version_id(session, experiment_id)
+            refined_idea_version = experiment.refined_idea_version
 
             # ------------------------------------------------------------------
             # 1. RESEARCH_PLANNING — planner generates research questions.
@@ -549,6 +554,7 @@ async def run_research_engine_pipeline(
                 raw_report_dict,
                 reflection_loops_used=reflector_summary.waves_used,
                 spark_version_id=spark_version_id,
+                refined_idea_version=refined_idea_version,
             )
             await _set_status(session, experiment_id, ExperimentStatus.RESEARCH_READY)
             await session.commit()

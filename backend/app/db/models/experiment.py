@@ -68,6 +68,12 @@ class Experiment(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    refined_idea_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default=sa.text("0"),
+    )
     tags: Mapped[list[str]] = mapped_column(
         ARRAY(String),
         nullable=False,

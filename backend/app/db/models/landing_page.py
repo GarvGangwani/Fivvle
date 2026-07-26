@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -98,6 +98,7 @@ class LandingPage(Base):
         ForeignKey("experiment_spark_versions.id"),
         nullable=True,
     )
+    refined_idea_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # --- Relationships ---
     experiment: Mapped[Experiment] = relationship(back_populates="landing_page")

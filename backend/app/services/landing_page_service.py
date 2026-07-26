@@ -738,6 +738,7 @@ async def _persist_landing_page_row(
         from app.services.spark_version_service import get_latest_spark_version_id
 
         existing.spark_version_id = await get_latest_spark_version_id(db, experiment.id)
+        existing.refined_idea_version = experiment.refined_idea_version
         row = existing
     else:
         scalars = _scalar_fields_for_insert(
@@ -758,6 +759,7 @@ async def _persist_landing_page_row(
             copy_json=copy_json,
             page_json=page_json,
             spark_version_id=await get_latest_spark_version_id(db, experiment.id),
+            refined_idea_version=experiment.refined_idea_version,
             **scalars,
         )
         db.add(row)

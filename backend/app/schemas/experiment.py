@@ -39,15 +39,6 @@ class CreateExperimentRequest(BaseModel):
     )
 
 
-class PatchSparkRequest(BaseModel):
-    """Body for PATCH /experiments/{id}/spark — update raw idea."""
-
-    raw_idea: str = Field(
-        max_length=2000,
-        description="Spark idea text. Empty string allowed until Refine starts.",
-    )
-
-
 class RenameExperimentRequest(BaseModel):
     """Body for PATCH /experiments/{id}/name."""
 

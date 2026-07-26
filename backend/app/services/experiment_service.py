@@ -114,22 +114,6 @@ async def create_experiment_spark(
     return experiment
 
 
-async def update_experiment_raw_idea(
-    db: AsyncSession,
-    experiment: Experiment,
-    raw_idea: str,
-) -> Experiment:
-    """Persist Spark idea edits. Empty string allowed; max length enforced."""
-    if len(raw_idea) > _RAW_IDEA_MAX_LEN:
-        raise ValueError(f"raw_idea must be at most {_RAW_IDEA_MAX_LEN} characters")
-
-    experiment.raw_idea = raw_idea
-    experiment.spark_last_edited_at = datetime.now(timezone.utc)
-    await db.commit()
-    await db.refresh(experiment)
-    return experiment
-
-
 async def begin_refinement_from_spark(
     db: AsyncSession,
     experiment: Experiment,

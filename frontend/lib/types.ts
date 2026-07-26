@@ -283,14 +283,23 @@ export interface Experiment {
   spark_last_edited_at?: string | null;
   refinement_started_at?: string | null;
   current_spark_version?: number;
+  current_refined_idea_version?: number;
   refine_spark_version?: number | null;
   evidence_spark_version?: number | null;
   launch_spark_version?: number | null;
   signal_spark_version?: number | null;
+  refine_refined_idea_version?: number | null;
+  evidence_refined_idea_version?: number | null;
+  launch_refined_idea_version?: number | null;
+  signal_refined_idea_version?: number | null;
   refine_is_stale?: boolean;
   evidence_is_stale?: boolean;
   launch_is_stale?: boolean;
   signal_is_stale?: boolean;
+  refine_stale_reasons?: string[];
+  evidence_stale_reasons?: string[];
+  launch_stale_reasons?: string[];
+  signal_stale_reasons?: string[];
 }
 
 export interface SparkVersion {

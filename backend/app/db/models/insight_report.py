@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, Text, func
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -57,6 +57,7 @@ class InsightReport(Base):
         ForeignKey("experiment_spark_versions.id"),
         nullable=True,
     )
+    refined_idea_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

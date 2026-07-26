@@ -26,14 +26,23 @@ _RAW_IDEA_MAX_LEN = 2000
 @dataclass(frozen=True, slots=True)
 class SparkPhaseVersionInfo:
     current_spark_version: int
+    current_refined_idea_version: int
     refine_spark_version: int | None
     evidence_spark_version: int | None
     launch_spark_version: int | None
     signal_spark_version: int | None
+    refine_refined_idea_version: int | None
+    evidence_refined_idea_version: int | None
+    launch_refined_idea_version: int | None
+    signal_refined_idea_version: int | None
     refine_is_stale: bool
     evidence_is_stale: bool
     launch_is_stale: bool
     signal_is_stale: bool
+    refine_stale_reasons: list[str]
+    evidence_stale_reasons: list[str]
+    launch_stale_reasons: list[str]
+    signal_stale_reasons: list[str]
 
 
 def _attachment_ids_equal(a: list[UUID], b: list[UUID]) -> bool:
@@ -44,6 +53,21 @@ def _is_stale(phase_version: int | None, current: int) -> bool:
     if phase_version is None or current <= 0:
         return False
     return phase_version < current
+
+
+def _stale_reasons(
+    spark_phase: int | None,
+    spark_current: int,
+    riv_phase: int | None,
+    riv_current: int,
+) -> list[str]:
+    """Reasons a phase is stale relative to current spark / refined_idea versions."""
+    reasons: list[str] = []
+    if _is_stale(spark_phase, spark_current):
+        reasons.append("spark")
+    if _is_stale(riv_phase, riv_current):
+        reasons.append("refined_idea")
+    return reasons
 
 
 async def get_latest_spark_version(
@@ -169,6 +193,7 @@ async def fetch_spark_phase_version_info(
 ) -> SparkPhaseVersionInfo:
     latest = await get_latest_spark_version(db, experiment.id)
     current = latest.version_number if latest is not None else 0
+    current_riv = experiment.refined_idea_version
 
     refine_version: int | None = None
     if experiment.thread_id is not None:
@@ -183,43 +208,71 @@ async def fetch_spark_phase_version_info(
 
     # Always query by experiment_id — do not touch lazy relationships
     # (MissingGreenlet under async SQLAlchemy).
+    # Refine has no refined_idea_version stamp (chat thread is spark-only).
+    refine_riv: int | None = None
+
     vr_result = await db.execute(
-        select(ValidationReport.spark_version_id).where(
-            ValidationReport.experiment_id == experiment.id
-        )
+        select(
+            ValidationReport.spark_version_id,
+            ValidationReport.refined_idea_version,
+        ).where(ValidationReport.experiment_id == experiment.id)
     )
+    vr_row = vr_result.one_or_none()
     evidence_version = await _version_number_for_id(
-        db, vr_result.scalar_one_or_none()
+        db, vr_row[0] if vr_row is not None else None
     )
+    evidence_riv = vr_row[1] if vr_row is not None else None
 
     lp_result = await db.execute(
-        select(LandingPage.spark_version_id).where(
-            LandingPage.experiment_id == experiment.id
-        )
+        select(
+            LandingPage.spark_version_id,
+            LandingPage.refined_idea_version,
+        ).where(LandingPage.experiment_id == experiment.id)
     )
+    lp_row = lp_result.one_or_none()
     launch_version = await _version_number_for_id(
-        db, lp_result.scalar_one_or_none()
+        db, lp_row[0] if lp_row is not None else None
     )
+    launch_riv = lp_row[1] if lp_row is not None else None
 
     ir_result = await db.execute(
-        select(InsightReport.spark_version_id).where(
-            InsightReport.experiment_id == experiment.id
-        )
+        select(
+            InsightReport.spark_version_id,
+            InsightReport.refined_idea_version,
+        ).where(InsightReport.experiment_id == experiment.id)
     )
+    ir_row = ir_result.one_or_none()
     signal_version = await _version_number_for_id(
-        db, ir_result.scalar_one_or_none()
+        db, ir_row[0] if ir_row is not None else None
     )
+    signal_riv = ir_row[1] if ir_row is not None else None
+
+    refine_reasons = _stale_reasons(refine_version, current, refine_riv, current_riv)
+    evidence_reasons = _stale_reasons(
+        evidence_version, current, evidence_riv, current_riv
+    )
+    launch_reasons = _stale_reasons(launch_version, current, launch_riv, current_riv)
+    signal_reasons = _stale_reasons(signal_version, current, signal_riv, current_riv)
 
     return SparkPhaseVersionInfo(
         current_spark_version=current,
+        current_refined_idea_version=current_riv,
         refine_spark_version=refine_version,
         evidence_spark_version=evidence_version,
         launch_spark_version=launch_version,
         signal_spark_version=signal_version,
-        refine_is_stale=_is_stale(refine_version, current),
-        evidence_is_stale=_is_stale(evidence_version, current),
-        launch_is_stale=_is_stale(launch_version, current),
-        signal_is_stale=_is_stale(signal_version, current),
+        refine_refined_idea_version=refine_riv,
+        evidence_refined_idea_version=evidence_riv,
+        launch_refined_idea_version=launch_riv,
+        signal_refined_idea_version=signal_riv,
+        refine_is_stale=bool(refine_reasons),
+        evidence_is_stale=bool(evidence_reasons),
+        launch_is_stale=bool(launch_reasons),
+        signal_is_stale=bool(signal_reasons),
+        refine_stale_reasons=refine_reasons,
+        evidence_stale_reasons=evidence_reasons,
+        launch_stale_reasons=launch_reasons,
+        signal_stale_reasons=signal_reasons,
     )
 
 
@@ -228,9 +281,7 @@ async def stamp_chat_thread_spark_version(
     thread: ChatThread,
     experiment_id: UUID,
 ) -> None:
-    """Stamp Refine's chat thread with the current Spark version (once)."""
-    if thread.spark_version_id is not None:
-        return
+    """Stamp Refine's chat thread with the current Spark version (overwrite)."""
     version_id = await get_latest_spark_version_id(db, experiment_id)
     if version_id is None:
         return

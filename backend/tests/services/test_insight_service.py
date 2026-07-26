@@ -340,6 +340,9 @@ async def _insight_report_count(db: AsyncSession, experiment_id: object) -> int:
 @pytest.mark.asyncio
 async def test_happy_path_persists_insight_report(db_session: AsyncSession) -> None:
     experiment = await _persist_user_and_experiment(db_session)
+    experiment.refined_idea_version = 5
+    await db_session.commit()
+    await db_session.refresh(experiment)
     vr = _make_validation_report_pydantic()
     valid_ids = _valid_finding_ids(vr)
     draft = _build_valid_draft(valid_ids)
@@ -365,6 +368,7 @@ async def test_happy_path_persists_insight_report(db_session: AsyncSession) -> N
     assert row.research_takeaways == {
         "items": [tk.model_dump(mode="json") for tk in draft.research_takeaways]
     }
+    assert row.refined_idea_version == experiment.refined_idea_version
 
 
 # ---------------------------------------------------------------------------

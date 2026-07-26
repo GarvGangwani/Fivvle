@@ -186,6 +186,28 @@ def test_finalize_transitions_to_refined_when_idea_present(
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "REFINED"
     assert resp.json()["refined_idea"] is not None
+    assert _refined_idea_version(experiment_id) == 1
+
+    # Re-finalize bumps again.
+    resp2 = client.post(
+        f"/experiments/{experiment_id}/refine/finalize",
+        headers=_AUTH_HEADER,
+    )
+    assert resp2.status_code == 200, resp2.text
+    assert _refined_idea_version(experiment_id) == 2
+
+
+def _refined_idea_version(experiment_id: str) -> int:
+    async def _work(sm):  # type: ignore[no-untyped-def]
+        async with sm() as db:
+            exp = (
+                await db.execute(
+                    select(Experiment).where(Experiment.id == UUID(experiment_id))
+                )
+            ).scalar_one()
+            return int(exp.refined_idea_version)
+
+    return int(_run_db(_work))
 
 
 def test_reset_session_clears_messages_and_refined_idea(
