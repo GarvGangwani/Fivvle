@@ -10,7 +10,7 @@ import {
 } from "@/components/launch/LaunchStagePanel";
 import { PublishConfirmDialog } from "@/components/launch/PublishConfirmDialog";
 import { SignalStagePanel } from "@/components/signal/SignalStagePanel";
-import { getExperiment } from "@/lib/api";
+import { getExperiment, republishLandingPage } from "@/lib/api";
 import type { ExperimentStatus, FounderDecision } from "@/lib/types";
 import { useToast } from "@/components/ui/ToastProvider";
 
@@ -53,6 +53,7 @@ export function DeepDiveOverlay({
   const [showArchiveDialog, setShowArchiveDialog] = useState(false);
   const [landingRefreshKey, setLandingRefreshKey] = useState(0);
   const [resolvedProjectName, setResolvedProjectName] = useState(projectName);
+  const [republishing, setRepublishing] = useState(false);
 
   useEffect(() => {
     setResolvedProjectName(projectName);
@@ -118,6 +119,30 @@ export function DeepDiveOverlay({
     }
   }, [launchLanding?.slug, toast]);
 
+  const handleRepublish = useCallback(async () => {
+    const confirmed = window.confirm(
+      "Republish? Your Signal analytics will reset — the current cohort will close and a new one will start. Prior data stays saved but insight reports will focus on the new run. Continue?",
+    );
+    if (!confirmed) return;
+
+    setRepublishing(true);
+    try {
+      const result = await republishLandingPage(experimentId);
+      toast(
+        `New cohort started (Publish #${result.publish_number}).`,
+        "success",
+      );
+      setLandingRefreshKey((k) => k + 1);
+      void onExperimentRefresh?.().catch(() => {
+        /* best-effort */
+      });
+    } catch {
+      toast("Republish failed — try again.", "error");
+    } finally {
+      setRepublishing(false);
+    }
+  }, [experimentId, toast, onExperimentRefresh]);
+
   const handlePublished = useCallback(
     (result: { slug: string; public_url: string }) => {
       setShowPublishDialog(false);
@@ -145,9 +170,6 @@ export function DeepDiveOverlay({
   if (!isOpen) return null;
 
   const isLive = Boolean(launchLanding?.isLive && launchLanding.slug);
-  const publishLabel = isLive
-    ? `Live at /${launchLanding!.slug}`
-    : "Publish landing page";
   const publishEnabled = launchLanding?.status === "LANDING_DRAFT";
   const canArchive = experimentStatus !== "ARCHIVED";
 
@@ -175,14 +197,34 @@ export function DeepDiveOverlay({
 
           <div className="flex items-center gap-3">
             {act === "launch" ? (
-              <button
-                type="button"
-                onClick={isLive ? () => void handleCopyLiveLink() : handlePublishClick}
-                disabled={!isLive && !publishEnabled}
-                className="rounded-none border-2 border-border-master bg-surface-card px-3 py-1.5 font-label-md text-label-sm uppercase text-ink-primary shadow-brutal-md transition-all enabled:hover:-translate-y-0.5 disabled:opacity-50"
-              >
-                {publishLabel}
-              </button>
+              isLive ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyLiveLink()}
+                    className="rounded-none border-2 border-border-master bg-surface-card px-3 py-1.5 font-label-md text-label-sm uppercase text-ink-primary shadow-brutal-md transition-all hover:-translate-y-0.5"
+                  >
+                    Copy link
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleRepublish()}
+                    disabled={republishing}
+                    className="rounded-none border-2 border-border-master bg-surface-elevated px-3 py-1.5 font-label-md text-label-sm uppercase text-ink-primary shadow-brutal-md transition-all enabled:hover:-translate-y-0.5 disabled:opacity-50"
+                  >
+                    {republishing ? "Republishing…" : "Republish (new cohort)"}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handlePublishClick}
+                  disabled={!publishEnabled}
+                  className="rounded-none border-2 border-border-master bg-surface-card px-3 py-1.5 font-label-md text-label-sm uppercase text-ink-primary shadow-brutal-md transition-all enabled:hover:-translate-y-0.5 disabled:opacity-50"
+                >
+                  Publish landing page
+                </button>
+              )
             ) : null}
             {canArchive ? (
               <button

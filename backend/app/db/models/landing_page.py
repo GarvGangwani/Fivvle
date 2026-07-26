@@ -17,6 +17,7 @@ from app.db.enums import LandingCtaType, LandingDensity
 
 if TYPE_CHECKING:
     from app.db.models.experiment import Experiment
+    from app.db.models.landing_page_publish import LandingPagePublish
 
 
 class LandingPage(Base):
@@ -105,3 +106,7 @@ class LandingPage(Base):
 
     # --- Relationships ---
     experiment: Mapped[Experiment] = relationship(back_populates="landing_page")
+    publishes: Mapped[list[LandingPagePublish]] = relationship(
+        back_populates="landing_page",
+        cascade="all, delete-orphan",
+    )

@@ -700,6 +700,8 @@ export interface ExperimentAnalytics {
   conversion_rate_by_source: Record<string, number>;
   signups_by_location: SignupLocationBucket[];
   days_live: number;
+  publish_number?: number | null;
+  total_publishes?: number;
   insight_threshold_met: boolean;
   insight_progress: InsightProgress;
   warm_network_bias_index?: number;

@@ -9,6 +9,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.enums import ExperimentStatus
 from app.db.models.experiment import Experiment
+from app.db.models.landing_page import LandingPage
+from app.db.models.landing_page_publish import LandingPagePublish
 from app.db.models.page_view import PageView
 from app.db.models.waitlist_signup import WaitlistSignup
 from app.schemas.experiment import ExperimentCardStats
@@ -31,7 +33,10 @@ async def build_experiment_card_stats_map(
     *,
     user_id: UUID,
 ) -> dict[UUID, ExperimentCardStats]:
-    """Return page-view and waitlist counts for live projects with metrics unlocked."""
+    """Return page-view and waitlist counts for live projects with metrics unlocked.
+
+    Counts are scoped to each experiment's current (open) publish cohort.
+    """
     live_ids = [exp.id for exp in experiments if exp.status in _LIVE_LANDING_STATUSES]
     if not live_ids:
         return {}
@@ -45,14 +50,35 @@ async def build_experiment_card_stats_map(
     if not unlocked_ids:
         return {}
 
+    open_cohort_rows = (
+        await db.execute(
+            select(LandingPage.experiment_id, LandingPagePublish.id)
+            .join(
+                LandingPagePublish,
+                LandingPagePublish.landing_page_id == LandingPage.id,
+            )
+            .where(
+                LandingPage.experiment_id.in_(unlocked_ids),
+                LandingPagePublish.ended_at.is_(None),
+            ),
+        )
+    ).all()
+    open_by_experiment = {row[0]: row[1] for row in open_cohort_rows}
+    open_publish_ids = list(open_by_experiment.values())
+    if not open_publish_ids:
+        return {
+            experiment_id: ExperimentCardStats(page_views=0, waitlist_signups=0)
+            for experiment_id in unlocked_ids
+        }
+
     views_stmt = (
         select(PageView.experiment_id, func.count(PageView.id))
-        .where(PageView.experiment_id.in_(unlocked_ids))
+        .where(PageView.publish_id.in_(open_publish_ids))
         .group_by(PageView.experiment_id)
     )
     signups_stmt = (
         select(WaitlistSignup.experiment_id, func.count(WaitlistSignup.id))
-        .where(WaitlistSignup.experiment_id.in_(unlocked_ids))
+        .where(WaitlistSignup.publish_id.in_(open_publish_ids))
         .group_by(WaitlistSignup.experiment_id)
     )
 

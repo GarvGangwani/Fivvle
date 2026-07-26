@@ -33,7 +33,11 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
         await engine.dispose()
 
 
-async def _persist_live_experiment(db: AsyncSession) -> Experiment:
+async def _persist_live_experiment(
+    db: AsyncSession,
+    *,
+    with_cohort: bool = False,
+) -> tuple[Experiment, LandingPage]:
     user = User(
         firebase_uid=f"waitlist-geo-{uuid4()}",
         email=f"waitlist-geo-{uuid4()}@example.com",
@@ -66,14 +70,27 @@ async def _persist_live_experiment(db: AsyncSession) -> Experiment:
         live_at=live_at,
     )
     db.add(landing_page)
+    await db.flush()
+    if with_cohort:
+        from app.db.models.landing_page_publish import LandingPagePublish
+
+        db.add(
+            LandingPagePublish(
+                landing_page_id=landing_page.id,
+                publish_number=1,
+                published_at=live_at,
+                ended_at=None,
+            )
+        )
     await db.commit()
     await db.refresh(experiment)
-    return experiment
+    await db.refresh(landing_page)
+    return experiment, landing_page
 
 
 @pytest.mark.asyncio
 async def test_record_waitlist_signup_stores_geo_fields(db_session: AsyncSession) -> None:
-    experiment = await _persist_live_experiment(db_session)
+    experiment, landing_page = await _persist_live_experiment(db_session)
     geo = IpGeolocation(city="Austin", region="Texas", country="United States")
 
     with patch(
@@ -86,6 +103,7 @@ async def test_record_waitlist_signup_stores_geo_fields(db_session: AsyncSession
             email="founder@example.com",
             source_tag="twitter",
             client_ip="8.8.8.8",
+            landing_page_id=landing_page.id,
         )
 
     assert signup.geo_city == "Austin"
@@ -98,7 +116,7 @@ async def test_record_waitlist_signup_stores_geo_fields(db_session: AsyncSession
 async def test_record_waitlist_signup_skips_geo_for_private_ip(
     db_session: AsyncSession,
 ) -> None:
-    experiment = await _persist_live_experiment(db_session)
+    experiment, landing_page = await _persist_live_experiment(db_session)
 
     with patch(
         "app.services.waitlist_service.lookup_ip_geolocation",
@@ -110,6 +128,7 @@ async def test_record_waitlist_signup_skips_geo_for_private_ip(
             email="local@example.com",
             source_tag=None,
             client_ip="127.0.0.1",
+            landing_page_id=landing_page.id,
         )
 
     lookup_mock.assert_not_called()
@@ -120,16 +139,81 @@ async def test_record_waitlist_signup_skips_geo_for_private_ip(
 
 
 @pytest.mark.asyncio
+async def test_record_waitlist_signup_stamps_publish_id_when_cohort_open(
+    db_session: AsyncSession,
+) -> None:
+    experiment, landing_page = await _persist_live_experiment(
+        db_session,
+        with_cohort=True,
+    )
+    from app.db.models.landing_page_publish import LandingPagePublish
+    from sqlalchemy import select
+
+    cohort = (
+        await db_session.execute(
+            select(LandingPagePublish).where(
+                LandingPagePublish.landing_page_id == landing_page.id,
+                LandingPagePublish.ended_at.is_(None),
+            ),
+        )
+    ).scalar_one()
+
+    signup = await record_waitlist_signup(
+        db_session,
+        experiment_id=experiment.id,
+        email="cohort@example.com",
+        source_tag="twitter",
+        client_ip=None,
+        landing_page_id=landing_page.id,
+    )
+    assert signup.publish_id == cohort.id
+
+
+@pytest.mark.asyncio
+async def test_record_waitlist_signup_stamps_none_when_no_open_cohort(
+    db_session: AsyncSession,
+) -> None:
+    experiment, landing_page = await _persist_live_experiment(
+        db_session,
+        with_cohort=False,
+    )
+    signup = await record_waitlist_signup(
+        db_session,
+        experiment_id=experiment.id,
+        email="nocohort@example.com",
+        source_tag=None,
+        client_ip=None,
+        landing_page_id=landing_page.id,
+    )
+    assert signup.publish_id is None
+
+
+@pytest.mark.asyncio
 async def test_analytics_aggregate_groups_signups_by_location(
     db_session: AsyncSession,
 ) -> None:
-    experiment = await _persist_live_experiment(db_session)
+    experiment, landing_page = await _persist_live_experiment(
+        db_session,
+        with_cohort=True,
+    )
     now = datetime.now(timezone.utc)
+    from app.db.models.landing_page_publish import LandingPagePublish
+    from sqlalchemy import select
+
+    cohort = (
+        await db_session.execute(
+            select(LandingPagePublish).where(
+                LandingPagePublish.landing_page_id == landing_page.id,
+                LandingPagePublish.ended_at.is_(None),
+            ),
+        )
+    ).scalar_one()
 
     for source_tag in ("twitter", "linkedin", "email"):
         db_session.add(
             PageView(
                 experiment_id=experiment.id,
+                publish_id=cohort.id,
                 source_tag=source_tag,
                 ip_address="9.9.9.9",
                 ts=now,
@@ -151,6 +235,7 @@ async def test_analytics_aggregate_groups_signups_by_location(
             email="one@example.com",
             source_tag="twitter",
             client_ip="1.1.1.1",
+            landing_page_id=landing_page.id,
         )
         await record_waitlist_signup(
             db_session,
@@ -158,6 +243,7 @@ async def test_analytics_aggregate_groups_signups_by_location(
             email="two@example.com",
             source_tag="linkedin",
             client_ip="2.2.2.2",
+            landing_page_id=landing_page.id,
         )
         await record_waitlist_signup(
             db_session,
@@ -165,6 +251,7 @@ async def test_analytics_aggregate_groups_signups_by_location(
             email="three@example.com",
             source_tag="email",
             client_ip="3.3.3.3",
+            landing_page_id=landing_page.id,
         )
 
     aggregate = await build_analytics_aggregate(db_session, experiment.id)

@@ -38,6 +38,7 @@ from app.db.enums import DispatchTrigger, ExperimentStatus, FounderDecision
 from app.db.models.experiment import Experiment
 from app.db.models.insight_report import InsightReport
 from app.db.models.landing_page import LandingPage
+from app.db.models.landing_page_publish import LandingPagePublish
 from app.db.models.user import User
 from app.db.models.validation_report import ValidationReport
 from app.db.models.waitlist_signup import WaitlistSignup
@@ -49,6 +50,11 @@ from app.dispatchers.dependencies import (
 )
 from app.dispatchers.in_process_landing_page import landing_generation_in_progress
 from app.services.landing_page_revalidate import notify_live_landing_page_changed
+from app.services.landing_page_publish_service import (
+    close_and_open_next_cohort,
+    create_first_cohort,
+    get_open_cohort,
+)
 from app.utils.landing_page_public import is_landing_page_editable, is_public_landing_page_accessible
 from app.utils.landing_page_urls import build_public_landing_page_url
 from app.utils.wallet_http import debit_for_service_or_raise, refund_for_service
@@ -784,47 +790,18 @@ async def rerun_evidence(
 async def _check_min_insight_data(
     db: AsyncSession, experiment_id: UUID
 ) -> tuple[int, int, int]:
-    """Compute (page_view_count, signup_count, days_live) for the experiment.
+    """Compute (page_view_count, signup_count, days_live) for the current cohort.
 
     Returns the triple even when min-data is not met — the caller decides
-    whether to raise 409 based on these numbers.
-
-    days_live is 0 when LandingPage is missing or live_at is None — in that
-    case the (LANDING_LIVE status precondition) should have blocked the call
-    earlier, but we return 0 defensively.
+    whether to raise 409 based on these numbers. Delegates to
+    ``compute_insight_threshold`` so the ratchet stays single-sourced.
     """
-    from datetime import datetime, timezone  # noqa: PLC0415
-
-    from sqlalchemy import func  # noqa: PLC0415
-
-    from app.db.models.landing_page import LandingPage  # noqa: PLC0415
-    from app.db.models.page_view import PageView  # noqa: PLC0415
-    from app.db.models.waitlist_signup import WaitlistSignup  # noqa: PLC0415
-
-    views_stmt = select(func.count(PageView.id)).where(
-        PageView.experiment_id == experiment_id
+    threshold = await compute_insight_threshold(db, experiment_id)
+    return (
+        threshold.views_current,
+        threshold.signups_current,
+        threshold.days_current,
     )
-    signups_stmt = select(func.count(WaitlistSignup.id)).where(
-        WaitlistSignup.experiment_id == experiment_id
-    )
-    landing_stmt = select(LandingPage.live_at).where(
-        LandingPage.experiment_id == experiment_id
-    )
-
-    views_result = await db.execute(views_stmt)
-    signups_result = await db.execute(signups_stmt)
-    landing_result = await db.execute(landing_stmt)
-
-    page_view_count = int(views_result.scalar_one() or 0)
-    signup_count = int(signups_result.scalar_one() or 0)
-    live_at = landing_result.scalar_one_or_none()
-
-    if live_at is None:
-        days_live = 0
-    else:
-        days_live = max((datetime.now(timezone.utc) - live_at).days, 0)
-
-    return page_view_count, signup_count, days_live
 
 
 @router.post(
@@ -1888,9 +1865,26 @@ async def publish_landing_page(
     if landing_page is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Landing page not found")
 
+    existing_cohort = (
+        await db.execute(
+            select(LandingPagePublish.id).where(
+                LandingPagePublish.landing_page_id == landing_page.id,
+            ).limit(1),
+        )
+    ).scalar_one_or_none()
+    if existing_cohort is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                "Landing page already has a publish cohort; "
+                "use POST …/landing-page/republish to start a new cohort"
+            ),
+        )
+
     now = datetime.now(timezone.utc)
     landing_page.live_at = now
     experiment.status = ExperimentStatus.LANDING_LIVE
+    cohort = await create_first_cohort(db, landing_page.id)
     await db.commit()
     await db.refresh(landing_page)
 
@@ -1901,6 +1895,67 @@ async def publish_landing_page(
         message="Landing page published",
         slug=landing_page.slug,
         public_url=public_url,
+        publish_number=cohort.publish_number,
+    )
+
+
+@router.post(
+    "/{experiment_id}/landing-page/republish",
+    response_model=PublishResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def republish_landing_page(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> PublishResponse:
+    """Close the current Signal cohort and open a new one. Does not change live_at/status."""
+    exp_result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
+    experiment = exp_result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
+    if experiment.status != ExperimentStatus.LANDING_LIVE:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Experiment must be in LANDING_LIVE status to republish",
+        )
+
+    lp_result = await db.execute(
+        select(LandingPage).where(LandingPage.experiment_id == experiment_id),
+    )
+    landing_page = lp_result.scalar_one_or_none()
+    if landing_page is None or landing_page.live_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Landing page not found or not live",
+        )
+
+    open_cohort = await get_open_cohort(db, landing_page.id)
+    if open_cohort is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No open publish cohort to close; publish first",
+        )
+
+    try:
+        new_cohort = await close_and_open_next_cohort(db, landing_page.id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No open publish cohort to close; publish first",
+        ) from None
+
+    await db.commit()
+
+    public_url = build_public_landing_page_url(landing_page.slug)
+    return PublishResponse(
+        message="Landing page republished",
+        slug=landing_page.slug,
+        public_url=public_url,
+        publish_number=new_cohort.publish_number,
     )
 
 
@@ -1992,6 +2047,8 @@ async def get_experiment_analytics(
     experiment_id: UUID,
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(get_current_user)],
+    publish_id: Annotated[UUID | None, Query()] = None,
+    include_all: Annotated[bool, Query(alias="all")] = False,
 ) -> AnalyticsResponse:
     exp_result = await db.execute(select(Experiment).where(Experiment.id == experiment_id))
     experiment = exp_result.scalar_one_or_none()
@@ -2013,7 +2070,12 @@ async def get_experiment_analytics(
         )
 
     try:
-        aggregate = await build_analytics_aggregate(db, experiment_id)
+        built = await build_analytics_aggregate(
+            db,
+            experiment_id,
+            publish_id=publish_id,
+            include_all_publishes=include_all,
+        )
     except LandingPageNotLiveError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -2021,6 +2083,7 @@ async def get_experiment_analytics(
         ) from None
 
     threshold = await compute_insight_threshold(db, experiment_id)
+    aggregate = built.aggregate
 
     return AnalyticsResponse(
         total_page_views=aggregate.total_page_views,
@@ -2032,6 +2095,8 @@ async def get_experiment_analytics(
         conversion_rate_by_source=aggregate.conversion_rate_by_source,
         signups_by_location=aggregate.signups_by_location,
         days_live=aggregate.days_live,
+        publish_number=built.publish_number,
+        total_publishes=built.total_publishes,
         insight_threshold_met=threshold.met,
         insight_progress=InsightProgress(
             views_current=threshold.views_current,
@@ -2067,6 +2132,8 @@ async def export_experiment_waitlist(
     if experiment is None or experiment.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
 
+    # Historical view: all signups across publish cohorts (include_all_publishes).
+    # Cohort filtering is for Signal analytics / insight only — not waitlist export.
     signups_result = await db.execute(
         select(WaitlistSignup)
         .where(WaitlistSignup.experiment_id == experiment_id)
@@ -2115,6 +2182,7 @@ async def list_experiment_waitlist(
     if experiment is None or experiment.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found")
 
+    # Historical view across all publish cohorts (same decision as waitlist export).
     signups_result = await db.execute(
         select(WaitlistSignup)
         .where(WaitlistSignup.experiment_id == experiment_id)

@@ -163,6 +163,7 @@ def _persist_insight_row(
     draft: InsightReportOutputDraft,
     spark_version_id: UUID | None = None,
     refined_idea_version: int | None = None,
+    publish_id: UUID | None = None,
 ) -> InsightReport:
     """Build an InsightReport ORM instance from the draft and add it to the session.
 
@@ -181,6 +182,7 @@ def _persist_insight_row(
         raw_output=draft.model_dump(mode="json"),
         spark_version_id=spark_version_id,
         refined_idea_version=refined_idea_version,
+        publish_id=publish_id,
     )
     db.add(row)
     return row
@@ -217,7 +219,8 @@ async def generate_insight_report(
     settings = get_settings()
 
     vr = await _fetch_validation_report(db, experiment_id)
-    analytics = await build_analytics_aggregate(db, experiment_id)
+    analytics_built = await build_analytics_aggregate(db, experiment_id)
+    analytics = analytics_built.aggregate
     valid_ids = _compute_valid_finding_id_set(vr)
 
     base_user_prompt = build_insight_user_prompt(vr, analytics)
@@ -291,6 +294,7 @@ async def generate_insight_report(
         draft=draft,
         spark_version_id=spark_version_id,
         refined_idea_version=refined_idea_version,
+        publish_id=analytics_built.publish_id,
     )
     await db.flush()  # surface IntegrityError early; caller commits.
 

@@ -237,6 +237,10 @@ export function MetricsWidget({
           Live metrics
         </h2>
         <p className="mt-1 text-sm text-[var(--fv-text-muted)]">
+          {analytics.publish_number == null
+            ? "All publishes"
+            : `Publish #${analytics.publish_number}`}
+          {" · "}
           {analytics.days_live === 0
             ? "Published today"
             : `${analytics.days_live} day${analytics.days_live === 1 ? "" : "s"} live`}

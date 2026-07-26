@@ -22,6 +22,7 @@ from app.db.enums import ExperimentStatus, InsightRecommendation, LandingCtaType
 from app.db.models.experiment import Experiment
 from app.db.models.insight_report import InsightReport
 from app.db.models.landing_page import LandingPage
+from app.db.models.landing_page_publish import LandingPagePublish
 from app.db.models.page_view import PageView
 from app.db.models.user import User
 from app.db.models.validation_report import ValidationReport as ValidationReportRow
@@ -275,7 +276,7 @@ async def _persist_landing_page_with_telemetry(
     experiment_id: object,
     *,
     days_live: int = 3,
-) -> None:
+) -> LandingPagePublish:
     live_at = _NOW - timedelta(days=days_live)
     landing_page = LandingPage(
         experiment_id=experiment_id,
@@ -294,6 +295,15 @@ async def _persist_landing_page_with_telemetry(
     db.add(landing_page)
     await db.flush()
 
+    cohort = LandingPagePublish(
+        landing_page_id=landing_page.id,
+        publish_number=1,
+        published_at=live_at,
+        ended_at=None,
+    )
+    db.add(cohort)
+    await db.flush()
+
     live_date = live_at.astimezone(timezone.utc).date()
     for day_idx in range(days_live):
         day_ts = datetime.combine(
@@ -305,6 +315,7 @@ async def _persist_landing_page_with_telemetry(
             db.add(
                 PageView(
                     experiment_id=experiment_id,
+                    publish_id=cohort.id,
                     source_tag="twitter" if day_idx % 2 == 0 else "google",
                     ts=day_ts,
                     ip_address=f"10.0.0.{day_idx + 1}",
@@ -315,12 +326,15 @@ async def _persist_landing_page_with_telemetry(
             db.add(
                 WaitlistSignup(
                     experiment_id=experiment_id,
+                    publish_id=cohort.id,
                     email=f"signup-{uuid4()}@example.com",
                     source_tag="twitter",
                     ts=day_ts,
                 )
             )
     await db.commit()
+    await db.refresh(cohort)
+    return cohort
 
 
 async def _insight_report_count(db: AsyncSession, experiment_id: object) -> int:
@@ -347,7 +361,7 @@ async def test_happy_path_persists_insight_report(db_session: AsyncSession) -> N
     valid_ids = _valid_finding_ids(vr)
     draft = _build_valid_draft(valid_ids)
     await _persist_validation_report(db_session, experiment.id)
-    await _persist_landing_page_with_telemetry(db_session, experiment.id)
+    cohort = await _persist_landing_page_with_telemetry(db_session, experiment.id)
 
     status_before = experiment.status
     mock_complete = AsyncMock(return_value=(draft, _make_mock_llm_meta()))
@@ -369,6 +383,7 @@ async def test_happy_path_persists_insight_report(db_session: AsyncSession) -> N
         "items": [tk.model_dump(mode="json") for tk in draft.research_takeaways]
     }
     assert row.refined_idea_version == experiment.refined_idea_version
+    assert row.publish_id == cohort.id
 
 
 # ---------------------------------------------------------------------------

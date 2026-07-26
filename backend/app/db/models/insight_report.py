@@ -17,6 +17,7 @@ from app.db.enums import InsightRecommendation
 
 if TYPE_CHECKING:
     from app.db.models.experiment import Experiment
+    from app.db.models.landing_page_publish import LandingPagePublish
 
 
 class InsightReport(Base):
@@ -58,6 +59,13 @@ class InsightReport(Base):
         nullable=True,
     )
     refined_idea_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Cohort this report documents. SET NULL on cohort delete — report survives.
+    publish_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("landing_page_publishes.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     generated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -66,3 +74,4 @@ class InsightReport(Base):
 
     # --- Relationships ---
     experiment: Mapped[Experiment] = relationship(back_populates="insight_report")
+    publish: Mapped[LandingPagePublish | None] = relationship()

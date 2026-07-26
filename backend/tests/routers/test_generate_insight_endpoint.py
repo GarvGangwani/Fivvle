@@ -16,6 +16,7 @@ from app.db.enums import ExperimentStatus, InsightRecommendation, LandingCtaType
 from app.db.models.experiment import Experiment
 from app.db.models.insight_report import InsightReport
 from app.db.models.landing_page import LandingPage
+from app.db.models.landing_page_publish import LandingPagePublish
 from app.db.models.page_view import PageView
 from app.db.models.waitlist_signup import WaitlistSignup
 from app.dispatchers.dependencies import get_insight_dispatcher_dep
@@ -157,11 +158,24 @@ def _seed_insight_fixture(
                 session.add(landing_page)
                 await session.flush()
 
+                publish_id = None
+                if live_at is not None:
+                    cohort = LandingPagePublish(
+                        landing_page_id=landing_page.id,
+                        publish_number=1,
+                        published_at=live_at,
+                        ended_at=None,
+                    )
+                    session.add(cohort)
+                    await session.flush()
+                    publish_id = cohort.id
+
                 now = datetime.now(timezone.utc)
                 for i in range(page_view_count):
                     session.add(
                         PageView(
                             experiment_id=UUID(experiment_id),
+                            publish_id=publish_id,
                             source_tag="twitter",
                             ts=now - timedelta(hours=i),
                             ip_address=f"10.0.0.{i % 250}",
@@ -172,6 +186,7 @@ def _seed_insight_fixture(
                     session.add(
                         WaitlistSignup(
                             experiment_id=UUID(experiment_id),
+                            publish_id=publish_id,
                             email=f"signup-{i}-{uuid4()}@example.com",
                             source_tag="twitter",
                             ts=now - timedelta(hours=i),

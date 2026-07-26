@@ -931,6 +931,7 @@ export type PublishProjectResponse = {
   message: string;
   slug: string;
   public_url: string;
+  publish_number: number;
 };
 
 export type PublicationSummary = {
@@ -952,6 +953,17 @@ export async function publishProject(
     {
       method: "POST",
       body: payload,
+    },
+  );
+}
+
+export async function republishLandingPage(
+  experimentId: string,
+): Promise<PublishProjectResponse> {
+  return apiFetch<PublishProjectResponse>(
+    `/experiments/${experimentId}/landing-page/republish`,
+    {
+      method: "POST",
     },
   );
 }

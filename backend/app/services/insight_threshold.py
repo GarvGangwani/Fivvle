@@ -3,6 +3,8 @@
 Single source of truth for the ratchet (≥MIN_PAGE_VIEWS views OR ≥MIN_SIGNUPS
 signups OR ≥MIN_DAYS_LIVE days live). Routers and analytics must call
 ``compute_insight_threshold`` — do not re-encode these numbers elsewhere.
+
+Counts and days_live default to the current (open) publish cohort.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models.landing_page import LandingPage
 from app.db.models.page_view import PageView
 from app.db.models.waitlist_signup import WaitlistSignup
+from app.services.landing_page_publish_service import get_open_cohort
 
 MIN_PAGE_VIEWS = 10
 MIN_SIGNUPS = 1
@@ -40,33 +43,56 @@ async def compute_insight_threshold(
     db: AsyncSession,
     experiment_id: UUID,
 ) -> InsightThresholdState:
-    """Compute threshold state from page views, signups, and landing live_at.
+    """Compute threshold state for the current open publish cohort.
 
-    ``days_current`` is 0 when LandingPage is missing or ``live_at`` is None —
-    defensive; callers that require a live page should gate earlier.
+    ``days_current`` is 0 when LandingPage is missing, ``live_at`` is None, or
+    no open cohort exists — defensive; callers that require a live page should
+    gate earlier.
     """
+    landing = (
+        await db.execute(
+            select(LandingPage).where(LandingPage.experiment_id == experiment_id),
+        )
+    ).scalar_one_or_none()
+
+    if landing is None or landing.live_at is None:
+        return InsightThresholdState(
+            met=False,
+            views_current=0,
+            views_target=MIN_PAGE_VIEWS,
+            signups_current=0,
+            signups_target=MIN_SIGNUPS,
+            days_current=0,
+            days_target=MIN_DAYS_LIVE,
+        )
+
+    cohort = await get_open_cohort(db, landing.id)
+    if cohort is None:
+        return InsightThresholdState(
+            met=False,
+            views_current=0,
+            views_target=MIN_PAGE_VIEWS,
+            signups_current=0,
+            signups_target=MIN_SIGNUPS,
+            days_current=0,
+            days_target=MIN_DAYS_LIVE,
+        )
+
     views_stmt = select(func.count(PageView.id)).where(
-        PageView.experiment_id == experiment_id
+        PageView.experiment_id == experiment_id,
+        PageView.publish_id == cohort.id,
     )
     signups_stmt = select(func.count(WaitlistSignup.id)).where(
-        WaitlistSignup.experiment_id == experiment_id
-    )
-    landing_stmt = select(LandingPage.live_at).where(
-        LandingPage.experiment_id == experiment_id
+        WaitlistSignup.experiment_id == experiment_id,
+        WaitlistSignup.publish_id == cohort.id,
     )
 
-    views_result = await db.execute(views_stmt)
-    signups_result = await db.execute(signups_stmt)
-    landing_result = await db.execute(landing_stmt)
+    views_current = int((await db.execute(views_stmt)).scalar_one() or 0)
+    signups_current = int((await db.execute(signups_stmt)).scalar_one() or 0)
 
-    views_current = int(views_result.scalar_one() or 0)
-    signups_current = int(signups_result.scalar_one() or 0)
-    live_at = landing_result.scalar_one_or_none()
-
-    if live_at is None:
-        days_current = 0
-    else:
-        days_current = max((datetime.now(timezone.utc) - live_at).days, 0)
+    now = datetime.now(timezone.utc)
+    period_end = cohort.ended_at or now
+    days_current = max((period_end - cohort.published_at).days, 0)
 
     met = (
         views_current >= MIN_PAGE_VIEWS

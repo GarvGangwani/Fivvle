@@ -23,6 +23,7 @@ from app.db.models.subreddit_selection_hint import SubredditSelectionHint
 from app.db.models.external_api_call import ExternalAPICall
 from app.db.models.insight_report import InsightReport
 from app.db.models.landing_page import LandingPage
+from app.db.models.landing_page_publish import LandingPagePublish
 from app.db.models.landing_page_v2 import LandingPageV2Spec
 from app.db.models.launch_kit import LaunchKit
 from app.db.models.llm_call import LLMCall
@@ -54,6 +55,7 @@ __all__ = [
     "ExternalAPICall",
     "InsightReport",
     "LandingPage",
+    "LandingPagePublish",
     "LandingPageV2Spec",
     "LaunchKit",
     "LLMCall",
