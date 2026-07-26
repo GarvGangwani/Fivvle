@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.enums import LandingCtaType
 from app.db.models.experiment import Experiment
 from app.db.models.landing_page import LandingPage
-from app.utils.landing_page_public import PUBLIC_LANDING_PAGE_STATUSES
+from app.db.enums import ExperimentStatus
 from app.db.models.page_view import PageView
 from app.db.session import get_session
 from app.logging_config import get_logger
@@ -122,14 +122,18 @@ async def _fetch_live_landing_page(
     db: AsyncSession,
     slug: str,
 ) -> tuple[LandingPage, Experiment] | None:
-    """Return (LandingPage, Experiment) when slug is published and still public."""
+    """Return (LandingPage, Experiment) when slug is published and not archived.
+
+    Public reachability is artifact-gated: live_at set and status != ARCHIVED.
+    Status demotion (e.g. Evidence rerun → RESEARCH_READY) must not 404 a live page.
+    """
     stmt = (
         select(LandingPage, Experiment)
         .join(Experiment, LandingPage.experiment_id == Experiment.id)
         .where(
             LandingPage.slug == slug,
             LandingPage.live_at.is_not(None),
-            Experiment.status.in_(PUBLIC_LANDING_PAGE_STATUSES),
+            Experiment.status != ExperimentStatus.ARCHIVED,
         )
     )
     result = await db.execute(stmt)

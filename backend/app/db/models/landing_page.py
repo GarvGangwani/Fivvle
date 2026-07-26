@@ -99,6 +99,9 @@ class LandingPage(Base):
         nullable=True,
     )
     refined_idea_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Stamp of ValidationReport.edited_doc_version at generation time.
+    # NULL until first post-dimension generation; null → not-stale via _is_stale.
+    edited_doc_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # --- Relationships ---
     experiment: Mapped[Experiment] = relationship(back_populates="landing_page")

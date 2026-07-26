@@ -27,6 +27,7 @@ _RAW_IDEA_MAX_LEN = 2000
 class SparkPhaseVersionInfo:
     current_spark_version: int
     current_refined_idea_version: int
+    current_edited_doc_version: int | None
     refine_spark_version: int | None
     evidence_spark_version: int | None
     launch_spark_version: int | None
@@ -35,6 +36,7 @@ class SparkPhaseVersionInfo:
     evidence_refined_idea_version: int | None
     launch_refined_idea_version: int | None
     signal_refined_idea_version: int | None
+    launch_edited_doc_version: int | None
     refine_is_stale: bool
     evidence_is_stale: bool
     launch_is_stale: bool
@@ -60,13 +62,19 @@ def _stale_reasons(
     spark_current: int,
     riv_phase: int | None,
     riv_current: int,
+    edited_doc_phase: int | None = None,
+    edited_doc_current: int | None = None,
 ) -> list[str]:
-    """Reasons a phase is stale relative to current spark / refined_idea versions."""
+    """Reasons a phase is stale relative to spark / refined_idea / edited_doc."""
     reasons: list[str] = []
     if _is_stale(spark_phase, spark_current):
         reasons.append("spark")
     if _is_stale(riv_phase, riv_current):
         reasons.append("refined_idea")
+    if edited_doc_current is not None and _is_stale(
+        edited_doc_phase, edited_doc_current
+    ):
+        reasons.append("edited_doc")
     return reasons
 
 
@@ -215,6 +223,7 @@ async def fetch_spark_phase_version_info(
         select(
             ValidationReport.spark_version_id,
             ValidationReport.refined_idea_version,
+            ValidationReport.edited_doc_version,
         ).where(ValidationReport.experiment_id == experiment.id)
     )
     vr_row = vr_result.one_or_none()
@@ -222,11 +231,13 @@ async def fetch_spark_phase_version_info(
         db, vr_row[0] if vr_row is not None else None
     )
     evidence_riv = vr_row[1] if vr_row is not None else None
+    current_edited_doc_version = vr_row[2] if vr_row is not None else None
 
     lp_result = await db.execute(
         select(
             LandingPage.spark_version_id,
             LandingPage.refined_idea_version,
+            LandingPage.edited_doc_version,
         ).where(LandingPage.experiment_id == experiment.id)
     )
     lp_row = lp_result.one_or_none()
@@ -234,6 +245,7 @@ async def fetch_spark_phase_version_info(
         db, lp_row[0] if lp_row is not None else None
     )
     launch_riv = lp_row[1] if lp_row is not None else None
+    launch_edited_doc_version = lp_row[2] if lp_row is not None else None
 
     ir_result = await db.execute(
         select(
@@ -251,12 +263,20 @@ async def fetch_spark_phase_version_info(
     evidence_reasons = _stale_reasons(
         evidence_version, current, evidence_riv, current_riv
     )
-    launch_reasons = _stale_reasons(launch_version, current, launch_riv, current_riv)
+    launch_reasons = _stale_reasons(
+        launch_version,
+        current,
+        launch_riv,
+        current_riv,
+        launch_edited_doc_version,
+        current_edited_doc_version,
+    )
     signal_reasons = _stale_reasons(signal_version, current, signal_riv, current_riv)
 
     return SparkPhaseVersionInfo(
         current_spark_version=current,
         current_refined_idea_version=current_riv,
+        current_edited_doc_version=current_edited_doc_version,
         refine_spark_version=refine_version,
         evidence_spark_version=evidence_version,
         launch_spark_version=launch_version,
@@ -265,6 +285,7 @@ async def fetch_spark_phase_version_info(
         evidence_refined_idea_version=evidence_riv,
         launch_refined_idea_version=launch_riv,
         signal_refined_idea_version=signal_riv,
+        launch_edited_doc_version=launch_edited_doc_version,
         refine_is_stale=bool(refine_reasons),
         evidence_is_stale=bool(evidence_reasons),
         launch_is_stale=bool(launch_reasons),

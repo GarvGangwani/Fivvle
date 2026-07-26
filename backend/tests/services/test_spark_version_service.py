@@ -41,3 +41,32 @@ def test_stale_reasons_neither() -> None:
     assert _stale_reasons(2, 2, 3, 3) == []
     assert _stale_reasons(None, 2, None, 3) == []
     assert _stale_reasons(1, 0, 1, 0) == []
+
+
+def test_stale_reasons_edited_doc_only() -> None:
+    assert _stale_reasons(2, 2, 3, 3, 1, 2) == ["edited_doc"]
+
+
+def test_stale_reasons_edited_doc_null_phase_not_stale() -> None:
+    # Pre-dimension landing stamp (NULL) is not treated as lagged.
+    assert _stale_reasons(2, 2, 3, 3, None, 2) == []
+
+
+def test_stale_reasons_edited_doc_current_zero_not_stale() -> None:
+    assert _stale_reasons(2, 2, 3, 3, 0, 0) == []
+
+
+def test_stale_reasons_launch_three_dimensions() -> None:
+    assert _stale_reasons(1, 2, 1, 3, 1, 4) == [
+        "spark",
+        "refined_idea",
+        "edited_doc",
+    ]
+
+
+def test_stale_reasons_spark_and_edited_doc() -> None:
+    assert _stale_reasons(1, 2, 3, 3, 0, 1) == ["spark", "edited_doc"]
+
+
+def test_stale_reasons_riv_and_edited_doc() -> None:
+    assert _stale_reasons(2, 2, 1, 3, 1, 2) == ["refined_idea", "edited_doc"]

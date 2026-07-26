@@ -34,6 +34,7 @@ from app.services.validation_report_editor import (
     EditedDocVersionConflict,
     apply_edited_doc_patch,
     build_edited_doc_response,
+    flatten_prosemirror_doc,
     is_stale_since_regeneration,
     render_report_to_prosemirror_doc,
 )
@@ -425,3 +426,147 @@ def test_patch_conflict_raises_with_current_version() -> None:
     assert exc.value.current_version == 7
     # Row is untouched on conflict.
     assert row.edited_doc_version == 7
+
+
+# ---------------------------------------------------------------------------
+# flatten_prosemirror_doc
+# ---------------------------------------------------------------------------
+
+
+def test_flatten_none_returns_none() -> None:
+    assert flatten_prosemirror_doc(None) is None
+
+
+def test_flatten_empty_doc() -> None:
+    assert flatten_prosemirror_doc({"type": "doc", "content": []}) == ""
+
+
+def test_flatten_headings_and_paragraphs() -> None:
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "heading",
+                "attrs": {"level": 1},
+                "content": [{"type": "text", "text": "Title"}],
+            },
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "Hello world."}],
+            },
+        ],
+    }
+    out = flatten_prosemirror_doc(doc)
+    assert out == "# Title\n\nHello world."
+
+
+def test_flatten_mixed_lists() -> None:
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "One"}],
+                            }
+                        ],
+                    },
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "Two"}],
+                            }
+                        ],
+                    },
+                ],
+            },
+            {
+                "type": "orderedList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "Alpha"}],
+                            }
+                        ],
+                    }
+                ],
+            },
+        ],
+    }
+    out = flatten_prosemirror_doc(doc)
+    assert out is not None
+    assert "- One" in out
+    assert "- Two" in out
+    assert "1. Alpha" in out
+
+
+def test_flatten_nested_list() -> None:
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "Parent"}],
+                            },
+                            {
+                                "type": "bulletList",
+                                "content": [
+                                    {
+                                        "type": "listItem",
+                                        "content": [
+                                            {
+                                                "type": "paragraph",
+                                                "content": [
+                                                    {"type": "text", "text": "Child"}
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    out = flatten_prosemirror_doc(doc)
+    assert out is not None
+    assert "Parent" in out
+    assert "Child" in out
+
+
+def test_flatten_unknown_node_does_not_crash() -> None:
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "customWeirdNode",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": "Survives"}],
+                    }
+                ],
+            }
+        ],
+    }
+    out = flatten_prosemirror_doc(doc)
+    assert out is not None
+    assert "Survives" in out

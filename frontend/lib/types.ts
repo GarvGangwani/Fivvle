@@ -284,6 +284,7 @@ export interface Experiment {
   refinement_started_at?: string | null;
   current_spark_version?: number;
   current_refined_idea_version?: number;
+  current_edited_doc_version?: number | null;
   refine_spark_version?: number | null;
   evidence_spark_version?: number | null;
   launch_spark_version?: number | null;
@@ -292,6 +293,7 @@ export interface Experiment {
   evidence_refined_idea_version?: number | null;
   launch_refined_idea_version?: number | null;
   signal_refined_idea_version?: number | null;
+  launch_edited_doc_version?: number | null;
   refine_is_stale?: boolean;
   evidence_is_stale?: boolean;
   launch_is_stale?: boolean;

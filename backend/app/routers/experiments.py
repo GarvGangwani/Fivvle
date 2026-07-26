@@ -213,13 +213,17 @@ def _ensure_landing_page_editable(experiment: Experiment) -> None:
         )
 
 
-def _ensure_metrics_access_allowed(experiment: Experiment) -> None:
+def _ensure_metrics_access_allowed(
+    experiment: Experiment,
+    *,
+    live_at: datetime | None,
+) -> None:
     if experiment.status == ExperimentStatus.ARCHIVED:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Archived projects cannot unlock metrics.",
         )
-    if not is_public_landing_page_accessible(experiment.status):
+    if not is_public_landing_page_accessible(experiment.status, live_at):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Metrics are available after your landing page is live.",
@@ -353,6 +357,7 @@ class GetExperimentDetailResponse(BaseModel):
     refinement_started_at: datetime | None = None
     current_spark_version: int = 0
     current_refined_idea_version: int = 0
+    current_edited_doc_version: int | None = None
     refine_spark_version: int | None = None
     evidence_spark_version: int | None = None
     launch_spark_version: int | None = None
@@ -361,6 +366,7 @@ class GetExperimentDetailResponse(BaseModel):
     evidence_refined_idea_version: int | None = None
     launch_refined_idea_version: int | None = None
     signal_refined_idea_version: int | None = None
+    launch_edited_doc_version: int | None = None
     refine_is_stale: bool = False
     evidence_is_stale: bool = False
     launch_is_stale: bool = False
@@ -414,6 +420,7 @@ async def _build_experiment_detail_response(
         refinement_started_at=experiment.refinement_started_at,
         current_spark_version=spark_info.current_spark_version,
         current_refined_idea_version=spark_info.current_refined_idea_version,
+        current_edited_doc_version=spark_info.current_edited_doc_version,
         refine_spark_version=spark_info.refine_spark_version,
         evidence_spark_version=spark_info.evidence_spark_version,
         launch_spark_version=spark_info.launch_spark_version,
@@ -422,6 +429,7 @@ async def _build_experiment_detail_response(
         evidence_refined_idea_version=spark_info.evidence_refined_idea_version,
         launch_refined_idea_version=spark_info.launch_refined_idea_version,
         signal_refined_idea_version=spark_info.signal_refined_idea_version,
+        launch_edited_doc_version=spark_info.launch_edited_doc_version,
         refine_is_stale=spark_info.refine_is_stale,
         evidence_is_stale=spark_info.evidence_is_stale,
         launch_is_stale=spark_info.launch_is_stale,
@@ -1941,7 +1949,6 @@ async def unlock_metrics(
         experiment_id=experiment_id,
         user_id=current_user.id,
     )
-    _ensure_metrics_access_allowed(experiment)
 
     lp_result = await db.execute(
         select(LandingPage).where(LandingPage.experiment_id == experiment_id),
@@ -1952,6 +1959,7 @@ async def unlock_metrics(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Analytics not available until the landing page is published",
         )
+    _ensure_metrics_access_allowed(experiment, live_at=landing_page.live_at)
 
     try:
         _tx, already_unlocked = await purchase_service_for_experiment(

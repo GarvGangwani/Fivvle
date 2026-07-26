@@ -949,6 +949,7 @@ def test_format_staleness_line_omits_when_fresh() -> None:
     info = SparkPhaseVersionInfo(
         current_spark_version=1,
         current_refined_idea_version=1,
+        current_edited_doc_version=0,
         refine_spark_version=1,
         evidence_spark_version=1,
         launch_spark_version=1,
@@ -957,6 +958,7 @@ def test_format_staleness_line_omits_when_fresh() -> None:
         evidence_refined_idea_version=1,
         launch_refined_idea_version=1,
         signal_refined_idea_version=1,
+        launch_edited_doc_version=0,
         refine_is_stale=False,
         evidence_is_stale=False,
         launch_is_stale=False,
