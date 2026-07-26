@@ -6,7 +6,9 @@ LLM calls are mocked; a real async DB session is used (mirrors evidence chat tes
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
-from types import SimpleNamespace
+from datetime import UTC, datetime
+from decimal import Decimal
+import json
 from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
@@ -16,11 +18,22 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
-from app.db.enums import ChatRole, ChatTurnKind, ExperimentStatus
+from app.db.enums import (
+    ChatRole,
+    ChatTurnKind,
+    ExperimentStatus,
+    LandingCtaType,
+    LandingDensity,
+)
 from app.db.models.chat_message import ChatMessage
 from app.db.models.chat_thread import ChatThread
 from app.db.models.experiment import Experiment
+from app.db.models.landing_page import LandingPage
+from app.db.models.page_view import PageView
 from app.db.models.user import User
+from app.db.models.validation_report import ValidationReport
+from app.db.models.waitlist_signup import WaitlistSignup
+from app.llm.client import LLMResult, ToolsLLMResult, ToolUseRequest
 from app.llm.prompts.universal_chat import (
     PROMPT_NAME_UNIVERSAL_CHAT,
     build_universal_chat_user_prompt,
@@ -33,11 +46,13 @@ from app.services.experiment_project_context import (
 from app.services.universal_chat_service import (
     UniversalChatNotFound,
     UniversalChatUnavailable,
+    _history_for_prompt,
     list_universal_chat_messages,
     send_universal_chat_message,
 )
+from app.services.universal_chat_tools import execute_tool, get_tool_schemas
 
-_LLM_PATCH_TARGET = "app.services.universal_chat_service.llm_client.complete"
+_LLM_PATCH_TARGET = "app.services.universal_chat_service.llm_client.complete_with_tools"
 
 
 @pytest.fixture
@@ -51,8 +66,77 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
         await engine.dispose()
 
 
-def _fake_llm_result(text: str) -> SimpleNamespace:
-    return SimpleNamespace(text=text)
+def _patch_tools_provider(monkeypatch: pytest.MonkeyPatch, provider: str) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "universal_chat_tools_provider", provider)
+    if provider == "kimi":
+        monkeypatch.setattr(settings, "universal_chat_tools_model", "kimi-k2.6")
+    else:
+        monkeypatch.setattr(settings, "universal_chat_tools_model", "claude-sonnet-4-6")
+    monkeypatch.setattr(settings, "universal_chat_tools_fallback_provider", "anthropic")
+    monkeypatch.setattr(
+        settings, "universal_chat_tools_fallback_model", "claude-sonnet-4-6"
+    )
+
+
+def _llm_meta(*, text: str = "", provider: str = "anthropic") -> LLMResult:
+    model = "kimi-k2.6" if provider == "kimi" else "claude-sonnet-4-6"
+    return LLMResult(
+        text=text,
+        provider=provider,
+        model=model,
+        prompt_tokens=10,
+        completion_tokens=5,
+        cost_usd=Decimal("0.001"),
+        latency_ms=50,
+    )
+
+
+def _tools_result(
+    *,
+    text: str | None = None,
+    tool_uses: list[ToolUseRequest] | None = None,
+    provider: str = "anthropic",
+) -> ToolsLLMResult:
+    uses = tool_uses or []
+    if provider == "kimi":
+        tool_calls = [
+            {
+                "id": use.id,
+                "type": "function",
+                "function": {
+                    "name": use.name,
+                    "arguments": json.dumps(use.input),
+                },
+            }
+            for use in uses
+        ]
+        assistant_turn: dict[str, Any] = {
+            "role": "assistant",
+            "content": text,
+        }
+        if tool_calls:
+            assistant_turn["tool_calls"] = tool_calls
+    else:
+        content: list[dict[str, Any]] = []
+        if text:
+            content.append({"type": "text", "text": text})
+        for use in uses:
+            content.append(
+                {
+                    "type": "tool_use",
+                    "id": use.id,
+                    "name": use.name,
+                    "input": use.input,
+                }
+            )
+        assistant_turn = {"role": "assistant", "content": content}
+    return ToolsLLMResult(
+        assistant_text=text,
+        tool_uses=uses,
+        assistant_turn=assistant_turn,
+        llm_result=_llm_meta(text=text or "", provider=provider),
+    )
 
 
 def _refined_idea_dict() -> dict[str, Any]:
@@ -114,12 +198,16 @@ async def _seed_other_user(db: AsyncSession) -> User:
 
 
 @pytest.mark.asyncio
-async def test_send_creates_thread_on_first_call(db_session: AsyncSession) -> None:
+async def test_send_creates_thread_on_first_call(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_tools_provider(monkeypatch, "kimi")
     user, experiment = await _seed_user_and_experiment(db_session)
 
     with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete:
-        mock_complete.return_value = _fake_llm_result(
-            "You're in Spark. Capture your idea clearly, then move to Refine."
+        mock_complete.return_value = _tools_result(
+            text="You're in Spark. Capture your idea clearly, then move to Refine.",
+            provider="kimi",
         )
         result = await send_universal_chat_message(
             db_session, user, experiment.id, "Where am I in the journey?"
@@ -132,13 +220,16 @@ async def test_send_creates_thread_on_first_call(db_session: AsyncSession) -> No
     assert result.user_message.turn_kind == ChatTurnKind.UNIVERSAL_CHAT
     assert result.assistant_message.turn_kind == ChatTurnKind.UNIVERSAL_CHAT
     assert result.assistant_message.parent_message_id == result.user_message.id
+    assert [m.role for m in result.messages] == [ChatRole.USER, ChatRole.ASSISTANT]
 
     mock_complete.assert_awaited_once()
     kwargs = mock_complete.await_args.kwargs
     assert kwargs["prompt_name"] == PROMPT_NAME_UNIVERSAL_CHAT
     assert kwargs["phase"] == "universal_chat"
-    assert "raw_idea" in kwargs["user"]
-    assert "current_act: spark" in kwargs["user"]
+    assert kwargs["provider"] == "kimi"
+    assert "raw_idea" in kwargs["messages"][0]["content"]
+    assert "current_act: spark" in kwargs["messages"][0]["content"]
+    assert kwargs["tools"]  # schemas present on first (non-cap) call
 
 
 @pytest.mark.asyncio
@@ -146,11 +237,11 @@ async def test_send_reuses_thread_on_second_call(db_session: AsyncSession) -> No
     user, experiment = await _seed_user_and_experiment(db_session)
 
     with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete:
-        mock_complete.return_value = _fake_llm_result("First reply.")
+        mock_complete.return_value = _tools_result(text="First reply.")
         first = await send_universal_chat_message(
             db_session, user, experiment.id, "Hello"
         )
-        mock_complete.return_value = _fake_llm_result("Second reply.")
+        mock_complete.return_value = _tools_result(text="Second reply.")
         second = await send_universal_chat_message(
             db_session, user, experiment.id, "What next?"
         )
@@ -175,15 +266,525 @@ async def test_send_reuses_thread_on_second_call(db_session: AsyncSession) -> No
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["kimi", "anthropic"])
+async def test_send_tool_loop_persists_linear_tool_rows(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+) -> None:
+    _patch_tools_provider(monkeypatch, provider)
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.LANDING_LIVE
+    )
+    landing = LandingPage(
+        experiment_id=experiment.id,
+        slug=f"univ-{uuid4().hex[:10]}",
+        template_id="minimal",
+        palette_id="default",
+        font_pair_id="sans",
+        density=LandingDensity.ROOMY,
+        headline="Try PolicyPal",
+        subheadline="HR answers in Slack",
+        problem_desc="Repetitive HR questions clog Slack.",
+        solution_desc="Instant policy answers in Slack.",
+        cta_text="Join the waitlist",
+        cta_type=LandingCtaType.WAITLIST,
+        live_at=datetime.now(UTC),
+    )
+    db_session.add(landing)
+    db_session.add(
+        PageView(experiment_id=experiment.id, source_tag="twitter")
+    )
+    db_session.add(
+        PageView(experiment_id=experiment.id, source_tag="twitter")
+    )
+    db_session.add(
+        WaitlistSignup(
+            experiment_id=experiment.id,
+            email="a@example.com",
+            source_tag="twitter",
+        )
+    )
+    await db_session.commit()
+
+    tool_then_text = [
+        _tools_result(
+            text=None,
+            tool_uses=[
+                ToolUseRequest(
+                    id="toolu_metrics_1",
+                    name="get_metrics_summary",
+                    input={},
+                )
+            ],
+            provider=provider,
+        ),
+        _tools_result(
+            text="You have 2 page views and 1 signup, mostly from twitter.",
+            provider=provider,
+        ),
+    ]
+
+    with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete:
+        mock_complete.side_effect = tool_then_text
+        result = await send_universal_chat_message(
+            db_session, user, experiment.id, "How are my metrics looking?"
+        )
+
+    assert mock_complete.await_count == 2
+    assert mock_complete.await_args_list[0].kwargs["provider"] == provider
+    roles = [m.role for m in result.messages]
+    assert roles == [
+        ChatRole.USER,
+        ChatRole.TOOL_CALL,
+        ChatRole.TOOL_RESULT,
+        ChatRole.ASSISTANT,
+    ]
+    assert result.messages[1].tool_payload == {
+        "tool_name": "get_metrics_summary",
+        "arguments": {},
+    }
+    # Dialect-specific follow-up assembly on the second LLM call's messages.
+    followup_msgs = mock_complete.await_args_list[1].kwargs["messages"]
+    if provider == "anthropic":
+        assert followup_msgs[1]["role"] == "assistant"
+        assert isinstance(followup_msgs[1]["content"], list)
+        assert followup_msgs[2]["role"] == "user"
+        assert followup_msgs[2]["content"][0]["type"] == "tool_result"
+    else:
+        assert followup_msgs[1]["role"] == "assistant"
+        assert "tool_calls" in followup_msgs[1]
+        assert followup_msgs[2]["role"] == "tool"
+        assert followup_msgs[2]["tool_call_id"] == "toolu_metrics_1"
+    assert result.assistant_message.content.startswith("You have 2 page views")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider", ["kimi", "anthropic"])
+async def test_send_tool_round_cap_forces_text(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+) -> None:
+    _patch_tools_provider(monkeypatch, provider)
+    user, experiment = await _seed_user_and_experiment(db_session)
+
+    endless_tool = _tools_result(
+        tool_uses=[
+            ToolUseRequest(id="toolu_x", name="get_landing_status", input={})
+        ],
+        provider=provider,
+    )
+    final_text = _tools_result(
+        text="Stopping after the tool budget.", provider=provider
+    )
+
+    with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete:
+        mock_complete.side_effect = [
+            endless_tool,
+            endless_tool,
+            endless_tool,
+            final_text,
+        ]
+        result = await send_universal_chat_message(
+            db_session, user, experiment.id, "Is my landing page live?"
+        )
+
+    assert mock_complete.await_count == 4
+    fourth_kwargs = mock_complete.await_args_list[3].kwargs
+    assert fourth_kwargs["provider"] == provider
+    if provider == "anthropic":
+        assert fourth_kwargs["tools"]  # schemas still present
+        assert fourth_kwargs["tool_choice"] == {"type": "none"}
+    else:
+        assert fourth_kwargs["tools"] == []
+        assert fourth_kwargs.get("tool_choice") is None
+    assert result.assistant_message.content == "Stopping after the tool budget."
+    assert len(result.messages) == 8
+    for i in range(3):
+        assert mock_complete.await_args_list[i].kwargs.get("tool_choice") is None
+        assert mock_complete.await_args_list[i].kwargs["tools"]
+    assert [m.role for m in result.messages].count(ChatRole.TOOL_CALL) == 3
+    assert result.messages[-1].role == ChatRole.ASSISTANT
+
+
+@pytest.mark.asyncio
+async def test_send_no_tool_turn_single_invocation(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_tools_provider(monkeypatch, "kimi")
+    user, experiment = await _seed_user_and_experiment(db_session)
+
+    with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete:
+        mock_complete.return_value = _tools_result(
+            text="You're in Spark — capture the idea, then move to Refine.",
+            provider="kimi",
+        )
+        result = await send_universal_chat_message(
+            db_session, user, experiment.id, "What should I do next?"
+        )
+
+    assert mock_complete.await_count == 1
+    kwargs = mock_complete.await_args.kwargs
+    assert kwargs["phase"] == "universal_chat"
+    assert kwargs["prompt_name"] == PROMPT_NAME_UNIVERSAL_CHAT
+    assert kwargs["provider"] == "kimi"
+    assert kwargs.get("tool_choice") is None
+    assert [m.role for m in result.messages] == [ChatRole.USER, ChatRole.ASSISTANT]
+    assert not any(m.role in {ChatRole.TOOL_CALL, ChatRole.TOOL_RESULT} for m in result.messages)
+
+
+@pytest.mark.asyncio
+async def test_send_soft_fail_executor_continues(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_tools_provider(monkeypatch, "kimi")
+    user, experiment = await _seed_user_and_experiment(db_session)
+
+    async def _boom(_db: AsyncSession, _experiment: Experiment) -> dict[str, Any]:
+        raise RuntimeError("db blew up")
+
+    from app.services.universal_chat_tools import UniversalChatTool, _EMPTY_INPUT_SCHEMA
+
+    broken = UniversalChatTool(
+        name="get_landing_status",
+        description="test",
+        input_schema=_EMPTY_INPUT_SCHEMA,
+        executor=_boom,
+    )
+
+    with (
+        patch.dict(
+            "app.services.universal_chat_tools._TOOLS_BY_NAME",
+            {"get_landing_status": broken},
+        ),
+        patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete,
+    ):
+        mock_complete.side_effect = [
+            _tools_result(
+                tool_uses=[
+                    ToolUseRequest(
+                        id="toolu_soft",
+                        name="get_landing_status",
+                        input={},
+                    )
+                ],
+                provider="kimi",
+            ),
+            _tools_result(
+                text="I couldn't load landing status — try again in a moment.",
+                provider="kimi",
+            ),
+        ]
+        result = await send_universal_chat_message(
+            db_session, user, experiment.id, "Is my landing page live?"
+        )
+
+    assert mock_complete.await_count == 2
+    assert [m.role for m in result.messages] == [
+        ChatRole.USER,
+        ChatRole.TOOL_CALL,
+        ChatRole.TOOL_RESULT,
+        ChatRole.ASSISTANT,
+    ]
+    payload = result.messages[2].tool_payload or {}
+    assert payload["tool_name"] == "get_landing_status"
+    assert "error" in payload
+    assert "RuntimeError" in payload["error"]
+    assert result.assistant_message.content.startswith("I couldn't load")
+
+
+@pytest.mark.asyncio
+async def test_send_mixed_text_and_tool_use_drops_interim_text(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Interim text alongside tool_use must not become an assistant chat row."""
+    _patch_tools_provider(monkeypatch, "kimi")
+    user, experiment = await _seed_user_and_experiment(db_session)
+    interim = "Let me pull your metrics for a second."
+    final = "You have a quiet funnel so far — share the link more widely."
+
+    with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete:
+        mock_complete.side_effect = [
+            _tools_result(
+                text=interim,
+                tool_uses=[
+                    ToolUseRequest(
+                        id="toolu_mix",
+                        name="get_metrics_summary",
+                        input={},
+                    )
+                ],
+                provider="kimi",
+            ),
+            _tools_result(text=final, provider="kimi"),
+        ]
+        result = await send_universal_chat_message(
+            db_session, user, experiment.id, "How are metrics?"
+        )
+
+    # API still gets the mixed assistant_turn for the follow-up turn.
+    first_append = mock_complete.await_args_list[1].kwargs["messages"]
+    assert any(
+        msg.get("role") == "assistant" and msg.get("content") == interim
+        for msg in first_append
+    )
+
+    assistant_rows = [m for m in result.messages if m.role == ChatRole.ASSISTANT]
+    assert len(assistant_rows) == 1
+    assert assistant_rows[0].content == final
+    assert interim not in {m.content for m in result.messages}
+    assert [m.role for m in result.messages] == [
+        ChatRole.USER,
+        ChatRole.TOOL_CALL,
+        ChatRole.TOOL_RESULT,
+        ChatRole.ASSISTANT,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_send_data_absent_tool_persists_available_false(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_tools_provider(monkeypatch, "kimi")
+    user, experiment = await _seed_user_and_experiment(db_session)
+
+    with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete:
+        mock_complete.side_effect = [
+            _tools_result(
+                tool_uses=[
+                    ToolUseRequest(
+                        id="toolu_absent",
+                        name="get_landing_status",
+                        input={},
+                    )
+                ],
+                provider="kimi",
+            ),
+            _tools_result(
+                text="No landing page yet — finish Launch when you're ready.",
+                provider="kimi",
+            ),
+        ]
+        result = await send_universal_chat_message(
+            db_session, user, experiment.id, "Is my page live?"
+        )
+
+    payload = result.messages[2].tool_payload or {}
+    assert payload["tool_name"] == "get_landing_status"
+    assert payload["result"]["available"] is False
+    assert "reason" in payload["result"]
+    assert result.messages[-1].role == ChatRole.ASSISTANT
+
+
+@pytest.mark.asyncio
+async def test_send_response_messages_order_one_tool_turn(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_tools_provider(monkeypatch, "kimi")
+    user, experiment = await _seed_user_and_experiment(db_session)
+
+    with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete:
+        mock_complete.side_effect = [
+            _tools_result(
+                tool_uses=[
+                    ToolUseRequest(
+                        id="toolu_ord",
+                        name="get_report_summary",
+                        input={},
+                    )
+                ],
+                provider="kimi",
+            ),
+            _tools_result(text="No validation report yet.", provider="kimi"),
+        ]
+        result = await send_universal_chat_message(
+            db_session, user, experiment.id, "What did research find?"
+        )
+
+    roles = [m.role for m in result.messages]
+    assert roles == [
+        ChatRole.USER,
+        ChatRole.TOOL_CALL,
+        ChatRole.TOOL_RESULT,
+        ChatRole.ASSISTANT,
+    ]
+    assert result.user_message.id == result.messages[0].id
+    assert result.assistant_message.id == result.messages[-1].id
+    assert mock_complete.await_count == 2
+    for call in mock_complete.await_args_list:
+        assert call.kwargs["phase"] == "universal_chat"
+        assert call.kwargs["prompt_name"] == "universal_chat_v2"
+        assert call.kwargs["provider"] == "kimi"
+
+
+@pytest.mark.asyncio
+async def test_send_initial_kimi_fallback_to_anthropic(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_tools_provider(monkeypatch, "kimi")
+    user, experiment = await _seed_user_and_experiment(db_session)
+
+    with (
+        patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete,
+        patch("app.services.universal_chat_service._logger") as mock_logger,
+    ):
+        mock_complete.side_effect = [
+            RuntimeError("kimi unavailable"),
+            _tools_result(
+                text="Fallback coach answer from Anthropic.",
+                provider="anthropic",
+            ),
+        ]
+        result = await send_universal_chat_message(
+            db_session, user, experiment.id, "What should I do next?"
+        )
+
+    assert mock_complete.await_count == 2
+    assert mock_complete.await_args_list[0].kwargs["provider"] == "kimi"
+    assert mock_complete.await_args_list[1].kwargs["provider"] == "anthropic"
+    assert result.assistant_message.content.startswith("Fallback coach")
+    assert [m.role for m in result.messages] == [ChatRole.USER, ChatRole.ASSISTANT]
+    mock_logger.warning.assert_any_call(
+        "universal_chat_tool_fallback",
+        primary_provider="kimi",
+        fallback_provider="anthropic",
+        error_type="RuntimeError",
+        experiment_id=str(experiment.id),
+    )
+
+
+@pytest.mark.asyncio
+async def test_send_mid_loop_failure_does_not_fallback(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_tools_provider(monkeypatch, "kimi")
+    user, experiment = await _seed_user_and_experiment(db_session)
+
+    with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete:
+        mock_complete.side_effect = [
+            _tools_result(
+                tool_uses=[
+                    ToolUseRequest(
+                        id="toolu_mid",
+                        name="get_landing_status",
+                        input={},
+                    )
+                ],
+                provider="kimi",
+            ),
+            RuntimeError("mid-loop provider failure"),
+        ]
+        with pytest.raises(RuntimeError, match="mid-loop"):
+            await send_universal_chat_message(
+                db_session, user, experiment.id, "Is my page live?"
+            )
+
+    assert mock_complete.await_count == 2
+    # Both calls stayed on kimi — no cross-provider recovery mid-loop.
+    assert mock_complete.await_args_list[0].kwargs["provider"] == "kimi"
+    assert mock_complete.await_args_list[1].kwargs["provider"] == "kimi"
+
+
+@pytest.mark.asyncio
+async def test_history_flattens_tool_rows_without_payload(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Next-turn history uses short content labels, not tool_payload JSON."""
+    _patch_tools_provider(monkeypatch, "kimi")
+    user, experiment = await _seed_user_and_experiment(db_session)
+
+    with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete:
+        mock_complete.side_effect = [
+            _tools_result(
+                tool_uses=[
+                    ToolUseRequest(
+                        id="toolu_hist",
+                        name="get_metrics_summary",
+                        input={},
+                    )
+                ],
+                provider="kimi",
+            ),
+            _tools_result(text="Quiet so far.", provider="kimi"),
+        ]
+        first = await send_universal_chat_message(
+            db_session, user, experiment.id, "Metrics?"
+        )
+        tool_result = first.messages[2]
+        tool_result.tool_payload = {
+            "tool_name": "get_metrics_summary",
+            "result": {"available": True, "blob": "x" * 50_000},
+        }
+        await db_session.commit()
+
+        mock_complete.side_effect = None
+        mock_complete.return_value = _tools_result(
+            text="Next step: share the page.", provider="kimi"
+        )
+        await send_universal_chat_message(
+            db_session, user, experiment.id, "What next?"
+        )
+
+    second_user_content = mock_complete.await_args.kwargs["messages"][0]["content"]
+    assert "[tool_call]: Called: get_metrics_summary" in second_user_content
+    assert "[tool_result]: Result received" in second_user_content
+    assert "x" * 100 not in second_user_content
+    assert "tool_use" not in second_user_content
+
+
+def test_history_for_prompt_uses_content_only_and_truncates() -> None:
+    """Flattened history is `[role]: content` — payload never enters the budget."""
+    from types import SimpleNamespace
+
+    toolish = [
+        SimpleNamespace(
+            role=ChatRole.TOOL_CALL,
+            content="Called: get_metrics_summary",
+            tool_payload={"tool_name": "get_metrics_summary", "arguments": {}},
+        ),
+        SimpleNamespace(
+            role=ChatRole.TOOL_RESULT,
+            content="Result received",
+            tool_payload={
+                "tool_name": "get_metrics_summary",
+                "result": {"blob": "x" * 20_000},
+            },
+        ),
+    ]
+    flat = _history_for_prompt(toolish)  # type: ignore[arg-type]
+    assert flat == (
+        "[tool_call]: Called: get_metrics_summary\n"
+        "[tool_result]: Result received"
+    )
+    assert "blob" not in flat
+    assert "xxxx" not in flat
+
+    long_msgs = [
+        SimpleNamespace(role=ChatRole.USER, content="U" * 8000),
+        SimpleNamespace(role=ChatRole.ASSISTANT, content="A" * 8000),
+        SimpleNamespace(role=ChatRole.USER, content="newest"),
+    ]
+    rendered = _history_for_prompt(long_msgs)  # type: ignore[arg-type]
+    assert "[user]: newest" in rendered
+    assert len(rendered) <= 12000
+    # Oldest user line dropped under the 12000-char budget.
+    assert not rendered.startswith("[user]: " + ("U" * 100))
+
+
+@pytest.mark.asyncio
 async def test_send_rejects_wrong_owner(db_session: AsyncSession) -> None:
     owner, experiment = await _seed_user_and_experiment(db_session)
     other = await _seed_other_user(db_session)
 
-    with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock):
-        with pytest.raises(UniversalChatNotFound):
-            await send_universal_chat_message(
-                db_session, other, experiment.id, "Hi"
-            )
+    with (
+        patch(_LLM_PATCH_TARGET, new_callable=AsyncMock),
+        pytest.raises(UniversalChatNotFound),
+    ):
+        await send_universal_chat_message(
+            db_session, other, experiment.id, "Hi"
+        )
     assert owner.id != other.id
 
 
@@ -192,11 +793,13 @@ async def test_send_rejects_archived(db_session: AsyncSession) -> None:
     user, experiment = await _seed_user_and_experiment(
         db_session, status=ExperimentStatus.ARCHIVED
     )
-    with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock):
-        with pytest.raises(UniversalChatUnavailable):
-            await send_universal_chat_message(
-                db_session, user, experiment.id, "Hi"
-            )
+    with (
+        patch(_LLM_PATCH_TARGET, new_callable=AsyncMock),
+        pytest.raises(UniversalChatUnavailable),
+    ):
+        await send_universal_chat_message(
+            db_session, user, experiment.id, "Hi"
+        )
 
 
 @pytest.mark.asyncio
@@ -227,25 +830,14 @@ async def test_list_serializes_tool_rows(db_session: AsyncSession) -> None:
     db_session.add(user_msg)
     await db_session.flush()
 
-    assistant_msg = ChatMessage(
-        thread_id=thread.id,
-        role=ChatRole.ASSISTANT,
-        content="I'll check your project status.",
-        experiment_id=experiment.id,
-        turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
-        parent_message_id=user_msg.id,
-    )
-    db_session.add(assistant_msg)
-    await db_session.flush()
-
     tool_call = ChatMessage(
         thread_id=thread.id,
         role=ChatRole.TOOL_CALL,
-        content="Called: get_project_status",
+        content="Called: get_landing_status",
         experiment_id=experiment.id,
         turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
-        parent_message_id=assistant_msg.id,
-        tool_payload={"tool_name": "get_project_status", "arguments": {}},
+        parent_message_id=user_msg.id,
+        tool_payload={"tool_name": "get_landing_status", "arguments": {}},
     )
     db_session.add(tool_call)
     await db_session.flush()
@@ -258,8 +850,8 @@ async def test_list_serializes_tool_rows(db_session: AsyncSession) -> None:
         turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
         parent_message_id=tool_call.id,
         tool_payload={
-            "tool_name": "get_project_status",
-            "result": {"current_act": "spark"},
+            "tool_name": "get_landing_status",
+            "result": {"available": False, "reason": "No landing page yet."},
         },
     )
     db_session.add(tool_result)
@@ -268,26 +860,20 @@ async def test_list_serializes_tool_rows(db_session: AsyncSession) -> None:
     await db_session.commit()
 
     listed = await list_universal_chat_messages(db_session, user, experiment.id)
-    assert len(listed.messages) == 4
+    assert len(listed.messages) == 3
     roles = [m.role for m in listed.messages]
     assert roles == [
         ChatRole.USER,
-        ChatRole.ASSISTANT,
         ChatRole.TOOL_CALL,
         ChatRole.TOOL_RESULT,
     ]
 
     items = [ChatMessageItem.from_orm_message(m) for m in listed.messages]
-    assert items[2].tool_payload == {
-        "tool_name": "get_project_status",
+    assert items[1].tool_payload == {
+        "tool_name": "get_landing_status",
         "arguments": {},
     }
-    assert items[3].tool_payload == {
-        "tool_name": "get_project_status",
-        "result": {"current_act": "spark"},
-    }
-    assert items[2].content == "Called: get_project_status"
-    assert items[3].content == "Result received"
+    assert items[2].content == "Result received"
 
 
 @pytest.mark.asyncio
@@ -351,3 +937,107 @@ def test_prompt_assembly_snapshots() -> None:
     assert "current_act: launch" in landing_prompt
     assert "has_landing_page: true" in landing_prompt
     assert "[user]: How is traffic?" in landing_prompt
+
+
+def test_tool_schemas_are_provider_dialect() -> None:
+    anthropic_schemas = get_tool_schemas("anthropic")
+    names = {s["name"] for s in anthropic_schemas}
+    assert names == {
+        "get_metrics_summary",
+        "get_report_summary",
+        "get_landing_status",
+    }
+    for schema in anthropic_schemas:
+        assert "input_schema" in schema
+        assert "type" not in schema or schema.get("type") != "function"
+
+    kimi_schemas = get_tool_schemas("kimi")
+    assert {s["function"]["name"] for s in kimi_schemas} == names
+    for schema in kimi_schemas:
+        assert schema["type"] == "function"
+        assert "parameters" in schema["function"]
+        assert schema["function"]["parameters"]["type"] == "object"
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_soft_fails_unknown(db_session: AsyncSession) -> None:
+    user, experiment = await _seed_user_and_experiment(db_session)
+    result = await execute_tool("not_a_real_tool", {}, db_session, experiment)
+    assert result == {"error": "Unknown tool: not_a_real_tool"}
+    assert user.id == experiment.user_id
+
+
+@pytest.mark.asyncio
+async def test_get_report_summary_available_false_without_report(
+    db_session: AsyncSession,
+) -> None:
+    _user, experiment = await _seed_user_and_experiment(db_session)
+    result = await execute_tool("get_report_summary", {}, db_session, experiment)
+    assert result["available"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_report_summary_top_findings(db_session: AsyncSession) -> None:
+    _user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.RESEARCH_READY
+    )
+    raw = {
+        "overall_recommendation": "proceed",
+        "overall_score": 72,
+        "competitors": [],
+        "questions_and_findings": [
+            {
+                "question_id": "q1",
+                "question": "Is demand real?",
+                "score": 40,
+                "findings": [
+                    {
+                        "question_id": "q1",
+                        "claim": "Low-score finding that should rank below q2.",
+                        "evidence_summary": "Weak signal from one forum thread.",
+                        "citations": [
+                            {
+                                "url": "https://example.com/a",
+                                "title": "A",
+                                "snippet": "snip",
+                            }
+                        ],
+                        "confidence": "low",
+                        "confidence_rationale": "Single weak source.",
+                    }
+                ],
+            },
+            {
+                "question_id": "q2",
+                "question": "Who competes?",
+                "score": 90,
+                "findings": [
+                    {
+                        "question_id": "q2",
+                        "claim": "Acme owns the incumbent workflow with 10k teams.",
+                        "evidence_summary": "Pricing page and G2 reviews.",
+                        "citations": [
+                            {
+                                "url": "https://example.com/b",
+                                "title": "B",
+                                "snippet": "snip",
+                            }
+                        ],
+                        "confidence": "high",
+                        "confidence_rationale": "Multiple strong sources.",
+                    }
+                ],
+            },
+        ],
+    }
+    db_session.add(
+        ValidationReport(experiment_id=experiment.id, raw_report=raw)
+    )
+    await db_session.commit()
+
+    result = await execute_tool("get_report_summary", {}, db_session, experiment)
+    assert result["available"] is True
+    assert result["overall_recommendation"] == "proceed"
+    assert result["overall_score"] == 72
+    assert result["total_finding_count"] == 2
+    assert result["top_findings"][0]["claim"].startswith("Acme owns")

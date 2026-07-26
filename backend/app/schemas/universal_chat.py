@@ -29,10 +29,12 @@ class UniversalChatSendRequest(BaseModel):
 
 
 class UniversalChatSendResponse(BaseModel):
-    """POST response: persisted user + assistant messages and the thread id."""
+    """POST response: all rows created this turn (user → tools → assistant)."""
 
     user_message: ChatMessageItem
     assistant_message: ChatMessageItem
+    # Ordered rows for this turn so the dock can render tool chips without refetch.
+    messages: list[ChatMessageItem]
     thread_id: UUID
 
 

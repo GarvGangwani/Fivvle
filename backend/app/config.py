@@ -167,6 +167,27 @@ class Settings(BaseSettings):
         description="Model for chat attachment image extraction (vision).",
     )
 
+    # Universal chat tool loop — Kimi primary, Anthropic fallback (see complete_with_tools).
+    universal_chat_tools_provider: str = Field(
+        default="kimi",
+        description="Primary provider for universal-chat tool-calling turns.",
+    )
+    universal_chat_tools_model: str = Field(
+        default="kimi-k2.6",
+        description="Primary model for universal-chat tool-calling (must be in llm.cost registry).",
+    )
+    universal_chat_tools_fallback_provider: str = Field(
+        default="anthropic",
+        description=(
+            "Fallback provider when the turn's initial tool-loop call fails "
+            "(before any tool rows are persisted)."
+        ),
+    )
+    universal_chat_tools_fallback_model: str = Field(
+        default="claude-sonnet-4-6",
+        description="Fallback model for universal-chat tool-calling.",
+    )
+
     # --- Research dispatcher (ADR 0009) ---
     # in_process: invokes the research engine directly via asyncio.create_task (dev/test).
     # http: POSTs to the Cloud Function HTTPS endpoint with an OIDC token (staging/prod).

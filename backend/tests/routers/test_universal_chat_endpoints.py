@@ -9,14 +9,35 @@ Uses the real Postgres DB (TestClient + conftest fixtures). LLM is mocked.
 
 from __future__ import annotations
 
-from types import SimpleNamespace
+from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
+from app.llm.client import LLMResult, ToolsLLMResult
+
 _AUTH_HEADER = {"Authorization": "Bearer faketoken"}
-_LLM_PATCH_TARGET = "app.services.universal_chat_service.llm_client.complete"
+_LLM_PATCH_TARGET = (
+    "app.services.universal_chat_service.llm_client.complete_with_tools"
+)
+
+
+def _tools_text_result(text: str) -> ToolsLLMResult:
+    return ToolsLLMResult(
+        assistant_text=text,
+        tool_uses=[],
+        assistant_turn={"role": "assistant", "content": text},
+        llm_result=LLMResult(
+            text=text,
+            provider="kimi",
+            model="kimi-k2.6",
+            prompt_tokens=10,
+            completion_tokens=5,
+            cost_usd=Decimal("0.001"),
+            latency_ms=40,
+        ),
+    )
 
 
 def _sync_user(client: TestClient) -> None:
@@ -58,8 +79,8 @@ def test_universal_chat_post_get_happy_path(
     exp_id = _create_experiment(client)
 
     with patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete:
-        mock_complete.return_value = SimpleNamespace(
-            text="You're in Spark. Next up is Refine — clarify your idea."
+        mock_complete.return_value = _tools_text_result(
+            "You're in Spark. Next up is Refine — clarify your idea."
         )
         post = client.post(
             f"/experiments/{exp_id}/chat/universal",
@@ -74,6 +95,9 @@ def test_universal_chat_post_get_happy_path(
     assert "Spark" in body["assistant_message"]["content"]
     assert body["user_message"]["turn_kind"] == "universal_chat"
     assert body["thread_id"]
+    assert len(body["messages"]) == 2
+    assert body["messages"][0]["id"] == body["user_message"]["id"]
+    assert body["messages"][1]["id"] == body["assistant_message"]["id"]
 
     get = client.get(
         f"/experiments/{exp_id}/chat/universal/messages",

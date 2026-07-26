@@ -1526,6 +1526,9 @@ async def send_universal_chat(
     return UniversalChatSendResponse(
         user_message=ChatMessageItem.from_orm_message(result.user_message),
         assistant_message=ChatMessageItem.from_orm_message(result.assistant_message),
+        messages=[
+            ChatMessageItem.from_orm_message(message) for message in result.messages
+        ],
         thread_id=result.thread_id,
     )
 
