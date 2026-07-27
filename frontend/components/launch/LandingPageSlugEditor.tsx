@@ -8,7 +8,10 @@ import {
   ApiError,
 } from "@/lib/api";
 import { slugifyProjectName } from "@/lib/published-page";
-import { formatPublicLandingHost, getLandingSubdomainSuffix } from "@/lib/landing-host";
+import {
+  formatPublicLandingHost,
+  getLandingSubdomainSuffix,
+} from "@/lib/landing-host";
 
 type AvailabilityState =
   | { status: "idle" }
@@ -27,6 +30,12 @@ interface LandingPageSlugEditorProps {
   embedded?: boolean;
   onSlugSaved?: (slug: string) => void;
 }
+
+const ghostButtonClass =
+  "inline-flex items-center gap-1.5 border-2 border-border-master bg-surface-card px-3 py-2 font-label-md text-label-sm uppercase tracking-wider text-ink-primary shadow-brutal-sm transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-md disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-brutal-sm";
+
+const primaryButtonClass =
+  "inline-flex items-center gap-1.5 border-2 border-border-master bg-brand-primary px-3 py-2 font-label-md text-label-sm uppercase tracking-wider text-ink-inverse shadow-brutal-sm transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-md disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-brutal-sm";
 
 function sanitizeSlugInput(value: string): string {
   return value
@@ -160,28 +169,26 @@ export function LandingPageSlugEditor({
     }
   }
 
+  const cardClass = embedded
+    ? undefined
+    : "border-2 border-border-master bg-surface-card p-3 shadow-brutal-sm";
+
   if (!editing) {
     return (
-      <div
-        className={
-          embedded
-            ? undefined
-            : "rounded-lg border border-[var(--fv-border)] bg-[var(--fv-hover-overlay)] p-3"
-        }
-      >
+      <div className={cardClass}>
         {!embedded ? (
-          <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--fv-text-muted)]">
+          <p className="font-label-md text-label-sm uppercase text-ink-tertiary">
             Startup URL
           </p>
         ) : null}
         <p
-          className={`truncate font-mono text-[13px] text-[var(--fv-accent)]${embedded ? "" : " mt-1"}`}
+          className={`truncate font-mono text-body-sm text-brand-primary${embedded ? "" : " mt-1"}`}
           title={publicHost}
         >
           {publicHost}
         </p>
         {isLive ? (
-          <p className="mt-1 text-[11px] text-[var(--fv-text-dim)]">
+          <p className="mt-1 font-mono text-mono-sm uppercase text-ink-tertiary">
             Live — changing the URL updates your public link.
           </p>
         ) : null}
@@ -189,7 +196,7 @@ export function LandingPageSlugEditor({
           <button
             type="button"
             onClick={startEditing}
-            className="fv-btn-ghost inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px]"
+            className={ghostButtonClass}
           >
             <Pencil className="h-3.5 w-3.5" />
             Edit URL
@@ -197,7 +204,7 @@ export function LandingPageSlugEditor({
           <button
             type="button"
             onClick={startEditing}
-            className="fv-btn-ghost inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px]"
+            className={ghostButtonClass}
           >
             <Search className="h-3.5 w-3.5" />
             Check availability
@@ -208,28 +215,22 @@ export function LandingPageSlugEditor({
   }
 
   return (
-    <div
-      className={
-        embedded
-          ? "space-y-3"
-          : "space-y-3 rounded-lg border border-[var(--fv-border)] bg-[var(--fv-hover-overlay)] p-3"
-      }
-    >
+    <div className={embedded ? "space-y-3" : `space-y-3 ${cardClass ?? ""}`}>
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--fv-text-muted)]">
+        <p className="font-label-md text-label-sm uppercase text-ink-tertiary">
           {embedded ? "Edit URL" : "Edit startup URL"}
         </p>
         <button
           type="button"
           onClick={cancelEditing}
-          className="rounded-md p-1 text-[var(--fv-text-muted)] hover:text-[var(--fv-text)]"
+          className="border-2 border-border-master bg-surface-card p-1 text-ink-tertiary transition-colors hover:text-ink-primary"
           aria-label="Cancel editing URL"
         >
           <X className="h-4 w-4" />
         </button>
       </div>
 
-      <div className="flex overflow-hidden rounded-lg border border-[var(--fv-border)] bg-[var(--fv-surface-2)]">
+      <div className="flex overflow-hidden border-2 border-border-master bg-surface-elevated focus-within:border-brand-primary">
         <input
           type="text"
           value={draftSlug}
@@ -238,15 +239,15 @@ export function LandingPageSlugEditor({
             setDraftSlug(sanitizeSlugInput(e.target.value));
             setAvailability({ status: "idle" });
           }}
-          className="min-w-0 flex-1 bg-transparent px-3 py-2.5 font-mono text-[13px] text-[var(--fv-text)] outline-none"
+          className="min-w-0 flex-1 bg-transparent px-3 py-2.5 font-mono text-body-sm text-ink-primary outline-none"
           aria-label="URL slug"
         />
-        <span className="shrink-0 border-l border-[var(--fv-border)] px-3 py-2.5 font-mono text-[12px] text-[var(--fv-text-muted)]">
+        <span className="shrink-0 border-l-2 border-border-master px-3 py-2.5 font-mono text-mono-sm text-ink-tertiary">
           {subdomainSuffix}
         </span>
       </div>
 
-      <p className="text-[11px] text-[var(--fv-text-dim)]">
+      <p className="font-mono text-mono-sm uppercase text-ink-tertiary">
         6–40 characters · lowercase letters, numbers, hyphens
       </p>
 
@@ -255,7 +256,7 @@ export function LandingPageSlugEditor({
           type="button"
           disabled={saving}
           onClick={() => setDraftSlug(slugifyProjectName(projectName))}
-          className="fv-btn-ghost px-3 py-1.5 text-[12px]"
+          className={ghostButtonClass}
         >
           Use project name
         </button>
@@ -263,7 +264,7 @@ export function LandingPageSlugEditor({
           type="button"
           disabled={saving || availability.status === "checking"}
           onClick={() => void handleCheckAvailability()}
-          className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px]"
+          className={ghostButtonClass}
         >
           {availability.status === "checking" ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -280,7 +281,7 @@ export function LandingPageSlugEditor({
             availability.status === "unavailable"
           }
           onClick={() => void handleSave()}
-          className="fv-btn-primary inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] disabled:opacity-50"
+          className={primaryButtonClass}
         >
           {saving ? (
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -292,16 +293,20 @@ export function LandingPageSlugEditor({
       </div>
 
       {availability.status === "available" && (
-        <p className="text-[12px] text-[var(--fv-success)]">{availability.message}</p>
+        <p className="font-mono text-mono-sm text-status-success">
+          {availability.message}
+        </p>
       )}
       {availability.status === "unavailable" && (
-        <p className="text-[12px] text-[var(--fv-danger)]">
+        <p className="font-mono text-mono-sm text-status-critical">
           {availability.message}
           {availability.takenByLive ? " (live page)" : ""}
         </p>
       )}
       {availability.status === "error" && (
-        <p className="text-[12px] text-[var(--fv-danger)]">{availability.message}</p>
+        <p className="font-mono text-mono-sm text-status-critical">
+          {availability.message}
+        </p>
       )}
     </div>
   );

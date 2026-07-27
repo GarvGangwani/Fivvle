@@ -64,9 +64,9 @@ export function LivePagePreviewPanel({
       {showToolbar ? (
         <div className="flex h-10 shrink-0 items-center gap-4 border-b-2 border-border-master bg-surface-card px-4">
           <div className="flex shrink-0 items-center gap-2">
-            <span className="h-3 w-3 rounded-full border border-black bg-red-400" />
-            <span className="h-3 w-3 rounded-full border border-black bg-yellow-400" />
-            <span className="h-3 w-3 rounded-full border border-black bg-green-400" />
+            <span className="h-3 w-3 rounded-full border border-border-master bg-status-critical" />
+            <span className="h-3 w-3 rounded-full border border-border-master bg-status-warning" />
+            <span className="h-3 w-3 rounded-full border border-border-master bg-status-success" />
           </div>
 
           <div className="flex min-w-0 flex-1 items-center gap-2 border border-border-master bg-surface-elevated px-3 py-1">

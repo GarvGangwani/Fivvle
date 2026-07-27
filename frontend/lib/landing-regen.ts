@@ -1,7 +1,6 @@
 /**
- * Section regeneration — shared by Launch Copy tab and (optionally) EditorLayout.
- * Matches EditorLayout.handleRegenerateSection: generate-with-hint → poll →
- * merge one section → caller PATCHes synced copy+page.
+ * Section regeneration — used by LaunchCopyTab.
+ * Flow: generate-with-hint → poll → merge one section → caller PATCHes synced copy+page.
  */
 
 import {
