@@ -35,7 +35,7 @@ export function ExperimentLoadingScreen({ projectName }: Props) {
                 {projectName}
               </h2>
             ) : (
-              <BrutalistSkeleton className="h-8 w-48" />
+              <BrutalistSkeleton variant="block" height="h-8" width="w-48" />
             )}
           </div>
           <div className="mt-2 flex shrink-0 gap-1">

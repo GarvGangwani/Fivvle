@@ -52,6 +52,9 @@ export function ProjectCard({ experiment, archived = false }: ProjectCardProps) 
       tabIndex={0}
       onClick={navigate}
       onKeyDown={handleKeyDown}
+      onMouseEnter={() => {
+        router.prefetch(href);
+      }}
       className={`group flex cursor-pointer flex-col rounded-md border-2 border-border-master bg-surface-card ${hoverClass} ${
         archived ? "opacity-70" : ""
       }`}

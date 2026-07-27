@@ -11,14 +11,14 @@ import { useAuth } from "@/lib/auth-context";
 type AccessState = "loading" | "granted" | "denied" | "error";
 
 export default function AdminCouponsPageClient() {
-  const { user, loading: authLoading, refreshProfile } = useAuth();
+  const { user, status, refreshProfile } = useAuth();
   const router = useRouter();
   const [accessState, setAccessState] = useState<AccessState>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (authLoading) return;
-    if (!user) {
+    if (status === "initializing") return;
+    if (status === "unauthenticated" || !user) {
       router.replace("/login");
       return;
     }
@@ -55,7 +55,7 @@ export default function AdminCouponsPageClient() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, user, router, refreshProfile]);
+  }, [status, user, router, refreshProfile]);
 
   useEffect(() => {
     if (accessState === "denied") {
@@ -63,7 +63,7 @@ export default function AdminCouponsPageClient() {
     }
   }, [accessState, router]);
 
-  if (authLoading || accessState === "loading") {
+  if (status === "initializing" || accessState === "loading") {
     return (
       <div className="p-6">
         <LoadingState label="Checking admin access…" />

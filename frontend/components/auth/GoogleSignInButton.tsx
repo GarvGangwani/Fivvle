@@ -51,6 +51,7 @@ export function GoogleSignInButton({
   async function handleClick() {
     setLoading(true);
     try {
+      // Option 2: AuthProvider sets authenticated, then push immediately.
       await signInWithGoogle();
       router.push(redirectTo);
     } catch (err) {
