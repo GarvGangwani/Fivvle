@@ -24,7 +24,7 @@ function readApiErrorDetail(err: unknown): string | null {
 }
 
 /**
- * Shared generate / regenerate / retry path — mirrors MetricsWidget verbatim
+ * Shared generate / regenerate / retry path for Signal verdict
  * (paywall gate → generateInsight → syncWalletAfterPaidAction + 402/502 handling).
  */
 export function useSignalGenerateInsight(

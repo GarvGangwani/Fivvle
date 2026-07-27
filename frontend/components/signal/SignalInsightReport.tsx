@@ -11,10 +11,8 @@ import type {
 } from "@/lib/types";
 
 /**
- * Port of `components/insight/InsightReportViewer` for Signal Verdict.
- * Owns GET /insight-report. Do not import from components/insight/ (dies in cleanup PR).
- *
- * Note: frontend `InsightReport` omits backend `schema_version`; extra fields are ignored.
+ * Signal verdict insight report — owns GET /insight-report.
+ * Frontend `InsightReport` omits backend `schema_version`; extras are ignored.
  */
 
 function formatRecommendation(type: InsightRecommendationType): string {
@@ -136,7 +134,7 @@ export function SignalInsightReport({ experimentId }: Props) {
         role="alert"
         className="border-2 border-border-master bg-surface-card p-4 shadow-brutal-sm"
       >
-        <p className="text-body-md text-ink-secondary">
+        <p className="text-body-md text-status-critical">
           {error ?? "Insight report not available."}
         </p>
       </div>
@@ -181,7 +179,7 @@ export function SignalInsightReport({ experimentId }: Props) {
               Traffic summary
             </h2>
           </div>
-          <p className="font-display text-display-sm tracking-tight text-ink-primary">
+          <p className="font-headline text-headline-lg tracking-tight text-ink-primary">
             {report.traffic_summary.headline_metric}
           </p>
           <p className="mt-3 whitespace-pre-wrap text-body-md text-ink-secondary">

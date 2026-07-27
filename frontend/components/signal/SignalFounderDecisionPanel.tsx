@@ -302,7 +302,7 @@ export function SignalFounderDecisionPanel({
       {error ? (
         <p
           role="alert"
-          className="mt-4 border-2 border-border-master bg-surface-elevated px-3 py-2 text-body-sm text-ink-secondary"
+          className="mt-4 border-2 border-status-critical bg-surface-elevated px-3 py-2 text-body-sm text-status-critical"
         >
           {error}
         </p>
