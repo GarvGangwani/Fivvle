@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { EditorLoadingSkeleton } from "@/components/landing-page-editor/EditorLoadingSkeleton";
+import { BrutalistSkeleton } from "@/components/ui/BrutalistSkeleton";
 
 export default function LandingPageEditorPage() {
   const params = useParams<{ id: string }>();
@@ -13,5 +13,13 @@ export default function LandingPageEditorPage() {
     router.replace(`/experiment/${experimentId}?stage=landing`);
   }, [experimentId, router]);
 
-  return <EditorLoadingSkeleton />;
+  return (
+    <div
+      className="flex min-h-[40vh] items-center justify-center px-6 py-12"
+      aria-busy="true"
+      aria-label="Opening launch"
+    >
+      <BrutalistSkeleton variant="card" height="h-40" width="w-full" className="max-w-md" />
+    </div>
+  );
 }

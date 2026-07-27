@@ -1,7 +1,7 @@
 "use client";
 
 import { useToast } from "@/components/ui/ToastProvider";
-import { LandingPageSlugEditor } from "@/components/landing-page-editor/LandingPageSlugEditor";
+import { LandingPageSlugEditor } from "@/components/launch/LandingPageSlugEditor";
 import { DesignCollapsibleCard } from "@/components/launch/design/DesignCollapsibleCard";
 import {
   buildPublicLandingPageUrl,

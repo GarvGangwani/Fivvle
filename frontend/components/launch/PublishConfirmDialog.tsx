@@ -8,7 +8,7 @@ import {
   publishProject,
 } from "@/lib/api";
 import type { LandingPage } from "@/lib/types";
-import { LandingPageSlugEditor } from "@/components/landing-page-editor/LandingPageSlugEditor";
+import { LandingPageSlugEditor } from "@/components/launch/LandingPageSlugEditor";
 
 type Props = {
   open: boolean;
