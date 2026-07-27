@@ -56,8 +56,7 @@ export function InsightStagePanel({
         ) : (
           <>
             <InsightReportViewer experimentId={experimentId} />
-            {(experimentStatus === "INSIGHT_READY" ||
-              experimentStatus === "COMPLETED") && (
+            {(experimentStatus === "INSIGHT_READY") && (
               <DecisionPanel
                 experimentId={experimentId}
                 onDecision={onDecision}

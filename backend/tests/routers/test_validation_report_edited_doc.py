@@ -220,7 +220,7 @@ def test_get_edited_doc_returns_generated_render(
     body = resp.json()
     assert body["source"] == "generated"
     assert body["version"] == 0
-    assert body["is_stale_since_regeneration"] is False
+    assert body["edited_doc_behind_regeneration"] is False
     assert body["doc"]["type"] == "doc"
     assert len(body["doc"]["content"]) > 0
 
@@ -331,7 +331,7 @@ def test_stale_flag_set_when_regeneration_after_edit(
     resp = client.get(
         f"/experiments/{exp_id}/validation-report/edited-doc", headers=_AUTH_HEADER
     )
-    assert resp.json()["is_stale_since_regeneration"] is True
+    assert resp.json()["edited_doc_behind_regeneration"] is True
 
 
 # ---------------------------------------------------------------------------

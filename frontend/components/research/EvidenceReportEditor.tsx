@@ -201,8 +201,8 @@ export interface EvidenceSelection {
 
 interface EvidenceReportEditorProps {
   experimentId: string;
-  /** Lifts staleness up so the panel can render the banner above the header. */
-  onStaleChange?: (stale: boolean) => void;
+  /** Lifts edited-doc-behind-regen so the panel can render the banner above the header. */
+  onEditedDocBehindChange?: (behind: boolean) => void;
   /**
    * Lifts the current text selection up so the chat pane can anchor a question.
    * Fires null when the selection is empty (from === to) or whitespace-only.
@@ -214,7 +214,7 @@ export const EvidenceReportEditor = forwardRef<
   EvidenceReportEditorHandle,
   EvidenceReportEditorProps
 >(function EvidenceReportEditor(
-  { experimentId, onStaleChange, onSelectionChange },
+  { experimentId, onEditedDocBehindChange, onSelectionChange },
   ref,
 ) {
   const { toast } = useToast();
@@ -254,7 +254,7 @@ export const EvidenceReportEditor = forwardRef<
         base_version: versionRef.current,
       });
       versionRef.current = resp.version;
-      onStaleChange?.(resp.is_stale_since_regeneration);
+      onEditedDocBehindChange?.(resp.edited_doc_behind_regeneration);
       setLastSavedAt(new Date());
       setStatus("saved");
     } catch (err) {
@@ -263,7 +263,7 @@ export const EvidenceReportEditor = forwardRef<
           const fresh = await getEditedDoc(experimentId);
           editor.commands.setContent(fresh.doc as JSONContent, false);
           versionRef.current = fresh.version;
-          onStaleChange?.(fresh.is_stale_since_regeneration);
+          onEditedDocBehindChange?.(fresh.edited_doc_behind_regeneration);
           toast("Report was updated elsewhere — reloaded", "info");
           setStatus("saved");
         } catch {
@@ -275,7 +275,7 @@ export const EvidenceReportEditor = forwardRef<
       toast("Could not save your changes. Retrying on next edit.", "error");
       setStatus("error");
     }
-  }, [editor, experimentId, onStaleChange, toast]);
+  }, [editor, experimentId, onEditedDocBehindChange, toast]);
 
   const scheduleSave = useCallback(() => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -295,7 +295,7 @@ export const EvidenceReportEditor = forwardRef<
         if (cancelled) return;
         editor.commands.setContent(resp.doc as JSONContent, false);
         versionRef.current = resp.version;
-        onStaleChange?.(resp.is_stale_since_regeneration);
+        onEditedDocBehindChange?.(resp.edited_doc_behind_regeneration);
         // Persisted-on-load shows "Saved" with no timestamp (the endpoint
         // doesn't return edited_at). Generated stays idle until first edit.
         setLastSavedAt(null);
@@ -310,7 +310,7 @@ export const EvidenceReportEditor = forwardRef<
     return () => {
       cancelled = true;
     };
-  }, [editor, experimentId, onStaleChange, reloadKey]);
+  }, [editor, experimentId, onEditedDocBehindChange, reloadKey]);
 
   useEffect(() => {
     if (!editor) return;

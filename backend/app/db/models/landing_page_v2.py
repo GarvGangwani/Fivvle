@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -46,6 +46,14 @@ class LandingPageV2Spec(Base):
         server_default="idle",
     )
     error_detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Cascade stamps — mirror LandingPage (v1). NULL = pre-dimension / not-stale.
+    spark_version_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("experiment_spark_versions.id"),
+        nullable=True,
+    )
+    refined_idea_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    edited_doc_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

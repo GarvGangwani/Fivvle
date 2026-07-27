@@ -5,7 +5,7 @@ Covers:
 - All narrative fields surface in the doc.
 - Optional/empty sections are skipped (no empty headings).
 - Numeric scores are NEVER rendered into the doc.
-- is_stale_since_regeneration truth table.
+- edited_doc_behind_regeneration truth table.
 - apply_edited_doc_patch CAS success, first-edit transition, and conflict.
 - build_edited_doc_response source selection (generated vs persisted).
 
@@ -35,7 +35,7 @@ from app.services.validation_report_editor import (
     apply_edited_doc_patch,
     build_edited_doc_response,
     flatten_prosemirror_doc,
-    is_stale_since_regeneration,
+    edited_doc_behind_regeneration,
     render_report_to_prosemirror_doc,
 )
 
@@ -328,7 +328,7 @@ def test_numeric_scores_not_rendered() -> None:
 
 
 # ---------------------------------------------------------------------------
-# is_stale_since_regeneration
+# edited_doc_behind_regeneration
 # ---------------------------------------------------------------------------
 
 
@@ -336,7 +336,7 @@ def test_stale_false_when_no_edited_doc() -> None:
     row = SimpleNamespace(
         edited_doc=None, edited_at=None, generated_at=_NOW
     )
-    assert is_stale_since_regeneration(row) is False
+    assert edited_doc_behind_regeneration(row) is False
 
 
 def test_stale_false_when_edit_after_regeneration() -> None:
@@ -345,7 +345,7 @@ def test_stale_false_when_edit_after_regeneration() -> None:
         edited_at=_NOW + timedelta(hours=1),
         generated_at=_NOW,
     )
-    assert is_stale_since_regeneration(row) is False
+    assert edited_doc_behind_regeneration(row) is False
 
 
 def test_stale_true_when_edit_before_regeneration() -> None:
@@ -354,7 +354,7 @@ def test_stale_true_when_edit_before_regeneration() -> None:
         edited_at=_NOW - timedelta(hours=1),
         generated_at=_NOW,
     )
-    assert is_stale_since_regeneration(row) is True
+    assert edited_doc_behind_regeneration(row) is True
 
 
 # ---------------------------------------------------------------------------
@@ -374,7 +374,7 @@ def test_response_source_generated_when_no_overlay() -> None:
     view = build_edited_doc_response(row)
     assert view["source"] == "generated"
     assert view["version"] == 0
-    assert view["is_stale_since_regeneration"] is False
+    assert view["edited_doc_behind_regeneration"] is False
     assert view["doc"]["type"] == "doc"
 
 

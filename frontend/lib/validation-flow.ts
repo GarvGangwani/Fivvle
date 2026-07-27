@@ -15,8 +15,6 @@ const RESEARCH_PIPELINE_STATUSES = new Set([
   "INSIGHT_GENERATING",
   "INSIGHT_READY",
   "INSIGHT_FAILED",
-  "ANALYZING",
-  "COMPLETED",
 ]);
 
 export function shouldShowValidationResearchPrompt(

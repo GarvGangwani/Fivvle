@@ -3,11 +3,9 @@
 export const LANDING_PAGE_EDITOR_STATUSES = new Set([
   "LANDING_DRAFT",
   "LANDING_LIVE",
-  "ANALYZING",
   "INSIGHT_GENERATING",
   "INSIGHT_READY",
   "INSIGHT_FAILED",
-  "COMPLETED",
 ]);
 
 export function canViewLandingPageEditor(experimentStatus: string): boolean {

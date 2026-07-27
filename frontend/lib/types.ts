@@ -253,8 +253,6 @@ export type ExperimentStatus =
   | "INSIGHT_GENERATING"
   | "INSIGHT_READY"
   | "INSIGHT_FAILED"
-  | "ANALYZING"
-  | "COMPLETED"
   | "ARCHIVED";
 
 /** GET /experiments/{id} response shape */

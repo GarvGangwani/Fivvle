@@ -20,7 +20,7 @@ class EditedDocResponse(BaseModel):
       raw_report (source="generated") or the persisted overlay (source="persisted").
     - version: the current edited_doc_version. 0 until the first successful PATCH.
     - source: whether `doc` came from a live render or the persisted overlay.
-    - is_stale_since_regeneration: True when a persisted edit predates the most
+    - edited_doc_behind_regeneration: True when a persisted edit predates the most
       recent research regeneration (edited_at < generated_at). Always False for
       "generated" responses.
     """
@@ -30,7 +30,7 @@ class EditedDocResponse(BaseModel):
     doc: dict[str, Any]
     version: int
     source: Literal["generated", "persisted"]
-    is_stale_since_regeneration: bool
+    edited_doc_behind_regeneration: bool
 
 
 class EditedDocPatchRequest(BaseModel):

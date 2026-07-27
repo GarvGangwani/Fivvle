@@ -60,10 +60,8 @@ export function mapStatusToPill(status: string): PillState {
     case "LANDING_GENERATING":
     case "LANDING_DRAFT":
     case "LANDING_LIVE":
-    case "ANALYZING":
       return "LAUNCHED";
     case "INSIGHT_READY":
-    case "COMPLETED":
     case "COMPLETE":
       return "COMPLETE";
     case "RESEARCH_FAILED":

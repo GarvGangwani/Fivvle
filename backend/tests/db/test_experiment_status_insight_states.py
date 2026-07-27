@@ -18,11 +18,13 @@ def test_insight_substates_string_values() -> None:
 
 
 def test_existing_states_preserved() -> None:
-    assert ExperimentStatus.ANALYZING == "ANALYZING"
-    assert ExperimentStatus.COMPLETED == "COMPLETED"
+    """Core lifecycle members remain; phantom ANALYZING/COMPLETED are gone."""
     assert ExperimentStatus.ARCHIVED == "ARCHIVED"
     assert ExperimentStatus.RESEARCHING == "RESEARCHING"
     assert ExperimentStatus.LANDING_LIVE == "LANDING_LIVE"
+    assert ExperimentStatus.INSIGHT_READY == "INSIGHT_READY"
+    assert not hasattr(ExperimentStatus, "ANALYZING")
+    assert not hasattr(ExperimentStatus, "COMPLETED")
 
 
 def test_experiment_status_count() -> None:

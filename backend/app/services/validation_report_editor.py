@@ -291,7 +291,7 @@ def flatten_prosemirror_doc(doc: dict[str, Any] | None) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def is_stale_since_regeneration(report: ValidationReportRow) -> bool:
+def edited_doc_behind_regeneration(report: ValidationReportRow) -> bool:
     """True when a persisted edit predates the latest research regeneration.
 
     A persisted overlay is stale if it was last edited before `raw_report` was
@@ -304,7 +304,7 @@ def is_stale_since_regeneration(report: ValidationReportRow) -> bool:
 
 
 def build_edited_doc_response(report: ValidationReportRow) -> dict[str, Any]:
-    """Build the {doc, version, source, is_stale_since_regeneration} view.
+    """Build the {doc, version, source, edited_doc_behind_regeneration} view.
 
     Returns the persisted overlay when present, otherwise a live deterministic
     render of the immutable raw_report. `raw_report` is never mutated.
@@ -314,14 +314,14 @@ def build_edited_doc_response(report: ValidationReportRow) -> dict[str, Any]:
             "doc": report.edited_doc,
             "version": report.edited_doc_version,
             "source": "persisted",
-            "is_stale_since_regeneration": is_stale_since_regeneration(report),
+            "edited_doc_behind_regeneration": edited_doc_behind_regeneration(report),
         }
     parsed = ValidationReport.model_validate(report.raw_report)
     return {
         "doc": render_report_to_prosemirror_doc(parsed),
         "version": report.edited_doc_version,
         "source": "generated",
-        "is_stale_since_regeneration": False,
+        "edited_doc_behind_regeneration": False,
     }
 
 

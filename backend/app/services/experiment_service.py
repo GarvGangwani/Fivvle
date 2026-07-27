@@ -340,9 +340,10 @@ def infer_status_after_unarchive(experiment: Experiment) -> ExperimentStatus:
     """Pick a sensible active status when restoring an archived experiment.
 
     Previous status is not persisted on archive, so infer from related data.
+    Insight-bearing experiments restore to INSIGHT_READY (honest insight terminal).
     """
     if experiment.insight_report is not None:
-        return ExperimentStatus.COMPLETED
+        return ExperimentStatus.INSIGHT_READY
     if experiment.landing_page is not None:
         return ExperimentStatus.LANDING_DRAFT
     if experiment.validation_report is not None:

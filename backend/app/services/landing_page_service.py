@@ -27,7 +27,6 @@ content, RefinedIdea content, or PII. Log only aggregate counts and flags
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any, Literal, cast
@@ -66,17 +65,9 @@ from app.schemas.landing_page import (
 from app.schemas.refinement import RefinedIdea
 from app.schemas.validation_report import ValidationReport
 from app.services.validation_report_editor import flatten_prosemirror_doc
+from app.services.validation_report_for_landing import ValidationReportForLanding
 
 _logger = get_logger(__name__)
-
-
-@dataclass(frozen=True, slots=True)
-class ValidationReportForLanding:
-    """Parsed raw_report plus optional founder-edited narrative for strategist."""
-
-    report: ValidationReport
-    edited_narrative: str | None
-    edited_doc_version: int | None
 
 LP_STRATEGIST_CACHE_BREAKPOINTS: list[llm_client.CacheBreakpoint] = [
     llm_client.CacheBreakpoint(position="user_zone_a_end", ttl="1h"),

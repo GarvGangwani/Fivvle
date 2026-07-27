@@ -11,9 +11,7 @@ const LANDING_PAGE_CREATED = new Set([
   "INSIGHT_GENERATING",
   "INSIGHT_READY",
   "INSIGHT_FAILED",
-  "ANALYZING",
   "ARCHIVED",
-  "COMPLETED",
 ]);
 
 function hasRefinedIdeaPayload(experiment: Experiment): boolean {
@@ -163,7 +161,6 @@ const REFINED_OR_LATER = new Set([
   "INSIGHT_GENERATING",
   "INSIGHT_READY",
   "INSIGHT_FAILED",
-  "ANALYZING",
   "ARCHIVED",
 ]);
 
@@ -175,7 +172,6 @@ const RESEARCH_READY_OR_LATER = new Set([
   "INSIGHT_GENERATING",
   "INSIGHT_READY",
   "INSIGHT_FAILED",
-  "ANALYZING",
   "ARCHIVED",
 ]);
 
@@ -184,7 +180,6 @@ const LANDING_LIVE_OR_LATER = new Set([
   "INSIGHT_GENERATING",
   "INSIGHT_READY",
   "INSIGHT_FAILED",
-  "ANALYZING",
   "ARCHIVED",
 ]);
 

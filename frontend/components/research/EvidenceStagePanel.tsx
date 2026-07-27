@@ -14,7 +14,7 @@ import {
 } from "@/components/research/EvidenceReportEditor";
 import { EvidenceChatPane } from "@/components/research/EvidenceChatPane";
 import { EvidenceSourcesBook } from "@/components/research/EvidenceSourcesBook";
-import { StalenessBanner } from "@/components/research/StalenessBanner";
+import { EditedDocOutdatedBanner } from "@/components/research/EditedDocOutdatedBanner";
 
 function formatRecommendation(rec: OverallRecommendation): string {
   if (rec === "too_vague_to_recommend") return "Needs clarity";
@@ -40,7 +40,7 @@ export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
   const [report, setReport] = useState<ValidationReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [stale, setStale] = useState(false);
+  const [editedDocBehind, setEditedDocBehind] = useState(false);
   const [selection, setSelection] = useState<EvidenceSelection | null>(null);
   const editorRef = useRef<EvidenceReportEditorHandle>(null);
 
@@ -117,12 +117,12 @@ export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
           )}
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-            {stale && <StalenessBanner />}
+            {editedDocBehind && <EditedDocOutdatedBanner />}
 
             <EvidenceReportEditor
               ref={editorRef}
               experimentId={experimentId}
-              onStaleChange={setStale}
+              onEditedDocBehindChange={setEditedDocBehind}
               onSelectionChange={setSelection}
             />
 

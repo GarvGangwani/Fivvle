@@ -36,15 +36,14 @@ function statusImpliesVerdict(status: ExperimentStatus): boolean {
   return (
     status === "INSIGHT_GENERATING" ||
     status === "INSIGHT_READY" ||
-    status === "INSIGHT_FAILED" ||
-    status === "COMPLETED"
+    status === "INSIGHT_FAILED"
   );
 }
 
 /**
  * Shell routing (before latch):
  * - Verdict when `insight_threshold_met` (server) OR status is already in the
- *   insight lifecycle (INSIGHT_* / COMPLETED).
+ *   insight lifecycle (INSIGHT_*).
  * - Watching when status is LANDING_LIVE and threshold is not yet met.
  * - Idle for everything else (including ARCHIVED until data-driven shells).
  *
@@ -67,11 +66,7 @@ function deriveShellState(
 function deriveVerdictSubstate(status: ExperimentStatus): VerdictSubstate {
   if (status === "INSIGHT_GENERATING") return "generating";
   if (status === "INSIGHT_FAILED") return "failed";
-  if (
-    status === "INSIGHT_READY" ||
-    status === "COMPLETED" ||
-    status === "ARCHIVED"
-  ) {
+  if (status === "INSIGHT_READY" || status === "ARCHIVED") {
     return "ready";
   }
   return "eligible";

@@ -5,8 +5,11 @@ from __future__ import annotations
 from uuid import uuid4
 
 from app.services.spark_version_service import (
+    _LaunchStampSet,
     _attachment_ids_equal,
     _is_stale,
+    _merge_launch_stamp_sets,
+    _newest_optional_int,
     _stale_reasons,
 )
 
@@ -70,3 +73,106 @@ def test_stale_reasons_spark_and_edited_doc() -> None:
 
 def test_stale_reasons_riv_and_edited_doc() -> None:
     assert _stale_reasons(2, 2, 1, 3, 1, 2) == ["refined_idea", "edited_doc"]
+
+
+def test_newest_optional_int() -> None:
+    assert _newest_optional_int(None, None) is None
+    assert _newest_optional_int(None, 2) == 2
+    assert _newest_optional_int(3, None) == 3
+    assert _newest_optional_int(1, 4) == 4
+
+
+def test_merge_launch_v2_only_drives_launch() -> None:
+    """(a) v2 exists, v1 doesn't → v2 stamps drive launch."""
+    spark, riv, edv, reasons = _merge_launch_stamp_sets(
+        [
+            _LaunchStampSet(
+                spark_version=1,
+                refined_idea_version=2,
+                edited_doc_version=0,
+            )
+        ],
+        spark_current=2,
+        riv_current=2,
+        edited_doc_current=1,
+    )
+    assert spark == 1
+    assert riv == 2
+    assert edv == 0
+    assert reasons == ["spark", "edited_doc"]
+
+
+def test_merge_launch_both_max_lag_wins() -> None:
+    """(b) both exist → max-lag wins (union of reasons); response uses newest stamps."""
+    spark, riv, edv, reasons = _merge_launch_stamp_sets(
+        [
+            _LaunchStampSet(
+                spark_version=2,
+                refined_idea_version=3,
+                edited_doc_version=2,
+            ),
+            _LaunchStampSet(
+                spark_version=1,
+                refined_idea_version=3,
+                edited_doc_version=1,
+            ),
+        ],
+        spark_current=2,
+        riv_current=3,
+        edited_doc_current=2,
+    )
+    # Newest stamped across generators
+    assert spark == 2
+    assert riv == 3
+    assert edv == 2
+    # v2 lags on spark + edited_doc even though v1 is current
+    assert reasons == ["spark", "edited_doc"]
+
+
+def test_merge_launch_v1_only_unchanged_from_pr2() -> None:
+    """(c) v1 exists, v2 doesn't → same as single-generator PR-2 behavior."""
+    spark, riv, edv, reasons = _merge_launch_stamp_sets(
+        [
+            _LaunchStampSet(
+                spark_version=2,
+                refined_idea_version=3,
+                edited_doc_version=1,
+            )
+        ],
+        spark_current=2,
+        riv_current=3,
+        edited_doc_current=2,
+    )
+    assert spark == 2
+    assert riv == 3
+    assert edv == 1
+    assert reasons == ["edited_doc"]
+
+
+def test_merge_launch_neither_not_stale() -> None:
+    spark, riv, edv, reasons = _merge_launch_stamp_sets(
+        [],
+        spark_current=2,
+        riv_current=3,
+        edited_doc_current=1,
+    )
+    assert spark is None
+    assert riv is None
+    assert edv is None
+    assert reasons == []
+
+
+def test_merge_launch_reasons_dedupe_across_generators() -> None:
+    spark, riv, edv, reasons = _merge_launch_stamp_sets(
+        [
+            _LaunchStampSet(1, 1, 0),
+            _LaunchStampSet(1, 2, 0),
+        ],
+        spark_current=2,
+        riv_current=3,
+        edited_doc_current=1,
+    )
+    assert spark == 1
+    assert riv == 2
+    assert edv == 0
+    assert reasons == ["spark", "refined_idea", "edited_doc"]

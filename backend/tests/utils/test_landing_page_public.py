@@ -17,8 +17,6 @@ def test_live_page_accessible_across_non_archived_statuses() -> None:
         ExperimentStatus.INSIGHT_GENERATING,
         ExperimentStatus.INSIGHT_READY,
         ExperimentStatus.INSIGHT_FAILED,
-        ExperimentStatus.COMPLETED,
-        ExperimentStatus.ANALYZING,
         ExperimentStatus.RESEARCH_READY,
         ExperimentStatus.LANDING_DRAFT,
     ):
@@ -38,12 +36,13 @@ def test_not_public_when_live_at_missing() -> None:
     )
 
 
-def test_editable_through_completed_not_archived() -> None:
+def test_editable_through_insight_ready_not_archived() -> None:
     for status in (
         ExperimentStatus.LANDING_DRAFT,
         ExperimentStatus.LANDING_LIVE,
         ExperimentStatus.INSIGHT_READY,
-        ExperimentStatus.COMPLETED,
+        ExperimentStatus.INSIGHT_GENERATING,
+        ExperimentStatus.INSIGHT_FAILED,
     ):
         assert is_landing_page_editable(status)
     assert not is_landing_page_editable(ExperimentStatus.ARCHIVED)

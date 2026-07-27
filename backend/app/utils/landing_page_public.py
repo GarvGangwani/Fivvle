@@ -6,7 +6,7 @@ from datetime import datetime
 
 from app.db.enums import ExperimentStatus
 
-# Founders may edit copy/design while the page is draft through COMPLETED.
+# Founders may edit copy/design while the page is draft through insight terminal.
 # Blocked only when archived or while generation is in flight.
 # (Public reachability is artifact-gated via live_at — see
 # is_public_landing_page_accessible — and is intentionally separate.)
@@ -17,8 +17,6 @@ LANDING_PAGE_EDITABLE_STATUSES: frozenset[ExperimentStatus] = frozenset(
         ExperimentStatus.INSIGHT_GENERATING,
         ExperimentStatus.INSIGHT_READY,
         ExperimentStatus.INSIGHT_FAILED,
-        ExperimentStatus.COMPLETED,
-        ExperimentStatus.ANALYZING,
     }
 )
 

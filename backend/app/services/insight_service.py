@@ -67,7 +67,7 @@ _INSIGHT_TEMPERATURE = 0.6
 class MissingValidationReportError(Exception):  # noqa: N818
     """Raised when generate_insight_report cannot find a ValidationReport row
     for the experiment. Indicates upstream pipeline failure — should not occur
-    in normal flow (Stage 6 presumes RESEARCH_READY → LANDING_LIVE → ANALYZING).
+    in normal flow (Stage 6 presumes RESEARCH_READY → LANDING_LIVE → INSIGHT_*).
     """
 
 

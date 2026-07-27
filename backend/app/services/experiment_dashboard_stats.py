@@ -22,7 +22,6 @@ _LIVE_LANDING_STATUSES = frozenset(
         ExperimentStatus.INSIGHT_GENERATING,
         ExperimentStatus.INSIGHT_READY,
         ExperimentStatus.INSIGHT_FAILED,
-        ExperimentStatus.COMPLETED,
     }
 )
 

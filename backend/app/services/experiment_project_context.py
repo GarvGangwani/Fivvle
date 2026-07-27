@@ -102,8 +102,6 @@ def current_act_for_status(status: ExperimentStatus) -> str:
         ExperimentStatus.INSIGHT_GENERATING,
         ExperimentStatus.INSIGHT_READY,
         ExperimentStatus.INSIGHT_FAILED,
-        ExperimentStatus.ANALYZING,
-        ExperimentStatus.COMPLETED,
     }:
         return "signal"
     if status == ExperimentStatus.ARCHIVED:

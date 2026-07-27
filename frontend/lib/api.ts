@@ -213,7 +213,7 @@ export interface EditedDocResponse {
   doc: object;
   version: number;
   source: "generated" | "persisted";
-  is_stale_since_regeneration: boolean;
+  edited_doc_behind_regeneration: boolean;
 }
 
 /** Raised when a PATCH to the edited-doc endpoint loses the CAS race (409). */
