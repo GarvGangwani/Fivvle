@@ -8,20 +8,35 @@ export function SettingsSkeleton() {
       aria-label="Loading settings"
     >
       <div>
-        <BrutalistSkeleton className="mb-3 h-10 w-48" />
-        <BrutalistSkeleton className="h-5 w-80 max-w-full" />
+        <BrutalistSkeleton
+          variant="block"
+          height="h-10"
+          width="w-48"
+          className="mb-3"
+        />
+        <BrutalistSkeleton
+          variant="line"
+          height="h-5"
+          width="w-80"
+          className="max-w-full"
+        />
       </div>
 
       <div className="space-y-6">
         {[0, 1, 2].map((i) => (
           <div
             key={i}
-            className="space-y-4 rounded-md border-2 border-border-master bg-surface-card p-6"
+            className="space-y-4 border-2 border-border-master bg-surface-card p-6"
           >
-            <BrutalistSkeleton className="h-4 w-32" />
-            <BrutalistSkeleton className="h-3 w-full" />
-            <BrutalistSkeleton className="h-3 w-4/5" />
-            <BrutalistSkeleton className="mt-4 h-10 w-40" />
+            <BrutalistSkeleton variant="line" width="w-32" />
+            <BrutalistSkeleton variant="line" height="h-3" />
+            <BrutalistSkeleton variant="line" height="h-3" width="w-4/5" />
+            <BrutalistSkeleton
+              variant="block"
+              height="h-10"
+              width="w-40"
+              className="mt-4"
+            />
           </div>
         ))}
       </div>

@@ -19,7 +19,7 @@ class ExperimentStage(StrEnum):
 
 
 class ExperimentStatus(StrEnum):
-    """Matches ARCHITECTURE.md state machine exactly — 21 states total.
+    """Matches ARCHITECTURE.md state machine exactly — 20 states total.
 
     Sub-states for the research engine phases are inline rather than
     nested, making them first-class status values on the Experiment row.
@@ -55,14 +55,12 @@ class ExperimentStatus(StrEnum):
     LANDING_DRAFT = "LANDING_DRAFT"
     LANDING_LIVE = "LANDING_LIVE"
 
-    # --- Insight sub-states (3, under ANALYZING umbrella per RESEARCHING precedent) ---
+    # --- Insight sub-states (3) ---
     INSIGHT_GENERATING = "INSIGHT_GENERATING"
     INSIGHT_READY = "INSIGHT_READY"
     INSIGHT_FAILED = "INSIGHT_FAILED"
 
-    # --- Terminal states (3) ---
-    ANALYZING = "ANALYZING"
-    COMPLETED = "COMPLETED"
+    # --- Terminal ---
     ARCHIVED = "ARCHIVED"
 
 

@@ -13,6 +13,7 @@ from app.config import get_settings
 from app.db.enums import ExperimentStatus, LandingCtaType, LandingDensity
 from app.db.models.experiment import Experiment
 from app.db.models.landing_page import LandingPage
+from app.db.models.landing_page_publish import LandingPagePublish
 from app.db.models.page_view import PageView
 from app.db.models.user import User
 from app.db.models.waitlist_signup import WaitlistSignup
@@ -66,20 +67,28 @@ async def _live_experiment(
     db.add(experiment)
     await db.flush()
     live_at = datetime.now(UTC) - timedelta(days=days_ago)
+    landing = LandingPage(
+        experiment_id=experiment.id,
+        template_id="minimal",
+        palette_id="default",
+        font_pair_id="sans",
+        density=LandingDensity.ROOMY,
+        headline="Test headline for threshold",
+        problem_desc="Problem description for threshold fixture.",
+        solution_desc="Solution description for threshold fixture.",
+        cta_text="Join the waitlist",
+        cta_type=LandingCtaType.WAITLIST,
+        slug=f"thr-lp-{uuid4().hex[:12]}",
+        live_at=live_at,
+    )
+    db.add(landing)
+    await db.flush()
     db.add(
-        LandingPage(
-            experiment_id=experiment.id,
-            template_id="minimal",
-            palette_id="default",
-            font_pair_id="sans",
-            density=LandingDensity.ROOMY,
-            headline="Test headline for threshold",
-            problem_desc="Problem description for threshold fixture.",
-            solution_desc="Solution description for threshold fixture.",
-            cta_text="Join the waitlist",
-            cta_type=LandingCtaType.WAITLIST,
-            slug=f"thr-lp-{uuid4().hex[:12]}",
-            live_at=live_at,
+        LandingPagePublish(
+            landing_page_id=landing.id,
+            publish_number=1,
+            published_at=live_at,
+            ended_at=None,
         )
     )
     await db.commit()
@@ -101,11 +110,16 @@ async def test_compute_insight_threshold_zero_data(db_session: AsyncSession) -> 
 
 @pytest.mark.asyncio
 async def test_compute_insight_threshold_views_only(db_session: AsyncSession) -> None:
+    from app.services.landing_page_publish_service import get_open_cohort_for_experiment
+
     experiment = await _live_experiment(db_session)
+    cohort = await get_open_cohort_for_experiment(db_session, experiment.id)
+    assert cohort is not None
     for i in range(MIN_PAGE_VIEWS):
         db_session.add(
             PageView(
                 experiment_id=experiment.id,
+                publish_id=cohort.id,
                 source_tag="direct",
                 ip_address=f"10.1.0.{i}",
             )
@@ -118,10 +132,15 @@ async def test_compute_insight_threshold_views_only(db_session: AsyncSession) ->
 
 @pytest.mark.asyncio
 async def test_compute_insight_threshold_signups_only(db_session: AsyncSession) -> None:
+    from app.services.landing_page_publish_service import get_open_cohort_for_experiment
+
     experiment = await _live_experiment(db_session)
+    cohort = await get_open_cohort_for_experiment(db_session, experiment.id)
+    assert cohort is not None
     db_session.add(
         PageView(
             experiment_id=experiment.id,
+            publish_id=cohort.id,
             source_tag="direct",
             ip_address="10.1.0.1",
         )
@@ -129,6 +148,7 @@ async def test_compute_insight_threshold_signups_only(db_session: AsyncSession) 
     db_session.add(
         WaitlistSignup(
             experiment_id=experiment.id,
+            publish_id=cohort.id,
             email="alone@example.com",
             source_tag="direct",
         )

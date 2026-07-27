@@ -20,6 +20,7 @@ from app.db.models.page_view import PageView
 from app.db.models.waitlist_signup import WaitlistSignup
 from app.logging_config import get_logger
 from app.services.experiment_service import metrics_from_validation_report
+from app.services.landing_page_publish_service import get_open_cohort
 
 _logger = get_logger(__name__)
 
@@ -70,11 +71,25 @@ async def _exec_get_metrics_summary(
             "top_traffic_sources": [],
         }
 
+    cohort = await get_open_cohort(db, landing_page.id)
+    if cohort is None:
+        return {
+            "available": False,
+            "reason": "Landing page is live but has no open publish cohort.",
+            "total_page_views": 0,
+            "total_signups": 0,
+            "top_traffic_sources": [],
+            "live_at": landing_page.live_at.isoformat(),
+        }
+
     views_count = int(
         await db.scalar(
             select(func.count())
             .select_from(PageView)
-            .where(PageView.experiment_id == experiment.id)
+            .where(
+                PageView.experiment_id == experiment.id,
+                PageView.publish_id == cohort.id,
+            )
         )
         or 0
     )
@@ -82,7 +97,10 @@ async def _exec_get_metrics_summary(
         await db.scalar(
             select(func.count())
             .select_from(WaitlistSignup)
-            .where(WaitlistSignup.experiment_id == experiment.id)
+            .where(
+                WaitlistSignup.experiment_id == experiment.id,
+                WaitlistSignup.publish_id == cohort.id,
+            )
         )
         or 0
     )
@@ -94,7 +112,10 @@ async def _exec_get_metrics_summary(
                 source_expr.label("source"),
                 func.count().label("views"),
             )
-            .where(PageView.experiment_id == experiment.id)
+            .where(
+                PageView.experiment_id == experiment.id,
+                PageView.publish_id == cohort.id,
+            )
             .group_by(source_expr)
             .order_by(func.count().desc())
             .limit(_TOP_SOURCES_LIMIT)

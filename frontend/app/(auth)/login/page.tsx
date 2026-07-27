@@ -3,7 +3,6 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { User } from "firebase/auth";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { AuthEmailDivider } from "@/components/auth/AuthEmailDivider";
 import { AuthLayout } from "@/components/auth/AuthLayout";
@@ -22,7 +21,8 @@ function LoginPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [formDisabled, setFormDisabled] = useState(false);
 
-  function handleSuccess(_user: User) {
+  /** Option 2: push immediately; destination loading.tsx + auth status gate the UI. */
+  function handleSuccess() {
     router.push(destination);
   }
 
@@ -59,9 +59,9 @@ function LoginPageContent() {
           <EmailPasswordForm
             mode="login"
             disabled={formDisabled}
-            onSuccess={(user) => {
+            onSuccess={() => {
               setFormDisabled(true);
-              handleSuccess(user);
+              handleSuccess();
             }}
           />
         </div>

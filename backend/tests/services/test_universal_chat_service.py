@@ -897,7 +897,78 @@ async def test_project_context_act_mapping(db_session: AsyncSession) -> None:
     assert "has_validation_report: false" in block
     assert "has_landing_page: false" in block
     assert "has_insight_report: false" in block
+    assert "spark_version_current: 0" in block
+    assert "refined_idea_version: 0" in block
+    assert "STALENESS:" not in block
+    assert ctx.refine_is_stale is False
+    assert ctx.evidence_is_stale is False
+    assert ctx.launch_is_stale is False
+    assert ctx.insight_is_stale is False
+    assert ctx.staleness_line is None
     assert user.id == experiment.user_id
+
+
+@pytest.mark.asyncio
+async def test_project_context_staleness_block_when_evidence_lags(
+    db_session: AsyncSession,
+) -> None:
+    from app.db.models.validation_report import ValidationReport
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session,
+        status=ExperimentStatus.RESEARCH_READY,
+        refined_idea=_refined_idea_dict(),
+    )
+    experiment.refined_idea_version = 2
+    db_session.add(
+        ValidationReport(
+            experiment_id=experiment.id,
+            raw_report={"version": "test"},
+            refined_idea_version=1,
+        )
+    )
+    await db_session.commit()
+    await db_session.refresh(experiment)
+
+    ctx = await get_experiment_project_context(db_session, experiment)
+    assert ctx.evidence_is_stale is True
+    assert ctx.insight_is_stale is False
+    assert ctx.staleness_line is not None
+    assert "STALENESS:" in ctx.staleness_line
+    assert "refined idea" in ctx.staleness_line
+    assert "evidence" in ctx.staleness_line
+    block = ctx.to_prompt_block()
+    assert "STALENESS:" in block
+    assert user.id == experiment.user_id
+
+
+def test_format_staleness_line_omits_when_fresh() -> None:
+    from app.services.experiment_project_context import _format_staleness_line
+    from app.services.spark_version_service import SparkPhaseVersionInfo
+
+    info = SparkPhaseVersionInfo(
+        current_spark_version=1,
+        current_refined_idea_version=1,
+        current_edited_doc_version=0,
+        refine_spark_version=1,
+        evidence_spark_version=1,
+        launch_spark_version=1,
+        signal_spark_version=1,
+        refine_refined_idea_version=None,
+        evidence_refined_idea_version=1,
+        launch_refined_idea_version=1,
+        signal_refined_idea_version=1,
+        launch_edited_doc_version=0,
+        refine_is_stale=False,
+        evidence_is_stale=False,
+        launch_is_stale=False,
+        signal_is_stale=False,
+        refine_stale_reasons=[],
+        evidence_stale_reasons=[],
+        launch_stale_reasons=[],
+        signal_stale_reasons=[],
+    )
+    assert _format_staleness_line(info) is None
 
 
 def test_prompt_assembly_snapshots() -> None:

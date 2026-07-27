@@ -2,16 +2,9 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  updateProfile,
-  type User,
-} from "firebase/auth";
 import { marketingButtonClass } from "@/components/marketing/marketing-styles";
-import { syncUser } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { formatLoginError, formatSignupError } from "@/lib/auth-errors";
-import { getFirebaseAuth } from "@/lib/firebase";
 
 const inputClassName =
   "mt-2 w-full rounded-md border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md text-ink-primary shadow-brutal-sm transition-shadow focus:border-brand-primary focus:shadow-brutal-primary focus:outline-none disabled:opacity-60";
@@ -52,7 +45,8 @@ function getPasswordStrength(password: string): PasswordStrength {
 
 type EmailPasswordFormProps = {
   mode: "login" | "signup";
-  onSuccess: (user: User) => void;
+  /** Called after AuthProvider status is authenticated — push immediately (Option 2). */
+  onSuccess: () => void;
   disabled?: boolean;
 };
 
@@ -61,6 +55,7 @@ export function EmailPasswordForm({
   onSuccess,
   disabled = false,
 }: EmailPasswordFormProps) {
+  const { signIn, signUp } = useAuth();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
@@ -102,39 +97,21 @@ export function EmailPasswordForm({
     setSubmitState("loading");
 
     try {
-      const auth = getFirebaseAuth();
-      let user: User;
-
+      // AuthProvider sets status → authenticated before these resolve.
+      // Parent pushes immediately; destination loading.tsx + useAuth gate the UI.
       if (mode === "login") {
-        const credential = await signInWithEmailAndPassword(
-          auth,
-          email,
-          password,
-        );
-        user = credential.user;
+        await signIn(email, password);
       } else {
-        // TODO: migrate to first_name / last_name columns on User model when we do broader user schema work — tracked-work item.
-        const credential = await createUserWithEmailAndPassword(
-          auth,
-          email,
-          password,
-        );
         const displayName = `${firstName.trim()} ${lastName.trim()}`.trim();
-        await updateProfile(credential.user, { displayName });
-        user = credential.user;
+        await signUp(email, password, displayName);
       }
 
-      await syncUser(user);
-
       setSubmitState("success");
-      await new Promise((resolve) => window.setTimeout(resolve, 450));
-      onSuccess(user);
+      onSuccess();
     } catch (err) {
       setSubmitState("idle");
       setError(
-        mode === "login"
-          ? formatLoginError(err)
-          : formatSignupError(err),
+        mode === "login" ? formatLoginError(err) : formatSignupError(err),
       );
     }
   }
@@ -268,7 +245,11 @@ export function EmailPasswordForm({
       </div>
 
       {error ? (
-        <p role="alert" aria-live="polite" className="font-body-md text-body-md text-status-critical">
+        <p
+          role="alert"
+          aria-live="polite"
+          className="font-body-md text-body-md text-status-critical"
+        >
           {error}
         </p>
       ) : null}

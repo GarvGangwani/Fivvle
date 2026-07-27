@@ -253,8 +253,6 @@ export type ExperimentStatus =
   | "INSIGHT_GENERATING"
   | "INSIGHT_READY"
   | "INSIGHT_FAILED"
-  | "ANALYZING"
-  | "COMPLETED"
   | "ARCHIVED";
 
 /** GET /experiments/{id} response shape */
@@ -283,14 +281,25 @@ export interface Experiment {
   spark_last_edited_at?: string | null;
   refinement_started_at?: string | null;
   current_spark_version?: number;
+  current_refined_idea_version?: number;
+  current_edited_doc_version?: number | null;
   refine_spark_version?: number | null;
   evidence_spark_version?: number | null;
   launch_spark_version?: number | null;
   signal_spark_version?: number | null;
+  refine_refined_idea_version?: number | null;
+  evidence_refined_idea_version?: number | null;
+  launch_refined_idea_version?: number | null;
+  signal_refined_idea_version?: number | null;
+  launch_edited_doc_version?: number | null;
   refine_is_stale?: boolean;
   evidence_is_stale?: boolean;
   launch_is_stale?: boolean;
   signal_is_stale?: boolean;
+  refine_stale_reasons?: string[];
+  evidence_stale_reasons?: string[];
+  launch_stale_reasons?: string[];
+  signal_stale_reasons?: string[];
 }
 
 export interface SparkVersion {
@@ -689,6 +698,8 @@ export interface ExperimentAnalytics {
   conversion_rate_by_source: Record<string, number>;
   signups_by_location: SignupLocationBucket[];
   days_live: number;
+  publish_number?: number | null;
+  total_publishes?: number;
   insight_threshold_met: boolean;
   insight_progress: InsightProgress;
   warm_network_bias_index?: number;

@@ -95,11 +95,12 @@ class PublishLandingPageRequest(BaseModel):
 
 
 class PublishResponse(BaseModel):
-    """POST /experiments/{id}/landing-page/publish response."""
+    """POST /experiments/{id}/landing-page/publish|republish response."""
 
     message: str
     slug: str
     public_url: str
+    publish_number: int
 
 
 class InsightProgress(BaseModel):
@@ -129,6 +130,8 @@ class AnalyticsResponse(BaseModel):
     conversion_rate_by_source: dict[str, float]
     signups_by_location: list[SignupLocationBucket] = Field(default_factory=list)
     days_live: int = Field(ge=0)
+    publish_number: int | None = None
+    total_publishes: int = Field(ge=0, default=0)
     insight_threshold_met: bool
     insight_progress: InsightProgress
 

@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
@@ -17,6 +17,7 @@ from app.db.enums import LandingCtaType, LandingDensity
 
 if TYPE_CHECKING:
     from app.db.models.experiment import Experiment
+    from app.db.models.landing_page_publish import LandingPagePublish
 
 
 class LandingPage(Base):
@@ -98,6 +99,14 @@ class LandingPage(Base):
         ForeignKey("experiment_spark_versions.id"),
         nullable=True,
     )
+    refined_idea_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Stamp of ValidationReport.edited_doc_version at generation time.
+    # NULL until first post-dimension generation; null → not-stale via _is_stale.
+    edited_doc_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # --- Relationships ---
     experiment: Mapped[Experiment] = relationship(back_populates="landing_page")
+    publishes: Mapped[list[LandingPagePublish]] = relationship(
+        back_populates="landing_page",
+        cascade="all, delete-orphan",
+    )

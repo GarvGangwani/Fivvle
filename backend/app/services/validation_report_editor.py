@@ -198,11 +198,100 @@ def render_report_to_prosemirror_doc(report: ValidationReport) -> dict[str, Any]
 
 
 # ---------------------------------------------------------------------------
+# ProseMirror → plain prose (for landing strategist input)
+# ---------------------------------------------------------------------------
+
+
+def flatten_prosemirror_doc(doc: dict[str, Any] | None) -> str | None:
+    """Walk a ProseMirror JSON doc into markdown-ish plain prose.
+
+    Returns None when ``doc`` is None. Unknown node types recurse into
+    ``content`` when present; otherwise they contribute nothing. Marks on
+    text nodes are ignored.
+    """
+    if doc is None:
+        return None
+
+    def _text_of(node: dict[str, Any]) -> str:
+        parts: list[str] = []
+        for child in node.get("content") or []:
+            if not isinstance(child, dict):
+                continue
+            ctype = child.get("type")
+            if ctype == "text":
+                parts.append(str(child.get("text") or ""))
+            elif ctype == "hardBreak":
+                parts.append("\n")
+            else:
+                parts.append(_text_of(child))
+        return "".join(parts)
+
+    def _walk(node: dict[str, Any]) -> str:
+        ntype = node.get("type")
+        children = [c for c in (node.get("content") or []) if isinstance(c, dict)]
+
+        if ntype == "doc":
+            return "".join(_walk(c) for c in children)
+
+        if ntype == "heading":
+            attrs = node.get("attrs") if isinstance(node.get("attrs"), dict) else {}
+            level = attrs.get("level", 1)
+            try:
+                level_int = max(1, int(level))
+            except (TypeError, ValueError):
+                level_int = 1
+            return f"{'#' * level_int} {_text_of(node)}\n\n"
+
+        if ntype == "paragraph":
+            return f"{_text_of(node)}\n\n"
+
+        if ntype == "blockquote":
+            inner = "".join(_walk(c) for c in children).rstrip("\n")
+            if not inner:
+                return ""
+            quoted = "\n".join(f"> {line}" for line in inner.split("\n"))
+            return f"{quoted}\n\n"
+
+        if ntype == "bulletList":
+            lines: list[str] = []
+            for item in children:
+                lines.append(f"- {_text_of(item).strip()}")
+            return "\n".join(lines) + "\n\n"
+
+        if ntype == "orderedList":
+            lines = []
+            for i, item in enumerate(children, start=1):
+                lines.append(f"{i}. {_text_of(item).strip()}")
+            return "\n".join(lines) + "\n\n"
+
+        if ntype == "listItem":
+            return "".join(_walk(c) for c in children)
+
+        if ntype == "horizontalRule":
+            return "---\n\n"
+
+        if ntype == "hardBreak":
+            return "\n"
+
+        if ntype == "text":
+            return str(node.get("text") or "")
+
+        # Unknown node: recurse content if present.
+        if children:
+            return "".join(_walk(c) for c in children)
+        return ""
+
+    if not isinstance(doc, dict):
+        return None
+    return _walk(doc).rstrip()
+
+
+# ---------------------------------------------------------------------------
 # Staleness + read view
 # ---------------------------------------------------------------------------
 
 
-def is_stale_since_regeneration(report: ValidationReportRow) -> bool:
+def edited_doc_behind_regeneration(report: ValidationReportRow) -> bool:
     """True when a persisted edit predates the latest research regeneration.
 
     A persisted overlay is stale if it was last edited before `raw_report` was
@@ -215,7 +304,7 @@ def is_stale_since_regeneration(report: ValidationReportRow) -> bool:
 
 
 def build_edited_doc_response(report: ValidationReportRow) -> dict[str, Any]:
-    """Build the {doc, version, source, is_stale_since_regeneration} view.
+    """Build the {doc, version, source, edited_doc_behind_regeneration} view.
 
     Returns the persisted overlay when present, otherwise a live deterministic
     render of the immutable raw_report. `raw_report` is never mutated.
@@ -225,14 +314,14 @@ def build_edited_doc_response(report: ValidationReportRow) -> dict[str, Any]:
             "doc": report.edited_doc,
             "version": report.edited_doc_version,
             "source": "persisted",
-            "is_stale_since_regeneration": is_stale_since_regeneration(report),
+            "edited_doc_behind_regeneration": edited_doc_behind_regeneration(report),
         }
     parsed = ValidationReport.model_validate(report.raw_report)
     return {
         "doc": render_report_to_prosemirror_doc(parsed),
         "version": report.edited_doc_version,
         "source": "generated",
-        "is_stale_since_regeneration": False,
+        "edited_doc_behind_regeneration": False,
     }
 
 

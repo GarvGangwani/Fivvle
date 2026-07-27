@@ -26,11 +26,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.enums import LandingCtaType
 from app.db.models.experiment import Experiment
 from app.db.models.landing_page import LandingPage
-from app.utils.landing_page_public import PUBLIC_LANDING_PAGE_STATUSES
+from app.db.enums import ExperimentStatus
 from app.db.models.page_view import PageView
 from app.db.session import get_session
 from app.logging_config import get_logger
 from app.reliability.rate_limit import PUBLIC_RATE_LIMIT, ip_key, limiter
+from app.services.landing_page_publish_service import get_open_cohort
 from app.services.logo_upload_service import (
     local_logo_content_type,
     local_section_image_content_type,
@@ -122,14 +123,18 @@ async def _fetch_live_landing_page(
     db: AsyncSession,
     slug: str,
 ) -> tuple[LandingPage, Experiment] | None:
-    """Return (LandingPage, Experiment) when slug is published and still public."""
+    """Return (LandingPage, Experiment) when slug is published and not archived.
+
+    Public reachability is artifact-gated: live_at set and status != ARCHIVED.
+    Status demotion (e.g. Evidence rerun → RESEARCH_READY) must not 404 a live page.
+    """
     stmt = (
         select(LandingPage, Experiment)
         .join(Experiment, LandingPage.experiment_id == Experiment.id)
         .where(
             LandingPage.slug == slug,
             LandingPage.live_at.is_not(None),
-            Experiment.status.in_(PUBLIC_LANDING_PAGE_STATUSES),
+            Experiment.status != ExperimentStatus.ARCHIVED,
         )
     )
     result = await db.execute(stmt)
@@ -222,6 +227,7 @@ async def submit_waitlist_signup(
         email=str(body.email).strip().lower(),
         source_tag=body.source_tag,
         client_ip=get_remote_address(request),
+        landing_page_id=landing_page.id,
     )
 
     _logger.info(
@@ -253,9 +259,19 @@ async def record_page_view(
     if row is None:
         return PageViewResponse(status="recorded")
 
-    _landing_page, experiment = row
+    landing_page, experiment = row
+    cohort = await get_open_cohort(db, landing_page.id)
+    publish_id = cohort.id if cohort is not None else None
+    if publish_id is None:
+        _logger.warning(
+            "page_view_missing_cohort",
+            landing_id=str(landing_page.id),
+            experiment_id=str(experiment.id),
+        )
+
     page_view = PageView(
         experiment_id=experiment.id,
+        publish_id=publish_id,
         source_tag=body.source_tag,
         time_on_page_sec=body.time_on_page_sec,
         user_agent=body.user_agent,

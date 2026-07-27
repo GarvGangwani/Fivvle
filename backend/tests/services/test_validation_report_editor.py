@@ -5,7 +5,7 @@ Covers:
 - All narrative fields surface in the doc.
 - Optional/empty sections are skipped (no empty headings).
 - Numeric scores are NEVER rendered into the doc.
-- is_stale_since_regeneration truth table.
+- edited_doc_behind_regeneration truth table.
 - apply_edited_doc_patch CAS success, first-edit transition, and conflict.
 - build_edited_doc_response source selection (generated vs persisted).
 
@@ -34,7 +34,8 @@ from app.services.validation_report_editor import (
     EditedDocVersionConflict,
     apply_edited_doc_patch,
     build_edited_doc_response,
-    is_stale_since_regeneration,
+    flatten_prosemirror_doc,
+    edited_doc_behind_regeneration,
     render_report_to_prosemirror_doc,
 )
 
@@ -327,7 +328,7 @@ def test_numeric_scores_not_rendered() -> None:
 
 
 # ---------------------------------------------------------------------------
-# is_stale_since_regeneration
+# edited_doc_behind_regeneration
 # ---------------------------------------------------------------------------
 
 
@@ -335,7 +336,7 @@ def test_stale_false_when_no_edited_doc() -> None:
     row = SimpleNamespace(
         edited_doc=None, edited_at=None, generated_at=_NOW
     )
-    assert is_stale_since_regeneration(row) is False
+    assert edited_doc_behind_regeneration(row) is False
 
 
 def test_stale_false_when_edit_after_regeneration() -> None:
@@ -344,7 +345,7 @@ def test_stale_false_when_edit_after_regeneration() -> None:
         edited_at=_NOW + timedelta(hours=1),
         generated_at=_NOW,
     )
-    assert is_stale_since_regeneration(row) is False
+    assert edited_doc_behind_regeneration(row) is False
 
 
 def test_stale_true_when_edit_before_regeneration() -> None:
@@ -353,7 +354,7 @@ def test_stale_true_when_edit_before_regeneration() -> None:
         edited_at=_NOW - timedelta(hours=1),
         generated_at=_NOW,
     )
-    assert is_stale_since_regeneration(row) is True
+    assert edited_doc_behind_regeneration(row) is True
 
 
 # ---------------------------------------------------------------------------
@@ -373,7 +374,7 @@ def test_response_source_generated_when_no_overlay() -> None:
     view = build_edited_doc_response(row)
     assert view["source"] == "generated"
     assert view["version"] == 0
-    assert view["is_stale_since_regeneration"] is False
+    assert view["edited_doc_behind_regeneration"] is False
     assert view["doc"]["type"] == "doc"
 
 
@@ -425,3 +426,147 @@ def test_patch_conflict_raises_with_current_version() -> None:
     assert exc.value.current_version == 7
     # Row is untouched on conflict.
     assert row.edited_doc_version == 7
+
+
+# ---------------------------------------------------------------------------
+# flatten_prosemirror_doc
+# ---------------------------------------------------------------------------
+
+
+def test_flatten_none_returns_none() -> None:
+    assert flatten_prosemirror_doc(None) is None
+
+
+def test_flatten_empty_doc() -> None:
+    assert flatten_prosemirror_doc({"type": "doc", "content": []}) == ""
+
+
+def test_flatten_headings_and_paragraphs() -> None:
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "heading",
+                "attrs": {"level": 1},
+                "content": [{"type": "text", "text": "Title"}],
+            },
+            {
+                "type": "paragraph",
+                "content": [{"type": "text", "text": "Hello world."}],
+            },
+        ],
+    }
+    out = flatten_prosemirror_doc(doc)
+    assert out == "# Title\n\nHello world."
+
+
+def test_flatten_mixed_lists() -> None:
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "One"}],
+                            }
+                        ],
+                    },
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "Two"}],
+                            }
+                        ],
+                    },
+                ],
+            },
+            {
+                "type": "orderedList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "Alpha"}],
+                            }
+                        ],
+                    }
+                ],
+            },
+        ],
+    }
+    out = flatten_prosemirror_doc(doc)
+    assert out is not None
+    assert "- One" in out
+    assert "- Two" in out
+    assert "1. Alpha" in out
+
+
+def test_flatten_nested_list() -> None:
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "Parent"}],
+                            },
+                            {
+                                "type": "bulletList",
+                                "content": [
+                                    {
+                                        "type": "listItem",
+                                        "content": [
+                                            {
+                                                "type": "paragraph",
+                                                "content": [
+                                                    {"type": "text", "text": "Child"}
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    out = flatten_prosemirror_doc(doc)
+    assert out is not None
+    assert "Parent" in out
+    assert "Child" in out
+
+
+def test_flatten_unknown_node_does_not_crash() -> None:
+    doc = {
+        "type": "doc",
+        "content": [
+            {
+                "type": "customWeirdNode",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": "Survives"}],
+                    }
+                ],
+            }
+        ],
+    }
+    out = flatten_prosemirror_doc(doc)
+    assert out is not None
+    assert "Survives" in out

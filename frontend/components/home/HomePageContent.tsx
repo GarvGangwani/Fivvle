@@ -1,15 +1,15 @@
 "use client";
 
-import { AuthProvider, useAuth } from "@/lib/auth-context";
+import { useAuth } from "@/lib/auth-context";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { HomeOverviewContent } from "@/components/dashboard/HomeOverviewContent";
 import { DashboardHomeSkeleton } from "@/components/dashboard/skeletons/DashboardHomeSkeleton";
 import { MarketingLandingPage } from "@/components/marketing/MarketingLandingPage";
 
 function HomeAuthGate() {
-  const { user, loading } = useAuth();
+  const { status } = useAuth();
 
-  if (loading) {
+  if (status === "initializing") {
     return (
       <div className="min-h-screen bg-canvas-bg">
         <div className="px-gutter pb-gutter pt-24">
@@ -19,7 +19,7 @@ function HomeAuthGate() {
     );
   }
 
-  if (!user) {
+  if (status === "unauthenticated") {
     return <MarketingLandingPage />;
   }
 
@@ -31,9 +31,5 @@ function HomeAuthGate() {
 }
 
 export function HomePageContent() {
-  return (
-    <AuthProvider>
-      <HomeAuthGate />
-    </AuthProvider>
-  );
+  return <HomeAuthGate />;
 }

@@ -75,6 +75,19 @@ const ACT_NODE_IDS: SatelliteNodeId[] = [
 const SPARK_EXPANDED_ID = "spark-expanded" as const;
 const REFINE_EXPANDED_ID = "refine-expanded" as const;
 
+/** Statuses where reopen marks downstream artifacts stale — confirm before opening. */
+const REFINE_REOPEN_CONFIRM_STATUSES = new Set<ExperimentStatus>([
+  "RESEARCH_READY",
+  "RESEARCH_FAILED",
+  "LANDING_DRAFT",
+  "LANDING_LIVE",
+  "INSIGHT_READY",
+  "INSIGHT_FAILED",
+]);
+
+const REFINE_REOPEN_CONFIRM_MESSAGE =
+  "Reopen refinement? Your validation report, landing page, and insight report will be marked stale — they'll stay saved but you'll need to regenerate them from the new refined idea when you're ready.";
+
 const nodeTypes: NodeTypes = {
   coreShell: CoreShellNode,
   actNode: ActNode,
@@ -385,6 +398,14 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       return;
     }
     if (refinePanelOpen) return;
+    if (
+      REFINE_REOPEN_CONFIRM_STATUSES.has(
+        experiment.status as ExperimentStatus,
+      )
+    ) {
+      const confirmed = window.confirm(REFINE_REOPEN_CONFIRM_MESSAGE);
+      if (!confirmed) return;
+    }
     const savedPos = positions[REFINE_EXPANDED_ID];
     setRefinePanelPosition(savedPos ?? computeInitialRefinePosition());
     setRefinePanelOpen(true);

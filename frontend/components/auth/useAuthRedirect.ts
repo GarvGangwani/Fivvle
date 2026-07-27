@@ -9,9 +9,13 @@ export function resolveAuthDestination(intent: string | null): string {
   return "/dashboard";
 }
 
-/** Send authenticated users away from login/signup pages (e.g. after Google redirect). */
+/**
+ * Send authenticated users away from login/signup (e.g. Google redirect return).
+ * Does not wait on a status promise before navigation from the form — Option 2
+ * pushes from the handler; destinations gate on status / loading.tsx.
+ */
 export function useAuthRedirect() {
-  const { user, loading } = useAuth();
+  const { status } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const destination = useMemo(
@@ -20,10 +24,10 @@ export function useAuthRedirect() {
   );
 
   useEffect(() => {
-    if (!loading && user) {
+    if (status === "authenticated") {
       router.replace(destination);
     }
-  }, [user, loading, router, destination]);
+  }, [status, router, destination]);
 }
 
 export function useAuthDestination(): string {

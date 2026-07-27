@@ -11,19 +11,27 @@ Per AGENTS.md "Logging hygiene":
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from statistics import median
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.landing_page import LandingPage
+from app.db.models.landing_page_publish import LandingPagePublish
 from app.db.models.page_view import PageView
 from app.db.models.waitlist_signup import WaitlistSignup
 from app.integrations.ip_geolocation import location_label
 from app.logging_config import get_logger
 from app.schemas.insight import AnalyticsAggregate, SignupLocationBucket
+from app.services.landing_page_publish_service import (
+    count_publishes_for_landing,
+    get_cohort_by_id,
+    get_open_cohort,
+)
 
 _logger = get_logger(__name__)
 
@@ -45,6 +53,20 @@ WARM_SOURCE_TAG_PATTERNS: tuple[str, ...] = (
 
 class LandingPageNotLiveError(Exception):
     """Raised when the experiment has no LandingPage with a non-null live_at."""
+
+
+@dataclass(frozen=True, slots=True)
+class AnalyticsBuildResult:
+    """Aggregate plus the publish cohort it was resolved against."""
+
+    aggregate: AnalyticsAggregate
+    publish_id: UUID | None
+    publish_number: int | None
+    total_publishes: int
+
+    def __getattr__(self, name: str) -> Any:
+        # Preserve pre-cohort call sites that read aggregate fields off the result.
+        return getattr(self.aggregate, name)
 
 
 def _clamp01(value: float) -> float:
@@ -93,42 +115,35 @@ def _build_signups_by_location(
     return buckets
 
 
-async def build_analytics_aggregate(
-    db: AsyncSession,
-    experiment_id: UUID,
+def _empty_aggregate(*, days_live: int = 0) -> AnalyticsAggregate:
+    return AnalyticsAggregate(
+        days_live=days_live,
+        total_page_views=0,
+        unique_visitors=0,
+        total_signups=0,
+        conversion_rate=0.0,
+        views_by_source={},
+        signups_by_source={},
+        conversion_rate_by_source={},
+        signups_by_location=[],
+        warm_network_bias_index=0.0,
+        time_on_page_p50_seconds=0,
+        time_on_page_p90_seconds=0,
+        signups_by_day=[0] * days_live,
+        views_by_day=[0] * days_live,
+        drop_off_signals={},
+        data_quality_notes=[],
+    )
+
+
+def _compute_aggregate_from_rows(
+    *,
+    page_views: list[PageView],
+    waitlist_signups: list[WaitlistSignup],
+    days_live: int,
+    period_start: datetime,
 ) -> AnalyticsAggregate:
-    """Build AnalyticsAggregate from page_views + waitlist_signups + landing_page.
-
-    Raises LandingPageNotLiveError if the experiment has no live landing page
-    (the aggregator is meant to be called only after Stage 4 publish).
-    """
-    lp_result = await db.execute(
-        select(LandingPage).where(LandingPage.experiment_id == experiment_id)
-    )
-    landing_page = lp_result.scalar_one_or_none()
-    if landing_page is None or landing_page.live_at is None:
-        raise LandingPageNotLiveError(
-            f"Experiment {experiment_id} has no published landing page (live_at is null)"
-        )
-
-    now = datetime.now(timezone.utc)
-    days_live = max(0, (now - landing_page.live_at).days)
-    live_date = landing_page.live_at.astimezone(timezone.utc).date()
-
-    pv_result = await db.execute(
-        select(PageView)
-        .where(PageView.experiment_id == experiment_id)
-        .order_by(PageView.ts.asc())
-    )
-    page_views = list(pv_result.scalars().all())
-
-    ws_result = await db.execute(
-        select(WaitlistSignup)
-        .where(WaitlistSignup.experiment_id == experiment_id)
-        .order_by(WaitlistSignup.ts.asc())
-    )
-    waitlist_signups = list(ws_result.scalars().all())
-
+    live_date = period_start.astimezone(timezone.utc).date()
     total_page_views = len(page_views)
     total_signups = len(waitlist_signups)
 
@@ -247,7 +262,7 @@ async def build_analytics_aggregate(
                     "average — possible bot or campaign event."
                 )
 
-    aggregate = AnalyticsAggregate(
+    return AnalyticsAggregate(
         days_live=days_live,
         total_page_views=total_page_views,
         unique_visitors=unique_visitors,
@@ -266,14 +281,110 @@ async def build_analytics_aggregate(
         data_quality_notes=data_quality_notes,
     )
 
+
+async def build_analytics_aggregate(
+    db: AsyncSession,
+    experiment_id: UUID,
+    *,
+    publish_id: UUID | None = None,
+    include_all_publishes: bool = False,
+) -> AnalyticsBuildResult:
+    """Build AnalyticsAggregate from page_views + waitlist_signups + landing_page.
+
+    Defaults to the current (open) publish cohort. Pass ``include_all_publishes=True``
+    for historical experiment-wide aggregates (``publish_id`` ignored). Pass an
+    explicit ``publish_id`` to target a closed or open cohort.
+
+    When no open cohort exists and ``publish_id`` is None (and not all-publishes),
+    returns an empty zero aggregate rather than raising — dashboard callers may
+    invoke this speculatively.
+
+    Raises LandingPageNotLiveError if the experiment has no live landing page.
+    """
+    lp_result = await db.execute(
+        select(LandingPage).where(LandingPage.experiment_id == experiment_id)
+    )
+    landing_page = lp_result.scalar_one_or_none()
+    if landing_page is None or landing_page.live_at is None:
+        raise LandingPageNotLiveError(
+            f"Experiment {experiment_id} has no published landing page (live_at is null)"
+        )
+
+    total_publishes = await count_publishes_for_landing(db, landing_page.id)
+    now = datetime.now(timezone.utc)
+
+    resolved_cohort: LandingPagePublish | None = None
+    filter_publish_id: UUID | None = None
+
+    if include_all_publishes:
+        days_live = max(0, (now - landing_page.live_at).days)
+        period_start = landing_page.live_at
+        publish_number: int | None = None
+        resolved_publish_id: UUID | None = None
+    else:
+        if publish_id is not None:
+            resolved_cohort = await get_cohort_by_id(db, publish_id)
+            if (
+                resolved_cohort is None
+                or resolved_cohort.landing_page_id != landing_page.id
+            ):
+                return AnalyticsBuildResult(
+                    aggregate=_empty_aggregate(),
+                    publish_id=None,
+                    publish_number=None,
+                    total_publishes=total_publishes,
+                )
+        else:
+            resolved_cohort = await get_open_cohort(db, landing_page.id)
+            if resolved_cohort is None:
+                return AnalyticsBuildResult(
+                    aggregate=_empty_aggregate(),
+                    publish_id=None,
+                    publish_number=None,
+                    total_publishes=total_publishes,
+                )
+
+        filter_publish_id = resolved_cohort.id
+        resolved_publish_id = resolved_cohort.id
+        publish_number = resolved_cohort.publish_number
+        period_end = resolved_cohort.ended_at or now
+        days_live = max(0, (period_end - resolved_cohort.published_at).days)
+        period_start = resolved_cohort.published_at
+
+    pv_stmt = select(PageView).where(PageView.experiment_id == experiment_id)
+    ws_stmt = select(WaitlistSignup).where(WaitlistSignup.experiment_id == experiment_id)
+    if not include_all_publishes:
+        pv_stmt = pv_stmt.where(PageView.publish_id == filter_publish_id)
+        ws_stmt = ws_stmt.where(WaitlistSignup.publish_id == filter_publish_id)
+
+    pv_result = await db.execute(pv_stmt.order_by(PageView.ts.asc()))
+    page_views = list(pv_result.scalars().all())
+
+    ws_result = await db.execute(ws_stmt.order_by(WaitlistSignup.ts.asc()))
+    waitlist_signups = list(ws_result.scalars().all())
+
+    aggregate = _compute_aggregate_from_rows(
+        page_views=page_views,
+        waitlist_signups=waitlist_signups,
+        days_live=days_live,
+        period_start=period_start,
+    )
+
     _logger.info(
         "analytics aggregate built",
         experiment_id=str(experiment_id),
         days_live=days_live,
-        total_page_views=total_page_views,
-        total_signups=total_signups,
-        unique_source_count=len(views_by_source),
-        warm_network_bias_index=warm_network_bias_index,
+        total_page_views=aggregate.total_page_views,
+        total_signups=aggregate.total_signups,
+        unique_source_count=len(aggregate.views_by_source),
+        warm_network_bias_index=aggregate.warm_network_bias_index,
+        publish_id=str(resolved_publish_id) if resolved_publish_id else None,
+        include_all_publishes=include_all_publishes,
     )
 
-    return aggregate
+    return AnalyticsBuildResult(
+        aggregate=aggregate,
+        publish_id=resolved_publish_id,
+        publish_number=publish_number,
+        total_publishes=total_publishes,
+    )

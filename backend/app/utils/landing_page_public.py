@@ -1,32 +1,32 @@
-"""Which experiment statuses keep a published landing page publicly accessible."""
+"""Which landing pages remain publicly accessible, and when founders may edit them."""
+
+from __future__ import annotations
+
+from datetime import datetime
 
 from app.db.enums import ExperimentStatus
 
-# Published pages stay live while insight runs and after the report is ready.
-# ARCHIVED experiments are intentionally excluded (AGENTS.md).
-PUBLIC_LANDING_PAGE_STATUSES: frozenset[ExperimentStatus] = frozenset(
+# Founders may edit copy/design while the page is draft through insight terminal.
+# Blocked only when archived or while generation is in flight.
+# (Public reachability is artifact-gated via live_at — see
+# is_public_landing_page_accessible — and is intentionally separate.)
+LANDING_PAGE_EDITABLE_STATUSES: frozenset[ExperimentStatus] = frozenset(
     {
+        ExperimentStatus.LANDING_DRAFT,
         ExperimentStatus.LANDING_LIVE,
         ExperimentStatus.INSIGHT_GENERATING,
         ExperimentStatus.INSIGHT_READY,
         ExperimentStatus.INSIGHT_FAILED,
-        ExperimentStatus.COMPLETED,
-        ExperimentStatus.ANALYZING,
-    }
-)
-
-# Founders may edit copy/design while the page is live through COMPLETED.
-# Blocked only when archived or while generation is in flight.
-LANDING_PAGE_EDITABLE_STATUSES: frozenset[ExperimentStatus] = frozenset(
-    {
-        ExperimentStatus.LANDING_DRAFT,
-        *PUBLIC_LANDING_PAGE_STATUSES,
     }
 )
 
 
-def is_public_landing_page_accessible(status: ExperimentStatus) -> bool:
-    return status in PUBLIC_LANDING_PAGE_STATUSES
+def is_public_landing_page_accessible(
+    status: ExperimentStatus,
+    live_at: datetime | None,
+) -> bool:
+    """Public reachability: published artifact exists and experiment is not archived."""
+    return status != ExperimentStatus.ARCHIVED and live_at is not None
 
 
 def is_landing_page_editable(status: ExperimentStatus) -> bool:

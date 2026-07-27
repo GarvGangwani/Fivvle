@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from datetime import datetime, timezone
 from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.config import get_settings
-from app.db.enums import ExperimentStatus
+from app.db.enums import ExperimentStatus, LandingCtaType, LandingDensity
 from app.db.models.experiment import Experiment
+from app.db.models.landing_page import LandingPage
+from app.db.models.landing_page_publish import LandingPagePublish
 from app.db.models.page_view import PageView
 from app.db.models.user import User
 from app.db.models.waitlist_signup import WaitlistSignup
@@ -61,12 +64,47 @@ async def test_build_experiment_card_stats_map_requires_metrics_unlock(
     user, live = await _experiment(db_session, status=ExperimentStatus.LANDING_LIVE)
     _user2, draft = await _experiment(db_session, status=ExperimentStatus.LANDING_DRAFT)
 
+    now = datetime.now(timezone.utc)
+    landing = LandingPage(
+        experiment_id=live.id,
+        template_id="minimal",
+        palette_id="default",
+        font_pair_id="sans",
+        density=LandingDensity.ROOMY,
+        headline="H",
+        problem_desc="P",
+        solution_desc="S",
+        cta_text="Join",
+        cta_type=LandingCtaType.WAITLIST,
+        slug=f"card-{uuid4().hex[:10]}",
+        live_at=now,
+    )
+    db_session.add(landing)
+    await db_session.flush()
+    cohort = LandingPagePublish(
+        landing_page_id=landing.id,
+        publish_number=1,
+        published_at=now,
+        ended_at=None,
+    )
+    db_session.add(cohort)
+    await db_session.flush()
+
     db_session.add_all(
         [
-            PageView(experiment_id=live.id, source_tag="direct"),
-            PageView(experiment_id=live.id, source_tag="twitter"),
+            PageView(
+                experiment_id=live.id,
+                publish_id=cohort.id,
+                source_tag="direct",
+            ),
+            PageView(
+                experiment_id=live.id,
+                publish_id=cohort.id,
+                source_tag="twitter",
+            ),
             WaitlistSignup(
                 experiment_id=live.id,
+                publish_id=cohort.id,
                 email="founder@example.com",
                 source_tag="direct",
             ),

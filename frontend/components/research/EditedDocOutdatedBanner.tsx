@@ -2,7 +2,7 @@
 
 import { AlertTriangle } from "lucide-react";
 
-export function StalenessBanner() {
+export function EditedDocOutdatedBanner() {
   return (
     <div
       role="status"
@@ -10,8 +10,8 @@ export function StalenessBanner() {
     >
       <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
       <span>
-        This report was regenerated after your last edit. Your edits may
-        reference outdated content.
+        Research was regenerated after your last edit. Your edits show your
+        prior view.
       </span>
     </div>
   );

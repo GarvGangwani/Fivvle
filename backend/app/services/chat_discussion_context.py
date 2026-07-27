@@ -68,7 +68,7 @@ async def _landing_metrics_block(
     experiment_id: UUID,
 ) -> str | None:
     try:
-        agg = await build_analytics_aggregate(db, experiment_id)
+        agg = (await build_analytics_aggregate(db, experiment_id)).aggregate
     except LandingPageNotLiveError:
         pv_count = await db.scalar(
             select(func.count())

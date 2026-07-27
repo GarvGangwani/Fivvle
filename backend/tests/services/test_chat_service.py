@@ -632,6 +632,56 @@ async def test_dr_experiment_refined_reopens_to_refining(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "source_status",
+    [
+        ExperimentStatus.RESEARCH_READY,
+        ExperimentStatus.LANDING_LIVE,
+        ExperimentStatus.INSIGHT_READY,
+    ],
+)
+@patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
+async def test_dr_post_research_reopens_to_refining(
+    mock_run_turn: AsyncMock,
+    db_session: AsyncSession,
+    source_status: ExperimentStatus,
+) -> None:
+    """Deep-research turn from post-research statuses reopens to REFINING."""
+    mock_run_turn.return_value = _clarify_decision()
+    user = await _persist_user(db_session)
+    thread = await _persist_thread(db_session, user)
+    finalized = _make_refined_idea().model_dump(mode="json")
+    experiment = Experiment(
+        user_id=user.id,
+        thread_id=thread.id,
+        raw_idea=_DR_MESSAGE,
+        status=source_status,
+        refinement_count=1,
+        refined_idea=finalized,
+        refined_idea_current=finalized,
+    )
+    db_session.add(experiment)
+    await db_session.commit()
+
+    result = await handle_turn(
+        db_session,
+        user,
+        "Actually, let me add something about pricing.",
+        deep_research=True,
+        thread_id=thread.id,
+        experiment_id=experiment.id,
+        idempotency_key=str(uuid4()),
+        dispatcher=_RecordingDispatcher(),
+    )
+
+    await db_session.refresh(experiment)
+    assert experiment.status == ExperimentStatus.REFINING
+    assert experiment.refined_idea == finalized
+    assert result.experiment_status == ExperimentStatus.REFINING
+    mock_run_turn.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 @patch("app.services.chat_service.refinement_service.run_turn", new_callable=AsyncMock)
 async def test_dr_clarify_populates_turn_kind_and_dimension(
     mock_run_turn: AsyncMock,

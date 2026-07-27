@@ -28,8 +28,7 @@ function getStatusDotColor(status: string): string {
   if (
     status === "RESEARCH_READY" ||
     status === "LANDING_LIVE" ||
-    status === "INSIGHT_READY" ||
-    status === "COMPLETED"
+    status === "INSIGHT_READY"
   ) {
     return "var(--fv-success)";
   }

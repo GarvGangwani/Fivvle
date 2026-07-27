@@ -15,6 +15,7 @@ from app.db.models.experiment import Experiment
 from app.db.models.user import User
 from app.db.models.validation_report import ValidationReport
 from app.logging_config import get_logger
+from app.services.spark_version_service import stamp_chat_thread_spark_version
 
 _logger = get_logger(__name__)
 
@@ -61,13 +62,28 @@ async def finalize_refinement(
 
     experiment.refined_idea = experiment.refined_idea_current
 
+    # Includes reopen-allowed post-research statuses so re-finalize after reopen
+    # lands at REFINED. REFINING/DRAFT cover the active/legacy finalize paths.
     if experiment.status in (
         ExperimentStatus.SPARK,
         ExperimentStatus.REFINING,
         ExperimentStatus.DRAFT,
         ExperimentStatus.REFINED,
+        ExperimentStatus.RESEARCH_READY,
+        ExperimentStatus.RESEARCH_FAILED,
+        ExperimentStatus.LANDING_DRAFT,
+        ExperimentStatus.LANDING_LIVE,
+        ExperimentStatus.INSIGHT_READY,
+        ExperimentStatus.INSIGHT_FAILED,
     ):
         experiment.status = ExperimentStatus.REFINED
+
+    experiment.refined_idea_version = experiment.refined_idea_version + 1
+
+    if experiment.thread_id is not None:
+        thread = await db.get(ChatThread, experiment.thread_id)
+        if thread is not None:
+            await stamp_chat_thread_spark_version(db, thread, experiment.id)
 
     await db.commit()
     _logger.info(

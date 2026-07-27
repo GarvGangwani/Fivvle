@@ -19,18 +19,6 @@ import { LaunchDesignTab } from "@/components/launch/design/LaunchDesignTab";
 import { LaunchShareTab } from "@/components/launch/share/LaunchShareTab";
 import { getExperimentDisplayName } from "@/lib/experiment-name";
 
-/** Statuses where a LandingPage row exists (mirrors canvas-helpers LANDING_PAGE_CREATED). */
-const LANDING_READY_STATUSES = new Set([
-  "LANDING_DRAFT",
-  "LANDING_LIVE",
-  "INSIGHT_GENERATING",
-  "INSIGHT_READY",
-  "INSIGHT_FAILED",
-  "ANALYZING",
-  "ARCHIVED",
-  "COMPLETED",
-]);
-
 const KIT_POLL_INTERVAL_MS = 3000;
 const MAX_KIT_POLLS = 20;
 
@@ -74,6 +62,7 @@ export function LaunchStagePanel({
   const [status, setStatus] = useState<string | null>(null);
   const [statusReloadKey, setStatusReloadKey] = useState(0);
   const [slug, setSlug] = useState<string | null>(null);
+  const [hasLandingPage, setHasLandingPage] = useState(false);
   const [isLive, setIsLive] = useState(false);
   const [experimentName, setExperimentName] = useState("Untitled project");
   const [pendingLandingGenerate, setPendingLandingGenerate] = useState(false);
@@ -88,7 +77,6 @@ export function LaunchStagePanel({
     setPreviewCacheBust(Date.now());
   }, []);
 
-  const landingReady = status !== null && LANDING_READY_STATUSES.has(status);
   const landingGenerating =
     status === "LANDING_GENERATING" || pendingLandingGenerate;
 
@@ -121,22 +109,20 @@ export function LaunchStagePanel({
     };
   }, [experimentId, statusReloadKey, landingRefreshKey]);
 
-  // Landing page (slug + live_at) — only meaningful once a page exists.
+  // Landing page artifact — fetch regardless of experiment status so Evidence
+  // rerun (status → RESEARCH_READY) does not hide a still-live public page.
   useEffect(() => {
-    if (!landingReady) {
-      setSlug(null);
-      setIsLive(false);
-      return;
-    }
     let cancelled = false;
     (async () => {
       try {
         const page = await getLandingPage(experimentId);
         if (cancelled) return;
+        setHasLandingPage(true);
         setSlug(page.slug);
         setIsLive(page.live_at !== null);
       } catch {
         if (cancelled) return;
+        setHasLandingPage(false);
         setSlug(null);
         setIsLive(false);
       }
@@ -144,12 +130,12 @@ export function LaunchStagePanel({
     return () => {
       cancelled = true;
     };
-  }, [experimentId, landingReady, status]);
+  }, [experimentId, status, landingRefreshKey, statusReloadKey]);
 
   // Clear the pending flag once the backend actually produced the page.
   useEffect(() => {
-    if (landingReady) setPendingLandingGenerate(false);
-  }, [landingReady]);
+    if (hasLandingPage) setPendingLandingGenerate(false);
+  }, [hasLandingPage]);
 
   // Poll experiment status every 3s while the page is generating.
   useEffect(() => {
@@ -213,7 +199,7 @@ export function LaunchStagePanel({
 
   const previewState: PreviewState = landingGenerating
     ? "generating"
-    : landingReady
+    : hasLandingPage
       ? isLive
         ? "live"
         : "draft"
@@ -262,7 +248,7 @@ export function LaunchStagePanel({
               slug={slug}
               isLive={isLive}
               experimentName={experimentName}
-              landingReady={landingReady}
+              landingReady={hasLandingPage}
               landingGenerating={landingGenerating}
               onGenerateLandingPage={handleGenerateLandingPage}
               onSlugSaved={setSlug}
@@ -279,8 +265,8 @@ export function LaunchStagePanel({
     if (status === null) {
       return <KitShell><KitMessage message="Loading launch kit…" /></KitShell>;
     }
-    // Gate by status first: PR 1 rejects generation before LANDING_DRAFT.
-    if (!landingReady) {
+    // Gate by landing artifact: page row exists (status demotion must not hide kit).
+    if (!hasLandingPage) {
       return (
         <KitShell>
           <KitMessage message="Your kit unlocks after your landing page is ready." />

@@ -39,3 +39,14 @@ def test_infer_status_research_ready() -> None:
         raw_report={},
     )
     assert infer_status_after_unarchive(experiment) == ExperimentStatus.RESEARCH_READY
+
+
+def test_infer_status_insight_ready_when_insight_report_exists() -> None:
+    from app.db.models.insight_report import InsightReport
+
+    experiment = _experiment()
+    experiment.insight_report = InsightReport(
+        id=uuid4(),
+        experiment_id=experiment.id,
+    )
+    assert infer_status_after_unarchive(experiment) == ExperimentStatus.INSIGHT_READY

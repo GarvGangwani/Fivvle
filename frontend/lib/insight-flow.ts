@@ -3,7 +3,6 @@
 const INSIGHT_VIEW_STATUSES = new Set([
   "INSIGHT_READY",
   "INSIGHT_FAILED",
-  "COMPLETED",
   "ARCHIVED",
 ]);
 

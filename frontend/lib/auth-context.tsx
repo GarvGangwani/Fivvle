@@ -16,18 +16,31 @@ import {
   getRedirectResult,
   GoogleAuthProvider,
   signOut,
+  updateProfile,
   type User,
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
 import { getFirebaseAuth } from "./firebase";
 import { syncUser } from "./api";
 
+export type AuthStatus =
+  | "initializing"
+  | "authenticated"
+  | "unauthenticated";
+
 type AuthContextValue = {
   user: User | null;
+  /** Firebase session resolve state. Prefer this over inferring from `user`. */
+  status: AuthStatus;
+  /** True while `status === "initializing"`. */
   loading: boolean;
   isAdmin: boolean;
   refreshProfile: () => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signUp: (
+    email: string,
+    password: string,
+    displayName?: string,
+  ) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   logOut: () => Promise<void>;
@@ -37,7 +50,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState<AuthStatus>("initializing");
   const [isAdmin, setIsAdmin] = useState(false);
 
   async function syncAppUser(firebaseUser: User): Promise<void> {
@@ -67,7 +80,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         const credential = await getRedirectResult(auth);
         if (credential?.user && !cancelled) {
+          setUser(credential.user);
           await syncAppUser(credential.user);
+          if (!cancelled) setStatus("authenticated");
         }
       } catch {
         /* surfaced via auth state / login UI if needed */
@@ -77,14 +92,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void handleRedirectResult();
 
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
       if (firebaseUser) {
+        setUser(firebaseUser);
         void syncAppUser(firebaseUser).finally(() => {
-          if (!cancelled) setLoading(false);
+          if (!cancelled) setStatus("authenticated");
         });
       } else {
+        setUser(null);
         setIsAdmin(false);
-        setLoading(false);
+        setStatus("unauthenticated");
       }
     });
     return () => {
@@ -93,20 +109,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  async function signUp(email: string, password: string): Promise<void> {
+  async function signUp(
+    email: string,
+    password: string,
+    displayName?: string,
+  ): Promise<void> {
     const auth = getFirebaseAuth();
     const credential = await createUserWithEmailAndPassword(
       auth,
       email,
       password,
     );
+    const trimmed = displayName?.trim();
+    if (trimmed) {
+      await updateProfile(credential.user, { displayName: trimmed });
+    }
+    setUser(credential.user);
     await syncAppUser(credential.user);
+    setStatus("authenticated");
   }
 
   async function signIn(email: string, password: string): Promise<void> {
     const auth = getFirebaseAuth();
     const credential = await signInWithEmailAndPassword(auth, email, password);
+    setUser(credential.user);
     await syncAppUser(credential.user);
+    setStatus("authenticated");
   }
 
   async function signInWithGoogle(): Promise<void> {
@@ -116,7 +144,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const credential = await signInWithPopup(auth, provider);
+      setUser(credential.user);
       await syncAppUser(credential.user);
+      setStatus("authenticated");
     } catch (err) {
       const shouldRedirect =
         err instanceof FirebaseError &&
@@ -138,10 +168,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut(auth);
   }
 
+  const loading = status === "initializing";
+
   return (
     <AuthContext.Provider
       value={{
         user,
+        status,
         loading,
         isAdmin,
         refreshProfile,

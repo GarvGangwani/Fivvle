@@ -15,6 +15,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.db.models.experiment import Experiment
+    from app.db.models.landing_page_publish import LandingPagePublish
 
 
 class PageView(Base):
@@ -29,6 +30,13 @@ class PageView(Base):
         PG_UUID(as_uuid=True),
         ForeignKey("experiments.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
+    )
+    # Publish cohort — nullable for pre-cohort rows / defensive missing-cohort ingest.
+    publish_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("landing_page_publishes.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
     # Indexed for per-source analytics queries (conversion rate by source tag)
@@ -50,3 +58,6 @@ class PageView(Base):
 
     # --- Relationships ---
     experiment: Mapped[Experiment] = relationship(back_populates="page_views")
+    publish: Mapped[LandingPagePublish | None] = relationship(
+        back_populates="page_views",
+    )

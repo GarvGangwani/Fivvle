@@ -8,8 +8,8 @@ fixed designer template via theme_to_page_json(), and persists copy_json +
 page_json on the LandingPage row.
 
 Pipeline stages:
-  1. Strategist (lp_strategist_v1) — ValidationReport + RefinedIdea + page_goal
-     → LandingPageInputModel + LandingPageStrategy.
+  1. Strategist (lp_strategist_v2) — ValidationReport + RefinedIdea + page_goal
+     (+ optional founder-edited narrative) → LandingPageInputModel + LandingPageStrategy.
   2. Copy generator (lp_copy_v1) — input model + strategy → CopyOutput.
   3. Theme applicator (Python) — TEMPLATES lookup + section assembly → page_json.
 
@@ -64,6 +64,8 @@ from app.schemas.landing_page import (
 )
 from app.schemas.refinement import RefinedIdea
 from app.schemas.validation_report import ValidationReport
+from app.services.validation_report_editor import flatten_prosemirror_doc
+from app.services.validation_report_for_landing import ValidationReportForLanding
 
 _logger = get_logger(__name__)
 
@@ -307,8 +309,8 @@ async def _generate_unique_slug(db: AsyncSession, experiment: Experiment) -> str
 
 async def _fetch_validation_report(
     db: AsyncSession, experiment_id: UUID
-) -> ValidationReport:
-    """Fetch ValidationReport row and parse raw_report JSONB."""
+) -> ValidationReportForLanding:
+    """Fetch ValidationReport row: parse raw_report; flatten edited_doc when present."""
     stmt = select(ValidationReportRow).where(
         ValidationReportRow.experiment_id == experiment_id
     )
@@ -318,7 +320,13 @@ async def _fetch_validation_report(
         raise MissingValidationReportError(
             f"No ValidationReport found for experiment {experiment_id}"
         )
-    return ValidationReport.model_validate(row.raw_report)
+    report = ValidationReport.model_validate(row.raw_report)
+    edited_narrative = flatten_prosemirror_doc(row.edited_doc)
+    return ValidationReportForLanding(
+        report=report,
+        edited_narrative=edited_narrative,
+        edited_doc_version=row.edited_doc_version,
+    )
 
 
 async def _fetch_experiment(db: AsyncSession, experiment_id: UUID) -> Experiment:
@@ -720,6 +728,7 @@ async def _persist_landing_page_row(
     refined_idea: RefinedIdea,
     input_model: LandingPageInputModel,
     page_goal: str,
+    edited_doc_version: int | None = None,
 ) -> LandingPage:
     """UPDATE or INSERT LandingPage with copy_json and page_json."""
     existing = await _fetch_landing_page_row(db, experiment.id)
@@ -730,6 +739,10 @@ async def _persist_landing_page_row(
         else resolve_name_from_refined(refined_idea)
     )
     page_json = sync_landing_page_project_name(page_json, display_name)
+    # Stamp VR edited_doc_version at generation; 0 when overlay never persisted.
+    stamped_edited_doc_version = (
+        0 if edited_doc_version is None else edited_doc_version
+    )
 
     if existing is not None:
         existing.copy_json = copy_json
@@ -738,6 +751,8 @@ async def _persist_landing_page_row(
         from app.services.spark_version_service import get_latest_spark_version_id
 
         existing.spark_version_id = await get_latest_spark_version_id(db, experiment.id)
+        existing.refined_idea_version = experiment.refined_idea_version
+        existing.edited_doc_version = stamped_edited_doc_version
         row = existing
     else:
         scalars = _scalar_fields_for_insert(
@@ -758,6 +773,8 @@ async def _persist_landing_page_row(
             copy_json=copy_json,
             page_json=page_json,
             spark_version_id=await get_latest_spark_version_id(db, experiment.id),
+            refined_idea_version=experiment.refined_idea_version,
+            edited_doc_version=stamped_edited_doc_version,
             **scalars,
         )
         db.add(row)
@@ -793,7 +810,9 @@ async def generate_landing_page(
     provider, model = _landing_page_provider_and_model(settings)
     typed_provider = cast(llm_client.ProviderName, provider)
 
-    vr = await _fetch_validation_report(db, experiment_id)
+    vr_bundle = await _fetch_validation_report(db, experiment_id)
+    vr = vr_bundle.report
+    edited_narrative = vr_bundle.edited_narrative
     experiment = await _fetch_experiment(db, experiment_id)
     refined_idea = _parse_refined_idea(experiment)
 
@@ -812,6 +831,7 @@ async def generate_landing_page(
                 refined_idea,
                 page_goal,
                 regeneration_hint=regeneration_hint,
+                edited_narrative=edited_narrative,
                 for_cache=not is_regeneration,
             ),
             response_model=StrategistOutput,
@@ -883,6 +903,11 @@ async def generate_landing_page(
         refined_idea=refined_idea,
         input_model=strategist_output.input_model,
         page_goal=page_goal,
+        edited_doc_version=(
+            0
+            if edited_narrative is None
+            else (vr_bundle.edited_doc_version or 0)
+        ),
     )
     await db.flush()
 

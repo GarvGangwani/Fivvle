@@ -719,6 +719,7 @@ async def test_write_validation_report_persists_reflection_loops_used() -> None:
                     user_id=user.id,
                     raw_idea="idea",
                     refined_idea={},
+                    refined_idea_version=3,
                     status=ExperimentStatus.RESEARCHING,
                 )
             )
@@ -730,18 +731,21 @@ async def test_write_validation_report_persists_reflection_loops_used() -> None:
                 exp_id,
                 {"version": "test"},
                 reflection_loops_used=2,
+                refined_idea_version=3,
             )
             await session.commit()
 
         async with sm() as session:
             stored = (
                 await session.execute(
-                    select(ValidationReport.reflection_loops_used).where(
-                        ValidationReport.experiment_id == exp_id
-                    )
+                    select(
+                        ValidationReport.reflection_loops_used,
+                        ValidationReport.refined_idea_version,
+                    ).where(ValidationReport.experiment_id == exp_id)
                 )
-            ).scalar_one()
-        assert stored == 2
+            ).one()
+        assert stored.reflection_loops_used == 2
+        assert stored.refined_idea_version == 3
     finally:
         await engine.dispose()
 

@@ -126,6 +126,16 @@ export function SignalWatchingPanel({
         </p>
       ) : null}
 
+      <p className="font-mono text-mono-sm uppercase text-ink-tertiary">
+        {data.publish_number == null
+          ? "All publishes"
+          : `Publish #${data.publish_number}`}
+        {" · "}
+        {data.days_live === 0
+          ? "0 days live"
+          : `${data.days_live} day${data.days_live === 1 ? "" : "s"} live`}
+      </p>
+
       <ThresholdDistanceHero progress={data.insight_progress} />
       <SignalWatchingDetail analytics={data} />
       <LaunchTrafficLink onOpenLaunch={onOpenLaunch} />

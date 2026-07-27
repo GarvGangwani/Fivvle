@@ -14,6 +14,7 @@ from app.config import get_settings
 from app.db.enums import LandingCtaType, LandingDensity
 from app.db.models.experiment import Experiment
 from app.db.models.landing_page import LandingPage
+from app.db.models.landing_page_publish import LandingPagePublish
 from app.db.models.page_view import PageView
 from app.db.models.user import User
 from app.db.models.waitlist_signup import WaitlistSignup
@@ -66,7 +67,8 @@ async def _persist_landing_page(
     experiment_id: object,
     *,
     live_at: datetime | None,
-) -> LandingPage:
+    with_cohort: bool = True,
+) -> tuple[LandingPage, LandingPagePublish | None]:
     landing_page = LandingPage(
         experiment_id=experiment_id,
         template_id="minimal",
@@ -82,9 +84,21 @@ async def _persist_landing_page(
         live_at=live_at,
     )
     db.add(landing_page)
+    await db.flush()
+    cohort: LandingPagePublish | None = None
+    if live_at is not None and with_cohort:
+        cohort = LandingPagePublish(
+            landing_page_id=landing_page.id,
+            publish_number=1,
+            published_at=live_at,
+            ended_at=None,
+        )
+        db.add(cohort)
     await db.commit()
     await db.refresh(landing_page)
-    return landing_page
+    if cohort is not None:
+        await db.refresh(cohort)
+    return landing_page, cohort
 
 
 async def _add_page_view(
@@ -95,10 +109,20 @@ async def _add_page_view(
     source_tag: str | None = None,
     ip_address: str | None = "10.0.0.1",
     time_on_page_sec: int | None = 30,
+    publish_id: object | None = None,
 ) -> None:
+    from app.services.landing_page_publish_service import (  # noqa: PLC0415
+        get_open_cohort_for_experiment,
+    )
+
+    resolved = publish_id
+    if resolved is None:
+        cohort = await get_open_cohort_for_experiment(db, experiment_id)  # type: ignore[arg-type]
+        resolved = cohort.id if cohort else None
     db.add(
         PageView(
             experiment_id=experiment_id,
+            publish_id=resolved,
             source_tag=source_tag,
             ts=ts,
             ip_address=ip_address,
@@ -114,10 +138,20 @@ async def _add_signup(
     ts: datetime,
     source_tag: str | None = None,
     email: str | None = None,
+    publish_id: object | None = None,
 ) -> None:
+    from app.services.landing_page_publish_service import (  # noqa: PLC0415
+        get_open_cohort_for_experiment,
+    )
+
+    resolved = publish_id
+    if resolved is None:
+        cohort = await get_open_cohort_for_experiment(db, experiment_id)  # type: ignore[arg-type]
+        resolved = cohort.id if cohort else None
     db.add(
         WaitlistSignup(
             experiment_id=experiment_id,
+            publish_id=resolved,
             email=email or f"signup-{uuid4()}@example.com",
             source_tag=source_tag,
             ts=ts,
@@ -516,3 +550,58 @@ async def test_build_analytics_aggregate_conversion_rate_zero_views_no_division_
     assert result.total_page_views == 0
     assert result.total_signups == 0
     assert result.conversion_rate == 0.0
+
+
+@pytest.mark.asyncio
+async def test_current_cohort_excludes_prior_publish_rows(
+    db_session: AsyncSession,
+) -> None:
+    now = _utc_now()
+    live_at = now - timedelta(days=3)
+    experiment = await _persist_experiment(db_session)
+    landing, cohort1 = await _persist_landing_page(
+        db_session, experiment.id, live_at=live_at
+    )
+    assert cohort1 is not None
+
+    await _add_page_view(
+        db_session,
+        experiment_id=experiment.id,
+        ts=live_at + timedelta(hours=1),
+        source_tag="twitter",
+        publish_id=cohort1.id,
+    )
+    await db_session.commit()
+
+    cohort1.ended_at = now - timedelta(days=1)
+    cohort2 = LandingPagePublish(
+        landing_page_id=landing.id,
+        publish_number=2,
+        published_at=now - timedelta(days=1),
+        ended_at=None,
+    )
+    db_session.add(cohort2)
+    await db_session.commit()
+    await db_session.refresh(cohort2)
+
+    await _add_page_view(
+        db_session,
+        experiment_id=experiment.id,
+        ts=now - timedelta(hours=2),
+        source_tag="google",
+        publish_id=cohort2.id,
+    )
+    await db_session.commit()
+
+    current = await build_analytics_aggregate(db_session, experiment.id)
+    assert current.publish_number == 2
+    assert current.total_page_views == 1
+    assert current.views_by_source == {"google": 1}
+
+    all_publishes = await build_analytics_aggregate(
+        db_session,
+        experiment.id,
+        include_all_publishes=True,
+    )
+    assert all_publishes.publish_number is None
+    assert all_publishes.total_page_views == 2

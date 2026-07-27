@@ -10,7 +10,7 @@ import { getFirebaseAuth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 
 export default function SettingsPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, status } = useAuth();
   const { balance, loading: walletLoading } = useWallet();
 
   const displayName = user?.displayName ?? "—";
@@ -21,7 +21,7 @@ export default function SettingsPage() {
     window.location.href = "/login";
   }
 
-  if (authLoading) {
+  if (status === "initializing") {
     return <SettingsSkeleton />;
   }
 

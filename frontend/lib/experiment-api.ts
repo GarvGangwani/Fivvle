@@ -108,16 +108,6 @@ export async function createExperimentEvent(
   });
 }
 
-export async function patchExperimentSpark(
-  experimentId: string,
-  rawIdea: string,
-): Promise<Experiment> {
-  return apiFetch<Experiment>(`/experiments/${experimentId}/spark`, {
-    method: "PATCH",
-    body: { raw_idea: rawIdea },
-  });
-}
-
 export async function saveSparkVersion(
   experimentId: string,
   payload: { raw_idea: string },

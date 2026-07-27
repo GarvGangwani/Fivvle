@@ -16,7 +16,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 import app.llm.client as llm_client
 from app.config import get_settings
-from app.services.landing_page_service import _landing_page_provider_and_model
 from app.db.models.experiment import Experiment
 from app.db.models.landing_page import LandingPage
 from app.db.models.landing_page_v2 import LandingPageV2Spec as LandingPageV2SpecRow
@@ -57,6 +56,9 @@ from app.schemas.landing_page_v2 import (
 )
 from app.schemas.refinement import RefinedIdea
 from app.schemas.validation_report import ValidationReport
+from app.services.landing_page_service import _landing_page_provider_and_model
+from app.services.validation_report_editor import flatten_prosemirror_doc
+from app.services.validation_report_for_landing import ValidationReportForLanding
 
 _logger = get_logger(__name__)
 
@@ -134,7 +136,8 @@ def _merge_asset_urls(
 async def _load_validation_report(
     db: AsyncSession,
     experiment_id: UUID,
-) -> ValidationReport:
+) -> ValidationReportForLanding:
+    """Fetch ValidationReport row: parse raw_report; flatten edited_doc when present."""
     result = await db.execute(
         select(ValidationReportRow).where(
             ValidationReportRow.experiment_id == experiment_id
@@ -143,7 +146,13 @@ async def _load_validation_report(
     row = result.scalar_one_or_none()
     if row is None or not row.raw_report:
         raise MissingResearchData("Validation report not found for experiment")
-    return ValidationReport.model_validate(row.raw_report)
+    report = ValidationReport.model_validate(row.raw_report)
+    edited_narrative = flatten_prosemirror_doc(row.edited_doc)
+    return ValidationReportForLanding(
+        report=report,
+        edited_narrative=edited_narrative,
+        edited_doc_version=row.edited_doc_version,
+    )
 
 
 async def _get_or_create_v2_row(
@@ -285,7 +294,9 @@ async def generate_landing_page_v2_spec(
     if not experiment.refined_idea:
         raise MissingResearchData("Refined idea not available")
 
-    validation_report = await _load_validation_report(db, experiment_id)
+    validation_bundle = await _load_validation_report(db, experiment_id)
+    validation_report = validation_bundle.report
+    edited_narrative = validation_bundle.edited_narrative
     refined_idea = RefinedIdea.model_validate(experiment.refined_idea)
     lp_result = await db.execute(
         select(LandingPage).where(LandingPage.experiment_id == experiment_id)
@@ -311,6 +322,7 @@ async def generate_landing_page_v2_spec(
             refined_idea=refined_idea,
             page_goal=page_goal,
             regeneration_hint=regeneration_hint,
+            edited_narrative=edited_narrative,
         ),
         response_model=NarrativeArchitectOutput,
         prompt_name=LP_RUNTIME_NARRATIVE_PROMPT_NAME,
@@ -406,11 +418,23 @@ async def generate_landing_page_v2_spec(
     )
     spec, resolved = _merge_asset_urls(spec, uploaded_assets)
 
+    from app.services.spark_version_service import get_latest_spark_version_id
+
+    # Stamp cascade dimensions at generation; edited_doc_version 0 when overlay absent.
+    stamped_edited_doc_version = (
+        0
+        if edited_narrative is None
+        else (validation_bundle.edited_doc_version or 0)
+    )
+
     v2_row = await _get_or_create_v2_row(db, experiment_id)
     v2_row.spec_json = spec.model_dump(mode="json")
     v2_row.generation_status = "ready"
     v2_row.generation_phase = "ready"
     v2_row.error_detail = None
+    v2_row.spark_version_id = await get_latest_spark_version_id(db, experiment_id)
+    v2_row.refined_idea_version = experiment.refined_idea_version
+    v2_row.edited_doc_version = stamped_edited_doc_version
     await db.flush()
 
     _logger.info(

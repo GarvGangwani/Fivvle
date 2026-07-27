@@ -86,6 +86,21 @@ _IN_FLIGHT_REFINING_WINDOW = timedelta(minutes=30)
 _MAX_ERROR_DETAIL_LEN = 500
 _THREAD_TITLE_MAX_LEN = 40
 
+# Statuses that may reopen into REFINING without clearing refined_idea / downstream
+# artifacts. SPARK uses a separate begin path. Mid-research, generating, and
+# ARCHIVED remain blocked by the != REFINING guard below.
+_REFINEMENT_REOPEN_STATUSES = frozenset(
+    {
+        ExperimentStatus.REFINED,
+        ExperimentStatus.RESEARCH_READY,
+        ExperimentStatus.RESEARCH_FAILED,
+        ExperimentStatus.LANDING_DRAFT,
+        ExperimentStatus.LANDING_LIVE,
+        ExperimentStatus.INSIGHT_READY,
+        ExperimentStatus.INSIGHT_FAILED,
+    }
+)
+
 _SYSTEM_TURN_KINDS_EXCLUDED_FROM_DR_HISTORY = frozenset(
     {
         ChatTurnKind.DISPATCH_ANNOUNCE,
@@ -530,13 +545,14 @@ async def _resolve_refinement_experiment(
                 await db.flush()
             await stamp_chat_thread_spark_version(db, thread, experiment.id)
             return experiment
-        if experiment.status == ExperimentStatus.REFINED:
-            # User came back to Refine chat after finalize — reopen without
-            # clearing refined_idea (stable until explicit re-finalize).
+        if experiment.status in _REFINEMENT_REOPEN_STATUSES:
+            # Reopen Refine without clearing refined_idea or downstream artifacts.
+            # Stable idea stays until explicit re-finalize; artifacts go stale via
+            # refined_idea_version (not deleted here).
             experiment.status = ExperimentStatus.REFINING
             await db.flush()
             _logger.info(
-                "refinement_reopened_after_finalize",
+                "refinement_reopened",
                 experiment_id=str(experiment.id),
                 thread_id=str(thread.id),
             )

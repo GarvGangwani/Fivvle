@@ -36,16 +36,18 @@ type WalletContextValue = {
 const WalletContext = createContext<WalletContextValue | null>(null);
 
 export function WalletProvider({ children }: { children: ReactNode }) {
-  const { user } = useAuth();
+  const { user, status } = useAuth();
   const [balance, setBalance] = useState<WalletBalance | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refreshGeneration = useRef(0);
 
   const refresh = useCallback(async () => {
-    if (!user) {
-      setBalance(null);
-      setError(null);
+    if (status !== "authenticated" || !user) {
+      if (status === "unauthenticated") {
+        setBalance(null);
+        setError(null);
+      }
       return;
     }
     const generation = ++refreshGeneration.current;
@@ -72,7 +74,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     }
-  }, [user]);
+  }, [user, status]);
 
   useEffect(() => {
     void refresh();
