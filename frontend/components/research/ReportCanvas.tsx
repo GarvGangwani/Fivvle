@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -15,6 +15,10 @@ import {
   X,
 } from "lucide-react";
 import { getValidationReport } from "@/lib/api";
+import {
+  confidenceBadgeClass,
+  recommendationBadgeClass,
+} from "@/lib/report-badges";
 import {
   parseRiskAssessment,
   questionDisplayIndex,
@@ -31,10 +35,9 @@ import type {
   OverallRecommendation,
   ValidationReport,
 } from "@/lib/types";
-import { ErrorBanner } from "@/components/ui/ErrorBanner";
-import { LoadingState } from "@/components/ui/LoadingState";
+import { BrutalistSkeleton } from "@/components/ui/BrutalistSkeleton";
+import { PanelHeader } from "@/components/ui/PanelHeader";
 import { ReportScoreSection } from "@/components/research/ReportScoreSection";
-import "./report-canvas.css";
 
 function isSafeHttpUrl(url: string): boolean {
   return url.startsWith("http://") || url.startsWith("https://");
@@ -42,14 +45,15 @@ function isSafeHttpUrl(url: string): boolean {
 
 function SafeCitationLink({ citation }: { citation: Citation }) {
   if (!isSafeHttpUrl(citation.url)) {
-    return <span className="text-[var(--fv-text)]">{citation.title}</span>;
+    return <span className="text-ink-primary">{citation.title}</span>;
   }
   return (
     <a
       href={citation.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-[var(--fv-accent)] no-underline hover:underline"
+      className="inline-flex items-center gap-1 text-ink-primary underline decoration-2 underline-offset-2 hover:text-brand-primary"
+      title={citation.title}
     >
       {citation.title}
       <ExternalLink className="h-3 w-3 opacity-60" />
@@ -57,36 +61,20 @@ function SafeCitationLink({ citation }: { citation: Citation }) {
   );
 }
 
-function recommendationBadgeClass(rec: OverallRecommendation): string {
-  switch (rec) {
-    case "proceed":
-      return "badge-proceed";
-    case "iterate":
-      return "badge-iterate";
-    case "pivot":
-      return "badge-pivot";
-    case "kill":
-      return "badge-kill";
-    default:
-      return "unavailable-badge";
-  }
-}
-
 function formatRecommendation(rec: OverallRecommendation): string {
   if (rec === "too_vague_to_recommend") return "Needs clarity";
   return rec.charAt(0).toUpperCase() + rec.slice(1);
 }
 
-function confidenceClass(confidence: string): string {
-  if (confidence === "high") return "fv-confidence-high";
-  if (confidence === "medium") return "fv-confidence-medium";
-  return "fv-confidence-low";
-}
-
-function findingAccentClass(confidence: string): string {
-  if (confidence === "high") return "report-finding-high";
-  if (confidence === "medium") return "report-finding-medium";
-  return "report-finding-low";
+function findingAccentBorder(confidence: string): string {
+  switch (confidence) {
+    case "high":
+      return "border-l-status-success";
+    case "medium":
+      return "border-l-status-warning";
+    default:
+      return "border-l-border-master";
+  }
 }
 
 function collectAllCitations(report: ValidationReport): Citation[] {
@@ -133,11 +121,33 @@ function countFindings(report: ValidationReport): number {
 function ReadableProse({ text }: { text: string }) {
   const paragraphs = splitReadableParagraphs(text);
   return (
-    <div className="report-prose">
+    <div className="space-y-3 font-body text-body-md leading-relaxed text-ink-primary">
       {paragraphs.map((paragraph, index) => (
         <p key={index}>{paragraph}</p>
       ))}
     </div>
+  );
+}
+
+function SectionHeading({
+  id,
+  icon,
+  children,
+}: {
+  id?: string;
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <h2
+      id={id}
+      className="mb-3 flex items-center gap-2 font-mono text-mono-sm uppercase tracking-wider text-ink-secondary"
+    >
+      <span className="text-ink-tertiary" aria-hidden="true">
+        {icon}
+      </span>
+      {children}
+    </h2>
   );
 }
 
@@ -149,37 +159,51 @@ function RiskAssessmentContent({ text }: { text: string }) {
   }
 
   return (
-    <div>
+    <div className="space-y-3">
       {parsed.preamble && (
-        <div className="report-risk-preamble">
-          {splitReadableParagraphs(parsed.preamble, 420).map((paragraph, index) => (
-            <p key={index} className={index > 0 ? "mt-2" : undefined}>
-              {paragraph}
-            </p>
-          ))}
+        <div className="space-y-2 font-body text-body-sm leading-relaxed text-ink-secondary">
+          {splitReadableParagraphs(parsed.preamble, 420).map(
+            (paragraph, index) => (
+              <p key={index}>{paragraph}</p>
+            ),
+          )}
         </div>
       )}
-      <ol className="report-risk-list">
+      <ol className="space-y-3">
         {parsed.items.map((risk) => (
-          <li key={risk.number} className="report-risk-item">
-            <div className="report-risk-header">
-              <span className="report-risk-num" aria-hidden="true">
+          <li
+            key={risk.number}
+            className="border-2 border-border-master border-l-4 border-l-status-warning bg-surface-elevated p-3 shadow-brutal-sm"
+          >
+            <div className="flex items-start gap-3">
+              <span
+                className="flex h-7 w-7 shrink-0 items-center justify-center border-2 border-border-master bg-surface-card font-mono text-mono-sm font-bold text-ink-primary"
+                aria-hidden="true"
+              >
                 {risk.number}
               </span>
-              <div className="report-risk-heading">
-                <h3 className="report-risk-title">{risk.title}</h3>
-                {risk.verdict && (
-                  <span className="report-risk-verdict">{risk.verdict}</span>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <h3 className="font-headline text-headline-md uppercase tracking-tighter text-ink-primary">
+                    {risk.title}
+                  </h3>
+                  {risk.verdict && (
+                    <span className="font-mono text-mono-sm uppercase text-status-warning">
+                      {risk.verdict}
+                    </span>
+                  )}
+                </div>
+                {risk.body && (
+                  <div className="mt-2 space-y-2 font-body text-body-sm leading-relaxed text-ink-secondary">
+                    {splitReadableParagraphs(risk.body, 420).map(
+                      (paragraph, index) => (
+                        <p key={index}>{paragraph}</p>
+                      ),
+                    )}
+                  </div>
                 )}
               </div>
             </div>
-            {risk.body && (
-              <div className="report-risk-body">
-                {splitReadableParagraphs(risk.body, 420).map((paragraph, index) => (
-                  <p key={index}>{paragraph}</p>
-                ))}
-              </div>
-            )}
           </li>
         ))}
       </ol>
@@ -205,7 +229,7 @@ function CitationRefs({
           <a
             key={key}
             href={`#citation-${index}`}
-            className="report-cite-ref"
+            className="ml-1 font-mono text-mono-sm text-brand-primary no-underline hover:underline"
             title={citation.title}
           >
             [{index}]
@@ -232,21 +256,25 @@ function FindingCard({
 
   return (
     <article
-      className={`report-finding ${findingAccentClass(finding.confidence)}`}
+      className={`border-2 border-border-master border-l-4 bg-surface-card p-4 shadow-brutal-sm ${findingAccentBorder(finding.confidence)}`}
     >
-      <div className="report-finding-header">
-        <span className="report-finding-index">Finding {findingIndex}</span>
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="font-mono text-mono-sm uppercase text-ink-tertiary">
+          Finding {findingIndex}
+        </span>
         <span
-          className={`fv-confidence-badge ${confidenceClass(finding.confidence)}`}
+          className={`border-2 px-2 py-0.5 font-label-md text-label-sm uppercase tracking-wider ${confidenceBadgeClass(finding.confidence)}`}
         >
           {finding.confidence} confidence
         </span>
       </div>
-      <p className="report-finding-claim">{finding.claim}</p>
+      <p className="font-body text-body-md font-semibold leading-relaxed text-ink-primary">
+        {finding.claim}
+      </p>
       {evidenceParagraphs.length > 0 && (
-        <div className="report-finding-evidence">
+        <div className="mt-2 space-y-2 font-body text-body-sm leading-relaxed text-ink-secondary">
           {evidenceParagraphs.map((paragraph, index) => (
-            <p key={index} className={index > 0 ? "mt-2" : undefined}>
+            <p key={index}>
               {paragraph}
               {index === evidenceParagraphs.length - 1 && (
                 <CitationRefs
@@ -259,13 +287,28 @@ function FindingCard({
         </div>
       )}
       {finding.confidence_rationale && (
-        <p className="mt-2 text-xs leading-relaxed text-[var(--fv-text-muted)]">
+        <p className="mt-2 font-mono text-mono-sm leading-relaxed text-ink-tertiary">
           {finding.confidence_rationale}
         </p>
       )}
     </article>
   );
 }
+
+function ReportLoadingSkeleton() {
+  return (
+    <div className="space-y-4" aria-busy="true" aria-label="Loading report">
+      <BrutalistSkeleton variant="block" height="h-28" />
+      <BrutalistSkeleton variant="card" height="h-40" />
+      <BrutalistSkeleton variant="line" width="w-2/3" />
+      <BrutalistSkeleton variant="card" height="h-32" />
+      <BrutalistSkeleton variant="card" height="h-32" />
+    </div>
+  );
+}
+
+const chromeBtnClass =
+  "inline-flex items-center gap-1.5 border-2 border-border-master bg-surface-card px-2.5 py-1.5 font-label-md text-label-sm uppercase tracking-wider text-ink-primary shadow-brutal-sm transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-md";
 
 export interface ReportCanvasProps {
   experimentId: string;
@@ -412,14 +455,57 @@ export function ReportCanvas({
   const findingCount = report ? countFindings(report) : 0;
   const questionCount = report?.questions_and_findings.length ?? 0;
 
+  const headerActions = (
+    <div className="flex shrink-0 flex-wrap items-center gap-2">
+      {report ? (
+        <ValidationReportExportMenu
+          report={report}
+          projectName={projectName}
+          variant="ghost"
+        />
+      ) : null}
+      {fullscreen ? (
+        <button
+          type="button"
+          onClick={() => setFullscreen(false)}
+          className={chromeBtnClass}
+          aria-label="Exit full screen"
+        >
+          <Minimize2 className="h-3.5 w-3.5" />
+          <span className="hidden sm:inline">Exit full screen</span>
+        </button>
+      ) : embedded ? null : (
+        <button
+          type="button"
+          onClick={() => setFullscreen(true)}
+          className={chromeBtnClass}
+          aria-label="View full screen"
+          title="View full screen"
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
+        </button>
+      )}
+      {onClose && !fullscreen ? (
+        <button
+          type="button"
+          onClick={onClose}
+          className={chromeBtnClass}
+          aria-label="Close report"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      ) : null}
+    </div>
+  );
+
   return (
     <div
-      className={`flex min-h-0 flex-col bg-[var(--fv-bg)] ${
+      className={`flex min-h-0 flex-col bg-canvas-bg ${
         fullscreen ? "fixed inset-0 z-[80] h-dvh max-h-dvh" : "h-full"
       }`}
     >
       {showEmbeddedToolbar && (
-        <div className="flex shrink-0 items-center justify-end gap-2 border-b border-[var(--fv-border)] bg-[var(--fv-surface)]/80 px-4 py-2 backdrop-blur-sm">
+        <div className="flex shrink-0 items-center justify-end gap-2 border-b-2 border-border-master bg-surface-card px-4 py-2">
           <ValidationReportExportMenu
             report={report}
             projectName={projectName}
@@ -428,7 +514,7 @@ export function ReportCanvas({
           <button
             type="button"
             onClick={() => setFullscreen(true)}
-            className="fv-btn-ghost inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px]"
+            className={chromeBtnClass}
           >
             <Maximize2 className="h-3.5 w-3.5" />
             Full screen
@@ -437,81 +523,52 @@ export function ReportCanvas({
       )}
 
       {showOverlayHeader && (
-        <header className="sticky top-0 z-10 flex shrink-0 items-center justify-between gap-3 border-b border-[var(--fv-border)] bg-[var(--fv-bg)]/95 px-4 py-3 backdrop-blur-sm sm:px-6">
-          <div className="flex min-w-0 items-center gap-3">
-            {mobile && onClose && !fullscreen && (
+        <PanelHeader
+          sticky
+          phaseLabel="VALIDATION REPORT"
+          title={projectName}
+          breadcrumb={
+            mobile && onClose && !fullscreen ? (
               <button
                 type="button"
                 onClick={onClose}
-                className="fv-icon-btn shrink-0 lg:hidden"
+                className={`${chromeBtnClass} lg:hidden`}
                 aria-label="Back"
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
-            )}
-            <FileText className="h-5 w-5 shrink-0 text-[var(--fv-accent)]" />
-            <h1 className="truncate text-base font-semibold text-[var(--fv-text)]">
-              Validation Report
-            </h1>
-          </div>
-          <div className="flex shrink-0 items-center gap-1">
-            {report && (
-              <ValidationReportExportMenu
-                report={report}
-                projectName={projectName}
-                variant="ghost"
-              />
-            )}
-            {fullscreen ? (
-              <button
-                type="button"
-                onClick={() => setFullscreen(false)}
-                className="fv-btn-ghost inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] sm:px-3"
-                aria-label="Exit full screen"
-              >
-                <Minimize2 className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Exit full screen</span>
-              </button>
-            ) : embedded ? null : (
-              <button
-                type="button"
-                onClick={() => setFullscreen(true)}
-                className="fv-icon-btn"
-                aria-label="View full screen"
-                title="View full screen"
-              >
-                <Maximize2 className="h-4 w-4" />
-              </button>
-            )}
-            {onClose && !fullscreen && (
-              <button
-                type="button"
-                onClick={onClose}
-                className="fv-icon-btn shrink-0"
-                aria-label="Close report"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-        </header>
+            ) : undefined
+          }
+          actions={headerActions}
+        />
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl px-3 py-4 sm:px-5 sm:py-6">
-          {loading && <LoadingState label="Loading validation report…" />}
+          {loading && <ReportLoadingSkeleton />}
 
-          {error && !loading && <ErrorBanner message={error} />}
+          {error && !loading && (
+            <div
+              role="alert"
+              className="border-2 border-status-critical bg-surface-card p-4 font-mono text-mono-sm uppercase text-status-critical shadow-brutal-sm"
+            >
+              {error}
+            </div>
+          )}
 
           {report && !loading && (
-            <article className="report-canvas-article">
-              <header className="report-masthead">
-                <p className="report-masthead-eyebrow">Validation report</p>
-                <h1 className="report-masthead-title">{projectName}</h1>
+            <article>
+              <header className="border-b-2 border-border-master pb-5">
+                <p className="font-mono text-mono-sm uppercase tracking-wider text-ink-tertiary">
+                  Validation report
+                </p>
+                <h1 className="mt-1 font-headline text-headline-lg uppercase tracking-tighter text-ink-primary">
+                  {projectName}
+                </h1>
                 {showRecommendation && (
                   <div className="mt-4">
                     <span
-                      className={`report-recommendation-badge ${recommendationBadgeClass(
+                      className={`inline-flex border-2 px-3 py-1 font-label-md text-label-sm uppercase tracking-wider ${recommendationBadgeClass(
                         report.overall_recommendation,
                       )}`}
                     >
@@ -519,15 +576,20 @@ export function ReportCanvas({
                     </span>
                   </div>
                 )}
-                <div className="report-stats">
-                  <span className="report-stat-pill">
-                    <strong>{questionCount}</strong> research questions
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <span className="inline-flex items-center gap-1 border-2 border-border-master bg-surface-elevated px-2.5 py-1 font-mono text-mono-sm uppercase text-ink-secondary">
+                    <strong className="text-ink-primary">{questionCount}</strong>{" "}
+                    research questions
                   </span>
-                  <span className="report-stat-pill">
-                    <strong>{findingCount}</strong> findings
+                  <span className="inline-flex items-center gap-1 border-2 border-border-master bg-surface-elevated px-2.5 py-1 font-mono text-mono-sm uppercase text-ink-secondary">
+                    <strong className="text-ink-primary">{findingCount}</strong>{" "}
+                    findings
                   </span>
-                  <span className="report-stat-pill">
-                    <strong>{citations.length}</strong> sources
+                  <span className="inline-flex items-center gap-1 border-2 border-border-master bg-surface-elevated px-2.5 py-1 font-mono text-mono-sm uppercase text-ink-secondary">
+                    <strong className="text-ink-primary">
+                      {citations.length}
+                    </strong>{" "}
+                    sources
                   </span>
                 </div>
               </header>
@@ -543,15 +605,15 @@ export function ReportCanvas({
 
               {sectionLinks.length > 0 && (
                 <nav
-                  className="report-section-nav"
+                  className="sticky top-0 z-5 mb-5 mt-4 border-b-2 border-border-master bg-canvas-bg/95 py-2 backdrop-blur-sm"
                   aria-label="Report sections"
                 >
-                  <div className="report-section-nav-inner">
+                  <div className="flex gap-2 overflow-x-auto pb-1">
                     {sectionLinks.map((link) => (
                       <a
                         key={link.href}
                         href={link.href}
-                        className="report-section-link"
+                        className="shrink-0 border-2 border-border-master bg-surface-card px-2.5 py-1 font-mono text-mono-sm uppercase text-ink-primary no-underline transition-colors hover:bg-surface-elevated"
                       >
                         {link.label}
                       </a>
@@ -563,60 +625,50 @@ export function ReportCanvas({
               {showRecommendation && report.recommendation_rationale && (
                 <section
                   id="report-recommendation"
-                  className="report-block"
+                  className="mb-5 border-2 border-border-master bg-surface-card p-4 shadow-brutal-sm"
                   aria-labelledby="report-recommendation-heading"
                 >
-                  <h2
+                  <SectionHeading
                     id="report-recommendation-heading"
-                    className="report-block-title"
+                    icon={<TrendingUp className="h-4 w-4" />}
                   >
-                    <span className="report-block-icon">
-                      <TrendingUp className="h-4 w-4" />
-                    </span>
                     Recommendation
-                  </h2>
-                  <div className="report-card report-card-accent">
-                    <ReadableProse text={report.recommendation_rationale} />
-                  </div>
+                  </SectionHeading>
+                  <ReadableProse text={report.recommendation_rationale} />
                 </section>
               )}
 
               <section
                 id="report-summary"
-                className="report-block"
+                className="mb-5 border-2 border-border-master bg-surface-card p-4 shadow-brutal-sm"
                 aria-labelledby="report-summary-heading"
               >
-                <h2 id="report-summary-heading" className="report-block-title">
-                  <span className="report-block-icon">
-                    <BookOpen className="h-4 w-4" />
-                  </span>
+                <SectionHeading
+                  id="report-summary-heading"
+                  icon={<BookOpen className="h-4 w-4" />}
+                >
                   Executive summary
-                </h2>
-                <div className="report-card">
-                  <ReadableProse text={report.executive_summary} />
-                </div>
+                </SectionHeading>
+                <ReadableProse text={report.executive_summary} />
               </section>
 
               <section
                 id="report-findings"
-                className="report-block"
+                className="mb-5"
                 aria-labelledby="report-findings-heading"
               >
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <h2
+                  <SectionHeading
                     id="report-findings-heading"
-                    className="report-block-title !mb-0"
+                    icon={<FileText className="h-4 w-4" />}
                   >
-                    <span className="report-block-icon">
-                      <FileText className="h-4 w-4" />
-                    </span>
                     Research findings
-                  </h2>
+                  </SectionHeading>
                   {questionCount > 1 && (
                     <button
                       type="button"
                       onClick={toggleAllQuestions}
-                      className="fv-btn-ghost px-2.5 py-1 text-[11px]"
+                      className={chromeBtnClass}
                     >
                       {allQuestionsExpanded ? "Collapse all" : "Expand all"}
                     </button>
@@ -631,39 +683,47 @@ export function ReportCanvas({
                       qIndex + 1,
                     );
                     return (
-                      <div key={qf.question_id} className="report-question">
+                      <div
+                        key={qf.question_id}
+                        className="border-2 border-border-master bg-surface-card shadow-brutal-sm"
+                      >
                         <button
                           type="button"
                           onClick={() => toggleQuestion(qf.question_id)}
-                          className="report-question-trigger"
+                          className="flex w-full items-start gap-3 p-4 text-left transition-colors hover:bg-surface-elevated"
                           aria-expanded={expanded}
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="report-question-index">
+                              <span className="flex h-6 min-w-6 items-center justify-center border-2 border-border-master bg-surface-elevated px-1.5 font-mono text-mono-sm font-bold text-ink-primary">
                                 {displayIndex}
                               </span>
-                              <span className="text-[11px] font-medium uppercase tracking-wide text-[var(--fv-text-muted)]">
+                              <span className="font-mono text-mono-sm uppercase text-ink-tertiary">
                                 Research question
                               </span>
-                              <span className="text-[11px] text-[var(--fv-text-dim)]">
+                              <span className="font-mono text-mono-sm text-ink-tertiary">
                                 · {qf.findings.length} finding
                                 {qf.findings.length === 1 ? "" : "s"}
                               </span>
-                              <span className="report-question-score" title="Question score">
+                              <span
+                                className="border-2 border-border-master bg-surface-elevated px-2 py-0.5 font-mono text-mono-sm font-bold tabular-nums text-ink-primary"
+                                title="Question score"
+                              >
                                 {resolveQuestionScore(qf)}
                               </span>
                             </div>
-                            <p className="report-question-title">{qf.question}</p>
+                            <p className="mt-2 font-body text-body-md font-semibold text-ink-primary">
+                              {qf.question}
+                            </p>
                           </div>
                           <ChevronDown
-                            className={`h-5 w-5 shrink-0 text-[var(--fv-text-muted)] transition-transform ${
+                            className={`h-5 w-5 shrink-0 text-ink-tertiary transition-transform ${
                               expanded ? "rotate-180" : ""
                             }`}
                           />
                         </button>
                         {expanded && (
-                          <div className="report-question-body space-y-3">
+                          <div className="space-y-3 border-t-2 border-border-master p-4">
                             {qf.findings.map((finding, fIndex) => (
                               <FindingCard
                                 key={`${finding.question_id}-${finding.claim.slice(0, 40)}`}
@@ -673,8 +733,10 @@ export function ReportCanvas({
                               />
                             ))}
                             {qf.evidence_gap && (
-                              <div className="report-evidence-gap">
-                                <strong>Evidence gap: </strong>
+                              <div className="border-2 border-status-warning bg-surface-elevated p-3 font-body text-body-sm text-ink-primary">
+                                <strong className="font-mono text-mono-sm uppercase text-status-warning">
+                                  Evidence gap:{" "}
+                                </strong>
                                 {qf.evidence_gap}
                               </div>
                             )}
@@ -689,23 +751,25 @@ export function ReportCanvas({
               {report.competitors.length > 0 && (
                 <section
                   id="report-competitors"
-                  className="report-block"
+                  className="mb-5"
                   aria-labelledby="report-competitors-heading"
                 >
-                  <h2
+                  <SectionHeading
                     id="report-competitors-heading"
-                    className="report-block-title"
+                    icon={<Building2 className="h-4 w-4" />}
                   >
-                    <span className="report-block-icon">
-                      <Building2 className="h-4 w-4" />
-                    </span>
                     Competitors
-                  </h2>
-                  <div className="report-competitor-grid">
+                  </SectionHeading>
+                  <div className="grid gap-3 sm:grid-cols-2">
                     {report.competitors.map((comp) => (
-                      <div key={comp.name} className="report-competitor-card">
-                        <h3 className="report-competitor-name">{comp.name}</h3>
-                        <div className="report-prose mt-2 text-sm">
+                      <div
+                        key={comp.name}
+                        className="border-2 border-border-master bg-surface-card p-4 shadow-brutal-sm"
+                      >
+                        <h3 className="font-headline text-headline-md uppercase tracking-tighter text-ink-primary">
+                          {comp.name}
+                        </h3>
+                        <div className="mt-2 space-y-2 font-body text-body-sm leading-relaxed text-ink-secondary">
                           {splitReadableParagraphs(comp.description, 320).map(
                             (paragraph, index) => (
                               <p key={index}>{paragraph}</p>
@@ -713,8 +777,8 @@ export function ReportCanvas({
                           )}
                         </div>
                         {comp.positioning_vs_idea && (
-                          <p className="mt-3 text-xs leading-relaxed text-[var(--fv-text-muted)]">
-                            <span className="font-medium text-[var(--fv-text-soft)]">
+                          <p className="mt-3 font-mono text-mono-sm leading-relaxed text-ink-tertiary">
+                            <span className="uppercase text-ink-secondary">
                               vs. your idea:{" "}
                             </span>
                             {comp.positioning_vs_idea}
@@ -731,20 +795,22 @@ export function ReportCanvas({
                 report.regulatory_signals) && (
                 <section
                   id="report-market"
-                  className="report-block"
+                  className="mb-5 border-2 border-border-master bg-surface-card p-4 shadow-brutal-sm"
                   aria-labelledby="report-market-heading"
                 >
-                  <h2 id="report-market-heading" className="report-block-title">
-                    <span className="report-block-icon">
-                      <TrendingUp className="h-4 w-4" />
-                    </span>
+                  <SectionHeading
+                    id="report-market-heading"
+                    icon={<TrendingUp className="h-4 w-4" />}
+                  >
                     Market signals
-                  </h2>
-                  <div className="report-card">
+                  </SectionHeading>
+                  <div className="space-y-4">
                     {report.market_signals && (
-                      <div className="report-signal-block">
-                        <h3 className="report-signal-label">Market overview</h3>
-                        <div className="report-prose mt-2 text-sm">
+                      <div className="border-t-2 border-border-master pt-3 first:border-t-0 first:pt-0">
+                        <h3 className="font-mono text-mono-sm uppercase text-ink-tertiary">
+                          Market overview
+                        </h3>
+                        <div className="mt-2 space-y-2 font-body text-body-sm leading-relaxed text-ink-secondary">
                           {splitReadableParagraphs(report.market_signals).map(
                             (paragraph, index) => (
                               <p key={index}>{paragraph}</p>
@@ -754,9 +820,11 @@ export function ReportCanvas({
                       </div>
                     )}
                     {report.distribution_signals && (
-                      <div className="report-signal-block">
-                        <h3 className="report-signal-label">Distribution</h3>
-                        <div className="report-prose mt-2 text-sm">
+                      <div className="border-t-2 border-border-master pt-3">
+                        <h3 className="font-mono text-mono-sm uppercase text-ink-tertiary">
+                          Distribution
+                        </h3>
+                        <div className="mt-2 space-y-2 font-body text-body-sm leading-relaxed text-ink-secondary">
                           {splitReadableParagraphs(
                             report.distribution_signals,
                           ).map((paragraph, index) => (
@@ -766,9 +834,11 @@ export function ReportCanvas({
                       </div>
                     )}
                     {report.regulatory_signals && (
-                      <div className="report-signal-block">
-                        <h3 className="report-signal-label">Regulatory</h3>
-                        <div className="report-prose mt-2 text-sm">
+                      <div className="border-t-2 border-border-master pt-3">
+                        <h3 className="font-mono text-mono-sm uppercase text-ink-tertiary">
+                          Regulatory
+                        </h3>
+                        <div className="mt-2 space-y-2 font-body text-body-sm leading-relaxed text-ink-secondary">
                           {splitReadableParagraphs(
                             report.regulatory_signals,
                           ).map((paragraph, index) => (
@@ -784,59 +854,56 @@ export function ReportCanvas({
               {report.risks_assessment && (
                 <section
                   id="report-risks"
-                  className="report-block"
+                  className="mb-5 border-2 border-border-master border-l-4 border-l-status-warning bg-surface-card p-4 shadow-brutal-sm"
                   aria-labelledby="report-risks-heading"
                 >
-                  <h2 id="report-risks-heading" className="report-block-title">
-                    <span className="report-block-icon">
-                      <AlertTriangle className="h-4 w-4" />
-                    </span>
+                  <SectionHeading
+                    id="report-risks-heading"
+                    icon={<AlertTriangle className="h-4 w-4" />}
+                  >
                     Risk assessment
-                  </h2>
-                  <div className="report-card border-[color-mix(in_srgb,var(--fv-warning)_22%,transparent)]">
-                    <RiskAssessmentContent text={report.risks_assessment} />
-                  </div>
+                  </SectionHeading>
+                  <RiskAssessmentContent text={report.risks_assessment} />
                 </section>
               )}
 
               {report.research_limitations && (
-                <section className="report-block">
-                  <h2 className="report-block-title">
-                    <span className="report-block-icon">
-                      <AlertTriangle className="h-4 w-4" />
-                    </span>
+                <section className="mb-5 border-2 border-border-master bg-surface-card p-4 shadow-brutal-sm">
+                  <SectionHeading
+                    icon={<AlertTriangle className="h-4 w-4" />}
+                  >
                     Research limitations
-                  </h2>
-                  <div className="report-card">
-                    <ReadableProse text={report.research_limitations} />
-                  </div>
+                  </SectionHeading>
+                  <ReadableProse text={report.research_limitations} />
                 </section>
               )}
 
               {citations.length > 0 && (
                 <section
                   id="report-sources"
-                  className="report-block"
+                  className="mb-5 border-2 border-border-master bg-surface-card p-4 shadow-brutal-sm"
                   aria-labelledby="report-sources-heading"
                 >
-                  <h2 id="report-sources-heading" className="report-block-title">
-                    <span className="report-block-icon">
-                      <ExternalLink className="h-4 w-4" />
-                    </span>
+                  <SectionHeading
+                    id="report-sources-heading"
+                    icon={<ExternalLink className="h-4 w-4" />}
+                  >
                     Sources ({citations.length})
-                  </h2>
-                  <ol className="report-source-list">
+                  </SectionHeading>
+                  <ol className="space-y-3">
                     {citations.map((citation, index) => (
                       <li
                         key={`${citation.url}-${index}`}
                         id={`citation-${index + 1}`}
-                        className="report-source-item"
+                        className="flex gap-3 border-t-2 border-border-master pt-3 first:border-t-0 first:pt-0"
                       >
-                        <span className="report-source-num">{index + 1}</span>
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center border-2 border-border-master bg-surface-elevated font-mono text-mono-sm font-bold text-ink-primary">
+                          {index + 1}
+                        </span>
                         <div className="min-w-0">
                           <SafeCitationLink citation={citation} />
                           {citation.source_domain && (
-                            <p className="mt-0.5 text-xs text-[var(--fv-text-muted)]">
+                            <p className="mt-0.5 font-mono text-mono-sm text-ink-tertiary">
                               {citation.source_domain}
                             </p>
                           )}
@@ -847,7 +914,7 @@ export function ReportCanvas({
                 </section>
               )}
 
-              <p className="report-footer-note">
+              <p className="font-mono text-mono-sm uppercase text-ink-tertiary">
                 Generated by Fivvle research engine · Rubric{" "}
                 {report.rubric_version_used}
               </p>

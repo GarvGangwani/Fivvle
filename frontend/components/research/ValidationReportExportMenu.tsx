@@ -48,8 +48,8 @@ export function ValidationReportExportMenu({
 
   const buttonClass =
     variant === "ghost"
-      ? "fv-btn-ghost inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12px] sm:px-3"
-      : "fv-btn-secondary inline-flex items-center gap-1.5 text-sm";
+      ? "inline-flex items-center gap-1.5 border-2 border-border-master bg-surface-card px-2.5 py-1.5 font-label-md text-label-sm uppercase tracking-wider text-ink-primary shadow-brutal-sm transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-md sm:px-3"
+      : "inline-flex items-center gap-1.5 border-2 border-border-master bg-surface-card px-3 py-2 font-label-md text-label-md uppercase tracking-wider text-ink-primary shadow-brutal-sm transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-md";
 
   return (
     <div ref={rootRef} className={`relative ${className}`}>
@@ -68,7 +68,7 @@ export function ValidationReportExportMenu({
       </button>
       {open && (
         <div
-          className="absolute right-0 top-full z-20 mt-1 min-w-[12rem] rounded-lg border border-[var(--fv-border)] bg-[var(--fv-surface)] py-1 shadow-lg"
+          className="absolute right-0 top-full z-20 mt-1 min-w-[12rem] border-2 border-border-master bg-surface-card py-1 shadow-brutal-md"
           role="menu"
         >
           <ExportItem
@@ -106,10 +106,10 @@ function ExportItem({
     <button
       type="button"
       role="menuitem"
-      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[var(--fv-text)] hover:bg-[var(--fv-surface-elevated)]"
+      className="flex w-full items-center gap-2 px-3 py-2 text-left font-body text-body-sm text-ink-primary transition-colors hover:bg-surface-elevated"
       onClick={onClick}
     >
-      <Icon className="h-3.5 w-3.5 shrink-0 text-[var(--fv-text-muted)]" />
+      <Icon className="h-3.5 w-3.5 shrink-0 text-ink-tertiary" />
       {label}
     </button>
   );
