@@ -16,7 +16,6 @@ const APP_ROUTE_PREFIXES = [
   "/new",
   "/api",
   "/preview",
-  "/refinement-demos",
 ] as const;
 
 function isAppRoute(pathname: string): boolean {

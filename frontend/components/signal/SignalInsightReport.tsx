@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import { BarChart3, Brain, Lightbulb, Loader2, Sparkles, TrendingUp } from "lucide-react";
 import { getInsightReport } from "@/lib/api";
+import {
+  confidenceBadgeClass,
+  recommendationBadgeClass,
+} from "@/lib/report-badges";
 import type {
   InsightRecommendationType,
   InsightReport,
@@ -19,22 +23,6 @@ function formatRecommendation(type: InsightRecommendationType): string {
   return type.charAt(0).toUpperCase() + type.slice(1);
 }
 
-/**
- * Preserves the legacy proceed/iterate/pivot/kill color meaning using semantic
- * status tokens (success / warning / critical) — not a new palette.
- */
-function recommendationBadgeClass(type: InsightRecommendationType): string {
-  switch (type) {
-    case "proceed":
-      return "border-status-success bg-surface-elevated text-status-success";
-    case "iterate":
-      return "border-border-master bg-brutalist-yellow text-ink-primary";
-    case "pivot":
-    case "kill":
-      return "border-status-critical bg-surface-elevated text-status-critical";
-  }
-}
-
 function sourceTypeLabel(type: TakeawaySourceType): string {
   switch (type) {
     case "BEHAVIORAL":
@@ -43,23 +31,6 @@ function sourceTypeLabel(type: TakeawaySourceType): string {
       return "Research";
     case "SYNTHESIZED":
       return "Combined";
-  }
-}
-
-/**
- * Confidence is information. Maps high→success, medium→warning, low→tertiary —
- * same triad as legacy `fv-confidence-*`, expressed with semantic tokens.
- * Flagged in Group 2 report: if this mapping is rejected, revert to text-only.
- */
-function confidenceBadgeClass(confidence: "high" | "medium" | "low"): string {
-  switch (confidence) {
-    case "high":
-      return "border-status-success text-status-success";
-    case "medium":
-      return "border-border-master bg-brutalist-yellow text-ink-primary";
-    case "low":
-      // Full ink weight — low confidence must not read as muted/minor.
-      return "border-border-master bg-surface-elevated text-ink-primary";
   }
 }
 

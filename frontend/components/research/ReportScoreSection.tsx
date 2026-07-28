@@ -11,13 +11,34 @@ import {
   type SectionScoreDetail,
 } from "@/lib/validation-report-score-details";
 import { scoreTone } from "@/lib/validation-report-scores";
-import "./report-score-section.css";
 
 interface ReportScoreSectionProps {
   report: ValidationReport;
   sections: SectionScore[];
   overall: number;
   derived?: boolean;
+}
+
+function scoreFillClass(tone: "strong" | "mixed" | "weak"): string {
+  switch (tone) {
+    case "strong":
+      return "bg-status-success";
+    case "mixed":
+      return "bg-status-warning";
+    case "weak":
+      return "bg-status-critical";
+  }
+}
+
+function scoreTextClass(tone: "strong" | "mixed" | "weak"): string {
+  switch (tone) {
+    case "strong":
+      return "text-status-success";
+    case "mixed":
+      return "text-status-warning";
+    case "weak":
+      return "text-status-critical";
+  }
 }
 
 function ScoreBar({
@@ -30,10 +51,11 @@ function ScoreBar({
   label: string;
 }) {
   const tone = scoreTone(score);
+  const trackHeight = size === "lg" ? "h-3" : "h-2";
   return (
-    <div className="report-score-bar-wrap">
+    <div className="mt-2 w-full">
       <div
-        className={`report-score-bar-track report-score-bar-${size}`}
+        className={`w-full overflow-hidden border-2 border-border-master bg-surface-elevated ${trackHeight}`}
         role="progressbar"
         aria-valuenow={score}
         aria-valuemin={0}
@@ -41,7 +63,7 @@ function ScoreBar({
         aria-label={`${label}: ${score} out of 100`}
       >
         <div
-          className={`report-score-bar-fill report-score-fill-${tone}`}
+          className={`h-full ${scoreFillClass(tone)}`}
           style={{ width: `${score}%` }}
         />
       </div>
@@ -58,13 +80,19 @@ function BulletList({
 }) {
   if (items.length === 0) {
     return (
-      <p className="report-score-detail-empty">
-        {variant === "pro" ? "No clear positives surfaced." : "No major caveats noted."}
+      <p className="font-mono text-mono-sm uppercase text-ink-tertiary">
+        {variant === "pro"
+          ? "No clear positives surfaced."
+          : "No major caveats noted."}
       </p>
     );
   }
   return (
-    <ul className={`report-score-detail-list report-score-detail-${variant}`}>
+    <ul
+      className={`list-disc space-y-1 pl-4 font-body text-body-sm text-ink-primary ${
+        variant === "pro" ? "marker:text-status-success" : "marker:text-status-critical"
+      }`}
+    >
       {items.map((item) => (
         <li key={item}>{item}</li>
       ))}
@@ -84,27 +112,31 @@ function ScoreDetailPanel({
 
   return (
     <div
-      className="report-score-detail"
+      className="mt-3 border-2 border-border-master bg-surface-elevated p-4 shadow-brutal-sm"
       role="region"
       aria-labelledby={`score-detail-title-${id}`}
     >
-      <div className="report-score-detail-header">
+      <div className="mb-3 flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <p className="report-score-detail-eyebrow">Score breakdown</p>
+          <p className="font-mono text-mono-sm uppercase text-ink-tertiary">
+            Score breakdown
+          </p>
           <h3
             id={`score-detail-title-${id}`}
-            className="report-score-detail-title"
+            className="mt-1 font-headline text-headline-md uppercase tracking-tighter text-ink-primary"
           >
             {detail.label}
           </h3>
         </div>
-        <span className={`report-score-detail-value report-score-tone-${tone}`}>
+        <span
+          className={`font-mono text-mono-md font-bold tabular-nums ${scoreTextClass(tone)}`}
+        >
           {detail.score}
         </span>
         <button
           type="button"
           onClick={onClose}
-          className="report-score-detail-close"
+          className="border-2 border-border-master bg-surface-card p-1 text-ink-tertiary transition-colors hover:text-ink-primary"
           aria-label="Close score details"
         >
           <X className="h-4 w-4" />
@@ -113,30 +145,38 @@ function ScoreDetailPanel({
 
       <ScoreBar score={detail.score} label={detail.label} />
 
-      <div className="report-score-detail-body">
-        <div className="report-score-detail-block">
-          <p className="report-score-detail-label">Why this score</p>
-          <p className="report-score-detail-text">{detail.rationale}</p>
+      <div className="mt-4 space-y-4">
+        <div>
+          <p className="mb-1 font-mono text-mono-sm uppercase text-ink-tertiary">
+            Why this score
+          </p>
+          <p className="font-body text-body-sm leading-relaxed text-ink-primary">
+            {detail.rationale}
+          </p>
         </div>
 
-        <div className="report-score-detail-columns">
-          <div className="report-score-detail-block">
-            <p className="report-score-detail-label report-score-detail-label-pro">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <p className="mb-1 font-mono text-mono-sm uppercase text-status-success">
               Supporting signals
             </p>
             <BulletList items={detail.pros} variant="pro" />
           </div>
-          <div className="report-score-detail-block">
-            <p className="report-score-detail-label report-score-detail-label-con">
+          <div>
+            <p className="mb-1 font-mono text-mono-sm uppercase text-status-critical">
               Caveats & gaps
             </p>
             <BulletList items={detail.cons} variant="con" />
           </div>
         </div>
 
-        <div className="report-score-detail-block">
-          <p className="report-score-detail-label">Context from report</p>
-          <p className="report-score-detail-context">{detail.context}</p>
+        <div>
+          <p className="mb-1 font-mono text-mono-sm uppercase text-ink-tertiary">
+            Context from report
+          </p>
+          <p className="border-2 border-border-master bg-surface-card p-3 font-body text-body-sm leading-relaxed text-ink-secondary">
+            {detail.context}
+          </p>
         </div>
       </div>
     </div>
@@ -152,29 +192,46 @@ function SectionScoreCard({
   selected: boolean;
   onSelect: () => void;
 }) {
+  const tone = scoreTone(detail.score);
   return (
     <button
       type="button"
       onClick={onSelect}
       aria-expanded={selected}
       aria-controls={`score-detail-${detail.section_id}`}
-      className={`report-score-card report-score-card-btn${selected ? " report-score-card-selected" : ""}`}
+      className={`w-full border-2 border-border-master p-3 text-left transition-all ${
+        selected
+          ? "bg-brand-primary text-ink-inverse shadow-brutal-md"
+          : "bg-surface-elevated text-ink-primary shadow-brutal-sm hover:-translate-y-0.5 hover:shadow-brutal-md"
+      }`}
     >
-      <div className="report-score-card-header">
-        <p className="report-score-card-label">{detail.label}</p>
-        <span className="report-score-card-meta">
+      <div className="flex items-center justify-between gap-2">
+        <p
+          className={`font-mono text-mono-sm uppercase ${
+            selected ? "text-ink-inverse/80" : "text-ink-tertiary"
+          }`}
+        >
+          {detail.label}
+        </p>
+        <span className="flex items-center gap-1">
           <span
-            className={`report-score-value report-score-tone-${scoreTone(detail.score)}`}
+            className={`font-mono text-mono-md font-bold tabular-nums ${
+              selected ? "text-ink-inverse" : scoreTextClass(tone)
+            }`}
           >
             {detail.score}
           </span>
           <ChevronRight
-            className={`report-score-chevron${selected ? " report-score-chevron-open" : ""}`}
+            className={`h-4 w-4 transition-transform ${
+              selected ? "rotate-90 text-ink-inverse" : "text-ink-tertiary"
+            }`}
             aria-hidden
           />
         </span>
       </div>
-      <ScoreBar score={detail.score} label={detail.label} />
+      <div className={selected ? "[&_.border-border-master]:border-ink-inverse/40" : ""}>
+        <ScoreBar score={detail.score} label={detail.label} />
+      </div>
     </button>
   );
 }
@@ -201,30 +258,36 @@ export function ReportScoreSection({
     selectedId === "overall"
       ? overallDetail
       : selectedId
-        ? sectionDetails.find((d) => d.section_id === selectedId) ?? null
+        ? (sectionDetails.find((d) => d.section_id === selectedId) ?? null)
         : null;
 
   function toggleSelection(id: ScoreSelectionId) {
     setSelectedId((current) => (current === id ? null : id));
   }
 
+  const overallSelected = selectedId === "overall";
+  const overallTone = scoreTone(overall);
+
   return (
     <section
       id="report-scores"
-      className="report-score-panel"
+      className="mt-5 border-2 border-border-master bg-surface-card p-4 shadow-brutal-sm"
       aria-labelledby="report-scores-heading"
     >
-      <div className="report-score-panel-header">
-        <h2 id="report-scores-heading" className="report-score-panel-title">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 border-b-2 border-border-master pb-3">
+        <h2
+          id="report-scores-heading"
+          className="font-mono text-mono-sm uppercase tracking-wider text-ink-secondary"
+        >
           Validation scores
         </h2>
-        <span className="report-score-derived-note">
+        <span className="font-mono text-mono-sm uppercase text-ink-tertiary">
           {derived ? "Estimated from evidence · " : ""}
           Tap a score for details
         </span>
       </div>
 
-      <div className="report-score-grid">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {sectionDetails.map((detail) => (
           <SectionScoreCard
             key={detail.section_id}
@@ -238,21 +301,37 @@ export function ReportScoreSection({
       <button
         type="button"
         onClick={() => toggleSelection("overall")}
-        aria-expanded={selectedId === "overall"}
-        className={`report-score-overall report-score-overall-btn${
-          selectedId === "overall" ? " report-score-card-selected" : ""
+        aria-expanded={overallSelected}
+        className={`mt-3 w-full border-2 border-border-master p-4 text-left transition-all ${
+          overallSelected
+            ? "bg-brand-primary text-ink-inverse shadow-brutal-md"
+            : "bg-surface-elevated text-ink-primary shadow-brutal-sm hover:-translate-y-0.5 hover:shadow-brutal-md"
         }`}
       >
-        <div className="report-score-overall-header">
-          <p className="report-score-overall-label">Overall score</p>
-          <span className="report-score-card-meta">
+        <div className="flex items-center justify-between gap-2">
+          <p
+            className={`font-mono text-mono-sm uppercase ${
+              overallSelected ? "text-ink-inverse/80" : "text-ink-tertiary"
+            }`}
+          >
+            Overall score
+          </p>
+          <span className="flex items-center gap-1">
             <span
-              className={`report-score-overall-value report-score-tone-${scoreTone(overall)}`}
+              className={`font-mono text-headline-md font-bold tabular-nums ${
+                overallSelected
+                  ? "text-ink-inverse"
+                  : scoreTextClass(overallTone)
+              }`}
             >
               {overall}
             </span>
             <ChevronRight
-              className={`report-score-chevron${selectedId === "overall" ? " report-score-chevron-open" : ""}`}
+              className={`h-5 w-5 transition-transform ${
+                overallSelected
+                  ? "rotate-90 text-ink-inverse"
+                  : "text-ink-tertiary"
+              }`}
               aria-hidden
             />
           </span>
