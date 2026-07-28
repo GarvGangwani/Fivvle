@@ -31,6 +31,7 @@ import {
 import type { RefCitation } from "@/lib/types";
 import { FontSize } from "@/lib/tiptap-font-size";
 import { useToast } from "@/components/ui/ToastProvider";
+import { BrutalistSkeleton } from "@/components/ui/BrutalistSkeleton";
 import { EvidenceEditorToolbar } from "@/components/research/EvidenceEditorToolbar";
 import "./evidence-editor.css";
 
@@ -396,7 +397,11 @@ export const EvidenceReportEditor = forwardRef<
   }
 
   if (loading) {
-    return <div className="fv-skeleton h-[380px] w-full" />;
+    return (
+      <div aria-busy="true" aria-label="Loading editor">
+        <BrutalistSkeleton variant="block" height="h-[380px]" width="w-full" />
+      </div>
+    );
   }
 
   return (

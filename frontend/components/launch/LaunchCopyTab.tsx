@@ -18,6 +18,7 @@ import {
 import { resolveLandingPageEditorData } from "@/lib/landing-page-data";
 import { canEditLandingPage } from "@/lib/landing-flow";
 import { useToast } from "@/components/ui/ToastProvider";
+import { BrutalistSkeleton } from "@/components/ui/BrutalistSkeleton";
 import type { CopyJson, FaqItem, FeatureCopy, PageJson } from "@/lib/types";
 import type { TemplateId } from "@/lib/templates";
 
@@ -190,9 +191,9 @@ function BrutalistInput({
 function SectionSkeleton() {
   return (
     <div className="flex flex-col gap-3" aria-busy="true" aria-label="Regenerating">
-      <div className="h-10 animate-pulse border-2 border-border-master bg-surface-elevated" />
-      <div className="h-24 animate-pulse border-2 border-border-master bg-surface-elevated" />
-      <div className="h-10 animate-pulse border-2 border-border-master bg-surface-elevated" />
+      <BrutalistSkeleton variant="block" height="h-10" />
+      <BrutalistSkeleton variant="block" height="h-24" />
+      <BrutalistSkeleton variant="block" height="h-10" />
     </div>
   );
 }

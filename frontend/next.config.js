@@ -74,13 +74,6 @@ const securityHeaders = [
   },
 ];
 
-// Editor device preview embeds this route in a same-origin iframe.
-const previewDeviceHeaders = securityHeaders.map((header) =>
-  header.key === "X-Frame-Options"
-    ? { key: "X-Frame-Options", value: "SAMEORIGIN" }
-    : header,
-);
-
 // Launch LivePagePreviewPanel iframes /e/{slug}?preview=1 (same-origin).
 // Must override the global DENY — last matching source wins on conflicts.
 const publicLandingFrameHeaders = securityHeaders.map((header) =>
@@ -115,10 +108,6 @@ module.exports = {
       {
         source: "/:path*",
         headers: securityHeaders,
-      },
-      {
-        source: "/preview/device",
-        headers: previewDeviceHeaders,
       },
       {
         source: "/e/:slug*",

@@ -9,6 +9,7 @@ import { getExperimentDisplayName } from "@/lib/experiment-name";
 import type { ExperimentSummary } from "@/lib/types";
 import { DeleteProjectDialog } from "@/components/experiment/DeleteProjectDialog";
 import { marketingButtonClass } from "@/components/marketing/marketing-styles";
+import { BrutalistSkeleton } from "@/components/ui/BrutalistSkeleton";
 import { ProjectCard } from "./ProjectCard";
 
 type LoadState =
@@ -66,13 +67,15 @@ export function ArchivedProjectsContent() {
   if (loadState.status === "loading") {
     return (
       <div className="px-gutter pb-8 pt-24">
-        <div className="mb-8 h-10 w-72 animate-pulse bg-surface-elevated motion-reduce:animate-none" />
+        <BrutalistSkeleton
+          variant="block"
+          height="h-10"
+          width="w-72"
+          className="mb-8"
+        />
         <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, index) => (
-            <div
-              key={index}
-              className="h-64 animate-pulse bg-surface-elevated motion-reduce:animate-none"
-            />
+            <BrutalistSkeleton key={index} variant="block" height="h-64" />
           ))}
         </div>
       </div>

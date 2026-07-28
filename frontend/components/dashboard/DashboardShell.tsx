@@ -8,7 +8,6 @@ import { GlobalSearchModal } from "./GlobalSearchModal";
 import { SearchModalProvider, useSearchModal } from "./search-modal-context";
 
 // AIComposerPill removed — moves to experiment page in Step 5. Keep the component file.
-// AppTopNav + AppSideRail orphaned by feat/floating-nav — flag for cleanup PR.
 
 interface DashboardShellProps {
   children: ReactNode;
