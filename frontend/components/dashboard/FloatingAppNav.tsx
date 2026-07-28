@@ -48,9 +48,18 @@ type AccountMenuProps = {
   /** Avatar hit-area size in px (square). */
   size?: number;
   dropdownAlign?: "left" | "right";
+  /** Menu opens below (dashboard) or to the right (canvas vertical pill). */
+  dropdownSide?: "bottom" | "right";
+  /** Side tooltip label (canvas compact mode). */
+  sideTooltip?: string;
 };
 
-function AccountMenu({ size = 40, dropdownAlign = "right" }: AccountMenuProps) {
+function AccountMenu({
+  size = 40,
+  dropdownAlign = "right",
+  dropdownSide = "bottom",
+  sideTooltip,
+}: AccountMenuProps) {
   const { user, logOut } = useAuth();
   const { themeMode, setThemeMode } = usePreferences();
   const router = useRouter();
@@ -90,8 +99,13 @@ function AccountMenu({ size = 40, dropdownAlign = "right" }: AccountMenuProps) {
   const dropdownItemClass =
     "w-full text-left px-4 py-2 text-sm text-[var(--fv-text)] hover:bg-[var(--fv-surface-2)] transition-colors no-underline flex items-center gap-2";
 
+  const dropdownPositionClass =
+    dropdownSide === "right"
+      ? "left-full top-0 ml-2"
+      : `top-12 ${dropdownAlign === "right" ? "right-0" : "left-0"}`;
+
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} className="group relative">
       <button
         type="button"
         className="flex items-center justify-center overflow-hidden rounded-full border-2 border-border-master bg-[var(--fv-surface-2)] p-0"
@@ -99,7 +113,7 @@ function AccountMenu({ size = 40, dropdownAlign = "right" }: AccountMenuProps) {
         aria-label="Account menu"
         aria-expanded={open}
         aria-haspopup="menu"
-        title="Account"
+        title={sideTooltip ? undefined : "Account"}
         onClick={() => setOpen((prev) => !prev)}
       >
         <ProfileAvatar
@@ -110,12 +124,23 @@ function AccountMenu({ size = 40, dropdownAlign = "right" }: AccountMenuProps) {
         />
       </button>
 
+      {sideTooltip ? (
+        <span
+          className={`pointer-events-none absolute left-full top-1/2 z-40 ml-2 -translate-y-1/2 whitespace-nowrap rounded border-2 border-border-master bg-[var(--fv-surface-card)] px-2 py-1 text-xs text-[var(--fv-text)] shadow-brutal-sm transition-opacity ${
+            open
+              ? "opacity-0"
+              : "opacity-0 group-hover:opacity-100"
+          }`}
+          aria-hidden
+        >
+          {sideTooltip}
+        </span>
+      ) : null}
+
       {open ? (
         <div
           role="menu"
-          className={`absolute top-12 min-w-[200px] rounded-md border-2 border-border-master bg-[var(--fv-surface-card)] py-2 shadow-brutal-md ${
-            dropdownAlign === "right" ? "right-0" : "left-0"
-          }`}
+          className={`absolute z-50 min-w-[200px] rounded-md border-2 border-border-master bg-[var(--fv-surface-card)] py-2 shadow-brutal-md ${dropdownPositionClass}`}
         >
           <p className="px-4 py-2 text-xs text-[var(--fv-text-muted)]">
             {user?.email ?? "Signed in"}
@@ -220,12 +245,15 @@ function DashboardNavBar() {
 }
 
 function canvasItemClass(active: boolean) {
-  return `flex items-center justify-center rounded-md p-2.5 transition-colors no-underline ${
+  return `group relative flex items-center justify-center rounded-md p-2.5 transition-colors no-underline ${
     active
       ? "text-[var(--fv-accent)] bg-[var(--fv-accent-muted)]"
       : "text-[var(--fv-text-muted)] hover:text-[var(--fv-text)] hover:bg-[var(--fv-surface-2)]"
   }`;
 }
+
+const canvasSideTooltipClass =
+  "pointer-events-none absolute left-full top-1/2 z-40 ml-2 -translate-y-1/2 whitespace-nowrap rounded border-2 border-border-master bg-[var(--fv-surface-card)] px-2 py-1 text-xs text-[var(--fv-text)] opacity-0 shadow-brutal-sm transition-opacity group-hover:opacity-100";
 
 function CanvasFloatingNav() {
   const { homeActive, experimentsActive } = useNavActiveState();
@@ -241,43 +269,53 @@ function CanvasFloatingNav() {
       </Link>
 
       <nav
-        className="fixed top-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-1 rounded border-2 border-border-master bg-[var(--fv-surface-card)] px-1 py-1 shadow-brutal-sm"
+        className="fixed left-6 top-1/2 z-30 flex -translate-y-1/2 flex-col items-center gap-1 rounded border-2 border-border-master bg-[var(--fv-surface-card)] px-1 py-1 shadow-brutal-sm"
         aria-label="App sections"
       >
+        <AccountMenu
+          size={40}
+          dropdownSide="right"
+          sideTooltip="Account"
+        />
+
+        <div
+          className="my-1 w-6 border-t border-[var(--fv-border)]"
+          aria-hidden
+        />
+
         <Link
           href="/"
           className={canvasItemClass(homeActive)}
           aria-current={homeActive ? "page" : undefined}
           aria-label="Home"
-          title="Home"
         >
           <Home className="h-5 w-5 shrink-0" aria-hidden />
+          <span className={canvasSideTooltipClass} aria-hidden>
+            Home
+          </span>
         </Link>
         <Link
           href="/experiments"
           className={canvasItemClass(experimentsActive)}
           aria-current={experimentsActive ? "page" : undefined}
           aria-label="Experiments"
-          title="Experiments"
         >
           <Rocket className="h-5 w-5 shrink-0" aria-hidden />
+          <span className={canvasSideTooltipClass} aria-hidden>
+            Experiments
+          </span>
         </Link>
         <button
           type="button"
           className={canvasItemClass(false)}
           aria-label="Search"
-          title="Search"
           onClick={openSearch}
         >
           <Search className="h-5 w-5 shrink-0" aria-hidden />
+          <span className={canvasSideTooltipClass} aria-hidden>
+            Search
+          </span>
         </button>
-
-        <div
-          className="mx-1 h-6 border-l border-[var(--fv-border)]"
-          aria-hidden
-        />
-
-        <AccountMenu size={40} dropdownAlign="right" />
       </nav>
     </>
   );
