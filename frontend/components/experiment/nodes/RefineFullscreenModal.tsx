@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "@/lib/auth-context";
 import type { Experiment } from "@/lib/types";
+import { PanelHeader } from "@/components/ui/PanelHeader";
 import { LiveWorkspacePanel } from "../refine/LiveWorkspacePanel";
 import { RefineChatInput, type AttachmentDraft } from "../refine/RefineChatInput";
 import { RefineChatScroll } from "../refine/RefineChatScroll";
@@ -78,50 +79,50 @@ export function RefineFullscreenModal({
 
   return createPortal(
     <div className="fixed inset-0 z-50 bg-canvas-bg flex flex-col">
-      <div className="bg-ink-primary text-ink-inverse flex items-center justify-between px-6 py-4 shrink-0 border-b-2 border-border-master">
-        <div className="flex items-center gap-3">
-          <span
-            className="material-symbols-outlined text-brand-primary"
-            style={{ fontSize: 24 }}
-            aria-hidden="true"
-          >
-            bolt
-          </span>
-          <span className="font-mono text-mono-md uppercase tracking-wider">
-            PHASE 02: REFINE // FULLSCREEN
-          </span>
-          {refinementCount > 0 ? (
-            <span className="bg-brand-primary text-ink-inverse px-2 py-0.5 font-mono text-mono-sm uppercase">
+      <PanelHeader
+        phaseLabel="PHASE 02 · REFINE"
+        title="Fullscreen"
+        badge={
+          refinementCount > 0 ? (
+            <span className="border-2 border-border-master bg-brand-primary px-2 py-0.5 font-mono text-mono-sm uppercase text-ink-inverse">
               TURN {refinementCount}
             </span>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={onMinimize}
-            className="p-2 hover:bg-ink-inverse/10 flex items-center gap-2"
-            aria-label="Exit fullscreen"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
-              close_fullscreen
-            </span>
-            <span className="font-mono text-mono-sm uppercase hidden sm:inline">
-              MINIMIZE
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 hover:bg-ink-inverse/10"
-            aria-label="Close"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>
-              close
-            </span>
-          </button>
-        </div>
-      </div>
+          ) : null
+        }
+        actions={
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onMinimize}
+              className="flex items-center gap-2 p-2 text-ink-secondary transition-colors hover:bg-surface-elevated hover:text-ink-primary"
+              aria-label="Exit fullscreen"
+            >
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: 20 }}
+              >
+                close_fullscreen
+              </span>
+              <span className="hidden font-mono text-mono-sm uppercase sm:inline">
+                MINIMIZE
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-2 text-ink-secondary transition-colors hover:bg-surface-elevated hover:text-ink-primary"
+              aria-label="Close"
+            >
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: 20 }}
+              >
+                close
+              </span>
+            </button>
+          </div>
+        }
+      />
 
       <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 flex flex-col min-w-0 border-r-2 border-border-master">

@@ -3,6 +3,7 @@
 import type { NodeProps } from "reactflow";
 import { useAuth } from "@/lib/auth-context";
 import type { Experiment } from "@/lib/types";
+import { PanelHeader } from "@/components/ui/PanelHeader";
 import { RefineChatInput, type AttachmentDraft } from "../refine/RefineChatInput";
 import { RefineChatScroll } from "../refine/RefineChatScroll";
 import type { RefineChatMessageModel } from "../refine/RefineChatMessage";
@@ -63,46 +64,48 @@ export function RefineExpandedNode({ data }: NodeProps<RefineExpandedData>) {
       className="w-[560px] rounded-md bg-surface-card border-2 border-border-master shadow-brutal-lg flex flex-col overflow-hidden"
       style={{ maxHeight: "80vh", minHeight: "500px" }}
     >
-      <div className="bg-ink-primary text-ink-inverse flex items-center justify-between px-4 py-3 shrink-0 cursor-grab active:cursor-grabbing">
-        <div className="flex items-center gap-3">
-          <span
-            className="material-symbols-outlined text-brand-primary"
-            style={{ fontSize: 20 }}
-            aria-hidden="true"
-          >
-            bolt
-          </span>
-          <span className="font-mono text-mono-md uppercase tracking-wider">
-            PHASE 02: REFINE // EXPANDED_VIEW
-          </span>
-          {refinementCount > 0 ? (
-            <span className="bg-brand-primary text-ink-inverse px-2 py-0.5 font-mono text-mono-sm uppercase">
-              TURN {refinementCount}
-            </span>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onFullscreen}
-            className="p-1 hover:bg-ink-inverse/10"
-            aria-label="Enter fullscreen"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
-              open_in_full
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-1 hover:bg-ink-inverse/10"
-            aria-label="Close"
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
-              close
-            </span>
-          </button>
-        </div>
+      <div className="shrink-0 cursor-grab active:cursor-grabbing">
+        <PanelHeader
+          phaseLabel="PHASE 02 · REFINE"
+          title="Expanded view"
+          badge={
+            refinementCount > 0 ? (
+              <span className="border-2 border-border-master bg-brand-primary px-2 py-0.5 font-mono text-mono-sm uppercase text-ink-inverse">
+                TURN {refinementCount}
+              </span>
+            ) : null
+          }
+          actions={
+            <div className="nodrag flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onFullscreen}
+                className="p-1 text-ink-secondary transition-colors hover:bg-surface-elevated hover:text-ink-primary"
+                aria-label="Enter fullscreen"
+              >
+                <span
+                  className="material-symbols-outlined"
+                  style={{ fontSize: 18 }}
+                >
+                  open_in_full
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1 text-ink-secondary transition-colors hover:bg-surface-elevated hover:text-ink-primary"
+                aria-label="Close"
+              >
+                <span
+                  className="material-symbols-outlined"
+                  style={{ fontSize: 18 }}
+                >
+                  close
+                </span>
+              </button>
+            </div>
+          }
+        />
       </div>
 
       <div className="flex-1 min-h-0 overflow-y-auto p-6 nodrag nowheel cursor-auto">

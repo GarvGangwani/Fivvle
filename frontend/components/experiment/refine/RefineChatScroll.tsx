@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { BrutalistSkeleton } from "@/components/ui/BrutalistSkeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
 import {
   RefineChatMessage,
   type RefineChatMessageModel,
@@ -56,25 +58,30 @@ export function RefineChatScroll({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16">
-        <p className="font-mono text-mono-md uppercase text-ink-tertiary">
-          Loading conversation...
-        </p>
+      <div
+        className="space-y-4 py-4"
+        role="status"
+        aria-label="Loading conversation"
+      >
+        <BrutalistSkeleton variant="block" width="w-[75%] ml-auto" height="h-16" />
+        <BrutalistSkeleton variant="block" width="w-[85%]" height="h-20" />
+        <BrutalistSkeleton variant="block" width="w-[70%] ml-auto" height="h-14" />
+        <BrutalistSkeleton variant="block" width="w-[80%]" height="h-24" />
       </div>
     );
   }
 
   if (messages.length === 0 && generatingOpener) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[280px] text-center px-8">
+      <div className="flex min-h-[280px] flex-col items-center justify-center px-8 text-center">
         <span
-          className="material-symbols-outlined text-brand-primary animate-pulse mb-4"
+          className="material-symbols-outlined mb-4 animate-pulse text-brand-primary"
           style={{ fontSize: 48 }}
           aria-hidden="true"
         >
           bolt
         </span>
-        <div className="font-mono text-mono-md uppercase text-brand-primary mb-2">
+        <div className="mb-2 font-mono text-mono-md uppercase text-brand-primary">
           REFINER IS READING YOUR IDEA
         </div>
         <p className="font-body text-body-md text-ink-secondary">
@@ -85,7 +92,21 @@ export function RefineChatScroll({
   }
 
   if (messages.length === 0) {
-    return <EmptyChatState />;
+    return (
+      <EmptyState
+        icon={
+          <span
+            className="material-symbols-outlined text-brand-primary"
+            style={{ fontSize: 28 }}
+            aria-hidden="true"
+          >
+            bolt
+          </span>
+        }
+        title="Ready to refine"
+        description="Ask me anything about your concept. I've read your Spark and I'm ready to help you find the sharpest version."
+      />
+    );
   }
 
   return (
@@ -107,30 +128,6 @@ export function RefineChatScroll({
         />
       ))}
       <div ref={scrollAnchorRef} />
-    </div>
-  );
-}
-
-function EmptyChatState() {
-  return (
-    <div className="flex flex-col items-center justify-center min-h-[280px] text-center px-8">
-      <span
-        className="material-symbols-outlined text-brand-primary mb-4"
-        style={{ fontSize: 48 }}
-        aria-hidden="true"
-      >
-        bolt
-      </span>
-      <div className="font-mono text-mono-md uppercase text-brand-primary mb-2">
-        READY TO REFINE
-      </div>
-      <h3 className="font-headline text-headline-md text-ink-primary mb-2">
-        Let&apos;s sharpen your idea.
-      </h3>
-      <p className="font-body text-body-md text-ink-secondary max-w-md">
-        Ask me anything about your concept. I&apos;ve read your Spark and I&apos;m
-        ready to help you find the sharpest version.
-      </p>
     </div>
   );
 }

@@ -199,7 +199,10 @@ export function RefineChatInput({
             </ul>
           ) : null}
           {uploadError ? (
-            <p className="font-mono text-mono-sm text-red-600 uppercase">
+            <p
+              role="alert"
+              className="font-mono text-mono-sm uppercase text-status-critical"
+            >
               {uploadError}
             </p>
           ) : null}
