@@ -327,9 +327,9 @@ export interface ClarifyingQuestionAnswer {
 
 /**
  * A completed clarifying-question turn from earlier in the thread, plus the
- * user's answer to it and the message ID that carries that answer. Passed
- * into ClarifyingQuestionBlock so the wizard can navigate backward across
- * completed turns and let the founder edit any past answer.
+ * user's answer and the message ID that carries that answer. Retained for
+ * API/history shapes; the Stack B clarifying wizard that consumed this was
+ * removed in Part 2 PR-3b.
  */
 export interface PastClarifyingTurn {
   /** The clarifying question the assistant asked in this past turn. */
@@ -341,11 +341,7 @@ export interface PastClarifyingTurn {
    * we pass to editChatMessage when the founder saves an edit.
    */
   answerMessageId: string;
-  /**
-   * 1-based question number as displayed globally in the thread. Same
-   * numbering scheme ClarifyingQuestionBlock already uses for its current
-   * batch.
-   */
+  /** 1-based question number as displayed globally in the thread. */
   globalQuestionNumber: number;
 }
 
