@@ -427,6 +427,199 @@ export async function sendUniversalChatMessage(
   );
 }
 
+export interface StreamUniversalCallbacks {
+  onToolCall: (payload: { tool_name: string; message_id: string }) => void;
+  onToolResult: (payload: {
+    tool_name: string;
+    message_id: string;
+    payload: Record<string, unknown>;
+  }) => void;
+  onSubagentToken: (payload: { agent: "refine" | "research"; text: string }) => void;
+  onAssistantToken: (payload: { text: string }) => void;
+  onDone: (payload: {
+    assistant_message_id: string;
+    thread_id: string;
+    user_message_id?: string;
+  }) => void;
+  onError: (message: string) => void;
+}
+
+/**
+ * Stream a universal-chat turn over SSE (fetch + ReadableStream).
+ * Aborted `signal` resolves silently; network drop → onError.
+ */
+export async function streamUniversalChatMessage(
+  experimentId: string,
+  message: string,
+  callbacks: StreamUniversalCallbacks,
+  signal?: AbortSignal,
+): Promise<void> {
+  const authHeader = await getAuthHeader();
+
+  let response: Response;
+  try {
+    response = await fetch(
+      apiUrl(`/experiments/${experimentId}/chat/universal/stream`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: JSON.stringify({ message }),
+        signal,
+      },
+    );
+  } catch (err) {
+    if (signal?.aborted) return;
+    throw new ApiError(
+      0,
+      { error: err instanceof Error ? err.message : "Network error" },
+      null,
+    );
+  }
+
+  const requestId = response.headers.get("X-Request-ID");
+  if (!response.ok || !response.body) {
+    let parsed: unknown = null;
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const raw = await response.text();
+      parsed = raw ? JSON.parse(raw) : null;
+    } else {
+      parsed = await response.text();
+    }
+    let retryAfterSeconds: number | null = null;
+    if (response.status === 429) {
+      const retryAfter = response.headers.get("Retry-After");
+      if (retryAfter !== null) {
+        const n = parseInt(retryAfter, 10);
+        retryAfterSeconds = Number.isNaN(n) ? null : n;
+      }
+    }
+    if (response.status === 401) {
+      await handleSessionExpired();
+    }
+    throw new ApiError(response.status, parsed, requestId, retryAfterSeconds);
+  }
+
+  const dispatch = (event: SSEEvent): void => {
+    if (event.event === "tool_call") {
+      try {
+        const data = JSON.parse(event.data) as {
+          tool_name?: string;
+          message_id?: string;
+        };
+        if (
+          typeof data.tool_name === "string" &&
+          typeof data.message_id === "string"
+        ) {
+          callbacks.onToolCall({
+            tool_name: data.tool_name,
+            message_id: data.message_id,
+          });
+        }
+      } catch {
+        /* ignore malformed frame */
+      }
+    } else if (event.event === "tool_result") {
+      try {
+        const data = JSON.parse(event.data) as {
+          tool_name?: string;
+          message_id?: string;
+          payload?: Record<string, unknown>;
+        };
+        if (
+          typeof data.tool_name === "string" &&
+          typeof data.message_id === "string"
+        ) {
+          callbacks.onToolResult({
+            tool_name: data.tool_name,
+            message_id: data.message_id,
+            payload:
+              data.payload && typeof data.payload === "object"
+                ? data.payload
+                : {},
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+    } else if (event.event === "subagent_token") {
+      try {
+        const data = JSON.parse(event.data) as {
+          agent?: string;
+          text?: string;
+        };
+        if (
+          (data.agent === "refine" || data.agent === "research") &&
+          typeof data.text === "string"
+        ) {
+          callbacks.onSubagentToken({ agent: data.agent, text: data.text });
+        }
+      } catch {
+        /* ignore */
+      }
+    } else if (event.event === "assistant_token") {
+      try {
+        const data = JSON.parse(event.data) as { text?: string };
+        if (typeof data.text === "string") {
+          callbacks.onAssistantToken({ text: data.text });
+        }
+      } catch {
+        /* ignore */
+      }
+    } else if (event.event === "done") {
+      try {
+        const data = JSON.parse(event.data) as {
+          assistant_message_id?: string;
+          thread_id?: string;
+          user_message_id?: string;
+        };
+        if (
+          typeof data.assistant_message_id === "string" &&
+          typeof data.thread_id === "string"
+        ) {
+          callbacks.onDone({
+            assistant_message_id: data.assistant_message_id,
+            thread_id: data.thread_id,
+            user_message_id: data.user_message_id,
+          });
+        } else {
+          callbacks.onError("The reply finished but couldn't be read — retry");
+        }
+      } catch {
+        callbacks.onError("The reply finished but couldn't be read — retry");
+      }
+    } else if (event.event === "error") {
+      let message = "Universal chat failed, please try again";
+      try {
+        const data = JSON.parse(event.data) as { message?: string };
+        if (typeof data.message === "string" && data.message.trim()) {
+          message = data.message;
+        }
+      } catch {
+        /* keep default */
+      }
+      callbacks.onError(message);
+    }
+  };
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const parser = createSSEParser();
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      for (const event of parser.push(decoder.decode(value, { stream: true }))) {
+        dispatch(event);
+      }
+    }
+    for (const event of parser.flush()) dispatch(event);
+  } catch {
+    if (signal?.aborted) return;
+    callbacks.onError("Connection lost — retry");
+  }
+}
+
 export async function sendEvidenceChatMessage(
   experimentId: string,
   body: EvidenceChatSendRequest,

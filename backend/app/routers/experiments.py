@@ -135,6 +135,7 @@ from app.services.evidence_chat_service import (
     EvidenceChatNotFound,
     activate_evidence_chat_branch,
     edit_evidence_chat_message,
+    format_sse_event,
     list_evidence_chat_messages,
     prepare_evidence_stream,
     regenerate_evidence_chat_message,
@@ -146,7 +147,9 @@ from app.services.universal_chat_service import (
     UniversalChatNotFound,
     UniversalChatUnavailable,
     list_universal_chat_messages,
+    prepare_universal_stream,
     send_universal_chat_message,
+    stream_universal_chat_message,
 )
 from app.services.validation_report_editor import (
     EditedDocVersionConflict,
@@ -1531,6 +1534,60 @@ async def send_universal_chat(
             ChatMessageItem.from_orm_message(message) for message in result.messages
         ],
         thread_id=result.thread_id,
+    )
+
+
+@router.post(
+    "/{experiment_id}/chat/universal/stream",
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def stream_universal_chat(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: UniversalChatSendRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StreamingResponse:
+    """Stream a universal-chat turn as SSE (tool_call/tool_result/tokens/done/error).
+
+    User message is persisted + committed on the request session before the
+    generator starts. The generator owns tool/assistant rows on its own session.
+    """
+    try:
+        prep = await prepare_universal_stream(
+            db,
+            current_user,
+            experiment_id,
+            body.message,
+        )
+    except UniversalChatNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
+        ) from None
+    except UniversalChatUnavailable as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+
+    async def _frames():
+        async for event_name, payload in stream_universal_chat_message(prep):
+            if event_name.startswith("_"):
+                continue
+            yield format_sse_event(event_name, payload)
+
+    return StreamingResponse(
+        _frames(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
