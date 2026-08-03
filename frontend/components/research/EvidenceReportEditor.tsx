@@ -168,6 +168,40 @@ function findRefRange(
     return found;
   }
 
+  if (anchor.kind === "url") {
+    const target = anchor.value.trim().toLowerCase();
+    if (!target) return null;
+    // Prefer link marks whose href matches the citation URL.
+    doc.descendants((node, pos) => {
+      if (found) return false;
+      if (node.isText && node.marks.length > 0) {
+        for (const mark of node.marks) {
+          if (mark.type.name !== "link") continue;
+          const href = String(mark.attrs.href ?? "").trim().toLowerCase();
+          if (href && (href === target || href.includes(target) || target.includes(href))) {
+            found = { from: pos, to: pos + (node.text?.length ?? 0) };
+            return false;
+          }
+        }
+      }
+      return true;
+    });
+    if (found) return found;
+    // Fallback: first text occurrence of the URL / domain fragment.
+    doc.descendants((node, pos) => {
+      if (found) return false;
+      if (node.isText && node.text) {
+        const idx = node.text.toLowerCase().indexOf(target);
+        if (idx !== -1) {
+          found = { from: pos + idx, to: pos + idx + Math.min(target.length, node.text.length - idx) };
+          return false;
+        }
+      }
+      return true;
+    });
+    return found;
+  }
+
   return null;
 }
 

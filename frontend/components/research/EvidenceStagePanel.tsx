@@ -7,6 +7,7 @@ import type {
   ValidationReport,
 } from "@/lib/types";
 import { getValidationReport } from "@/lib/api";
+import { takePendingEvidenceFocus } from "@/lib/pending-evidence-focus";
 import {
   EvidenceReportEditor,
   type EvidenceReportEditorHandle,
@@ -68,6 +69,17 @@ export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
       cancelled = true;
     };
   }, [experimentId]);
+
+  // Apply pending focus from master-rail citation / navigate once the editor is ready.
+  useEffect(() => {
+    if (loading || error || !report) return;
+    const pending = takePendingEvidenceFocus();
+    if (!pending) return;
+    const t = window.setTimeout(() => {
+      editorRef.current?.focusReference(pending);
+    }, 80);
+    return () => window.clearTimeout(t);
+  }, [loading, error, report]);
 
   if (loading) {
     return (

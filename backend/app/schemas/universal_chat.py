@@ -6,12 +6,14 @@ Reuses ChatMessageItem from app.schemas.chat (including optional tool_payload).
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.chat import ChatMessageItem
+
+UniversalOpenPhase = Literal["spark", "refine", "evidence", "launch", "signal"]
 
 
 class UniversalChatSendRequest(BaseModel):
@@ -26,6 +28,8 @@ class UniversalChatSendRequest(BaseModel):
         list[UUID],
         Field(default_factory=list, max_length=5),
     ]
+    # Canvas overlay act currently open in the client (or null when closed).
+    current_open_phase: UniversalOpenPhase | None = None
 
 
 class UniversalChatSendResponse(BaseModel):

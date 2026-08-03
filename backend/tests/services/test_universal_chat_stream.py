@@ -623,3 +623,54 @@ async def test_stream_cancel_mid_research_deletes_placeholder(
             or m.role == ChatRole.TOOL_CALL
             for m in msgs
         )
+
+
+@pytest.mark.asyncio
+async def test_stream_open_phase_panel_navigate_payload(
+    sm: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_provider(monkeypatch)
+    async with sm() as session:
+        user, experiment = await _seed(session)
+        prep = await prepare_universal_stream(
+            session,
+            user,
+            experiment.id,
+            "Show me the report",
+            pacing_delay=0,
+            current_open_phase=None,
+        )
+
+    calls = [
+        _tools_result(
+            tool_uses=[
+                ToolUseRequest(
+                    id="t1",
+                    name="open_phase_panel",
+                    input={"phase": "evidence", "source_ref_id": None},
+                )
+            ]
+        ),
+        _tools_result(text="Opened Evidence for you."),
+    ]
+
+    with patch(_LLM_PATCH, new_callable=AsyncMock) as mock_llm, patch(
+        _EXECUTE_TOOL_PATCH, new_callable=AsyncMock
+    ) as mock_exec:
+        mock_llm.side_effect = calls
+        mock_exec.return_value = {
+            "navigate_to": "evidence",
+            "source_ref_id": None,
+        }
+        events = await _collect_events(prep, sm)
+
+    names = [e[0] for e in events]
+    assert "tool_call" in names
+    assert "tool_result" in names
+    tr = next(p for n, p in events if n == "tool_result")
+    assert tr["payload"]["tool_name"] == "open_phase_panel"
+    assert tr["payload"]["result"] == {
+        "navigate_to": "evidence",
+        "source_ref_id": None,
+    }
+    assert names[-1] == "done"

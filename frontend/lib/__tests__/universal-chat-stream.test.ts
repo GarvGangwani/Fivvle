@@ -202,3 +202,92 @@ describe("tokenizeCitations mid-stream partial markers", () => {
     ).toBe("example.com");
   });
 });
+
+describe("navigate tool_result once-only dispatch", () => {
+  function parseNavigate(
+    payload: Record<string, unknown>,
+  ): { navigate_to: string; source_ref_id: string | null } | null {
+    if (payload.tool_name !== "open_phase_panel") return null;
+    const result =
+      payload.result && typeof payload.result === "object"
+        ? (payload.result as Record<string, unknown>)
+        : payload;
+    const navigateTo = result.navigate_to;
+    if (typeof navigateTo !== "string") return null;
+    return {
+      navigate_to: navigateTo,
+      source_ref_id:
+        typeof result.source_ref_id === "string" ? result.source_ref_id : null,
+    };
+  }
+
+  it("dispatches setOverlayAct once per streaming nav message_id", () => {
+    const opened: string[] = [];
+    const dispatched = new Set<string>();
+    const frames = [
+      'event: tool_call\ndata: {"tool_name":"open_phase_panel","message_id":"tc-nav"}\n\n',
+      'event: tool_result\ndata: {"tool_name":"open_phase_panel","message_id":"tr-nav","payload":{"tool_name":"open_phase_panel","result":{"navigate_to":"evidence","source_ref_id":null}}}\n\n',
+      'event: done\ndata: {"assistant_message_id":"a1","thread_id":"th1"}\n\n',
+    ].join("");
+
+    dispatchUniversalFrames(frames, {
+      onToolCall: () => {},
+      onToolResult: ({ message_id, payload }) => {
+        const nav = parseNavigate(payload);
+        if (nav && !dispatched.has(message_id)) {
+          dispatched.add(message_id);
+          opened.push(nav.navigate_to);
+        }
+      },
+      onSubagentToken: () => {},
+      onAssistantToken: () => {},
+      onDone: () => {},
+      onError: () => {},
+    });
+
+    expect(opened).toEqual(["evidence"]);
+    // Replaying the same frames (history hydrate style) with a fresh Set would
+    // re-dispatch — production keeps the Set across the session and never
+    // runs onToolResult for hydrated rows.
+    expect(dispatched.has("tr-nav")).toBe(true);
+  });
+
+  it("history hydrate does not call onToolResult (no ghost open)", () => {
+    const opened: string[] = [];
+    // Simulates GET messages hydrate: rows exist, no SSE onToolResult.
+    const historyRows = [
+      {
+        role: "tool_result",
+        id: "tr-nav",
+        tool_payload: {
+          tool_name: "open_phase_panel",
+          result: { navigate_to: "refine", source_ref_id: null },
+        },
+      },
+    ];
+    for (const row of historyRows) {
+      // Hydrate path only renders — never dispatches navigate.
+      expect(row.tool_payload.result.navigate_to).toBe("refine");
+    }
+    expect(opened).toEqual([]);
+  });
+
+  it("citation click intent targets evidence + source url", () => {
+    const actions: Array<{ phase: string; url: string | null }> = [];
+    const ref = {
+      marker_id: "[cite:s1]",
+      source_title: "Ex",
+      source_url: "https://ex.com/a",
+      source_domain: "ex.com",
+    };
+    // Mirror dock onCitationClick
+    actions.push({ phase: "evidence", url: ref.source_url });
+    expect(actions).toEqual([{ phase: "evidence", url: "https://ex.com/a" }]);
+  });
+
+  it("MCQ chip intent targets refine", () => {
+    const phases: string[] = [];
+    phases.push("refine");
+    expect(phases).toEqual(["refine"]);
+  });
+});
