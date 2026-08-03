@@ -46,6 +46,8 @@ function toolCallLabel(toolPayload: ChatHistoryMessage["tool_payload"]): string 
 type Props = {
   experimentId: string;
   projectName?: string | null;
+  /** Notify parent when collapse state changes (phase panel inset). */
+  onCollapsedChange?: (collapsed: boolean) => void;
 };
 
 type DockMessage = ChatHistoryMessage & {
@@ -75,6 +77,7 @@ function displayProjectName(projectName?: string | null): string | null {
 export const UniversalChatDock = memo(function UniversalChatDock({
   experimentId,
   projectName,
+  onCollapsedChange,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [messages, setMessages] = useState<DockMessage[]>([]);
@@ -99,24 +102,28 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   useEffect(() => {
     const key = collapseStorageKey(experimentId);
     const raw = localStorage.getItem(key);
+    let next = false;
     if (raw === "1") {
-      setCollapsed(true);
+      next = true;
     } else if (raw === "0") {
-      setCollapsed(false);
+      next = false;
     } else {
-      setCollapsed(isNarrowViewport());
+      next = isNarrowViewport();
     }
-  }, [experimentId]);
+    setCollapsed(next);
+    onCollapsedChange?.(next);
+  }, [experimentId, onCollapsedChange]);
 
   const setCollapsedPersisted = useCallback(
     (next: boolean) => {
       setCollapsed(next);
+      onCollapsedChange?.(next);
       localStorage.setItem(
         collapseStorageKey(experimentId),
         next ? "1" : "0",
       );
     },
-    [experimentId],
+    [experimentId, onCollapsedChange],
   );
 
   useEffect(() => {
@@ -239,7 +246,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
 
   if (collapsed) {
     return (
-      <aside className="fixed right-6 top-6 z-20 w-10 rounded-lg border-2 border-border-master bg-[var(--fv-surface-card)] shadow-brutal-md">
+      <aside className="fixed right-6 top-6 z-[80] w-10 rounded-lg border-2 border-border-master bg-[var(--fv-surface-card)] shadow-brutal-md">
         <button
           type="button"
           onClick={() => setCollapsedPersisted(false)}
@@ -256,7 +263,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   }
 
   return (
-    <aside className="fixed bottom-6 right-6 top-6 z-20 flex w-[420px] flex-col overflow-hidden rounded-sm border-2 border-border-master bg-[var(--fv-surface-card)] shadow-brutal-md">
+    <aside className="fixed bottom-6 right-6 top-6 z-[80] flex w-[420px] flex-col overflow-hidden rounded-sm border-2 border-border-master bg-[var(--fv-surface-card)] shadow-brutal-md">
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--fv-border)] px-3">
         <h2 className="min-w-0 truncate text-sm font-medium text-[var(--fv-text)]">
           Fivvle

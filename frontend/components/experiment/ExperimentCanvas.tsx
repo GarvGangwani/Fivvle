@@ -42,7 +42,10 @@ import {
   snapOutOfExclusionZone,
   snapToGrid,
 } from "./canvas-helpers";
-import { DeepDiveOverlay } from "./deep-dive/DeepDiveOverlay";
+import {
+  DeepDiveOverlay,
+  type DeepDiveAct,
+} from "./deep-dive/DeepDiveOverlay";
 import { ResourcesDrawer } from "./deep-dive/ResourcesDrawer";
 import { DashedCurvedEdge } from "./edges/DashedCurvedEdge";
 import { useCanvasLayout } from "./hooks/useCanvasLayout";
@@ -50,11 +53,9 @@ import { useResources } from "./hooks/useResources";
 import { ActNode } from "./nodes/ActNode";
 import { CoreShellNode } from "./nodes/CoreShellNode";
 import { RefineExpandedNode } from "./nodes/RefineExpandedNode";
-import { RefineFullscreenModal } from "./nodes/RefineFullscreenModal";
 import { RefineMCQPopup, type MCQPopupPosition } from "./refine/RefineMCQPopup";
 import { useRefineChat } from "./refine/useRefineChat";
 import { SparkExpandedNode } from "./nodes/SparkExpandedNode";
-import { SparkFullscreenModal } from "./nodes/SparkFullscreenModal";
 import { SparkNode, type SparkMetricState } from "./nodes/SparkNode";
 
 const SATELLITE_IDS: SatelliteNodeId[] = [
@@ -76,19 +77,6 @@ const ACT_NODE_IDS: SatelliteNodeId[] = [
 
 const SPARK_EXPANDED_ID = "spark-expanded" as const;
 const REFINE_EXPANDED_ID = "refine-expanded" as const;
-
-/** Statuses where reopen marks downstream artifacts stale — confirm before opening. */
-const REFINE_REOPEN_CONFIRM_STATUSES = new Set<ExperimentStatus>([
-  "RESEARCH_READY",
-  "RESEARCH_FAILED",
-  "LANDING_DRAFT",
-  "LANDING_LIVE",
-  "INSIGHT_READY",
-  "INSIGHT_FAILED",
-]);
-
-const REFINE_REOPEN_CONFIRM_MESSAGE =
-  "Reopen refinement? Your validation report, landing page, and insight report will be marked stale — they'll stay saved but you'll need to regenerate them from the new refined idea when you're ready.";
 
 const nodeTypes: NodeTypes = {
   coreShell: CoreShellNode,
@@ -168,14 +156,13 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   const initialAct = searchParams.get("act");
   const initialView = searchParams.get("view");
 
-  const [overlayAct, setOverlayAct] = useState<
-    "evidence" | "launch" | "signal" | null
-  >(null);
+  const [overlayAct, setOverlayAct] = useState<DeepDiveAct | null>(() => {
+    // Legacy deep-link: ?act=spark&view=fullscreen → phase panel
+    if (initialAct === "spark" && initialView === "fullscreen") return "spark";
+    return null;
+  });
   const [sparkPanelOpen, setSparkPanelOpen] = useState(
     () => initialAct === "spark" && initialView !== "fullscreen",
-  );
-  const [sparkFullscreen, setSparkFullscreen] = useState(
-    () => initialAct === "spark" && initialView === "fullscreen",
   );
   const [sparkPanelPosition, setSparkPanelPosition] = useState<{
     x: number;
@@ -188,9 +175,9 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     x: number;
     y: number;
   } | null>(null);
-  const [refineFullscreen, setRefineFullscreen] = useState(false);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [evidenceRerunning, setEvidenceRerunning] = useState(false);
+  const [chatDockCollapsed, setChatDockCollapsed] = useState(false);
   const { setCenter, fitView } = useReactFlow();
   const {
     positions,
@@ -210,7 +197,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     viewportRef.current = savedViewport;
   }, [savedViewport]);
 
-  const refineSurfaceOpen = refinePanelOpen || refineFullscreen;
+  const refineSurfaceOpen = refinePanelOpen || overlayAct === "refine";
   const enableOpener =
     refineSurfaceOpen &&
     (experiment.current_spark_version ?? 0) >= 1 &&
@@ -312,7 +299,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     if (!getNodeLockState("refine", experiment).isLocked) return;
     setRefinePanelOpen(false);
     setRefinePanelPosition(null);
-    setRefineFullscreen(false);
   }, [experiment, refinePanelOpen]);
 
   // When the panel is open but local position is unset (URL deep-link / popstate),
@@ -351,6 +337,10 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       if (state === "closed") {
         url.searchParams.delete("act");
         url.searchParams.delete("view");
+      } else if (state === "fullscreen") {
+        // Phase panel deep-link — no intermediate windowed view.
+        url.searchParams.set("act", "spark");
+        url.searchParams.delete("view");
       } else {
         url.searchParams.set("act", "spark");
         url.searchParams.set("view", state);
@@ -372,117 +362,84 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     window.history.pushState({}, "", url.toString());
   }, []);
 
+  const setOverlayUrl = useCallback((act: DeepDiveAct | null) => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("view");
+    if (act) {
+      url.searchParams.set("act", act);
+    } else {
+      url.searchParams.delete("act");
+    }
+    window.history.pushState({}, "", url.toString());
+  }, []);
+
+  const openPhaseOverlay = useCallback(
+    (act: DeepDiveAct) => {
+      if (act === "refine") {
+        const lockState = getNodeLockState("refine", experiment);
+        if (lockState.isLocked) {
+          toast(
+            lockState.unlockRequirement ??
+              "Save your idea in Spark first to unlock Refine.",
+            "info",
+          );
+          return;
+        }
+      }
+      setSparkPanelOpen(false);
+      setSparkPanelPosition(null);
+      setRefinePanelOpen(false);
+      setRefinePanelPosition(null);
+      setOverlayAct(act);
+      setOverlayUrl(act);
+    },
+    [experiment, setOverlayUrl, toast],
+  );
+
   const closeSparkPanel = useCallback(() => {
     setSparkPanelOpen(false);
-    setSparkFullscreen(false);
     setSparkPanelPosition(null);
     setSparkUrl("closed");
   }, [setSparkUrl]);
 
-  const openSparkPanel = useCallback(() => {
-    if (sparkPanelOpen) return;
-    // Always prefer backend-synced positions over any leftover local state.
-    const savedPos = positions[SPARK_EXPANDED_ID];
-    setSparkPanelPosition(savedPos ?? computeInitialPanelPosition());
-    setSparkPanelOpen(true);
-    setSparkFullscreen(false);
-    setRefinePanelOpen(false);
-    setRefinePanelPosition(null);
-    setSparkUrl("expanded");
-  }, [sparkPanelOpen, positions, computeInitialPanelPosition, setSparkUrl]);
-
-  const openSparkFullscreen = useCallback(() => {
-    setSparkFullscreen(true);
-    setSparkPanelOpen(false);
-    setSparkPanelPosition(null);
-    setRefineFullscreen(false);
-    setSparkUrl("fullscreen");
-  }, [setSparkUrl]);
-
-  const minimizeFromFullscreen = useCallback(() => {
-    const savedPos = positions[SPARK_EXPANDED_ID];
-    setSparkPanelPosition(savedPos ?? computeInitialPanelPosition());
-    setSparkFullscreen(false);
-    setSparkPanelOpen(true);
-    setSparkUrl("expanded");
-  }, [positions, computeInitialPanelPosition, setSparkUrl]);
-
   const closeRefinePanel = useCallback(() => {
     setRefinePanelOpen(false);
     setRefinePanelPosition(null);
-    setRefineFullscreen(false);
     setRefineUrl(false);
   }, [setRefineUrl]);
-
-  const openRefinePanel = useCallback(() => {
-    const lockState = getNodeLockState("refine", experiment);
-    if (lockState.isLocked) {
-      toast(
-        lockState.unlockRequirement ??
-          "Save your idea in Spark first to unlock Refine.",
-        "info",
-      );
-      return;
-    }
-    if (refinePanelOpen) return;
-    if (
-      REFINE_REOPEN_CONFIRM_STATUSES.has(
-        experiment.status as ExperimentStatus,
-      )
-    ) {
-      const confirmed = window.confirm(REFINE_REOPEN_CONFIRM_MESSAGE);
-      if (!confirmed) return;
-    }
-    const savedPos = positions[REFINE_EXPANDED_ID];
-    setRefinePanelPosition(savedPos ?? computeInitialRefinePosition());
-    setRefinePanelOpen(true);
-    setSparkPanelOpen(false);
-    setSparkFullscreen(false);
-    setSparkPanelPosition(null);
-    setRefineUrl(true);
-  }, [
-    refinePanelOpen,
-    positions,
-    computeInitialRefinePosition,
-    setRefineUrl,
-    experiment,
-    toast,
-  ]);
-
-  const openRefineFullscreen = useCallback(() => {
-    setRefineFullscreen(true);
-  }, []);
-
-  const minimizeRefineFullscreen = useCallback(() => {
-    setRefineFullscreen(false);
-  }, []);
 
   useEffect(() => {
     const onPopState = () => {
       const params = new URLSearchParams(window.location.search);
       const act = params.get("act");
       const view = params.get("view");
-      setOverlayAct(null);
-      if (act === "refine") {
-        setSparkFullscreen(false);
+      if (act === "evidence" || act === "launch" || act === "signal") {
+        setSparkPanelOpen(false);
+        setSparkPanelPosition(null);
+        setRefinePanelOpen(false);
+        setRefinePanelPosition(null);
+        setOverlayAct(act);
+      } else if (act === "spark" && view === "fullscreen") {
+        setRefinePanelOpen(false);
+        setRefinePanelPosition(null);
+        setSparkPanelOpen(false);
+        setSparkPanelPosition(null);
+        setOverlayAct("spark");
+      } else if (act === "spark") {
+        setOverlayAct(null);
+        setRefinePanelOpen(false);
+        setRefinePanelPosition(null);
+        setSparkPanelPosition(null);
+        setSparkPanelOpen(true);
+      } else if (act === "refine") {
+        // Windowed refine (legacy URL) — leave alone per PR1.
+        setOverlayAct(null);
         setSparkPanelOpen(false);
         setSparkPanelPosition(null);
         setRefinePanelPosition(null);
         setRefinePanelOpen(true);
-      } else if (act === "spark" && view === "fullscreen") {
-        setRefinePanelOpen(false);
-        setRefinePanelPosition(null);
-        setSparkFullscreen(true);
-        setSparkPanelOpen(false);
-        setSparkPanelPosition(null);
-      } else if (act === "spark") {
-        setRefinePanelOpen(false);
-        setRefinePanelPosition(null);
-        setSparkFullscreen(false);
-        setSparkPanelPosition(null);
-        setSparkPanelOpen(true);
       } else {
-        setSparkFullscreen(false);
+        setOverlayAct(null);
         setSparkPanelOpen(false);
         setSparkPanelPosition(null);
         setRefinePanelOpen(false);
@@ -556,7 +513,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         data: {
           rawIdea: experiment.raw_idea ?? null,
           sparkMetric,
-          isFocused: sparkPanelOpen || sparkFullscreen,
+          isFocused: sparkPanelOpen || overlayAct === "spark",
           isRunning: isActRunning("spark", experiment.status),
           currentSparkVersion,
         },
@@ -580,8 +537,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
             metricLabel: config.metricLabel,
             metricValue: metrics[id],
             isRunning: isActRunning(id, experiment.status),
-            isFocused:
-              id === "refine" ? refinePanelOpen || refineFullscreen : false,
+            isFocused: overlayAct === id || (id === "refine" && refinePanelOpen),
             isLocked: lockState.isLocked,
             unlockRequirement: lockState.unlockRequirement,
             isStale: stale?.isStale ?? false,
@@ -605,13 +561,13 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         data: {
           experiment,
           onClose: closeSparkPanel,
-          onFullscreen: openSparkFullscreen,
+          onFullscreen: () => openPhaseOverlay("spark"),
           onExperimentChange,
         },
       });
     }
 
-    if (refinePanelOpen && refinePanelPosition && !refineFullscreen) {
+    if (refinePanelOpen && refinePanelPosition) {
       base.push({
         id: REFINE_EXPANDED_ID,
         type: "refineExpanded",
@@ -621,7 +577,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         data: {
           experiment,
           onClose: closeRefinePanel,
-          onFullscreen: openRefineFullscreen,
+          onFullscreen: () => openPhaseOverlay("refine"),
           messages: refineMessages,
           loading: refineLoading,
           generatingOpener,
@@ -647,16 +603,14 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     positions,
     sparkMetric,
     sparkPanelOpen,
-    sparkFullscreen,
+    overlayAct,
     sparkPanelPosition,
     refinePanelOpen,
     refinePanelPosition,
-    refineFullscreen,
     metrics,
     closeSparkPanel,
-    openSparkFullscreen,
     closeRefinePanel,
-    openRefineFullscreen,
+    openPhaseOverlay,
     onExperimentChange,
     evidenceRerunning,
     handleEvidenceRerun,
@@ -782,11 +736,11 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     }
 
     if (node.id === "spark") {
-      openSparkPanel();
+      openPhaseOverlay("spark");
       return;
     }
     if (node.id === "refine") {
-      openRefinePanel();
+      openPhaseOverlay("refine");
       return;
     }
     if (node.id === "resources") {
@@ -794,15 +748,15 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       return;
     }
     if (node.id === "evidence") {
-      setOverlayAct("evidence");
+      openPhaseOverlay("evidence");
       return;
     }
     if (node.id === "launch") {
-      setOverlayAct("launch");
+      openPhaseOverlay("launch");
       return;
     }
     if (node.id === "signal") {
-      setOverlayAct("signal");
+      openPhaseOverlay("signal");
       return;
     }
     if (node.id !== "core") {
@@ -812,6 +766,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
 
   const closeOverlay = () => {
     setOverlayAct(null);
+    setOverlayUrl(null);
   };
 
   const onNodeDragStop: NodeDragHandler = useCallback(
@@ -886,39 +841,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         </>
       )}
 
-      {sparkFullscreen ? (
-        <SparkFullscreenModal
-          experiment={experiment}
-          onClose={closeSparkPanel}
-          onMinimize={minimizeFromFullscreen}
-          onExperimentChange={onExperimentChange}
-        />
-      ) : null}
-
-      {refineFullscreen ? (
-        <RefineFullscreenModal
-          experiment={experiment}
-          onClose={closeRefinePanel}
-          onMinimize={minimizeRefineFullscreen}
-          messages={refineMessages}
-          loading={refineLoading}
-          generatingOpener={generatingOpener}
-          sending={refineSending}
-          send={refineSend}
-          refinementCount={refinementCount}
-          activeMCQFromMessageId={activeMCQ?.fromMessageId}
-          dismissedMCQMessageIds={dismissedMCQMessageIds}
-          onReopenMCQ={reopenMCQ}
-          onEditMessage={editMessage}
-          onRetryMessage={retryMessage}
-          onSwitchBranch={switchToBranch}
-          navigatingMessageId={navigatingMessageId}
-          regeneratingMessageId={regeneratingMessageId}
-          mcqActive={Boolean(activeMCQ)}
-          onFinalizedOrReset={refreshExperimentAndChat}
-        />
-      ) : null}
-
       {activeMCQ && refineSurfaceOpen ? (
         <RefineMCQPopup
           question={activeMCQ.question}
@@ -935,12 +857,14 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       <UniversalChatDock
         experimentId={experiment.id}
         projectName={experiment.name}
+        onCollapsedChange={setChatDockCollapsed}
       />
       <DeepDiveOverlay
         isOpen={overlayAct !== null}
         onClose={closeOverlay}
         act={overlayAct ?? "evidence"}
         experimentId={experiment.id}
+        experiment={experiment}
         experimentStatus={experiment.status as ExperimentStatus}
         projectName={experiment.name?.trim() || "Untitled project"}
         founderDecision={experiment.founder_decision ?? null}
@@ -948,7 +872,30 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         founderDecisionNote={experiment.founder_decision_note ?? null}
         founderDecisionVersion={experiment.founder_decision_version ?? null}
         onExperimentRefresh={onExperimentRefresh}
-        onOpenLaunch={() => setOverlayAct("launch")}
+        onExperimentChange={onExperimentChange}
+        onOpenLaunch={() => openPhaseOverlay("launch")}
+        mcqActive={Boolean(activeMCQ)}
+        chatDockCollapsed={chatDockCollapsed}
+        refinePanel={
+          overlayAct === "refine"
+            ? {
+                messages: refineMessages,
+                loading: refineLoading,
+                generatingOpener,
+                sending: refineSending,
+                send: refineSend,
+                activeMCQFromMessageId: activeMCQ?.fromMessageId,
+                dismissedMCQMessageIds,
+                onReopenMCQ: reopenMCQ,
+                onEditMessage: editMessage,
+                onRetryMessage: retryMessage,
+                onSwitchBranch: switchToBranch,
+                navigatingMessageId,
+                regeneratingMessageId,
+                onFinalizedOrReset: refreshExperimentAndChat,
+              }
+            : null
+        }
       />
       <ResourcesDrawer
         open={resourcesOpen}

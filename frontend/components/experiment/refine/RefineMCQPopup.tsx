@@ -152,7 +152,7 @@ export function RefineMCQPopup({
     <div
       ref={popupRef}
       style={{ left: position.x, top: position.y }}
-      className="fixed z-[60] w-96 rounded-md bg-brand-primary text-ink-inverse border-2 border-border-master shadow-brutal-lg"
+      className="fixed z-[85] w-96 rounded-md bg-brand-primary text-ink-inverse border-2 border-border-master shadow-brutal-lg"
     >
       <div
         onMouseDown={handleDragStart}

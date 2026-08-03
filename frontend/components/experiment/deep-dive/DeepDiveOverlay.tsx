@@ -1,8 +1,25 @@
 "use client";
 
+/**
+ * Phase panel overlay (Universal Agent Phase 2 layout).
+ *
+ * Z-index scheme (canvas route):
+ * - Scrim:           z-[65]  — translucent; click closes panel
+ * - Phase panel:     z-[70]  — opaque card over canvas gutters
+ * - Universal dock:  z-[80]  — stays interactive above scrim
+ *
+ * Panel frame matches dock gutters: top/left/bottom-6 (24px). Right inset
+ * reserves the master chat rail (expanded 420px / collapsed 40px) plus a
+ * matching 24px gap between panel and dock.
+ */
 import { useCallback, useEffect, useState } from "react";
 import { Archive } from "lucide-react";
 import { ArchiveProjectDialog } from "@/components/experiment/ArchiveProjectDialog";
+import { ACT_CONFIG } from "@/components/experiment/act-config";
+import { RefinePhaseBody } from "@/components/experiment/refine/RefinePhaseBody";
+import type { AttachmentDraft } from "@/components/experiment/refine/RefineChatInput";
+import type { RefineChatMessageModel } from "@/components/experiment/refine/RefineChatMessage";
+import { SparkPhaseBody } from "@/components/experiment/spark/SparkPhaseBody";
 import { EvidenceStagePanel } from "@/components/research/EvidenceStagePanel";
 import {
   LaunchStagePanel,
@@ -11,14 +28,59 @@ import {
 import { PublishConfirmDialog } from "@/components/launch/PublishConfirmDialog";
 import { SignalStagePanel } from "@/components/signal/SignalStagePanel";
 import { getExperiment, republishLandingPage } from "@/lib/api";
-import type { ExperimentStatus, FounderDecision } from "@/lib/types";
+import type { Experiment, ExperimentStatus, FounderDecision } from "@/lib/types";
 import { useToast } from "@/components/ui/ToastProvider";
+
+export type DeepDiveAct =
+  | "spark"
+  | "refine"
+  | "evidence"
+  | "launch"
+  | "signal";
+
+const SPARK_DISCARD_CONFIRM =
+  "You have unsaved changes in Spark. Close without saving?";
+
+/** Expanded: dock right-6 + 420px + 24px gap between panel and dock */
+const PANEL_RIGHT_EXPANDED = "right-[calc(420px+3rem)]";
+/** Collapsed: dock right-6 + w-10 (2.5rem) + 24px gap between panel and dock */
+const PANEL_RIGHT_COLLAPSED = "right-[calc(2.5rem+3rem)]";
+
+function overlayTitle(act: DeepDiveAct): string {
+  if (act === "launch") return "Phase 04: Launch";
+  const config = ACT_CONFIG[act];
+  return `PHASE ${config.index}: ${config.actName} — ${config.title}`;
+}
+
+type RefinePanelProps = {
+  messages: RefineChatMessageModel[];
+  loading: boolean;
+  generatingOpener: boolean;
+  sending: boolean;
+  send: (text: string, attachments: AttachmentDraft[]) => void | Promise<void>;
+  activeMCQFromMessageId?: string | null;
+  dismissedMCQMessageIds?: Set<string>;
+  onReopenMCQ?: (messageId: string) => void;
+  onEditMessage?: (
+    messageId: string,
+    newContent: string,
+  ) => void | Promise<void>;
+  onRetryMessage?: (messageId: string) => void | Promise<void>;
+  onSwitchBranch?: (
+    messageId: string,
+    direction: "prev" | "next",
+  ) => void | Promise<void>;
+  navigatingMessageId?: string | null;
+  regeneratingMessageId?: string | null;
+  onFinalizedOrReset: () => Promise<void>;
+};
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
-  act: "evidence" | "launch" | "signal";
+  act: DeepDiveAct;
   experimentId: string;
+  experiment: Experiment;
   /** Canvas-owned experiment.status — single source of truth on screen. */
   experimentStatus: ExperimentStatus;
   projectName: string;
@@ -28,8 +90,14 @@ type Props = {
   founderDecisionVersion?: number | null;
   /** Refresh canvas experiment after publish / decision / archive. */
   onExperimentRefresh?: () => Promise<void>;
+  onExperimentChange?: (experiment: Experiment) => void;
   /** Plain act switch to Launch (no tab targeting — Kit deep-link deferred). */
   onOpenLaunch: () => void;
+  /** When true, Escape dismisses MCQ only — does not close overlay. */
+  mcqActive?: boolean;
+  /** Master rail collapse — drives panel right inset. */
+  chatDockCollapsed?: boolean;
+  refinePanel?: RefinePanelProps | null;
 };
 
 export function DeepDiveOverlay({
@@ -37,6 +105,7 @@ export function DeepDiveOverlay({
   onClose,
   act,
   experimentId,
+  experiment,
   experimentStatus,
   projectName,
   founderDecision = null,
@@ -44,7 +113,11 @@ export function DeepDiveOverlay({
   founderDecisionNote = null,
   founderDecisionVersion = null,
   onExperimentRefresh,
+  onExperimentChange,
   onOpenLaunch,
+  mcqActive = false,
+  chatDockCollapsed = false,
+  refinePanel = null,
 }: Props) {
   const { toast } = useToast();
   const [launchLanding, setLaunchLanding] =
@@ -54,29 +127,48 @@ export function DeepDiveOverlay({
   const [landingRefreshKey, setLandingRefreshKey] = useState(0);
   const [resolvedProjectName, setResolvedProjectName] = useState(projectName);
   const [republishing, setRepublishing] = useState(false);
+  const [sparkDirty, setSparkDirty] = useState(false);
 
   useEffect(() => {
     setResolvedProjectName(projectName);
   }, [projectName]);
 
   useEffect(() => {
+    if (act !== "spark") setSparkDirty(false);
+  }, [act]);
+
+  const requestClose = useCallback(() => {
+    if (act === "spark" && sparkDirty) {
+      const confirmed = window.confirm(SPARK_DISCARD_CONFIRM);
+      if (!confirmed) return;
+    }
+    onClose();
+  }, [act, sparkDirty, onClose]);
+
+  useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (showArchiveDialog) {
-          setShowArchiveDialog(false);
-          return;
-        }
-        if (showPublishDialog) {
-          setShowPublishDialog(false);
-          return;
-        }
-        onClose();
+      if (e.key !== "Escape") return;
+      if (showArchiveDialog) {
+        setShowArchiveDialog(false);
+        return;
       }
+      if (showPublishDialog) {
+        setShowPublishDialog(false);
+        return;
+      }
+      if (mcqActive) return;
+      requestClose();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [isOpen, onClose, showPublishDialog, showArchiveDialog]);
+  }, [
+    isOpen,
+    requestClose,
+    showPublishDialog,
+    showArchiveDialog,
+    mcqActive,
+  ]);
 
   useEffect(() => {
     setLaunchLanding(null);
@@ -172,14 +264,31 @@ export function DeepDiveOverlay({
   const isLive = Boolean(launchLanding?.isLive && launchLanding.slug);
   const publishEnabled = launchLanding?.status === "LANDING_DRAFT";
   const canArchive = experimentStatus !== "ARCHIVED";
+  const title = overlayTitle(act);
+  const rightInset = chatDockCollapsed
+    ? PANEL_RIGHT_COLLAPSED
+    : PANEL_RIGHT_EXPANDED;
 
   return (
     <>
-      <div className="fixed inset-0 z-[70] flex flex-col bg-canvas-bg">
+      {/* Scrim — below panel (70) and dock (80); click closes */}
+      <button
+        type="button"
+        aria-label="Close phase panel"
+        className="fixed inset-0 z-[65] cursor-default border-0 bg-ink-primary/40 p-0"
+        onClick={requestClose}
+      />
+
+      <div
+        className={`fixed bottom-6 left-6 top-6 z-[70] flex flex-col overflow-hidden rounded-md border-2 border-border-master bg-canvas-bg shadow-brutal-lg ${rightInset}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
         <div className="flex h-16 shrink-0 items-center justify-between border-b-2 border-border-master px-6">
           <button
             type="button"
-            onClick={onClose}
+            onClick={requestClose}
             className="font-label-md text-label-sm uppercase text-ink-primary"
           >
             ← Back to canvas
@@ -187,11 +296,11 @@ export function DeepDiveOverlay({
 
           {act === "launch" ? (
             <span className="border-b-2 border-border-master pb-1 font-headline text-headline-md uppercase tracking-tighter text-ink-primary">
-              Phase 04: Launch
+              {title}
             </span>
           ) : (
             <h2 className="font-display text-display-sm uppercase text-ink-primary">
-              {act} deep-dive
+              {title}
             </h2>
           )}
 
@@ -239,7 +348,7 @@ export function DeepDiveOverlay({
             ) : null}
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               className="font-label-md text-label-sm uppercase text-ink-primary"
               aria-label="Close overlay"
             >
@@ -248,7 +357,35 @@ export function DeepDiveOverlay({
           </div>
         </div>
 
-        {act === "evidence" ? (
+        {act === "spark" ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <SparkPhaseBody
+              experiment={experiment}
+              onExperimentChange={onExperimentChange}
+              onDirtyChange={setSparkDirty}
+            />
+          </div>
+        ) : act === "refine" && refinePanel ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <RefinePhaseBody
+              experiment={experiment}
+              messages={refinePanel.messages}
+              loading={refinePanel.loading}
+              generatingOpener={refinePanel.generatingOpener}
+              sending={refinePanel.sending}
+              send={refinePanel.send}
+              activeMCQFromMessageId={refinePanel.activeMCQFromMessageId}
+              dismissedMCQMessageIds={refinePanel.dismissedMCQMessageIds}
+              onReopenMCQ={refinePanel.onReopenMCQ}
+              onEditMessage={refinePanel.onEditMessage}
+              onRetryMessage={refinePanel.onRetryMessage}
+              onSwitchBranch={refinePanel.onSwitchBranch}
+              navigatingMessageId={refinePanel.navigatingMessageId}
+              regeneratingMessageId={refinePanel.regeneratingMessageId}
+              onFinalizedOrReset={refinePanel.onFinalizedOrReset}
+            />
+          </div>
+        ) : act === "evidence" ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <EvidenceStagePanel experimentId={experimentId} />
           </div>
@@ -261,7 +398,7 @@ export function DeepDiveOverlay({
               landingRefreshKey={landingRefreshKey}
             />
           </div>
-        ) : (
+        ) : act === "signal" ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <SignalStagePanel
               experimentId={experimentId}
@@ -276,7 +413,7 @@ export function DeepDiveOverlay({
               founderDecisionVersion={founderDecisionVersion}
             />
           </div>
-        )}
+        ) : null}
       </div>
 
       {showPublishDialog ? (
