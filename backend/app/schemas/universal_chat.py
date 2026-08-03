@@ -16,6 +16,18 @@ from app.schemas.chat import ChatMessageItem
 UniversalOpenPhase = Literal["spark", "refine", "evidence", "launch", "signal"]
 
 
+class UniversalMcqAnswer(BaseModel):
+    """Structured MCQ click from the master rail (exact indices — no resolver)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    selected_option_indices: Annotated[
+        list[int],
+        Field(min_length=1, max_length=8),
+    ]
+    answered_question_id: UUID
+
+
 class UniversalChatSendRequest(BaseModel):
     """POST body for sending a universal-chat message."""
 
@@ -30,6 +42,9 @@ class UniversalChatSendRequest(BaseModel):
     ]
     # Canvas overlay act currently open in the client (or null when closed).
     current_open_phase: UniversalOpenPhase | None = None
+    # Exact MCQ click from the rail. When set, refine executor skips the
+    # free-text resolver and submits selected_option_indices directly.
+    mcq_answer: UniversalMcqAnswer | None = None
 
 
 class UniversalChatSendResponse(BaseModel):

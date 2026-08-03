@@ -374,12 +374,24 @@ export interface ResearchSubagentSourceRef {
 }
 
 /** tool_payload.result for ask_refine_agent. */
+export interface RefineMcqOption {
+  index: number;
+  label: string;
+}
+
 export interface RefineSubagentToolResult {
   assistant_text: string;
   refined_idea_patch: Record<string, unknown> | null;
   has_pending_mcq: boolean;
   log_entry: string | null;
+  /** Present when has_pending_mcq — inline rail MCQ. */
+  mcq_question: string | null;
+  mcq_options: RefineMcqOption[];
+  mcq_answered_question_id: string | null;
+  /** Schema default is "multiple"; single submits on one click. */
+  mcq_selection_mode: "single" | "multiple";
 }
+
 
 /** tool_payload.result for ask_research_agent. */
 export interface ResearchSubagentToolResult {

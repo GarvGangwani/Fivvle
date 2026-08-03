@@ -458,13 +458,22 @@ export async function streamUniversalChatMessage(
   message: string,
   callbacks: StreamUniversalCallbacks,
   signal?: AbortSignal,
-  options?: { current_open_phase?: string | null },
+  options?: {
+    current_open_phase?: string | null;
+    mcq_answer?: {
+      selected_option_indices: number[];
+      answered_question_id: string;
+    } | null;
+  },
 ): Promise<void> {
   const authHeader = await getAuthHeader();
 
   const body: Record<string, unknown> = { message };
   if (options?.current_open_phase != null) {
     body.current_open_phase = options.current_open_phase;
+  }
+  if (options?.mcq_answer != null) {
+    body.mcq_answer = options.mcq_answer;
   }
 
   let response: Response;

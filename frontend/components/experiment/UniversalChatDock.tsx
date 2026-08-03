@@ -26,6 +26,7 @@ import { tokenizeCitations } from "@/lib/parse-citations";
 import { setPendingEvidenceFocus } from "@/lib/pending-evidence-focus";
 import type {
   ChatHistoryMessage,
+  RefineMcqOption,
   RefineSubagentToolResult,
   ResearchSubagentSourceRef,
   ResearchSubagentToolResult,
@@ -95,6 +96,20 @@ function parseRefineSubagentResult(
   if (typeof root.error === "string" && root.result == null) return null;
   const result = asRecord(root.result);
   if (!result || typeof result.assistant_text !== "string") return null;
+
+  const optionsRaw = Array.isArray(result.mcq_options) ? result.mcq_options : [];
+  const mcq_options: RefineMcqOption[] = [];
+  for (const item of optionsRaw) {
+    const row = asRecord(item);
+    if (!row) continue;
+    if (typeof row.index !== "number" || typeof row.label !== "string") continue;
+    mcq_options.push({ index: row.index, label: row.label });
+  }
+
+  const mode = result.mcq_selection_mode;
+  const mcq_selection_mode: "single" | "multiple" =
+    mode === "single" ? "single" : "multiple";
+
   return {
     assistant_text: result.assistant_text,
     refined_idea_patch:
@@ -103,6 +118,14 @@ function parseRefineSubagentResult(
         : null,
     has_pending_mcq: Boolean(result.has_pending_mcq),
     log_entry: typeof result.log_entry === "string" ? result.log_entry : null,
+    mcq_question:
+      typeof result.mcq_question === "string" ? result.mcq_question : null,
+    mcq_options,
+    mcq_answered_question_id:
+      typeof result.mcq_answered_question_id === "string"
+        ? result.mcq_answered_question_id
+        : null,
+    mcq_selection_mode,
   };
 }
 
@@ -194,6 +217,106 @@ function SubagentStatusChip({
     <span className="inline-flex max-w-full items-center rounded-xs border border-border-master bg-surface-elevated px-1.5 py-0.5 text-[11px] leading-tight text-ink-tertiary">
       {label}
     </span>
+  );
+}
+
+function InlineRailMcq({
+  question,
+  options,
+  answeredQuestionId,
+  selectionMode,
+  chosenLabels,
+  disabled = false,
+  onAnswer,
+}: {
+  question: string | null;
+  options: RefineMcqOption[];
+  answeredQuestionId: string;
+  selectionMode: "single" | "multiple";
+  chosenLabels?: string[];
+  disabled?: boolean;
+  onAnswer?: (answer: {
+    selected_option_indices: number[];
+    answered_question_id: string;
+    labels: string[];
+  }) => void;
+}) {
+  const [selected, setSelected] = useState<number[]>([]);
+  const answered = chosenLabels != null && chosenLabels.length > 0;
+
+  if (answered) {
+    return (
+      <div className="mt-3 w-full">
+        <p className="flex items-start gap-2 border-2 border-border-master bg-surface-elevated px-3 py-2 text-sm text-ink-tertiary">
+          <span aria-hidden="true" className="mt-0.5 shrink-0">
+            ✓
+          </span>
+          <span>
+            You chose: {chosenLabels.join(" · ")}
+          </span>
+        </p>
+      </div>
+    );
+  }
+
+  const submit = (indices: number[]) => {
+    if (!onAnswer || indices.length === 0) return;
+    const labels = indices
+      .map((i) => options.find((o) => o.index === i)?.label)
+      .filter((label): label is string => typeof label === "string");
+    onAnswer({
+      selected_option_indices: indices,
+      answered_question_id: answeredQuestionId,
+      labels,
+    });
+  };
+
+  return (
+    <div className="mt-3 w-full space-y-2">
+      {question ? (
+        <p className="text-xs font-mono uppercase tracking-wide text-ink-tertiary">
+          {question}
+        </p>
+      ) : null}
+      <div className="flex w-full flex-col gap-2">
+        {options.map((opt) => {
+          const isSelected = selected.includes(opt.index);
+          return (
+            <button
+              key={opt.index}
+              type="button"
+              disabled={disabled || !onAnswer}
+              onClick={() => {
+                if (selectionMode === "single") {
+                  submit([opt.index]);
+                  return;
+                }
+                setSelected((prev) =>
+                  prev.includes(opt.index)
+                    ? prev.filter((i) => i !== opt.index)
+                    : [...prev, opt.index].sort((a, b) => a - b),
+                );
+              }}
+              className={`w-full border-2 border-border-master px-3 py-2 text-left text-sm text-[var(--fv-text)] transition-colors hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-50 ${
+                isSelected ? "bg-surface-elevated" : "bg-transparent"
+              }`}
+            >
+              {opt.label}
+            </button>
+          );
+        })}
+      </div>
+      {selectionMode === "multiple" ? (
+        <button
+          type="button"
+          disabled={disabled || !onAnswer || selected.length === 0}
+          onClick={() => submit(selected)}
+          className="w-full border-2 border-border-master bg-[var(--fv-accent-muted)] px-3 py-2 text-sm font-mono uppercase tracking-wide text-[var(--fv-text)] transition-colors hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Submit selection
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -397,6 +520,10 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   const [draft, setDraft] = useState("");
   const [streamingSubagent, setStreamingSubagent] =
     useState<StreamingSubagentState | null>(null);
+  /** tool_result message id → chosen option labels (collapse after answer). */
+  const [resolvedMcqByMessageId, setResolvedMcqByMessageId] = useState<
+    Record<string, string[]>
+  >({});
   const dispatchedNavigateIdsRef = useRef<Set<string>>(new Set());
 
   const named = displayProjectName(projectName);
@@ -503,197 +630,252 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     resizeTextarea();
   }, [draft, resizeTextarea]);
 
-  const handleSend = useCallback(async () => {
-    const trimmed = draft.trim();
-    if (!trimmed || sending) return;
+  const handleSend = useCallback(
+    async (
+      overrideText?: string,
+      mcqAnswer?: {
+        selected_option_indices: number[];
+        answered_question_id: string;
+      } | null,
+      resolveMcq?: { messageId: string; labels: string[] } | null,
+    ) => {
+      const trimmed = (overrideText ?? draft).trim();
+      if (!trimmed || sending) return;
 
-    streamAbortRef.current?.abort();
-    const abort = new AbortController();
-    streamAbortRef.current = abort;
-    streamingAssistantIdRef.current = null;
-    setStreamingSubagent(null);
-
-    const optimisticId = `local-${crypto.randomUUID()}`;
-    const optimistic: DockMessage = {
-      id: optimisticId,
-      role: "user",
-      content: trimmed,
-      turn_kind: "universal_chat",
-      created_at: new Date().toISOString(),
-      optimistic: true,
-    };
-
-    setDraft("");
-    setSending(true);
-    forceScrollRef.current = true;
-    setMessages((prev) => [...prev, optimistic]);
-
-    const markFailed = () => {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === optimisticId
-            ? {
-                ...m,
-                error: true,
-                content: `${trimmed}\n\n(Failed to send — retry)`,
-              }
-            : m,
-        ),
-      );
+      streamAbortRef.current?.abort();
+      const abort = new AbortController();
+      streamAbortRef.current = abort;
+      streamingAssistantIdRef.current = null;
       setStreamingSubagent(null);
-    };
 
-    try {
-      await streamUniversalChatMessage(
-        experimentId,
-        trimmed,
-        {
-          onToolCall: ({ tool_name, message_id }) => {
-            const agent = agentForToolName(tool_name);
-            if (agent) {
-              setStreamingSubagent({ agent, text: "" });
-            } else {
+      const optimisticId = `local-${crypto.randomUUID()}`;
+      const optimistic: DockMessage = {
+        id: optimisticId,
+        role: "user",
+        content: trimmed,
+        turn_kind: "universal_chat",
+        created_at: new Date().toISOString(),
+        optimistic: true,
+      };
+
+      if (overrideText == null) {
+        setDraft("");
+      }
+      setSending(true);
+      forceScrollRef.current = true;
+      setMessages((prev) => [...prev, optimistic]);
+      if (resolveMcq) {
+        setResolvedMcqByMessageId((prev) => ({
+          ...prev,
+          [resolveMcq.messageId]: resolveMcq.labels,
+        }));
+      }
+
+      const markFailed = () => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === optimisticId
+              ? {
+                  ...m,
+                  error: true,
+                  content: `${trimmed}\n\n(Failed to send — retry)`,
+                }
+              : m,
+          ),
+        );
+        setStreamingSubagent(null);
+        if (resolveMcq) {
+          setResolvedMcqByMessageId((prev) => {
+            const next = { ...prev };
+            delete next[resolveMcq.messageId];
+            return next;
+          });
+        }
+      };
+
+      try {
+        await streamUniversalChatMessage(
+          experimentId,
+          trimmed,
+          {
+            onToolCall: ({ tool_name, message_id }) => {
+              const agent = agentForToolName(tool_name);
+              if (agent) {
+                setStreamingSubagent({ agent, text: "" });
+              } else {
+                setStreamingSubagent(null);
+              }
+              setMessages((prev) => [
+                ...prev,
+                stubToolCallMessage(tool_name, message_id),
+              ]);
+              forceScrollRef.current = true;
+            },
+            onToolResult: ({ tool_name, message_id, payload }) => {
               setStreamingSubagent(null);
-            }
-            setMessages((prev) => [
-              ...prev,
-              stubToolCallMessage(tool_name, message_id),
-            ]);
-            forceScrollRef.current = true;
-          },
-          onToolResult: ({ tool_name, message_id, payload }) => {
-            setStreamingSubagent(null);
-            setMessages((prev) => [
-              ...prev,
-              toolResultFromEvent(tool_name, message_id, payload),
-            ]);
-            forceScrollRef.current = true;
-            const nav = parseNavigateResult(
-              typeof payload.tool_name === "string"
-                ? payload
-                : { tool_name, ...payload },
-            );
-            if (
-              nav &&
-              onOpenPhase &&
-              !dispatchedNavigateIdsRef.current.has(message_id)
-            ) {
-              dispatchedNavigateIdsRef.current.add(message_id);
+              setMessages((prev) => [
+                ...prev,
+                toolResultFromEvent(tool_name, message_id, payload),
+              ]);
+              forceScrollRef.current = true;
+              const nav = parseNavigateResult(
+                typeof payload.tool_name === "string"
+                  ? payload
+                  : { tool_name, ...payload },
+              );
               if (
-                nav.source_ref_id &&
-                /^https?:\/\//i.test(nav.source_ref_id)
+                nav &&
+                onOpenPhase &&
+                !dispatchedNavigateIdsRef.current.has(message_id)
               ) {
-                setPendingEvidenceFocus({
-                  kind: "url",
-                  value: nav.source_ref_id,
-                });
+                dispatchedNavigateIdsRef.current.add(message_id);
+                if (
+                  nav.source_ref_id &&
+                  /^https?:\/\//i.test(nav.source_ref_id)
+                ) {
+                  setPendingEvidenceFocus({
+                    kind: "url",
+                    value: nav.source_ref_id,
+                  });
+                }
+                onOpenPhase(nav.navigate_to);
               }
-              onOpenPhase(nav.navigate_to);
-            }
-          },
-          onSubagentToken: ({ agent, text }) => {
-            setStreamingSubagent((prev) => {
-              if (prev && prev.agent === agent) {
-                return { agent, text: `${prev.text}${text}` };
-              }
-              return { agent, text };
-            });
-            forceScrollRef.current = true;
-          },
-          onAssistantToken: ({ text }) => {
-            setStreamingSubagent(null);
-            setMessages((prev) => {
-              const existingId = streamingAssistantIdRef.current;
-              if (existingId) {
-                return prev.map((m) =>
-                  m.id === existingId
-                    ? { ...m, content: `${m.content}${text}` }
+            },
+            onSubagentToken: ({ agent, text }) => {
+              setStreamingSubagent((prev) => {
+                if (prev && prev.agent === agent) {
+                  return { agent, text: `${prev.text}${text}` };
+                }
+                return { agent, text };
+              });
+              forceScrollRef.current = true;
+            },
+            onAssistantToken: ({ text }) => {
+              setStreamingSubagent(null);
+              setMessages((prev) => {
+                const existingId = streamingAssistantIdRef.current;
+                if (existingId) {
+                  return prev.map((m) =>
+                    m.id === existingId
+                      ? { ...m, content: `${m.content}${text}` }
+                      : m,
+                  );
+                }
+                const id = `local-assistant-${crypto.randomUUID()}`;
+                streamingAssistantIdRef.current = id;
+                return [
+                  ...prev,
+                  {
+                    id,
+                    role: "assistant",
+                    content: text,
+                    turn_kind: "universal_chat",
+                    created_at: new Date().toISOString(),
+                    optimistic: true,
+                  },
+                ];
+              });
+              forceScrollRef.current = true;
+            },
+            onDone: ({ assistant_message_id, user_message_id }) => {
+              setStreamingSubagent(null);
+              setMessages((prev) =>
+                prev.map((m) => {
+                  if (m.id === optimisticId) {
+                    return {
+                      ...m,
+                      id: user_message_id ?? m.id,
+                      optimistic: false,
+                    };
+                  }
+                  if (
+                    streamingAssistantIdRef.current &&
+                    m.id === streamingAssistantIdRef.current
+                  ) {
+                    return {
+                      ...m,
+                      id: assistant_message_id,
+                      optimistic: false,
+                    };
+                  }
+                  return m;
+                }),
+              );
+            },
+            onError: () => {
+              if (abort.signal.aborted) return;
+              setStreamingSubagent(null);
+              setMessages((prev) => {
+                const cleaned = prev.filter(
+                  (m) => !m.id.startsWith("local-assistant-"),
+                );
+                const hasPersistedTools = cleaned.some(
+                  (m) => m.role === "tool_call" || m.role === "tool_result",
+                );
+                if (hasPersistedTools) {
+                  return cleaned.map((m) =>
+                    m.id === optimisticId ? { ...m, optimistic: false } : m,
+                  );
+                }
+                return cleaned.map((m) =>
+                  m.id === optimisticId
+                    ? {
+                        ...m,
+                        error: true,
+                        content: `${trimmed}\n\n(Failed to send — retry)`,
+                      }
                     : m,
                 );
+              });
+              if (resolveMcq) {
+                setResolvedMcqByMessageId((prev) => {
+                  const next = { ...prev };
+                  delete next[resolveMcq.messageId];
+                  return next;
+                });
               }
-              const id = `local-assistant-${crypto.randomUUID()}`;
-              streamingAssistantIdRef.current = id;
-              return [
-                ...prev,
-                {
-                  id,
-                  role: "assistant",
-                  content: text,
-                  turn_kind: "universal_chat",
-                  created_at: new Date().toISOString(),
-                  optimistic: true,
-                },
-              ];
-            });
-            forceScrollRef.current = true;
+            },
           },
-          onDone: ({ assistant_message_id, user_message_id }) => {
-            setStreamingSubagent(null);
-            setMessages((prev) =>
-              prev.map((m) => {
-                if (m.id === optimisticId) {
-                  return {
-                    ...m,
-                    id: user_message_id ?? m.id,
-                    optimistic: false,
-                  };
-                }
-                if (
-                  streamingAssistantIdRef.current &&
-                  m.id === streamingAssistantIdRef.current
-                ) {
-                  return {
-                    ...m,
-                    id: assistant_message_id,
-                    optimistic: false,
-                  };
-                }
-                return m;
-              }),
-            );
+          abort.signal,
+          {
+            current_open_phase: currentOpenPhase ?? null,
+            mcq_answer: mcqAnswer ?? null,
           },
-          onError: () => {
-            if (abort.signal.aborted) return;
-            setStreamingSubagent(null);
-            setMessages((prev) => {
-              const cleaned = prev.filter(
-                (m) => !m.id.startsWith("local-assistant-"),
-              );
-              const hasPersistedTools = cleaned.some(
-                (m) => m.role === "tool_call" || m.role === "tool_result",
-              );
-              if (hasPersistedTools) {
-                return cleaned.map((m) =>
-                  m.id === optimisticId ? { ...m, optimistic: false } : m,
-                );
-              }
-              return cleaned.map((m) =>
-                m.id === optimisticId
-                  ? {
-                      ...m,
-                      error: true,
-                      content: `${trimmed}\n\n(Failed to send — retry)`,
-                    }
-                  : m,
-              );
-            });
-          },
-        },
-        abort.signal,
-        {
-          current_open_phase: currentOpenPhase ?? null,
-        },
-      );
-    } catch {
-      if (!abort.signal.aborted) markFailed();
-    } finally {
-      if (streamAbortRef.current === abort) {
-        streamAbortRef.current = null;
+        );
+      } catch {
+        if (!abort.signal.aborted) markFailed();
+      } finally {
+        if (streamAbortRef.current === abort) {
+          streamAbortRef.current = null;
+        }
+        setSending(false);
+        streamingAssistantIdRef.current = null;
       }
-      setSending(false);
-      streamingAssistantIdRef.current = null;
-    }
-  }, [draft, experimentId, sending, currentOpenPhase, onOpenPhase]);
+    },
+    [draft, experimentId, sending, currentOpenPhase, onOpenPhase],
+  );
+
+  const handleMcqAnswer = useCallback(
+    (
+      messageId: string,
+      answer: {
+        selected_option_indices: number[];
+        answered_question_id: string;
+        labels: string[];
+      },
+    ) => {
+      const display = answer.labels.join(" · ");
+      void handleSend(
+        display,
+        {
+          selected_option_indices: answer.selected_option_indices,
+          answered_question_id: answer.answered_question_id,
+        },
+        { messageId, labels: answer.labels },
+      );
+    },
+    [handleSend],
+  );
 
   const handleRetry = useCallback(
     async (message: DockMessage) => {
@@ -790,6 +972,13 @@ export const UniversalChatDock = memo(function UniversalChatDock({
                   message={msg}
                   showSubagentHandoff={showSubagentHandoff}
                   onOpenPhase={onOpenPhase}
+                  resolvedMcqLabels={resolvedMcqByMessageId[msg.id]}
+                  mcqDisabled={sending}
+                  onMcqAnswer={
+                    sending
+                      ? undefined
+                      : (answer) => handleMcqAnswer(msg.id, answer)
+                  }
                   onRetry={
                     msg.error ? () => void handleRetry(msg) : undefined
                   }
@@ -929,6 +1118,9 @@ function MessageRow({
   onRetry,
   showSubagentHandoff = false,
   onOpenPhase,
+  resolvedMcqLabels,
+  mcqDisabled = false,
+  onMcqAnswer,
 }: {
   message: DockMessage;
   onRetry?: () => void;
@@ -937,6 +1129,13 @@ function MessageRow({
     phase: UniversalOpenPhase,
     options?: { sourceRef?: ResearchSubagentSourceRef | null },
   ) => void;
+  resolvedMcqLabels?: string[];
+  mcqDisabled?: boolean;
+  onMcqAnswer?: (answer: {
+    selected_option_indices: number[];
+    answered_question_id: string;
+    labels: string[];
+  }) => void;
 }) {
   if (message.role === "user") {
     return (
@@ -984,6 +1183,10 @@ function MessageRow({
   if (message.role === "tool_result") {
     const refine = parseRefineSubagentResult(message.tool_payload);
     if (refine) {
+      const showInlineMcq =
+        refine.has_pending_mcq &&
+        refine.mcq_options.length > 0 &&
+        refine.mcq_answered_question_id != null;
       return (
         <div>
           <span className="mb-0.5 block text-xs uppercase tracking-wider text-ink-tertiary">
@@ -995,21 +1198,26 @@ function MessageRow({
               className="fv-msg-ai break-words text-sm text-[var(--fv-text)]"
             />
           ) : null}
-          {(refine.refined_idea_patch != null || refine.has_pending_mcq) && (
+          {refine.refined_idea_patch != null ? (
             <div className="mt-2 flex flex-wrap gap-1.5">
-              {refine.refined_idea_patch != null ? (
-                <SubagentStatusChip label="Refined idea updated" />
-              ) : null}
-              {refine.has_pending_mcq ? (
-                <SubagentStatusChip
-                  label="Open Refine to answer clarifying question"
-                  onClick={
-                    onOpenPhase ? () => onOpenPhase("refine") : undefined
-                  }
-                />
-              ) : null}
+              <SubagentStatusChip label="Refined idea updated" />
             </div>
-          )}
+          ) : null}
+          {showInlineMcq ? (
+            <InlineRailMcq
+              question={refine.mcq_question}
+              options={refine.mcq_options}
+              answeredQuestionId={refine.mcq_answered_question_id!}
+              selectionMode={refine.mcq_selection_mode}
+              chosenLabels={resolvedMcqLabels}
+              disabled={mcqDisabled}
+              onAnswer={onMcqAnswer}
+            />
+          ) : refine.has_pending_mcq ? (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <SubagentStatusChip label="Answer the clarifying question below" />
+            </div>
+          ) : null}
         </div>
       );
     }
