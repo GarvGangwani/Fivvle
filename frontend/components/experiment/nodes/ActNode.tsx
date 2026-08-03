@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Handle, Position, type NodeProps } from "reactflow";
 
 export type ActNodeData = {
@@ -28,7 +29,7 @@ function joinClasses(...parts: Array<string | false | undefined>): string {
   return parts.filter(Boolean).join(" ");
 }
 
-export function ActNode({ data }: NodeProps<ActNodeData>) {
+function ActNodeComponent({ data }: NodeProps<ActNodeData>) {
   const isActive = data.isRunning;
   const isLocked = Boolean(data.isLocked ?? data.isDisabled);
   const showFocusRing = !isLocked && (Boolean(data.isFocused) || isActive);
@@ -36,36 +37,36 @@ export function ActNode({ data }: NodeProps<ActNodeData>) {
   return (
     <div
       className={joinClasses(
-        "group rounded-md border-2 border-border-master bg-surface-card shadow-brutal-md w-64 p-4 transition-all z-20",
+        "group z-20 w-64 rounded-md border-2 border-border-master bg-surface-card p-4 shadow-brutal-md transition-[border-color,box-shadow,background-color,opacity]",
         !isLocked && "cursor-grab fv-brutal-hover",
-        isLocked && "opacity-40 cursor-not-allowed",
+        isLocked && "cursor-not-allowed opacity-40",
         showFocusRing && "ring-2 ring-brand-primary ring-offset-2",
       )}
     >
       <div
         className={joinClasses(
-          "flex items-center gap-2 mb-3",
+          "mb-3 flex items-center gap-2",
           isActive && "text-brand-primary",
         )}
       >
         <div
           className={joinClasses(
-            "w-2 h-2 rounded-full",
-            isActive ? "bg-brand-primary animate-pulse" : "bg-ink-primary",
+            "h-2 w-2 rounded-full",
+            isActive ? "animate-pulse bg-brand-primary" : "bg-ink-primary",
           )}
         />
-        <span className="font-label-md text-label-md uppercase font-black">
+        <span className="font-label-md text-label-md font-black uppercase">
           PHASE {data.index}: {data.actName}
         </span>
       </div>
 
-      <h3 className="font-headline text-headline-md mb-3 pb-3 border-b-2 border-ink-primary/10">
+      <h3 className="mb-3 border-b-2 border-ink-primary/10 pb-3 font-headline text-headline-md">
         {data.title}
       </h3>
 
-      <div className="flex justify-between items-end">
+      <div className="flex items-end justify-between">
         <div>
-          <p className="text-mono-sm font-bold text-ink-primary/50 uppercase">
+          <p className="text-mono-sm font-bold uppercase text-ink-primary/50">
             {data.metricLabel}
           </p>
           <p className="font-headline text-headline-md leading-none uppercase">
@@ -92,7 +93,7 @@ export function ActNode({ data }: NodeProps<ActNodeData>) {
       ) : null}
 
       {data.isStale && !isLocked ? (
-        <div className="mt-3 border-t-2 border-brutalist-yellow bg-brutalist-yellow/20 p-2 -mx-4 -mb-4">
+        <div className="-mx-4 -mb-4 mt-3 border-t-2 border-brutalist-yellow bg-brutalist-yellow/20 p-2">
           <div className="flex items-center gap-2 px-4">
             <span
               className="material-symbols-outlined text-ink-primary"
@@ -115,7 +116,7 @@ export function ActNode({ data }: NodeProps<ActNodeData>) {
                   data.onRerun?.();
                 }}
                 disabled={data.rerunning}
-                className="w-full rounded-sm bg-brand-primary text-ink-inverse px-3 py-2 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-sm hover:shadow-brutal-md transition-all disabled:opacity-50"
+                className="w-full rounded-sm border-2 border-border-master bg-brand-primary px-3 py-2 font-label-md text-label-md uppercase tracking-wider text-ink-inverse shadow-brutal-sm transition-[box-shadow,opacity] hover:shadow-brutal-md disabled:opacity-50"
               >
                 {data.rerunning
                   ? "RE-RUNNING..."
@@ -141,3 +142,5 @@ export function ActNode({ data }: NodeProps<ActNodeData>) {
     </div>
   );
 }
+
+export const ActNode = memo(ActNodeComponent);

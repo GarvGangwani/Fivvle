@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { memo, useMemo } from "react";
 import { type EdgeProps, type ReactFlowState, useStore } from "reactflow";
 
 type NodeBox = { x: number; y: number; width: number; height: number };
@@ -48,7 +48,7 @@ type CurvedEdgeData = {
   isLocked?: boolean;
 };
 
-export function DashedCurvedEdge({
+function DashedCurvedEdgeComponent({
   id,
   source,
   target,
@@ -143,10 +143,23 @@ export function DashedCurvedEdge({
         strokeWidth={1.5}
         stroke="var(--fv-canvas-edge)"
         strokeDasharray="6 8"
+        shapeRendering="optimizeSpeed"
         style={style}
       />
-      <circle cx={startPoint.x} cy={startPoint.y} r={3.5} fill="var(--fv-canvas-edge)" />
-      <circle cx={endPoint.x} cy={endPoint.y} r={3.5} fill="var(--fv-canvas-edge)" />
+      <circle
+        cx={startPoint.x}
+        cy={startPoint.y}
+        r={3.5}
+        fill="var(--fv-canvas-edge)"
+      />
+      <circle
+        cx={endPoint.x}
+        cy={endPoint.y}
+        r={3.5}
+        fill="var(--fv-canvas-edge)"
+      />
     </g>
   );
 }
+
+export const DashedCurvedEdge = memo(DashedCurvedEdgeComponent);

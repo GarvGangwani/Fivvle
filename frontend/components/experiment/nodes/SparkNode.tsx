@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Handle, Position, type NodeProps } from "reactflow";
 
 export type SparkMetricState = "empty" | "drafted" | "locked";
@@ -16,7 +17,7 @@ function joinClasses(...parts: Array<string | false | undefined>): string {
   return parts.filter(Boolean).join(" ");
 }
 
-export function SparkNode({ data }: NodeProps<SparkNodeData>) {
+function SparkNodeComponent({ data }: NodeProps<SparkNodeData>) {
   const { rawIdea, sparkMetric, isFocused, isRunning, currentSparkVersion } =
     data;
   const ideaSnippet = rawIdea?.trim().slice(0, 60) ?? "";
@@ -24,52 +25,52 @@ export function SparkNode({ data }: NodeProps<SparkNodeData>) {
   return (
     <div
       className={joinClasses(
-        "rounded-md border-2 border-border-master bg-surface-card shadow-brutal-md w-64 p-4 cursor-pointer fv-brutal-hover",
+        "w-64 cursor-pointer rounded-md border-2 border-border-master bg-surface-card p-4 shadow-brutal-md fv-brutal-hover",
         isFocused && "ring-2 ring-brand-primary ring-offset-2",
       )}
     >
       <div
         className={joinClasses(
-          "flex items-center gap-2 mb-3",
+          "mb-3 flex items-center gap-2",
           isRunning && "text-brand-primary",
         )}
       >
         <div
           className={joinClasses(
-            "w-2 h-2 rounded-full",
-            isRunning ? "bg-brand-primary animate-pulse" : "bg-ink-primary",
+            "h-2 w-2 rounded-full",
+            isRunning ? "animate-pulse bg-brand-primary" : "bg-ink-primary",
           )}
         />
-        <span className="font-label-md text-label-md uppercase font-black">
+        <span className="font-label-md text-label-md font-black uppercase">
           PHASE 01: SPARK
         </span>
       </div>
 
-      <h3 className="font-headline text-headline-md mb-3 pb-3 border-b-2 border-ink-primary/10">
+      <h3 className="mb-3 border-b-2 border-ink-primary/10 pb-3 font-headline text-headline-md">
         Capture the raw idea
       </h3>
 
       {ideaSnippet ? (
-        <p className="font-body text-body-sm text-ink-secondary mb-4 line-clamp-2">
+        <p className="mb-4 line-clamp-2 font-body text-body-sm text-ink-secondary">
           {ideaSnippet}
           {(rawIdea?.trim().length ?? 0) > 60 ? "..." : ""}
         </p>
       ) : (
-        <p className="font-body text-body-sm text-ink-tertiary italic mb-4">
+        <p className="mb-4 font-body text-body-sm italic text-ink-tertiary">
           Click to add your idea and files.
         </p>
       )}
 
-      <div className="flex justify-between items-end">
+      <div className="flex items-end justify-between">
         <div>
-          <p className="text-mono-sm font-bold text-ink-primary/50 uppercase">
+          <p className="text-mono-sm font-bold uppercase text-ink-primary/50">
             STATUS
           </p>
           <p
             className={joinClasses(
               "font-label-md text-label-md leading-none uppercase",
               sparkMetric.state === "empty" &&
-                "text-brutalist-yellow bg-ink-primary px-2 py-1",
+                "bg-ink-primary px-2 py-1 text-brutalist-yellow",
               sparkMetric.state === "drafted" && "text-brand-primary",
               sparkMetric.state === "locked" && "text-ink-tertiary",
             )}
@@ -77,7 +78,7 @@ export function SparkNode({ data }: NodeProps<SparkNodeData>) {
             {sparkMetric.value}
           </p>
           {(currentSparkVersion ?? 0) > 0 ? (
-            <p className="font-mono text-mono-sm text-ink-tertiary uppercase mt-1">
+            <p className="mt-1 font-mono text-mono-sm uppercase text-ink-tertiary">
               v{currentSparkVersion}
             </p>
           ) : null}
@@ -105,3 +106,5 @@ export function SparkNode({ data }: NodeProps<SparkNodeData>) {
     </div>
   );
 }
+
+export const SparkNode = memo(SparkNodeComponent);

@@ -111,8 +111,7 @@ export function useCanvasLayout(experimentId: string) {
     [experimentId],
   );
 
-  // Flush latest state at timer fire time so a viewport save can't overwrite a
-  // newer spark-expanded position that was scheduled earlier in the same window.
+  // Debounce layout network writes (positions + viewport from onMoveEnd).
   const debouncedSave = useMemo(
     () =>
       debounce(() => {
@@ -123,27 +122,27 @@ export function useCanvasLayout(experimentId: string) {
 
   const updatePosition = useCallback(
     (nodeId: CanvasNodeId, pos: NodePosition) => {
-      setState((prev) => {
-        const next = {
-          ...prev,
-          positions: { ...prev.positions, [nodeId]: pos },
-        };
-        stateRef.current = next;
-        debouncedSave();
-        return next;
-      });
+      // Prefer stateRef so a prior onMoveEnd viewport isn't clobbered by stale React state.
+      const next = {
+        ...stateRef.current,
+        positions: { ...stateRef.current.positions, [nodeId]: pos },
+      };
+      stateRef.current = next;
+      setState(next);
+      debouncedSave();
     },
     [debouncedSave],
   );
 
+  /**
+   * Persist viewport from onMoveEnd. Writes stateRef + debounced network save only —
+   * does NOT setState (avoids React re-render storms; RF wheel zoom fires onMoveEnd
+   * repeatedly between scroll ticks).
+   */
   const updateViewport = useCallback(
     (viewport: CanvasViewport) => {
-      setState((prev) => {
-        const next = { ...prev, viewport };
-        stateRef.current = next;
-        debouncedSave();
-        return next;
-      });
+      stateRef.current = { ...stateRef.current, viewport };
+      debouncedSave();
     },
     [debouncedSave],
   );
@@ -160,6 +159,7 @@ export function useCanvasLayout(experimentId: string) {
 
   return {
     positions: state.positions,
+    /** Hydrated from API on load; updated on move end (not mid-pan). */
     viewport: state.viewport,
     loaded,
     saving,
