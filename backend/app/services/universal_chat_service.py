@@ -110,11 +110,14 @@ class UniversalStreamPrep:
     thread_id: UUID
     user_message_id: UUID
     user_prompt: str
+    clean_message: str
     provider: str
     model: str
     fallback_provider: str
     fallback_model: str
     pacing_delay: float = _DEFAULT_PACING_DELAY_S
+    # Exact rail MCQ click — injected into ask_refine_agent once (skips resolver).
+    mcq_answer: dict[str, Any] | None = None
 
 
 def _sanitize(message: str) -> str:
@@ -230,6 +233,73 @@ def _tool_result_content_json(payload: dict[str, Any]) -> str:
     return json.dumps(payload.get("result", payload))
 
 
+def _mcq_answer_as_dict(mcq_answer: Any) -> dict[str, Any] | None:
+    """Normalize UniversalMcqAnswer / dict into executor-injectable payload."""
+    if mcq_answer is None:
+        return None
+    if hasattr(mcq_answer, "model_dump"):
+        dumped = mcq_answer.model_dump(mode="json")
+        return {
+            "selected_option_indices": list(dumped["selected_option_indices"]),
+            "answered_question_id": str(dumped["answered_question_id"]),
+        }
+    if isinstance(mcq_answer, dict):
+        indices = mcq_answer.get("selected_option_indices")
+        qid = mcq_answer.get("answered_question_id")
+        if not isinstance(indices, list) or qid is None:
+            return None
+        return {
+            "selected_option_indices": list(indices),
+            "answered_question_id": str(qid),
+        }
+    return None
+
+
+def _inject_mcq_into_tool_args(
+    tool_name: str,
+    args: dict[str, Any] | None,
+    mcq_answer: dict[str, Any] | None,
+) -> dict[str, Any]:
+    merged = dict(args or {})
+    if tool_name == _TOOL_REFINE and mcq_answer is not None:
+        merged["_mcq_answer"] = mcq_answer
+    return merged
+
+
+def _synthetic_mcq_assistant_turn(
+    provider: str,
+    tool_use: llm_client.ToolUseRequest,
+) -> dict[str, Any]:
+    if provider == "anthropic":
+        return {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": tool_use.id,
+                    "name": tool_use.name,
+                    "input": tool_use.input,
+                }
+            ],
+        }
+    if provider == "kimi":
+        return {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": tool_use.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_use.name,
+                        "arguments": json.dumps(tool_use.input),
+                    },
+                }
+            ],
+        }
+    raise ValueError(f"unsupported tool loop provider: {provider}")
+
+
 def _cap_round_tools_args(
     provider: str,
     *,
@@ -289,6 +359,7 @@ async def send_universal_chat_message(
     message: str,
     *,
     current_open_phase: str | None = None,
+    mcq_answer: Any = None,
 ) -> UniversalChatResult:
     """Send one universal-chat turn (tool loop) and persist rows.
 
@@ -305,6 +376,8 @@ async def send_universal_chat_message(
     clean_message = _sanitize(message)
     if not clean_message:
         raise ValueError("message must not be empty")
+
+    mcq_inject = _mcq_answer_as_dict(mcq_answer)
 
     experiment = await _load_owned_experiment(db, current_user, experiment_id)
     thread = await _resolve_universal_thread(db, current_user, experiment)
@@ -350,8 +423,71 @@ async def send_universal_chat_message(
     tool_rounds = 0
     assistant_text = _FALLBACK_TEXT
     fallback_armed = True
+    mcq_forced = False
 
     while True:
+        if mcq_inject is not None and not mcq_forced:
+            mcq_forced = True
+            tool_rounds += 1
+            tool_use = llm_client.ToolUseRequest(
+                id=f"mcq-click-{user_msg.id}",
+                name=_TOOL_REFINE,
+                input={"query": clean_message},
+            )
+            tool_call_msg = ChatMessage(
+                thread_id=thread.id,
+                role=ChatRole.TOOL_CALL,
+                content=f"Called: {tool_use.name}",
+                experiment_id=experiment.id,
+                turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
+                parent_message_id=chain_parent_id,
+                tool_payload={
+                    "tool_name": tool_use.name,
+                    "arguments": tool_use.input,
+                },
+            )
+            db.add(tool_call_msg)
+            await db.flush()
+            turn_messages.append(tool_call_msg)
+            chain_parent_id = tool_call_msg.id
+
+            exec_args = _inject_mcq_into_tool_args(
+                tool_use.name, tool_use.input, mcq_inject
+            )
+            mcq_inject = None
+            exec_result = await execute_tool(
+                tool_use.name,
+                exec_args,
+                db,
+                experiment,
+                user=current_user,
+            )
+            refreshed = await db.get(Experiment, experiment.id)
+            if refreshed is not None:
+                experiment = refreshed
+            payload = _tool_result_payload(tool_use.name, exec_result)
+            tool_result_msg = ChatMessage(
+                thread_id=thread.id,
+                role=ChatRole.TOOL_RESULT,
+                content="Result received",
+                experiment_id=experiment.id,
+                turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
+                parent_message_id=chain_parent_id,
+                tool_payload=payload,
+            )
+            db.add(tool_result_msg)
+            await db.flush()
+            turn_messages.append(tool_result_msg)
+            chain_parent_id = tool_result_msg.id
+            _append_tool_followups(
+                provider,
+                api_messages,
+                assistant_turn=_synthetic_mcq_assistant_turn(provider, tool_use),
+                tool_uses=[tool_use],
+                result_contents=[_tool_result_content_json(payload)],
+            )
+            continue
+
         force_text = tool_rounds >= _MAX_TOOL_ROUNDS
         tools_arg, tool_choice = _cap_round_tools_args(
             provider, force_text=force_text, tool_schemas=tool_schemas
@@ -420,9 +556,14 @@ async def send_universal_chat_message(
                 turn_messages.append(tool_call_msg)
                 chain_parent_id = tool_call_msg.id
 
+                exec_args = _inject_mcq_into_tool_args(
+                    tool_use.name, tool_use.input, mcq_inject
+                )
+                if tool_use.name == _TOOL_REFINE and mcq_inject is not None:
+                    mcq_inject = None
                 exec_result = await execute_tool(
                     tool_use.name,
-                    tool_use.input,
+                    exec_args,
                     db,
                     experiment,
                     user=current_user,
@@ -537,6 +678,7 @@ async def prepare_universal_stream(
     *,
     pacing_delay: float = _DEFAULT_PACING_DELAY_S,
     current_open_phase: str | None = None,
+    mcq_answer: Any = None,
 ) -> UniversalStreamPrep:
     """Persist + commit the user row before the SSE generator starts.
 
@@ -583,11 +725,13 @@ async def prepare_universal_stream(
         thread_id=thread.id,
         user_message_id=user_msg.id,
         user_prompt=user_prompt,
+        clean_message=clean_message,
         provider=settings.universal_chat_tools_provider,
         model=settings.universal_chat_tools_model,
         fallback_provider=settings.universal_chat_tools_fallback_provider,
         fallback_model=settings.universal_chat_tools_fallback_model,
         pacing_delay=pacing_delay,
+        mcq_answer=_mcq_answer_as_dict(mcq_answer),
     )
 
 
@@ -629,9 +773,81 @@ async def stream_universal_chat_message(
         tool_rounds = 0
         fallback_armed = True
         assistant_text = _FALLBACK_TEXT
+        mcq_inject = dict(prep.mcq_answer) if prep.mcq_answer else None
+        mcq_forced = False
 
         try:
             while True:
+                if mcq_inject is not None and not mcq_forced:
+                    mcq_forced = True
+                    tool_rounds += 1
+                    tool_use = llm_client.ToolUseRequest(
+                        id=f"mcq-click-{prep.user_message_id}",
+                        name=_TOOL_REFINE,
+                        input={"query": prep.clean_message},
+                    )
+                    tool_call_msg = ChatMessage(
+                        thread_id=prep.thread_id,
+                        role=ChatRole.TOOL_CALL,
+                        content=f"Called: {tool_use.name}",
+                        experiment_id=experiment.id,
+                        turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
+                        parent_message_id=chain_parent_id,
+                        tool_payload={
+                            "tool_name": tool_use.name,
+                            "arguments": tool_use.input,
+                        },
+                    )
+                    db.add(tool_call_msg)
+                    await db.flush()
+                    await db.commit()
+                    chain_parent_id = tool_call_msg.id
+                    yield (
+                        "tool_call",
+                        {
+                            "tool_name": tool_use.name,
+                            "message_id": str(tool_call_msg.id),
+                        },
+                    )
+                    in_flight_tool_result_id: UUID | None = None
+                    try:
+                        async for evt in _stream_refine_tool(
+                            db,
+                            experiment,
+                            user,
+                            tool_use,
+                            prep,
+                            chain_parent_id,
+                            mcq_answer=mcq_inject,
+                        ):
+                            if evt[0] == "_chain_parent":
+                                chain_parent_id = evt[1]["id"]  # type: ignore[index]
+                                result_content = evt[1]["content_json"]
+                                in_flight_tool_result_id = None
+                                _append_tool_followups(
+                                    provider,
+                                    api_messages,
+                                    assistant_turn=_synthetic_mcq_assistant_turn(
+                                        provider, tool_use
+                                    ),
+                                    tool_uses=[tool_use],
+                                    result_contents=[result_content],
+                                )
+                            elif evt[0] == "_in_flight_tool_result":
+                                in_flight_tool_result_id = evt[1]["id"]
+                            else:
+                                yield evt
+                    except (asyncio.CancelledError, GeneratorExit):
+                        await _delete_in_flight_tool_result(
+                            db, in_flight_tool_result_id
+                        )
+                        raise
+                    mcq_inject = None
+                    refreshed = await db.get(Experiment, experiment.id)
+                    if refreshed is not None:
+                        experiment = refreshed
+                    continue
+
                 force_text = tool_rounds >= _MAX_TOOL_ROUNDS
                 tools_arg, tool_choice = _cap_round_tools_args(
                     provider, force_text=force_text, tool_schemas=tool_schemas
@@ -735,6 +951,9 @@ async def stream_universal_chat_message(
                             continue
 
                         if tool_use.name == _TOOL_REFINE:
+                            refine_mcq = mcq_inject
+                            if refine_mcq is not None:
+                                mcq_inject = None
                             try:
                                 async for evt in _stream_refine_tool(
                                     db,
@@ -743,6 +962,7 @@ async def stream_universal_chat_message(
                                     tool_use,
                                     prep,
                                     chain_parent_id,
+                                    mcq_answer=refine_mcq,
                                 ):
                                     if evt[0] == "_chain_parent":
                                         chain_parent_id = evt[1]["id"]  # type: ignore[index]
@@ -951,11 +1171,16 @@ async def _stream_refine_tool(
     tool_use: Any,
     prep: UniversalStreamPrep,
     chain_parent_id: UUID | None,
+    *,
+    mcq_answer: dict[str, Any] | None = None,
 ) -> AsyncGenerator[tuple[str, Any], None]:
     """Refine: sync execute, fake-stream tokens, then commit + emit tool_result."""
+    exec_args = _inject_mcq_into_tool_args(
+        tool_use.name, tool_use.input, mcq_answer
+    )
     exec_result = await execute_tool(
         tool_use.name,
-        tool_use.input,
+        exec_args,
         db,
         experiment,
         user=user,

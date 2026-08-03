@@ -1309,6 +1309,260 @@ async def test_ask_refine_agent_maps_turn_decision(
     assert result["log_entry"] == "audience"
     assert isinstance(result["refined_idea_patch"], dict)
     assert result["refined_idea_patch"]["project_name"] == "PolicyPal"
+    assert result["mcq_question"] == "Who is the primary buyer?"
+    assert result["mcq_options"] == [
+        {"index": 0, "label": "HR managers"},
+        {"index": 1, "label": "Employees"},
+        {"index": 2, "label": "Both"},
+    ]
+    assert result["mcq_answered_question_id"] == str(turn.message_id)
+    assert result["mcq_selection_mode"] == "single"
+
+
+async def _seed_pending_mcq_thread(
+    db: AsyncSession,
+    *,
+    user: User,
+    experiment: Experiment,
+    question: str = "Who is the primary buyer?",
+    options: list[str] | None = None,
+) -> UUID:
+    """Attach a refine thread tipped by an assistant MCQ. Returns assistant msg id."""
+    opts = options or ["Indie filmmakers", "Film studios", "Both"]
+    thread = ChatThread(user_id=user.id, title="Refine MCQ fixture")
+    db.add(thread)
+    await db.flush()
+
+    assistant = ChatMessage(
+        thread_id=thread.id,
+        role=ChatRole.ASSISTANT,
+        content="Need one clarification before we lock positioning.",
+        experiment_id=experiment.id,
+        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+        clarifying_questions=[
+            {
+                "question": question,
+                "selection_mode": "single",
+                "options": opts,
+            }
+        ],
+        clarifying_dimension="audience",
+    )
+    db.add(assistant)
+    await db.flush()
+    thread.active_leaf_message_id = assistant.id
+    experiment.thread_id = thread.id
+    await db.commit()
+    await db.refresh(experiment)
+    return assistant.id
+
+
+@pytest.mark.asyncio
+async def test_ask_refine_agent_resolves_pending_mcq_from_prose(
+    db_session: AsyncSession,
+) -> None:
+    """Confident free-text match submits selected_option_indices like the popup."""
+    from app.db.enums import ChatTurnKind
+    from app.schemas.mcq_resolver import McqIndexResolution
+    from app.services.chat_service import ChatTurnResult
+    from app.services.subagent_executors import exec_ask_refine_agent
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.REFINING
+    )
+    pending_id = await _seed_pending_mcq_thread(db_session, user=user, experiment=experiment)
+
+    captured: dict[str, Any] = {}
+    follow_up = ChatTurnResult(
+        thread_id=experiment.thread_id or uuid4(),
+        message_id=uuid4(),
+        experiment_id=experiment.id,
+        assistant_message="Great — indie filmmakers it is. Here's a tighter wedge.",
+        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+        clarifying_dimension=None,
+        clarifying_questions=(),
+        pipeline_dispatched=False,
+        dispatched_at=None,
+        experiment_status=ExperimentStatus.REFINING,
+        research_error_detail=None,
+        user_facing_error=None,
+        refinement_count=2,
+    )
+
+    async def _fake_handle_turn(*_args: Any, **kwargs: Any) -> ChatTurnResult:
+        captured.update(kwargs)
+        return follow_up
+
+    async def _fake_resolve(*_args: Any, **_kwargs: Any) -> Any:
+        return McqIndexResolution(selected_indices=[0]), object()
+
+    with (
+        patch(
+            "app.services.subagent_executors.llm_client.complete_structured",
+            new=_fake_resolve,
+        ),
+        patch(
+            "app.services.subagent_executors.chat_service.handle_turn",
+            new=_fake_handle_turn,
+        ),
+    ):
+        result = await exec_ask_refine_agent(
+            db_session,
+            experiment,
+            {"query": "indie filmmakers — that's our wedge"},
+            user,
+        )
+
+    assert result["has_pending_mcq"] is False
+    assert result["assistant_text"].startswith("Great")
+    assert captured["message"] == "Indie filmmakers"
+    meta = captured.get("user_message_metadata") or {}
+    assert meta["selected_option_indices"] == [0]
+    assert meta["answered_question_from_message_id"] == str(pending_id)
+
+
+@pytest.mark.asyncio
+async def test_ask_refine_agent_ambiguous_mcq_falls_through(
+    db_session: AsyncSession,
+) -> None:
+    """Ambiguous prose skips MCQ metadata and uses the original query."""
+    from app.db.enums import ChatTurnKind
+    from app.schemas.mcq_resolver import McqIndexResolution
+    from app.schemas.refinement import ClarifyingQuestion
+    from app.services.chat_service import ChatTurnResult
+    from app.services.subagent_executors import exec_ask_refine_agent
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.REFINING
+    )
+    await _seed_pending_mcq_thread(db_session, user=user, experiment=experiment)
+
+    captured: dict[str, Any] = {}
+    still_pending = ChatTurnResult(
+        thread_id=experiment.thread_id or uuid4(),
+        message_id=uuid4(),
+        experiment_id=experiment.id,
+        assistant_message="Still need a buyer choice — owner or manager?",
+        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+        clarifying_dimension="audience",
+        clarifying_questions=(
+            ClarifyingQuestion(
+                question="Who is the primary buyer?",
+                selection_mode="single",
+                options=["Indie filmmakers", "Film studios", "Both"],
+            ),
+        ),
+        pipeline_dispatched=False,
+        dispatched_at=None,
+        experiment_status=ExperimentStatus.REFINING,
+        research_error_detail=None,
+        user_facing_error=None,
+        refinement_count=2,
+    )
+
+    async def _fake_handle_turn(*_args: Any, **kwargs: Any) -> ChatTurnResult:
+        captured.update(kwargs)
+        return still_pending
+
+    async def _fake_resolve(*_args: Any, **_kwargs: Any) -> Any:
+        return McqIndexResolution(selected_indices=[]), object()
+
+    with (
+        patch(
+            "app.services.subagent_executors.llm_client.complete_structured",
+            new=_fake_resolve,
+        ),
+        patch(
+            "app.services.subagent_executors.chat_service.handle_turn",
+            new=_fake_handle_turn,
+        ),
+    ):
+        result = await exec_ask_refine_agent(
+            db_session,
+            experiment,
+            {"query": "actually what should I name the product?"},
+            user,
+        )
+
+    assert result["has_pending_mcq"] is True
+    assert captured["message"] == "actually what should I name the product?"
+    assert captured.get("user_message_metadata") is None
+    assert result["mcq_question"] == "Who is the primary buyer?"
+    assert len(result["mcq_options"]) == 3
+    assert result["mcq_answered_question_id"] == str(still_pending.message_id)
+
+
+@pytest.mark.asyncio
+async def test_ask_refine_agent_click_submits_exact_indices_skips_resolver(
+    db_session: AsyncSession,
+) -> None:
+    """Rail click path: structured _mcq_answer → metadata, no mcq_resolver LLM."""
+    from app.db.enums import ChatTurnKind
+    from app.services.chat_service import ChatTurnResult
+    from app.services.subagent_executors import exec_ask_refine_agent
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.REFINING
+    )
+    pending_id = await _seed_pending_mcq_thread(
+        db_session, user=user, experiment=experiment
+    )
+
+    captured: dict[str, Any] = {}
+    resolver_calls = {"n": 0}
+    follow_up = ChatTurnResult(
+        thread_id=experiment.thread_id or uuid4(),
+        message_id=uuid4(),
+        experiment_id=experiment.id,
+        assistant_message="Locked — indie filmmakers. Next: pricing wedge.",
+        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+        clarifying_dimension=None,
+        clarifying_questions=(),
+        pipeline_dispatched=False,
+        dispatched_at=None,
+        experiment_status=ExperimentStatus.REFINING,
+        research_error_detail=None,
+        user_facing_error=None,
+        refinement_count=2,
+    )
+
+    async def _fake_handle_turn(*_args: Any, **kwargs: Any) -> ChatTurnResult:
+        captured.update(kwargs)
+        return follow_up
+
+    async def _fake_resolve(*_args: Any, **_kwargs: Any) -> Any:
+        resolver_calls["n"] += 1
+        raise AssertionError("mcq_resolver must not run on click path")
+
+    with (
+        patch(
+            "app.services.subagent_executors.llm_client.complete_structured",
+            new=_fake_resolve,
+        ),
+        patch(
+            "app.services.subagent_executors.chat_service.handle_turn",
+            new=_fake_handle_turn,
+        ),
+    ):
+        result = await exec_ask_refine_agent(
+            db_session,
+            experiment,
+            {
+                "query": "Indie filmmakers",
+                "_mcq_answer": {
+                    "selected_option_indices": [0],
+                    "answered_question_id": str(pending_id),
+                },
+            },
+            user,
+        )
+
+    assert resolver_calls["n"] == 0
+    assert result["has_pending_mcq"] is False
+    assert captured["message"] == "Indie filmmakers"
+    meta = captured.get("user_message_metadata") or {}
+    assert meta["selected_option_indices"] == [0]
+    assert meta["answered_question_from_message_id"] == str(pending_id)
 
 
 @pytest.mark.asyncio

@@ -1505,6 +1505,7 @@ async def send_universal_chat(
             experiment_id,
             body.message,
             current_open_phase=body.current_open_phase,
+            mcq_answer=body.mcq_answer,
         )
     except UniversalChatNotFound:
         raise HTTPException(
@@ -1563,6 +1564,7 @@ async def stream_universal_chat(
             experiment_id,
             body.message,
             current_open_phase=body.current_open_phase,
+            mcq_answer=body.mcq_answer,
         )
     except UniversalChatNotFound:
         raise HTTPException(

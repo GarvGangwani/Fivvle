@@ -275,8 +275,7 @@ export function LiveWorkspacePanel({
               PENDING CLARIFYING QUESTION
             </p>
             <p className="font-body text-body-sm text-ink-primary">
-              You have a pending clarifying question — answer it in the master
-              rail. Type your choice there; the refine agent will pick it up.
+              Answer the question in the master rail.
             </p>
           </div>
         </div>

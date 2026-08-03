@@ -10,16 +10,24 @@ from __future__ import annotations
 import copy
 import re
 from collections.abc import AsyncGenerator
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+import app.llm.client as llm_client
+from app.db.enums import ChatRole
 from app.db.models.experiment import Experiment
 from app.db.models.user import User
 from app.dispatchers.protocol import ResearchDispatcher
+from app.llm.prompts.mcq_resolver import (
+    MCQ_RESOLVER_SYSTEM_PROMPT,
+    PROMPT_NAME_MCQ_RESOLVER,
+    build_mcq_resolver_user_prompt,
+)
 from app.llm.prompts.refine_subagent import (
     PROMPT_NAME_REFINE_SUBAGENT,
     REFINE_SUBAGENT_SYSTEM_PROMPT,
@@ -31,7 +39,10 @@ from app.llm.prompts.research_subagent import (
     format_sources_block,
 )
 from app.logging_config import get_logger
+from app.schemas.mcq_resolver import McqIndexResolution
+from app.schemas.refinement import ClarifyingQuestion
 from app.services import chat_service
+from app.services.chat_tree_service import get_active_branch
 from app.services.evidence_chat_service import (
     send_evidence_chat_message,
     stream_research_evidence_tokens,
@@ -61,12 +72,25 @@ _QUERY_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+_MCQ_RESOLVER_PROVIDER: llm_client.ProviderName = "kimi"
+_MCQ_RESOLVER_MODEL = "kimi-k2.6"
+_MCQ_RESOLVER_MAX_TOKENS = 256
+_MCQ_RESOLVER_TEMPERATURE = 0.2
+
 
 class _NoopResearchDispatcher:
     """Refine turns no longer auto-dispatch research; satisfy the Protocol."""
 
     async def dispatch(self, experiment_id: UUID) -> None:
         _ = experiment_id
+
+
+@dataclass(frozen=True)
+class _PendingMcq:
+    message_id: UUID
+    question: str
+    options: tuple[str, ...]
+    selection_mode: str
 
 
 def refine_agent_input_schema() -> dict[str, Any]:
@@ -83,6 +107,319 @@ def _extract_query(args: dict[str, Any]) -> str | None:
         return None
     cleaned = raw.strip()
     return cleaned or None
+
+
+def _parse_pending_mcq_from_assistant(
+    clarifying_questions: list[Any] | None,
+    message_id: UUID,
+) -> _PendingMcq | None:
+    """First clarifying question with ≥2 options (matches frontend pickActiveMCQ)."""
+    if not clarifying_questions:
+        return None
+    for raw in clarifying_questions:
+        try:
+            if isinstance(raw, ClarifyingQuestion):
+                q = raw
+            elif isinstance(raw, dict):
+                q = ClarifyingQuestion.model_validate(raw)
+            else:
+                continue
+        except Exception:  # noqa: BLE001 — skip malformed history rows
+            continue
+        if len(q.options) < 2:
+            continue
+        return _PendingMcq(
+            message_id=message_id,
+            question=q.question,
+            options=tuple(q.options),
+            selection_mode=q.selection_mode,
+        )
+    return None
+
+
+async def _fetch_pending_mcq(
+    db: AsyncSession,
+    experiment: Experiment,
+) -> _PendingMcq | None:
+    if experiment.thread_id is None:
+        return None
+    branch = await get_active_branch(db, experiment.thread_id)
+    if not branch:
+        return None
+    last = branch[-1]
+    if last.role != ChatRole.ASSISTANT:
+        return None
+    return _parse_pending_mcq_from_assistant(last.clarifying_questions, last.id)
+
+
+def _sanitize_selected_indices(
+    indices: list[int],
+    *,
+    option_count: int,
+    selection_mode: str,
+) -> list[int]:
+    valid = sorted({i for i in indices if isinstance(i, int) and 0 <= i < option_count})
+    if selection_mode == "single" and len(valid) > 1:
+        return valid[:1]
+    return valid
+
+
+async def _resolve_mcq_indices(
+    db: AsyncSession,
+    *,
+    experiment_id: UUID,
+    pending: _PendingMcq,
+    founder_message: str,
+) -> list[int]:
+    """Map founder prose → option indices. Empty = ambiguous / no match."""
+    try:
+        draft, _meta = await llm_client.complete_structured(
+            db,
+            provider=_MCQ_RESOLVER_PROVIDER,
+            model=_MCQ_RESOLVER_MODEL,
+            prompt_name=PROMPT_NAME_MCQ_RESOLVER,
+            system=MCQ_RESOLVER_SYSTEM_PROMPT,
+            user=build_mcq_resolver_user_prompt(
+                question=pending.question,
+                options=list(pending.options),
+                selection_mode=pending.selection_mode,
+                founder_message=founder_message,
+            ),
+            response_model=McqIndexResolution,
+            max_tokens=_MCQ_RESOLVER_MAX_TOKENS,
+            temperature=_MCQ_RESOLVER_TEMPERATURE,
+            max_retries=2,
+            experiment_id=experiment_id,
+            phase="mcq_resolver",
+        )
+    except Exception as exc:  # noqa: BLE001 — soft-fail to normal refine turn
+        _logger.warning(
+            "mcq resolver failed; falling through to refine turn",
+            experiment_id=str(experiment_id),
+            error_type=type(exc).__name__,
+        )
+        return []
+
+    return _sanitize_selected_indices(
+        list(draft.selected_indices),
+        option_count=len(pending.options),
+        selection_mode=pending.selection_mode,
+    )
+
+
+def _combined_mcq_answer_text(pending: _PendingMcq, indices: list[int]) -> str:
+    labels = [pending.options[i] for i in indices]
+    return " · ".join(labels)
+
+
+def _parse_structured_mcq_answer(
+    raw: Any,
+) -> tuple[list[int], UUID] | None:
+    """Extract click-path indices + answered question id from injected args."""
+    if not isinstance(raw, dict):
+        return None
+    indices_raw = raw.get("selected_option_indices")
+    qid_raw = raw.get("answered_question_id") or raw.get(
+        "answered_question_from_message_id"
+    )
+    if not isinstance(indices_raw, list) or qid_raw is None:
+        return None
+    indices: list[int] = []
+    for item in indices_raw:
+        if isinstance(item, bool):
+            continue
+        if isinstance(item, int):
+            indices.append(item)
+        elif isinstance(item, str) and item.strip().lstrip("-").isdigit():
+            indices.append(int(item.strip()))
+    if not indices:
+        return None
+    try:
+        answered_id = qid_raw if isinstance(qid_raw, UUID) else UUID(str(qid_raw))
+    except (TypeError, ValueError):
+        return None
+    return indices, answered_id
+
+
+def _outbound_mcq_fields(
+    clarifying: list[Any] | None,
+    message_id: UUID,
+) -> dict[str, Any]:
+    """Surface pending MCQ for inline rail rendering (empty when none)."""
+    pending = _parse_pending_mcq_from_assistant(clarifying, message_id)
+    if pending is None:
+        return {"has_pending_mcq": False}
+    return {
+        "has_pending_mcq": True,
+        "mcq_question": pending.question,
+        "mcq_options": [
+            {"index": i, "label": label}
+            for i, label in enumerate(pending.options)
+        ],
+        "mcq_answered_question_id": str(pending.message_id),
+        "mcq_selection_mode": pending.selection_mode,
+    }
+
+
+async def exec_ask_refine_agent(
+    db: AsyncSession,
+    experiment: Experiment,
+    args: dict[str, Any],
+    user: User,
+) -> dict[str, Any]:
+    """Forward ``query`` into the refine thread via ``chat_service.handle_turn``.
+
+    MCQ answering branches (in order):
+    1. Structured ``_mcq_answer`` from a rail click — exact indices, no resolver.
+    2. Pending MCQ + free-text query — ``mcq_resolver_v1`` maps prose → indices.
+    3. Otherwise — normal refine turn.
+    """
+    query = _extract_query(args)
+    if query is None:
+        return {"error": "query is required"}
+
+    before_idea = (
+        copy.deepcopy(experiment.refined_idea_current)
+        if isinstance(experiment.refined_idea_current, dict)
+        else None
+    )
+
+    dispatcher: ResearchDispatcher = cast(
+        ResearchDispatcher, _NoopResearchDispatcher()
+    )
+    user_message_metadata: dict[str, Any] | None = None
+    turn_message = query
+
+    pending = await _fetch_pending_mcq(db, experiment)
+    structured = _parse_structured_mcq_answer(args.get("_mcq_answer"))
+
+    if structured is not None and pending is not None:
+        click_indices, answered_id = structured
+        if answered_id == pending.message_id:
+            selected = _sanitize_selected_indices(
+                click_indices,
+                option_count=len(pending.options),
+                selection_mode=pending.selection_mode,
+            )
+            if selected:
+                turn_message = _combined_mcq_answer_text(pending, selected)
+                user_message_metadata = chat_service.build_user_message_metadata(
+                    selected_option_indices=selected,
+                    answered_question_from_message_id=pending.message_id,
+                )
+                _logger.info(
+                    "mcq click submitted exact indices",
+                    experiment_id=str(experiment.id),
+                    selected_indices=selected,
+                    pending_message_id=str(pending.message_id),
+                )
+            else:
+                _logger.info(
+                    "mcq click indices invalid; falling through to refine turn",
+                    experiment_id=str(experiment.id),
+                    pending_message_id=str(pending.message_id),
+                )
+        else:
+            _logger.info(
+                "mcq click answered_question_id mismatch; falling through",
+                experiment_id=str(experiment.id),
+                expected=str(pending.message_id),
+                got=str(answered_id),
+            )
+    elif pending is not None:
+        selected = await _resolve_mcq_indices(
+            db,
+            experiment_id=experiment.id,
+            pending=pending,
+            founder_message=query,
+        )
+        if selected:
+            turn_message = _combined_mcq_answer_text(pending, selected)
+            user_message_metadata = chat_service.build_user_message_metadata(
+                selected_option_indices=selected,
+                answered_question_from_message_id=pending.message_id,
+            )
+            _logger.info(
+                "mcq resolver matched rail answer",
+                experiment_id=str(experiment.id),
+                selected_indices=selected,
+                pending_message_id=str(pending.message_id),
+            )
+        else:
+            _logger.info(
+                "mcq resolver ambiguous; treating as new refine turn",
+                experiment_id=str(experiment.id),
+                pending_message_id=str(pending.message_id),
+            )
+
+    turn = await chat_service.handle_turn(
+        db,
+        user=user,
+        message=turn_message,
+        deep_research=True,
+        thread_id=experiment.thread_id,
+        experiment_id=experiment.id,
+        idempotency_key=f"universal-refine-{uuid4()}",
+        dispatcher=dispatcher,
+        user_message_metadata=user_message_metadata,
+        prompt_name=PROMPT_NAME_REFINE_SUBAGENT,
+        system_prompt=REFINE_SUBAGENT_SYSTEM_PROMPT,
+        user_prompt_builder=build_refine_subagent_user_prompt,
+    )
+
+    # handle_turn catches run_turn failures and returns a ChatTurnResult with
+    # user_facing_error set (e.g. refinement ValidationError → "Something
+    # didn't parse…"). That is not a successful sub-agent answer for the rail.
+    if turn.user_facing_error is not None:
+        _logger.warning(
+            "refine sub-agent turn failed upstream",
+            experiment_id=str(experiment.id),
+            retry_action=turn.user_facing_error.retry_action,
+            upstream_message=turn.user_facing_error.message,
+        )
+        return {"error": _REFINE_AGENT_TROUBLE}
+
+    try:
+        # Reload experiment — handle_turn commits; identity may be expired.
+        refreshed = await db.get(Experiment, experiment.id)
+        after_idea: dict[str, Any] | None = None
+        if refreshed is not None and isinstance(
+            refreshed.refined_idea_current, dict
+        ):
+            after_idea = refreshed.refined_idea_current
+            # Keep caller's experiment instance in sync for subsequent tools.
+            experiment.refined_idea_current = after_idea
+            experiment.thread_id = refreshed.thread_id
+            experiment.status = refreshed.status
+            experiment.refinement_count = refreshed.refinement_count
+
+        clarifying = turn.clarifying_questions
+        clarifying_list = list(clarifying) if clarifying is not None else None
+        assistant_text = turn.assistant_message
+        if not isinstance(assistant_text, str) or not assistant_text.strip():
+            _logger.warning(
+                "refine sub-agent returned empty assistant_message",
+                experiment_id=str(experiment.id),
+                has_clarifying=bool(clarifying_list),
+                clarifying_dimension=turn.clarifying_dimension,
+            )
+            return {"error": _REFINE_AGENT_TROUBLE}
+
+        payload: dict[str, Any] = {
+            "assistant_text": assistant_text,
+            "refined_idea_patch": _refined_idea_patch(before_idea, after_idea),
+            "log_entry": turn.clarifying_dimension,
+        }
+        payload.update(_outbound_mcq_fields(clarifying_list, turn.message_id))
+        return payload
+    except (AttributeError, KeyError, TypeError) as exc:
+        _logger.warning(
+            "refine sub-agent result mapping failed",
+            experiment_id=str(experiment.id),
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return {"error": _REFINE_AGENT_TROUBLE}
 
 
 def _domain_from_url(url: str) -> str:
@@ -211,92 +548,6 @@ def _refined_idea_patch(
 _REFINE_AGENT_TROUBLE = (
     "Refine agent had trouble — try again or open Refine phase"
 )
-
-
-async def exec_ask_refine_agent(
-    db: AsyncSession,
-    experiment: Experiment,
-    args: dict[str, Any],
-    user: User,
-) -> dict[str, Any]:
-    """Forward ``query`` into the refine thread via ``chat_service.handle_turn``."""
-    query = _extract_query(args)
-    if query is None:
-        return {"error": "query is required"}
-
-    before_idea = (
-        copy.deepcopy(experiment.refined_idea_current)
-        if isinstance(experiment.refined_idea_current, dict)
-        else None
-    )
-
-    dispatcher: ResearchDispatcher = _NoopResearchDispatcher()
-    turn = await chat_service.handle_turn(
-        db,
-        user=user,
-        message=query,
-        deep_research=True,
-        thread_id=experiment.thread_id,
-        experiment_id=experiment.id,
-        idempotency_key=f"universal-refine-{uuid4()}",
-        dispatcher=dispatcher,
-        prompt_name=PROMPT_NAME_REFINE_SUBAGENT,
-        system_prompt=REFINE_SUBAGENT_SYSTEM_PROMPT,
-        user_prompt_builder=build_refine_subagent_user_prompt,
-    )
-
-    # handle_turn catches run_turn failures and returns a ChatTurnResult with
-    # user_facing_error set (e.g. refinement ValidationError → "Something
-    # didn't parse…"). That is not a successful sub-agent answer for the rail.
-    if turn.user_facing_error is not None:
-        _logger.warning(
-            "refine sub-agent turn failed upstream",
-            experiment_id=str(experiment.id),
-            retry_action=turn.user_facing_error.retry_action,
-            upstream_message=turn.user_facing_error.message,
-        )
-        return {"error": _REFINE_AGENT_TROUBLE}
-
-    try:
-        # Reload experiment — handle_turn commits; identity may be expired.
-        refreshed = await db.get(Experiment, experiment.id)
-        after_idea: dict[str, Any] | None = None
-        if refreshed is not None and isinstance(
-            refreshed.refined_idea_current, dict
-        ):
-            after_idea = refreshed.refined_idea_current
-            # Keep caller's experiment instance in sync for subsequent tools.
-            experiment.refined_idea_current = after_idea
-            experiment.thread_id = refreshed.thread_id
-            experiment.status = refreshed.status
-            experiment.refinement_count = refreshed.refinement_count
-
-        clarifying = turn.clarifying_questions
-        has_mcq = len(clarifying) > 0 if clarifying is not None else False
-        assistant_text = turn.assistant_message
-        if not isinstance(assistant_text, str) or not assistant_text.strip():
-            _logger.warning(
-                "refine sub-agent returned empty assistant_message",
-                experiment_id=str(experiment.id),
-                has_clarifying=has_mcq,
-                clarifying_dimension=turn.clarifying_dimension,
-            )
-            return {"error": _REFINE_AGENT_TROUBLE}
-
-        return {
-            "assistant_text": assistant_text,
-            "refined_idea_patch": _refined_idea_patch(before_idea, after_idea),
-            "has_pending_mcq": has_mcq,
-            "log_entry": turn.clarifying_dimension,
-        }
-    except (AttributeError, KeyError, TypeError) as exc:
-        _logger.warning(
-            "refine sub-agent result mapping failed",
-            experiment_id=str(experiment.id),
-            error_type=type(exc).__name__,
-            error=str(exc),
-        )
-        return {"error": _REFINE_AGENT_TROUBLE}
 
 
 async def exec_ask_research_agent(
