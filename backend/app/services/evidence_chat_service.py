@@ -473,8 +473,15 @@ async def send_evidence_chat_message(
     selection_text: str | None = None,
     selection_question_id: str | None = None,
     parent_message_id: UUID | None = None,
+    *,
+    prompt_name: str | None = None,
+    system_prompt: str | None = None,
 ) -> EvidenceChatResult:
     """Send one evidence-chat turn (non-streaming) and persist both rows.
+
+    Optional ``prompt_name`` / ``system_prompt`` override the phase-panel
+    defaults (used by the universal-chat research sub-agent). Streaming and
+    edit/regenerate paths are unchanged.
 
     The new user message hangs off ``parent_message_id`` (or the current active
     leaf when omitted); the assistant reply hangs off the user message and
@@ -524,8 +531,8 @@ async def send_evidence_chat_message(
         db,
         provider=settings.refinement_provider,
         model=settings.refinement_model,
-        prompt_name=PROMPT_NAME_EVIDENCE_CHAT,
-        system=EVIDENCE_CHAT_SYSTEM_PROMPT,
+        prompt_name=prompt_name or PROMPT_NAME_EVIDENCE_CHAT,
+        system=system_prompt or EVIDENCE_CHAT_SYSTEM_PROMPT,
         user=user_prompt,
         max_tokens=_MAX_TOKENS,
         temperature=_TEMPERATURE,

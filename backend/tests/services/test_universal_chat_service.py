@@ -1420,3 +1420,144 @@ async def test_ask_refine_agent_soft_fail_continues(
     assert tool_result.tool_payload is not None
     assert "error" in tool_result.tool_payload
     assert result.assistant_message.content.startswith("Refine is briefly unavailable")
+
+
+def test_subagent_prompt_names_and_phase_panel_defaults() -> None:
+    """Rail variants are distinct; phase-panel prompt names stay on their modules."""
+    from app.llm.prompts.evidence_chat import PROMPT_NAME_EVIDENCE_CHAT
+    from app.llm.prompts.refine_subagent import PROMPT_NAME_REFINE_SUBAGENT
+    from app.llm.prompts.refinement import PROMPT_NAME_V5_CHAT
+    from app.llm.prompts.research_subagent import PROMPT_NAME_RESEARCH_SUBAGENT
+    import app.services.subagent_executors as subagents
+    import inspect
+
+    assert PROMPT_NAME_RESEARCH_SUBAGENT == "research_subagent_v1"
+    assert PROMPT_NAME_REFINE_SUBAGENT == "refine_subagent_v1"
+    assert PROMPT_NAME_EVIDENCE_CHAT == "evidence_chat_v3"
+    assert PROMPT_NAME_V5_CHAT == "refinement_v5_chat"
+
+    # Executors import the rail variants (wired at call sites).
+    assert subagents.PROMPT_NAME_RESEARCH_SUBAGENT == "research_subagent_v1"
+    assert subagents.PROMPT_NAME_REFINE_SUBAGENT == "refine_subagent_v1"
+
+    # Phase-panel defaults remain the fallbacks in service signatures.
+    ev_sig = inspect.signature(
+        __import__(
+            "app.services.evidence_chat_service", fromlist=["send_evidence_chat_message"]
+        ).send_evidence_chat_message
+    )
+    assert "prompt_name" in ev_sig.parameters
+    assert "system_prompt" in ev_sig.parameters
+
+    run_sig = inspect.signature(
+        __import__(
+            "app.services.refinement_service", fromlist=["run_turn"]
+        ).run_turn
+    )
+    assert "prompt_name" in run_sig.parameters
+    assert "system_prompt" in run_sig.parameters
+
+
+@pytest.mark.asyncio
+async def test_research_executor_passes_rail_prompt(
+    db_session: AsyncSession,
+) -> None:
+    from app.llm.prompts.research_subagent import (
+        PROMPT_NAME_RESEARCH_SUBAGENT,
+        RESEARCH_SUBAGENT_SYSTEM_PROMPT,
+    )
+    from app.services.evidence_chat_service import EvidenceChatResult
+    from app.services.subagent_executors import exec_ask_research_agent
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.RESEARCH_READY
+    )
+    db_session.add(
+        ValidationReport(
+            experiment_id=experiment.id,
+            raw_report={"questions_and_findings": [], "competitors": []},
+        )
+    )
+    await db_session.commit()
+
+    captured: dict[str, Any] = {}
+
+    async def _fake_evidence(*_args: Any, **kwargs: Any) -> EvidenceChatResult:
+        captured.update(kwargs)
+        assistant = ChatMessage(
+            thread_id=uuid4(),
+            role=ChatRole.ASSISTANT,
+            content="Competitors are thin [cite: https://example.com/x].",
+            experiment_id=experiment.id,
+            turn_kind=ChatTurnKind.EVIDENCE_CHAT,
+        )
+        user_msg = ChatMessage(
+            thread_id=assistant.thread_id,
+            role=ChatRole.USER,
+            content="competitors?",
+            experiment_id=experiment.id,
+            turn_kind=ChatTurnKind.EVIDENCE_CHAT,
+        )
+        return EvidenceChatResult(
+            user_message=user_msg,
+            assistant_message=assistant,
+            thread_id=assistant.thread_id,
+        )
+
+    with patch(
+        "app.services.subagent_executors.send_evidence_chat_message",
+        new=_fake_evidence,
+    ):
+        await exec_ask_research_agent(
+            db_session, experiment, {"query": "Who competes?"}, user
+        )
+
+    assert captured["prompt_name"] == PROMPT_NAME_RESEARCH_SUBAGENT
+    assert captured["system_prompt"] == RESEARCH_SUBAGENT_SYSTEM_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_refine_executor_passes_rail_prompt(
+    db_session: AsyncSession,
+) -> None:
+    from app.db.enums import ChatTurnKind
+    from app.llm.prompts.refine_subagent import (
+        PROMPT_NAME_REFINE_SUBAGENT,
+        REFINE_SUBAGENT_SYSTEM_PROMPT,
+    )
+    from app.services.chat_service import ChatTurnResult
+    from app.services.subagent_executors import exec_ask_refine_agent
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.REFINING
+    )
+    captured: dict[str, Any] = {}
+
+    async def _fake_handle(*_args: Any, **kwargs: Any) -> ChatTurnResult:
+        captured.update(kwargs)
+        return ChatTurnResult(
+            thread_id=uuid4(),
+            message_id=uuid4(),
+            experiment_id=experiment.id,
+            assistant_message="Position as the Slack-native HR answer layer.",
+            turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+            clarifying_dimension=None,
+            clarifying_questions=(),
+            pipeline_dispatched=False,
+            dispatched_at=None,
+            experiment_status=ExperimentStatus.REFINING,
+            research_error_detail=None,
+            user_facing_error=None,
+            refinement_count=1,
+        )
+
+    with patch(
+        "app.services.subagent_executors.chat_service.handle_turn",
+        new=_fake_handle,
+    ):
+        await exec_ask_refine_agent(
+            db_session, experiment, {"query": "How should I position this?"}, user
+        )
+
+    assert captured["prompt_name"] == PROMPT_NAME_REFINE_SUBAGENT
+    assert captured["system_prompt"] == REFINE_SUBAGENT_SYSTEM_PROMPT

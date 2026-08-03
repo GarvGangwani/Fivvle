@@ -14,6 +14,7 @@ import type { RefCitation } from "./types";
 
 const CITE_RE = /\[cite:\s*([^\]]*)\]/gi;
 const REF_RE = /\[ref:\s*([^\]]*)\]/gi;
+const MARKER_RE = /\[(?:cite|ref):\s*[^\]]*\]/gi;
 
 const VALID_SECTIONS = new Set([
   "market",
@@ -30,6 +31,11 @@ export interface ParsedCitations {
   urlCitations: string[];
   refCitations: RefCitation[];
 }
+
+/** Ordered text + marker segments for inline chip rendering (rail sub-agent). */
+export type CitationToken =
+  | { type: "text"; value: string }
+  | { type: "marker"; marker: string };
 
 function parseRefAnchor(raw: string): RefCitation | null {
   const anchor = raw.trim();
@@ -49,6 +55,28 @@ function parseRefAnchor(raw: string): RefCitation | null {
     return VALID_SECTIONS.has(id) ? { kind: "section", value: id } : null;
   }
   return null;
+}
+
+/**
+ * Split content into text / marker tokens in document order.
+ * Markers stay intact (including multi-URL `[cite: a, b]` forms).
+ */
+export function tokenizeCitations(content: string): CitationToken[] {
+  const tokens: CitationToken[] = [];
+  let lastIndex = 0;
+  MARKER_RE.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = MARKER_RE.exec(content)) !== null) {
+    if (match.index > lastIndex) {
+      tokens.push({ type: "text", value: content.slice(lastIndex, match.index) });
+    }
+    tokens.push({ type: "marker", marker: match[0] });
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < content.length) {
+    tokens.push({ type: "text", value: content.slice(lastIndex) });
+  }
+  return tokens;
 }
 
 export function parseCitations(content: string): ParsedCitations {

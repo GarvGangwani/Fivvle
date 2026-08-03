@@ -723,6 +723,9 @@ async def handle_turn(
     name: str | None = None,
     attachment_ids: list[UUID] | None = None,
     user_message_metadata: dict[str, Any] | None = None,
+    *,
+    prompt_name: str | None = None,
+    system_prompt: str | None = None,
 ) -> ChatTurnResult:
     """Top-level entry. Handles both DR and plain-chat paths."""
     message = _sanitize_user_message(message)
@@ -739,6 +742,8 @@ async def handle_turn(
             dispatcher=dispatcher,
             name=name,
             user_message_metadata=user_message_metadata,
+            prompt_name=prompt_name,
+            system_prompt=system_prompt,
         )
     return await _handle_plain_chat_turn(
         db,
@@ -912,6 +917,8 @@ async def _handle_deep_research_turn(
     existing_user_message: ChatMessage | None = None,
     user_message_metadata: dict[str, Any] | None = None,
     bump_refinement_count: bool = True,
+    prompt_name: str | None = None,
+    system_prompt: str | None = None,
 ) -> ChatTurnResult:
     if idempotency_key is None:
         raise ValueError("idempotency_key required for deep_research=true")
@@ -962,6 +969,8 @@ async def _handle_deep_research_turn(
             chat_history,
             llm_message,
             bump_refinement_count=bump_refinement_count,
+            prompt_name=prompt_name,
+            system_prompt=system_prompt,
         )
     except Exception as exc:
         user_error = translate_engineer_error(

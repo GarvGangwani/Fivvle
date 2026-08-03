@@ -19,6 +19,14 @@ from sqlalchemy.orm import selectinload
 from app.db.models.experiment import Experiment
 from app.db.models.user import User
 from app.dispatchers.protocol import ResearchDispatcher
+from app.llm.prompts.refine_subagent import (
+    PROMPT_NAME_REFINE_SUBAGENT,
+    REFINE_SUBAGENT_SYSTEM_PROMPT,
+)
+from app.llm.prompts.research_subagent import (
+    PROMPT_NAME_RESEARCH_SUBAGENT,
+    RESEARCH_SUBAGENT_SYSTEM_PROMPT,
+)
 from app.logging_config import get_logger
 from app.services import chat_service
 from app.services.evidence_chat_service import send_evidence_chat_message
@@ -237,6 +245,8 @@ async def exec_ask_refine_agent(
         experiment_id=experiment.id,
         idempotency_key=f"universal-refine-{uuid4()}",
         dispatcher=dispatcher,
+        prompt_name=PROMPT_NAME_REFINE_SUBAGENT,
+        system_prompt=REFINE_SUBAGENT_SYSTEM_PROMPT,
     )
 
     # Reload experiment — handle_turn commits; identity may be expired.
@@ -277,6 +287,8 @@ async def exec_ask_research_agent(
         current_user=user,
         experiment_id=experiment.id,
         message=query,
+        prompt_name=PROMPT_NAME_RESEARCH_SUBAGENT,
+        system_prompt=RESEARCH_SUBAGENT_SYSTEM_PROMPT,
     )
 
     assistant_text = result.assistant_message.content or ""

@@ -274,8 +274,13 @@ async def run_turn(
     latest_message: str,
     *,
     bump_refinement_count: bool = True,
+    prompt_name: str | None = None,
+    system_prompt: str | None = None,
 ) -> RefinementTurnDecision:
     """Run one refinement turn. Always returns a clarify decision.
+
+    Optional ``prompt_name`` / ``system_prompt`` override phase-panel defaults
+    (used by the universal-chat refine sub-agent).
 
     Side effects (in-place on experiment, no commit — caller commits):
     - When bump_refinement_count is True:
@@ -315,8 +320,8 @@ async def run_turn(
         db,
         provider=settings.refinement_provider,
         model=settings.refinement_model,
-        prompt_name=PROMPT_NAME_V5_CHAT,
-        system=REFINEMENT_V2_CHAT_SYSTEM_PROMPT,
+        prompt_name=prompt_name or PROMPT_NAME_V5_CHAT,
+        system=system_prompt or REFINEMENT_V2_CHAT_SYSTEM_PROMPT,
         user=user_prompt,
         response_model=RefinementTurnDecision,
         max_tokens=_REFINEMENT_MAX_TOKENS,
