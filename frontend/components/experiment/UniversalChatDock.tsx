@@ -22,13 +22,23 @@ import {
   getUniversalChatMessages,
   sendUniversalChatMessage,
 } from "@/lib/api";
-import type { ChatHistoryMessage } from "@/lib/types";
+import type {
+  ChatHistoryMessage,
+  RefineSubagentToolResult,
+  ResearchSubagentSourceRef,
+  ResearchSubagentToolResult,
+} from "@/lib/types";
 
 const TOOL_CALL_LABELS: Record<string, string> = {
   get_metrics_summary: "Checked the metrics",
   get_report_summary: "Checked the validation report",
   get_landing_status: "Checked the landing page",
+  ask_refine_agent: "Asked Refine agent",
+  ask_research_agent: "Asked Research agent",
 };
+
+const MARKER_SPLIT_RE = /(\[(?:cite|ref):\s*[^\]]*\])/gi;
+const MARKER_EXACT_RE = /^\[(?:cite|ref):\s*[^\]]*\]$/i;
 
 function toolCallLabel(toolPayload: ChatHistoryMessage["tool_payload"]): string {
   const name =
@@ -41,6 +51,112 @@ function toolCallLabel(toolPayload: ChatHistoryMessage["tool_payload"]): string 
     return TOOL_CALL_LABELS[name];
   }
   return "Checked project data";
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return null;
+}
+
+function parseRefineSubagentResult(
+  payload: ChatHistoryMessage["tool_payload"],
+): RefineSubagentToolResult | null {
+  const root = asRecord(payload);
+  if (!root || root.tool_name !== "ask_refine_agent") return null;
+  if (typeof root.error === "string" && root.result == null) return null;
+  const result = asRecord(root.result);
+  if (!result || typeof result.assistant_text !== "string") return null;
+  return {
+    assistant_text: result.assistant_text,
+    refined_idea_patch:
+      result.refined_idea_patch && typeof result.refined_idea_patch === "object"
+        ? (result.refined_idea_patch as Record<string, unknown>)
+        : null,
+    has_pending_mcq: Boolean(result.has_pending_mcq),
+    log_entry: typeof result.log_entry === "string" ? result.log_entry : null,
+  };
+}
+
+function parseResearchSubagentResult(
+  payload: ChatHistoryMessage["tool_payload"],
+): ResearchSubagentToolResult | null {
+  const root = asRecord(payload);
+  if (!root || root.tool_name !== "ask_research_agent") return null;
+  if (typeof root.error === "string" && root.result == null) return null;
+  const result = asRecord(root.result);
+  if (!result || typeof result.assistant_text_with_citations !== "string") {
+    return null;
+  }
+  const rawRefs = Array.isArray(result.source_refs) ? result.source_refs : [];
+  const source_refs: ResearchSubagentSourceRef[] = [];
+  for (const item of rawRefs) {
+    const row = asRecord(item);
+    if (!row || typeof row.marker_id !== "string") continue;
+    source_refs.push({
+      marker_id: row.marker_id,
+      source_title:
+        typeof row.source_title === "string" ? row.source_title : row.marker_id,
+      source_url: typeof row.source_url === "string" ? row.source_url : null,
+      ref_number:
+        typeof row.ref_number === "number" ? row.ref_number : source_refs.length + 1,
+    });
+  }
+  return {
+    assistant_text_with_citations: result.assistant_text_with_citations,
+    source_refs,
+  };
+}
+
+function SubagentStatusChip({ label }: { label: string }) {
+  return (
+    <span className="inline-flex max-w-full items-center rounded-xs border border-border-master bg-surface-elevated px-2 py-0.5 text-xs text-ink-tertiary">
+      {label}
+    </span>
+  );
+}
+
+function ResearchTextWithCitationChips({
+  text,
+  sourceRefs,
+}: {
+  text: string;
+  sourceRefs: ResearchSubagentSourceRef[];
+}) {
+  const byMarker = new Map(
+    sourceRefs.map((ref) => [ref.marker_id.toLowerCase(), ref]),
+  );
+  const parts = text.split(MARKER_SPLIT_RE);
+
+  return (
+    <div className="fv-msg-ai break-words text-sm text-[var(--fv-text)]">
+      {parts.map((part, index) => {
+        if (!part) return null;
+        if (MARKER_EXACT_RE.test(part)) {
+          const ref = byMarker.get(part.toLowerCase());
+          const label = ref
+            ? `${ref.ref_number}. ${ref.source_title}`
+            : part.replace(/^\[|\]$/g, "");
+          return (
+            <span
+              key={`cite-${index}`}
+              className="mx-0.5 inline-flex max-w-full align-middle"
+            >
+              <SubagentStatusChip label={label} />
+            </span>
+          );
+        }
+        return (
+          <ChatMarkdown
+            key={`md-${index}`}
+            content={part}
+            className="inline [&_p]:inline [&_p]:m-0"
+          />
+        );
+      })}
+    </div>
+  );
 }
 
 type Props = {
@@ -453,6 +569,47 @@ function MessageRow({
   }
 
   if (message.role === "tool_result") {
+    const refine = parseRefineSubagentResult(message.tool_payload);
+    if (refine) {
+      return (
+        <div>
+          <span className="mb-1 block text-xs uppercase tracking-wide text-ink-tertiary">
+            From Refine agent
+          </span>
+          <ChatMarkdown
+            content={refine.assistant_text}
+            className="fv-msg-ai break-words text-sm text-[var(--fv-text)]"
+          />
+          {(refine.refined_idea_patch != null || refine.has_pending_mcq) && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {refine.refined_idea_patch != null ? (
+                <SubagentStatusChip label="Refined idea updated" />
+              ) : null}
+              {refine.has_pending_mcq ? (
+                <SubagentStatusChip label="Open Refine to answer clarifying question" />
+              ) : null}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    const research = parseResearchSubagentResult(message.tool_payload);
+    if (research) {
+      return (
+        <div>
+          <span className="mb-1 block text-xs uppercase tracking-wide text-ink-tertiary">
+            From Research agent
+          </span>
+          <ResearchTextWithCitationChips
+            text={research.assistant_text_with_citations}
+            sourceRefs={research.source_refs}
+          />
+        </div>
+      );
+    }
+
+    // Phase 1 read-tool results stay hidden in the rail.
     return null;
   }
 

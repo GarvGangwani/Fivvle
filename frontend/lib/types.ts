@@ -365,6 +365,30 @@ export interface ChatHistoryMessage {
   created_at: string;
 }
 
+/** Source chip metadata from ask_research_agent tool_result. */
+export interface ResearchSubagentSourceRef {
+  marker_id: string;
+  source_title: string;
+  source_url: string | null;
+  ref_number: number;
+}
+
+/** tool_payload.result for ask_refine_agent. */
+export interface RefineSubagentToolResult {
+  assistant_text: string;
+  refined_idea_patch: Record<string, unknown> | null;
+  has_pending_mcq: boolean;
+  log_entry: string | null;
+}
+
+/** tool_payload.result for ask_research_agent. */
+export interface ResearchSubagentToolResult {
+  assistant_text_with_citations: string;
+  source_refs: ResearchSubagentSourceRef[];
+}
+
+export type SubagentToolName = "ask_refine_agent" | "ask_research_agent";
+
 export interface ExperimentChatMessagesResponse {
   thread_id: string | null;
   experiment_id: string;
