@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseCitations } from "../parse-citations";
+import { parseCitations, tokenizeCitations } from "../parse-citations";
 
 describe("parseCitations", () => {
   it("extracts and dedupes URL citations, stripping markers", () => {
@@ -64,5 +64,26 @@ describe("parseCitations", () => {
       "The answer [cite: https://a.com].\n*What is your wedge?*",
     );
     expect(cleanedText).toBe("The answer.\n*What is your wedge?*");
+  });
+});
+
+describe("tokenizeCitations", () => {
+  it("keeps markers inline between text segments", () => {
+    const tokens = tokenizeCitations(
+      "Demand is real [cite: https://a.com]. Gap on q2 [ref: q2].",
+    );
+    expect(tokens).toEqual([
+      { type: "text", value: "Demand is real " },
+      { type: "marker", marker: "[cite: https://a.com]" },
+      { type: "text", value: ". Gap on q2 " },
+      { type: "marker", marker: "[ref: q2]" },
+      { type: "text", value: "." },
+    ]);
+  });
+
+  it("returns a single text token when there are no markers", () => {
+    expect(tokenizeCitations("Plain answer.")).toEqual([
+      { type: "text", value: "Plain answer." },
+    ]);
   });
 });

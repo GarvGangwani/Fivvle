@@ -22,6 +22,7 @@ import {
   getUniversalChatMessages,
   sendUniversalChatMessage,
 } from "@/lib/api";
+import { tokenizeCitations } from "@/lib/parse-citations";
 import type {
   ChatHistoryMessage,
   RefineSubagentToolResult,
@@ -37,8 +38,10 @@ const TOOL_CALL_LABELS: Record<string, string> = {
   ask_research_agent: "Asked Research agent",
 };
 
-const MARKER_SPLIT_RE = /(\[(?:cite|ref):\s*[^\]]*\])/gi;
-const MARKER_EXACT_RE = /^\[(?:cite|ref):\s*[^\]]*\]$/i;
+const SUBAGENT_HANDOFF: Record<string, string> = {
+  ask_refine_agent: "Refine agent thinking…",
+  ask_research_agent: "Research agent digging in…",
+};
 
 function toolCallLabel(toolPayload: ChatHistoryMessage["tool_payload"]): string {
   const name =
@@ -51,6 +54,13 @@ function toolCallLabel(toolPayload: ChatHistoryMessage["tool_payload"]): string 
     return TOOL_CALL_LABELS[name];
   }
   return "Checked project data";
+}
+
+function toolNameFromPayload(
+  toolPayload: ChatHistoryMessage["tool_payload"],
+): string | null {
+  const root = asRecord(toolPayload);
+  return root && typeof root.tool_name === "string" ? root.tool_name : null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -111,8 +121,16 @@ function parseResearchSubagentResult(
 
 function SubagentStatusChip({ label }: { label: string }) {
   return (
-    <span className="inline-flex max-w-full items-center rounded-xs border border-border-master bg-surface-elevated px-2 py-0.5 text-xs text-ink-tertiary">
+    <span className="inline-flex max-w-full items-center rounded-xs border border-border-master bg-surface-elevated px-1.5 py-0.5 text-[11px] leading-tight text-ink-tertiary">
       {label}
+    </span>
+  );
+}
+
+function InlineCitationChip({ label }: { label: string }) {
+  return (
+    <span className="mx-0.5 inline-flex max-w-[12rem] align-baseline rounded-xs border border-border-master px-1 py-px text-[10px] leading-tight text-ink-tertiary">
+      <span className="truncate">{label}</span>
     </span>
   );
 }
@@ -127,31 +145,33 @@ function ResearchTextWithCitationChips({
   const byMarker = new Map(
     sourceRefs.map((ref) => [ref.marker_id.toLowerCase(), ref]),
   );
-  const parts = text.split(MARKER_SPLIT_RE);
+  const tokens = tokenizeCitations(text);
 
   return (
     <div className="fv-msg-ai break-words text-sm text-[var(--fv-text)]">
-      {parts.map((part, index) => {
-        if (!part) return null;
-        if (MARKER_EXACT_RE.test(part)) {
-          const ref = byMarker.get(part.toLowerCase());
-          const label = ref
-            ? `${ref.ref_number}. ${ref.source_title}`
-            : part.replace(/^\[|\]$/g, "");
+      {tokens.map((token, index) => {
+        if (token.type === "text") {
+          if (!token.value) return null;
           return (
-            <span
-              key={`cite-${index}`}
-              className="mx-0.5 inline-flex max-w-full align-middle"
-            >
-              <SubagentStatusChip label={label} />
+            <ChatMarkdown
+              key={`md-${index}`}
+              content={token.value}
+              className="inline [&_p]:m-0 [&_p]:inline"
+            />
+          );
+        }
+        const ref = byMarker.get(token.marker.toLowerCase());
+        if (!ref) {
+          return (
+            <span key={`raw-${index}`} className="text-ink-tertiary">
+              {token.marker}
             </span>
           );
         }
         return (
-          <ChatMarkdown
-            key={`md-${index}`}
-            content={part}
-            className="inline [&_p]:inline [&_p]:m-0"
+          <InlineCitationChip
+            key={`cite-${index}`}
+            label={ref.source_title || String(ref.ref_number)}
           />
         );
       })}
@@ -419,15 +439,25 @@ export const UniversalChatDock = memo(function UniversalChatDock({
           </div>
         ) : (
           <>
-            {messages.map((msg) => (
-              <MessageRow
-                key={msg.id}
-                message={msg}
-                onRetry={
-                  msg.error ? () => void handleRetry(msg) : undefined
-                }
-              />
-            ))}
+            {messages.map((msg, index) => {
+              const next = messages[index + 1];
+              const name = toolNameFromPayload(msg.tool_payload);
+              const showSubagentHandoff =
+                msg.role === "tool_call" &&
+                name != null &&
+                name in SUBAGENT_HANDOFF &&
+                (next == null || next.role !== "tool_result");
+              return (
+                <MessageRow
+                  key={msg.id}
+                  message={msg}
+                  showSubagentHandoff={showSubagentHandoff}
+                  onRetry={
+                    msg.error ? () => void handleRetry(msg) : undefined
+                  }
+                />
+              );
+            })}
             {sending ? <TypingIndicator /> : null}
           </>
         )}
@@ -521,9 +551,11 @@ function TypingIndicator() {
 function MessageRow({
   message,
   onRetry,
+  showSubagentHandoff = false,
 }: {
   message: DockMessage;
   onRetry?: () => void;
+  showSubagentHandoff?: boolean;
 }) {
   if (message.role === "user") {
     return (
@@ -573,7 +605,7 @@ function MessageRow({
     if (refine) {
       return (
         <div>
-          <span className="mb-1 block text-xs uppercase tracking-wide text-ink-tertiary">
+          <span className="mb-0.5 block text-xs uppercase tracking-wider text-ink-tertiary">
             From Refine agent
           </span>
           <ChatMarkdown
@@ -598,7 +630,7 @@ function MessageRow({
     if (research) {
       return (
         <div>
-          <span className="mb-1 block text-xs uppercase tracking-wide text-ink-tertiary">
+          <span className="mb-0.5 block text-xs uppercase tracking-wider text-ink-tertiary">
             From Research agent
           </span>
           <ResearchTextWithCitationChips
@@ -614,14 +646,22 @@ function MessageRow({
   }
 
   if (message.role === "tool_call") {
+    const name = toolNameFromPayload(message.tool_payload);
     const label = toolCallLabel(message.tool_payload);
+    const handoff =
+      showSubagentHandoff && name != null ? SUBAGENT_HANDOFF[name] : null;
     return (
-      <div
-        className="-my-2 inline-flex max-w-full items-center gap-1.5 rounded-xs border border-border-master bg-surface-elevated px-2 py-1 text-xs text-ink-tertiary"
-        aria-label={label}
-      >
-        <Search className="h-3.5 w-3.5 shrink-0 text-ink-tertiary" aria-hidden />
-        <span className="truncate">{label}</span>
+      <div className="space-y-1">
+        <div
+          className="-my-2 inline-flex max-w-full items-center gap-1.5 rounded-xs border border-border-master bg-surface-elevated px-2 py-1 text-xs text-ink-tertiary"
+          aria-label={label}
+        >
+          <Search className="h-3.5 w-3.5 shrink-0 text-ink-tertiary" aria-hidden />
+          <span className="truncate">{label}</span>
+        </div>
+        {handoff ? (
+          <p className="text-xs italic text-ink-tertiary">{handoff}</p>
+        ) : null}
       </div>
     );
   }
