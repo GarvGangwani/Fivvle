@@ -52,8 +52,6 @@ import { useCanvasLayout } from "./hooks/useCanvasLayout";
 import { useResources } from "./hooks/useResources";
 import { ActNode } from "./nodes/ActNode";
 import { CoreShellNode } from "./nodes/CoreShellNode";
-import { RefineExpandedNode } from "./nodes/RefineExpandedNode";
-import { RefineMCQPopup, type MCQPopupPosition } from "./refine/RefineMCQPopup";
 import { useRefineChat } from "./refine/useRefineChat";
 import { SparkExpandedNode } from "./nodes/SparkExpandedNode";
 import { SparkNode, type SparkMetricState } from "./nodes/SparkNode";
@@ -76,14 +74,12 @@ const ACT_NODE_IDS: SatelliteNodeId[] = [
 ];
 
 const SPARK_EXPANDED_ID = "spark-expanded" as const;
-const REFINE_EXPANDED_ID = "refine-expanded" as const;
 
 const nodeTypes: NodeTypes = {
   coreShell: CoreShellNode,
   actNode: ActNode,
   sparkNode: SparkNode,
   sparkExpanded: SparkExpandedNode,
-  refineExpanded: RefineExpandedNode,
 };
 
 const edgeTypes: EdgeTypes = {
@@ -159,19 +155,21 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   const [overlayAct, setOverlayAct] = useState<DeepDiveAct | null>(() => {
     // Legacy deep-link: ?act=spark&view=fullscreen → phase panel
     if (initialAct === "spark" && initialView === "fullscreen") return "spark";
+    // ?act=refine (and other phase acts) → phase panel only
+    if (
+      initialAct === "refine" ||
+      initialAct === "evidence" ||
+      initialAct === "launch" ||
+      initialAct === "signal"
+    ) {
+      return initialAct;
+    }
     return null;
   });
   const [sparkPanelOpen, setSparkPanelOpen] = useState(
     () => initialAct === "spark" && initialView !== "fullscreen",
   );
   const [sparkPanelPosition, setSparkPanelPosition] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
-  const [refinePanelOpen, setRefinePanelOpen] = useState(
-    () => initialAct === "refine",
-  );
-  const [refinePanelPosition, setRefinePanelPosition] = useState<{
     x: number;
     y: number;
   } | null>(null);
@@ -197,7 +195,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     viewportRef.current = savedViewport;
   }, [savedViewport]);
 
-  const refineSurfaceOpen = refinePanelOpen || overlayAct === "refine";
+  const refineSurfaceOpen = overlayAct === "refine";
   const enableOpener =
     refineSurfaceOpen &&
     (experiment.current_spark_version ?? 0) >= 1 &&
@@ -211,58 +209,17 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
 
   const {
     messages: refineMessages,
-    loading: refineLoading,
-    generatingOpener,
-    sending: refineSending,
-    send: refineSend,
     reload: reloadRefineChat,
-    activeMCQ,
-    answerMCQ,
-    dismissMCQ,
-    reopenMCQ,
-    dismissedMCQMessageIds,
-    refinementCount,
-    editMessage,
-    retryMessage,
-    switchToBranch,
-    navigatingMessageId,
-    regeneratingMessageId,
   } = useRefineChat(experiment.id, {
     onTurnComplete: onExperimentRefresh,
     enableOpener,
   });
-
-  const [mcqPopupPosition, setMcqPopupPosition] =
-    useState<MCQPopupPosition | null>(null);
 
   const refreshExperimentAndChat = useCallback(async () => {
     const updated = await getExperiment(experiment.id);
     onExperimentChange?.(updated);
     reloadRefineChat();
   }, [experiment.id, onExperimentChange, reloadRefineChat]);
-
-  useEffect(() => {
-    if (!activeMCQ) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") dismissMCQ();
-    };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [activeMCQ, dismissMCQ]);
-
-  useEffect(() => {
-    const handleResize = () => {
-      setMcqPopupPosition((prev) => {
-        if (!prev) return prev;
-        const maxX = window.innerWidth - 384;
-        const maxY = window.innerHeight - 100;
-        if (prev.x > maxX || prev.y > maxY) return null;
-        return prev;
-      });
-    };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
 
   const phasesComplete = getPhasesComplete(experiment.status);
   const resourceCount = Math.max(experiment.resource_count ?? 0, resources.length);
@@ -289,18 +246,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     return { x: sparkPos.x + 340, y: sparkPos.y };
   }, [positions]);
 
-  const computeInitialRefinePosition = useCallback(() => {
-    const refinePos = positions.refine ?? DEFAULT_POSITIONS.refine;
-    return { x: refinePos.x + 340, y: refinePos.y };
-  }, [positions]);
-
-  useEffect(() => {
-    if (!refinePanelOpen) return;
-    if (!getNodeLockState("refine", experiment).isLocked) return;
-    setRefinePanelOpen(false);
-    setRefinePanelPosition(null);
-  }, [experiment, refinePanelOpen]);
-
   // When the panel is open but local position is unset (URL deep-link / popstate),
   // wait until layout has loaded so we read spark-expanded from backend-synced state.
   useEffect(() => {
@@ -315,20 +260,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     sparkPanelPosition,
     positions,
     computeInitialPanelPosition,
-  ]);
-
-  useEffect(() => {
-    if (!refinePanelOpen || !loaded) return;
-    if (refinePanelPosition !== null) return;
-    setRefinePanelPosition(
-      positions[REFINE_EXPANDED_ID] ?? computeInitialRefinePosition(),
-    );
-  }, [
-    refinePanelOpen,
-    loaded,
-    refinePanelPosition,
-    positions,
-    computeInitialRefinePosition,
   ]);
 
   const setSparkUrl = useCallback(
@@ -349,18 +280,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     },
     [],
   );
-
-  const setRefineUrl = useCallback((open: boolean) => {
-    const url = new URL(window.location.href);
-    if (open) {
-      url.searchParams.set("act", "refine");
-      url.searchParams.delete("view");
-    } else if (url.searchParams.get("act") === "refine") {
-      url.searchParams.delete("act");
-      url.searchParams.delete("view");
-    }
-    window.history.pushState({}, "", url.toString());
-  }, []);
 
   const setOverlayUrl = useCallback((act: DeepDiveAct | null) => {
     const url = new URL(window.location.href);
@@ -388,8 +307,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       }
       setSparkPanelOpen(false);
       setSparkPanelPosition(null);
-      setRefinePanelOpen(false);
-      setRefinePanelPosition(null);
       setOverlayAct(act);
       setOverlayUrl(act);
     },
@@ -402,48 +319,32 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     setSparkUrl("closed");
   }, [setSparkUrl]);
 
-  const closeRefinePanel = useCallback(() => {
-    setRefinePanelOpen(false);
-    setRefinePanelPosition(null);
-    setRefineUrl(false);
-  }, [setRefineUrl]);
-
   useEffect(() => {
     const onPopState = () => {
       const params = new URLSearchParams(window.location.search);
       const act = params.get("act");
       const view = params.get("view");
-      if (act === "evidence" || act === "launch" || act === "signal") {
+      if (
+        act === "evidence" ||
+        act === "launch" ||
+        act === "signal" ||
+        act === "refine"
+      ) {
         setSparkPanelOpen(false);
         setSparkPanelPosition(null);
-        setRefinePanelOpen(false);
-        setRefinePanelPosition(null);
         setOverlayAct(act);
       } else if (act === "spark" && view === "fullscreen") {
-        setRefinePanelOpen(false);
-        setRefinePanelPosition(null);
         setSparkPanelOpen(false);
         setSparkPanelPosition(null);
         setOverlayAct("spark");
       } else if (act === "spark") {
         setOverlayAct(null);
-        setRefinePanelOpen(false);
-        setRefinePanelPosition(null);
         setSparkPanelPosition(null);
         setSparkPanelOpen(true);
-      } else if (act === "refine") {
-        // Windowed refine (legacy URL) — leave alone per PR1.
-        setOverlayAct(null);
-        setSparkPanelOpen(false);
-        setSparkPanelPosition(null);
-        setRefinePanelPosition(null);
-        setRefinePanelOpen(true);
       } else {
         setOverlayAct(null);
         setSparkPanelOpen(false);
         setSparkPanelPosition(null);
-        setRefinePanelOpen(false);
-        setRefinePanelPosition(null);
       }
     };
     window.addEventListener("popstate", onPopState);
@@ -537,7 +438,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
             metricLabel: config.metricLabel,
             metricValue: metrics[id],
             isRunning: isActRunning(id, experiment.status),
-            isFocused: overlayAct === id || (id === "refine" && refinePanelOpen),
+            isFocused: overlayAct === id,
             isLocked: lockState.isLocked,
             unlockRequirement: lockState.unlockRequirement,
             isStale: stale?.isStale ?? false,
@@ -567,35 +468,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       });
     }
 
-    if (refinePanelOpen && refinePanelPosition) {
-      base.push({
-        id: REFINE_EXPANDED_ID,
-        type: "refineExpanded",
-        position: refinePanelPosition,
-        draggable: true,
-        selectable: true,
-        data: {
-          experiment,
-          onClose: closeRefinePanel,
-          onFullscreen: () => openPhaseOverlay("refine"),
-          messages: refineMessages,
-          loading: refineLoading,
-          generatingOpener,
-          sending: refineSending,
-          send: refineSend,
-          refinementCount,
-          activeMCQFromMessageId: activeMCQ?.fromMessageId,
-          dismissedMCQMessageIds,
-          onReopenMCQ: reopenMCQ,
-          onEditMessage: editMessage,
-          onRetryMessage: retryMessage,
-          onSwitchBranch: switchToBranch,
-          navigatingMessageId,
-          regeneratingMessageId,
-        },
-      });
-    }
-
     return base;
   }, [
     experiment,
@@ -605,29 +477,12 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     sparkPanelOpen,
     overlayAct,
     sparkPanelPosition,
-    refinePanelOpen,
-    refinePanelPosition,
     metrics,
     closeSparkPanel,
-    closeRefinePanel,
     openPhaseOverlay,
     onExperimentChange,
     evidenceRerunning,
     handleEvidenceRerun,
-    refineMessages,
-    refineLoading,
-    generatingOpener,
-    refineSending,
-    refineSend,
-    refinementCount,
-    activeMCQ?.fromMessageId,
-    dismissedMCQMessageIds,
-    reopenMCQ,
-    editMessage,
-    retryMessage,
-    switchToBranch,
-    navigatingMessageId,
-    regeneratingMessageId,
   ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(buildNodes());
@@ -724,7 +579,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   }, [resetLayout, fitView]);
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
-    if (node.id === SPARK_EXPANDED_ID || node.id === REFINE_EXPANDED_ID) return;
+    if (node.id === SPARK_EXPANDED_ID) return;
 
     const lockState = getNodeLockState(node.id, experiment);
     if (lockState.isLocked) {
@@ -775,7 +630,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
 
       const snapped = snapToGrid(node.position);
       const finalPos =
-        node.id === SPARK_EXPANDED_ID || node.id === REFINE_EXPANDED_ID
+        node.id === SPARK_EXPANDED_ID
           ? snapped
           : snapOutOfExclusionZone(snapped);
 
@@ -787,9 +642,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
 
       if (node.id === SPARK_EXPANDED_ID) {
         setSparkPanelPosition(finalPos);
-      }
-      if (node.id === REFINE_EXPANDED_ID) {
-        setRefinePanelPosition(finalPos);
       }
     },
     [setNodes, updatePosition],
@@ -841,18 +693,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         </>
       )}
 
-      {activeMCQ && refineSurfaceOpen ? (
-        <RefineMCQPopup
-          question={activeMCQ.question}
-          options={activeMCQ.options}
-          turnNumber={refinementCount || 1}
-          initialPosition={mcqPopupPosition}
-          onPositionChange={setMcqPopupPosition}
-          onAnswer={answerMCQ}
-          onDismiss={dismissMCQ}
-        />
-      ) : null}
-
       <CanvasToolbar onReset={handleResetLayout} onFitView={handleFitView} />
       <UniversalChatDock
         experimentId={experiment.id}
@@ -876,24 +716,11 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         onExperimentRefresh={onExperimentRefresh}
         onExperimentChange={onExperimentChange}
         onOpenLaunch={() => openPhaseOverlay("launch")}
-        mcqActive={Boolean(activeMCQ)}
         chatDockCollapsed={chatDockCollapsed}
         refinePanel={
           overlayAct === "refine"
             ? {
                 messages: refineMessages,
-                loading: refineLoading,
-                generatingOpener,
-                sending: refineSending,
-                send: refineSend,
-                activeMCQFromMessageId: activeMCQ?.fromMessageId,
-                dismissedMCQMessageIds,
-                onReopenMCQ: reopenMCQ,
-                onEditMessage: editMessage,
-                onRetryMessage: retryMessage,
-                onSwitchBranch: switchToBranch,
-                navigatingMessageId,
-                regeneratingMessageId,
                 onFinalizedOrReset: refreshExperimentAndChat,
               }
             : null

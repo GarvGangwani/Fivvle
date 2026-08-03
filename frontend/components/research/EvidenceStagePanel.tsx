@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   OverallRecommendation,
-  RefCitation,
   ValidationReport,
 } from "@/lib/types";
 import { getValidationReport } from "@/lib/api";
@@ -11,9 +10,7 @@ import { takePendingEvidenceFocus } from "@/lib/pending-evidence-focus";
 import {
   EvidenceReportEditor,
   type EvidenceReportEditorHandle,
-  type EvidenceSelection,
 } from "@/components/research/EvidenceReportEditor";
-import { EvidenceChatPane } from "@/components/research/EvidenceChatPane";
 import { EvidenceSourcesBook } from "@/components/research/EvidenceSourcesBook";
 import { EditedDocOutdatedBanner } from "@/components/research/EditedDocOutdatedBanner";
 
@@ -42,12 +39,7 @@ export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [editedDocBehind, setEditedDocBehind] = useState(false);
-  const [selection, setSelection] = useState<EvidenceSelection | null>(null);
   const editorRef = useRef<EvidenceReportEditorHandle>(null);
-
-  const handleFocusReference = useCallback((anchor: RefCitation) => {
-    editorRef.current?.focusReference(anchor);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,42 +96,29 @@ export function EvidenceStagePanel({ experimentId }: { experimentId: string }) {
 
   return (
     <div className="h-full overflow-hidden p-4">
-      <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[35%_65%]">
-        <EvidenceChatPane
-          experimentId={experimentId}
-          report={report}
-          selection={selection}
-          onClearSelection={() => setSelection(null)}
-          onFocusReference={handleFocusReference}
-        />
-
-        {/* Report pane: pinned header (recommendation only) + independently
-            scrolling body. Own flex column so it scrolls apart from the chat. */}
-        <div className="flex h-full min-h-0 flex-col">
-          {showRecommendation && (
-            <div className="shrink-0 pb-3">
-              <span
-                className={`inline-block border-2 border-border-master px-3 py-1 font-mono text-mono-sm uppercase shadow-brutal-sm ${recommendationBadgeClass(
-                  report.overall_recommendation,
-                )}`}
-              >
-                {formatRecommendation(report.overall_recommendation)}
-              </span>
-            </div>
-          )}
-
-          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
-            {editedDocBehind && <EditedDocOutdatedBanner />}
-
-            <EvidenceReportEditor
-              ref={editorRef}
-              experimentId={experimentId}
-              onEditedDocBehindChange={setEditedDocBehind}
-              onSelectionChange={setSelection}
-            />
-
-            <EvidenceSourcesBook report={report} />
+      <div className="flex h-full min-h-0 flex-col">
+        {showRecommendation && (
+          <div className="shrink-0 pb-3">
+            <span
+              className={`inline-block border-2 border-border-master px-3 py-1 font-mono text-mono-sm uppercase shadow-brutal-sm ${recommendationBadgeClass(
+                report.overall_recommendation,
+              )}`}
+            >
+              {formatRecommendation(report.overall_recommendation)}
+            </span>
           </div>
+        )}
+
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
+          {editedDocBehind && <EditedDocOutdatedBanner />}
+
+          <EvidenceReportEditor
+            ref={editorRef}
+            experimentId={experimentId}
+            onEditedDocBehindChange={setEditedDocBehind}
+          />
+
+          <EvidenceSourcesBook report={report} />
         </div>
       </div>
     </div>

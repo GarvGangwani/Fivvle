@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from uuid import UUID
 
 from app.db.enums import ChatRole
 from app.db.models.chat_message import ChatMessage
@@ -175,8 +176,15 @@ def merge_activity_items(
     experiment_events: list[ExperimentEvent],
     *,
     limit: int,
+    universal_thread_id: UUID | None = None,
 ) -> list[ActivityItem]:
-    """Merge and sort activity sources into a user-facing feed."""
+    """Merge and sort activity sources into a user-facing feed.
+
+    Chat rows are scoped to ``universal_thread_id`` only (master rail). Refine
+    and evidence thread messages are implementation detail of sub-agents and
+    do not surface in activity — including when ``universal_thread_id`` is
+    unset (no master-rail history yet).
+    """
     items: list[ActivityItem] = []
 
     for call in llm_calls:
@@ -184,7 +192,16 @@ def merge_activity_items(
         if item is not None:
             items.append(item)
 
-    user_messages = [msg for msg in chat_messages if msg.role == ChatRole.USER]
+    if universal_thread_id is not None:
+        scoped_chat = [
+            msg
+            for msg in chat_messages
+            if msg.thread_id == universal_thread_id
+        ]
+    else:
+        scoped_chat = []
+
+    user_messages = [msg for msg in scoped_chat if msg.role == ChatRole.USER]
     user_messages.sort(key=lambda row: (row.created_at, str(row.id)), reverse=True)
     for message in user_messages[:MAX_USER_CHAT_ACTIVITY]:
         item = summarize_chat_message(message)

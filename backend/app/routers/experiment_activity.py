@@ -89,7 +89,7 @@ async def get_activity(
     current_user: Annotated[User, Depends(get_current_user)],
     limit: int = Query(30, ge=1, le=100),
 ) -> list[ActivityItem]:
-    await _get_owned_experiment(db, experiment_id, current_user.id)
+    experiment = await _get_owned_experiment(db, experiment_id, current_user.id)
 
     llm_rows = (
         await db.execute(
@@ -99,14 +99,20 @@ async def get_activity(
             .limit(limit * 3)
         )
     ).scalars().all()
-    chat_rows = (
-        await db.execute(
-            select(ChatMessage)
-            .where(ChatMessage.experiment_id == experiment_id)
-            .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
-            .limit(limit * 3)
-        )
-    ).scalars().all()
+    if experiment.universal_thread_id is not None:
+        chat_rows = (
+            await db.execute(
+                select(ChatMessage)
+                .where(
+                    ChatMessage.experiment_id == experiment_id,
+                    ChatMessage.thread_id == experiment.universal_thread_id,
+                )
+                .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
+                .limit(limit * 3)
+            )
+        ).scalars().all()
+    else:
+        chat_rows = []
     event_rows = (
         await db.execute(
             select(ExperimentEvent)
@@ -121,4 +127,5 @@ async def get_activity(
         chat_rows,
         event_rows,
         limit=limit,
+        universal_thread_id=experiment.universal_thread_id,
     )
