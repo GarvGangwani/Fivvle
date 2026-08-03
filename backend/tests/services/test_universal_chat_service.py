@@ -1524,6 +1524,7 @@ async def test_refine_executor_passes_rail_prompt(
     from app.llm.prompts.refine_subagent import (
         PROMPT_NAME_REFINE_SUBAGENT,
         REFINE_SUBAGENT_SYSTEM_PROMPT,
+        build_refine_subagent_user_prompt,
     )
     from app.services.chat_service import ChatTurnResult
     from app.services.subagent_executors import exec_ask_refine_agent
@@ -1561,3 +1562,36 @@ async def test_refine_executor_passes_rail_prompt(
 
     assert captured["prompt_name"] == PROMPT_NAME_REFINE_SUBAGENT
     assert captured["system_prompt"] == REFINE_SUBAGENT_SYSTEM_PROMPT
+    assert captured["user_prompt_builder"] is build_refine_subagent_user_prompt
+
+
+def test_refine_subagent_user_prompt_strips_interview_scaffolding() -> None:
+    from app.llm.prompts.refine_subagent import build_refine_subagent_user_prompt
+    from app.llm.prompts.refinement import build_refinement_v2_chat_user_prompt
+
+    history = [("assistant", "Who is the buyer?"), ("user", "HR managers")]
+    rail = build_refine_subagent_user_prompt(
+        history,
+        "How should I position this?",
+        turn_count=2,
+        max_clarifying_turns=6,
+        min_turns_before_finalize=3,
+    )
+    panel = build_refinement_v2_chat_user_prompt(
+        history,
+        "How should I position this?",
+        turn_count=2,
+        max_clarifying_turns=6,
+        min_turns_before_finalize=3,
+    )
+
+    assert "<chat_history>" in rail
+    assert "<founder_message>" in rail
+    assert "Answer in 2-4 sentences" in rail
+    assert "Do not scaffold or list" in rail
+    assert "Prefer asking ONE clarifying question" not in rail
+    assert "Soft ceiling" not in rail
+    assert "exploration dimensions" not in rail
+
+    assert "Prefer asking ONE clarifying question" in panel
+    assert build_refinement_v2_chat_user_prompt is not build_refine_subagent_user_prompt
