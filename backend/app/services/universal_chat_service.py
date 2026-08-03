@@ -357,6 +357,7 @@ async def send_universal_chat_message(
                     tool_use.input,
                     db,
                     experiment,
+                    user=current_user,
                 )
                 payload = _tool_result_payload(tool_use.name, exec_result)
                 tool_result_msg = ChatMessage(

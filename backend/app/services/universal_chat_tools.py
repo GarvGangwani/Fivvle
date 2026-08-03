@@ -1,6 +1,8 @@
-"""Read-only tools for the universal-chat Anthropic tool loop (Phase 1).
+"""Tools for the universal-chat Anthropic/Kimi tool loop.
 
-v1 tools: get_metrics_summary, get_report_summary, get_landing_status.
+Phase 1 read tools: get_metrics_summary, get_report_summary, get_landing_status.
+Phase 2 sub-agents: ask_refine_agent, ask_research_agent.
+
 Executors soft-fail: exceptions become ``{"error": "..."}`` via ``execute_tool``.
 """
 
@@ -17,10 +19,17 @@ from sqlalchemy.orm import selectinload
 from app.db.models.experiment import Experiment
 from app.db.models.landing_page import LandingPage
 from app.db.models.page_view import PageView
+from app.db.models.user import User
 from app.db.models.waitlist_signup import WaitlistSignup
 from app.logging_config import get_logger
 from app.services.experiment_service import metrics_from_validation_report
 from app.services.landing_page_publish_service import get_open_cohort
+from app.services.subagent_executors import (
+    exec_ask_refine_agent,
+    exec_ask_research_agent,
+    refine_agent_input_schema,
+    research_agent_input_schema,
+)
 
 _logger = get_logger(__name__)
 
@@ -28,14 +37,18 @@ _TOP_SOURCES_LIMIT = 5
 _TOP_FINDINGS_LIMIT = 3
 _CLAIM_MAX_CHARS = 280
 
-# Empty JSON Schema object — v1 tools take no LLM-supplied arguments.
+# Empty JSON Schema object — Phase 1 read tools take no LLM-supplied arguments.
 _EMPTY_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {},
     "additionalProperties": False,
 }
 
-ToolExecutor = Callable[[AsyncSession, Experiment], Awaitable[dict[str, Any]]]
+# (db, experiment, args, user) — user is required for sub-agents; ignored by read tools.
+ToolExecutor = Callable[
+    [AsyncSession, Experiment, dict[str, Any], User | None],
+    Awaitable[dict[str, Any]],
+]
 
 
 @dataclass(frozen=True)
@@ -56,8 +69,11 @@ def _truncate(text: str, max_len: int) -> str:
 async def _exec_get_metrics_summary(
     db: AsyncSession,
     experiment: Experiment,
+    args: dict[str, Any],
+    user: User | None,
 ) -> dict[str, Any]:
     """Lean COUNT + GROUP BY metrics. Never calls build_analytics_aggregate."""
+    _ = args, user
     lp_result = await db.execute(
         select(LandingPage).where(LandingPage.experiment_id == experiment.id)
     )
@@ -213,7 +229,10 @@ def _top_findings_by_score(raw: dict[str, Any], *, limit: int) -> list[dict[str,
 async def _exec_get_report_summary(
     db: AsyncSession,
     experiment: Experiment,
+    args: dict[str, Any],
+    user: User | None,
 ) -> dict[str, Any]:
+    _ = args, user
     result = await db.execute(
         select(Experiment)
         .options(selectinload(Experiment.validation_report))
@@ -239,7 +258,10 @@ async def _exec_get_report_summary(
 async def _exec_get_landing_status(
     db: AsyncSession,
     experiment: Experiment,
+    args: dict[str, Any],
+    user: User | None,
 ) -> dict[str, Any]:
+    _ = args, user
     lp_result = await db.execute(
         select(LandingPage).where(LandingPage.experiment_id == experiment.id)
     )
@@ -259,6 +281,28 @@ async def _exec_get_landing_status(
         "subheadline": landing_page.subheadline,
         "live_at": landing_page.live_at.isoformat() if landing_page.live_at else None,
     }
+
+
+async def _exec_ask_refine_agent(
+    db: AsyncSession,
+    experiment: Experiment,
+    args: dict[str, Any],
+    user: User | None,
+) -> dict[str, Any]:
+    if user is None:
+        return {"error": "user required for ask_refine_agent"}
+    return await exec_ask_refine_agent(db, experiment, args, user)
+
+
+async def _exec_ask_research_agent(
+    db: AsyncSession,
+    experiment: Experiment,
+    args: dict[str, Any],
+    user: User | None,
+) -> dict[str, Any]:
+    if user is None:
+        return {"error": "user required for ask_research_agent"}
+    return await exec_ask_research_agent(db, experiment, args, user)
 
 
 _TOOLS: tuple[UniversalChatTool, ...] = (
@@ -291,6 +335,27 @@ _TOOLS: tuple[UniversalChatTool, ...] = (
         ),
         input_schema=_EMPTY_INPUT_SCHEMA,
         executor=_exec_get_landing_status,
+    ),
+    UniversalChatTool(
+        name="ask_refine_agent",
+        description=(
+            "Ask the Refine sub-agent to continue refining the idea (naming, target "
+            "user, positioning, differentiation, clarifying questions). Writes to "
+            "the refine chat thread and may update refined_idea_current. Pass the "
+            "founder's refinement question as query."
+        ),
+        input_schema=refine_agent_input_schema(),
+        executor=_exec_ask_refine_agent,
+    ),
+    UniversalChatTool(
+        name="ask_research_agent",
+        description=(
+            "Ask the Research/Evidence sub-agent about the validation report, market "
+            "signals, competitors, findings, or citations. Read-only; writes to the "
+            "evidence chat thread. Pass the founder's research question as query."
+        ),
+        input_schema=research_agent_input_schema(),
+        executor=_exec_ask_research_agent,
     ),
 )
 
@@ -328,18 +393,19 @@ async def execute_tool(
     args: dict[str, Any],
     db: AsyncSession,
     experiment: Experiment,
+    *,
+    user: User | None = None,
 ) -> dict[str, Any]:
     """Run a named tool. Soft-fail: never raise into the agent loop.
 
-    ``args`` is accepted for Anthropic tool_use shape compatibility; v1 tools
-    ignore LLM-supplied arguments and scope to ``experiment``.
+    ``args`` carries LLM tool_use input (e.g. ``query`` for sub-agents).
+    Phase 1 read tools ignore args and scope to ``experiment``.
     """
-    _ = args  # v1 tools are experiment-scoped only
     tool = _TOOLS_BY_NAME.get(name)
     if tool is None:
         return {"error": f"Unknown tool: {name}"}
     try:
-        return await tool.executor(db, experiment)
+        return await tool.executor(db, experiment, args or {}, user)
     except Exception as exc:
         _logger.warning(
             "universal chat tool failed",

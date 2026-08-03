@@ -441,7 +441,12 @@ async def test_send_soft_fail_executor_continues(
     _patch_tools_provider(monkeypatch, "kimi")
     user, experiment = await _seed_user_and_experiment(db_session)
 
-    async def _boom(_db: AsyncSession, _experiment: Experiment) -> dict[str, Any]:
+    async def _boom(
+        _db: AsyncSession,
+        _experiment: Experiment,
+        _args: dict[str, Any],
+        _user: User | None,
+    ) -> dict[str, Any]:
         raise RuntimeError("db blew up")
 
     from app.services.universal_chat_tools import UniversalChatTool, _EMPTY_INPUT_SCHEMA
@@ -615,7 +620,7 @@ async def test_send_response_messages_order_one_tool_turn(
     assert mock_complete.await_count == 2
     for call in mock_complete.await_args_list:
         assert call.kwargs["phase"] == "universal_chat"
-        assert call.kwargs["prompt_name"] == "universal_chat_v2"
+        assert call.kwargs["prompt_name"] == "universal_chat_v3"
         assert call.kwargs["provider"] == "kimi"
 
 
@@ -1017,6 +1022,8 @@ def test_tool_schemas_are_provider_dialect() -> None:
         "get_metrics_summary",
         "get_report_summary",
         "get_landing_status",
+        "ask_refine_agent",
+        "ask_research_agent",
     }
     for schema in anthropic_schemas:
         assert "input_schema" in schema
@@ -1028,6 +1035,17 @@ def test_tool_schemas_are_provider_dialect() -> None:
         assert schema["type"] == "function"
         assert "parameters" in schema["function"]
         assert schema["function"]["parameters"]["type"] == "object"
+
+    refine_schema = next(s for s in anthropic_schemas if s["name"] == "ask_refine_agent")
+    assert refine_schema["input_schema"]["required"] == ["query"]
+    research_schema = next(
+        s for s in anthropic_schemas if s["name"] == "ask_research_agent"
+    )
+    assert research_schema["input_schema"]["required"] == ["query"]
+
+
+def test_prompt_name_is_universal_chat_v3() -> None:
+    assert PROMPT_NAME_UNIVERSAL_CHAT == "universal_chat_v3"
 
 
 @pytest.mark.asyncio
@@ -1112,3 +1130,293 @@ async def test_get_report_summary_top_findings(db_session: AsyncSession) -> None
     assert result["overall_score"] == 72
     assert result["total_finding_count"] == 2
     assert result["top_findings"][0]["claim"].startswith("Acme owns")
+
+
+# --- Phase 2 sub-agents -------------------------------------------------
+
+
+def test_build_source_refs_preserves_markers_and_order() -> None:
+    from app.services.subagent_executors import build_source_refs_from_evidence_text
+
+    text = (
+        "Demand is real [cite: https://example.com/a]. "
+        "Gap on pricing [ref: q2]. Overlap with Acme [ref: competitor:Acme]."
+    )
+    report = {
+        "questions_and_findings": [
+            {
+                "question_id": "q2",
+                "question": "Who competes?",
+                "findings": [
+                    {
+                        "citations": [
+                            {
+                                "url": "https://example.com/a",
+                                "title": "Demand survey",
+                            }
+                        ]
+                    }
+                ],
+            }
+        ],
+        "competitors": [],
+    }
+    refs = build_source_refs_from_evidence_text(text, report)
+    assert [r["ref_number"] for r in refs] == [1, 2, 3]
+    assert refs[0]["marker_id"].lower().startswith("[cite:")
+    assert refs[0]["source_url"] == "https://example.com/a"
+    assert refs[0]["source_title"] == "Demand survey"
+    assert refs[1]["source_url"] is None
+    assert refs[1]["source_title"].startswith("q2:")
+    assert refs[2]["source_title"] == "Competitor: Acme"
+
+
+@pytest.mark.asyncio
+async def test_ask_refine_agent_maps_turn_decision(
+    db_session: AsyncSession,
+) -> None:
+    from app.db.enums import ChatTurnKind
+    from app.schemas.refinement import ClarifyingQuestion
+    from app.services.chat_service import ChatTurnResult
+    from app.services.subagent_executors import exec_ask_refine_agent
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.REFINING
+    )
+    experiment.refined_idea_current = None
+    await db_session.commit()
+
+    turn = ChatTurnResult(
+        thread_id=uuid4(),
+        message_id=uuid4(),
+        experiment_id=experiment.id,
+        assistant_message="Who is the primary buyer?",
+        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+        clarifying_dimension="audience",
+        clarifying_questions=(
+            ClarifyingQuestion(
+                question="Who is the primary buyer?",
+                selection_mode="single",
+                options=["HR managers", "Employees", "Both"],
+            ),
+        ),
+        pipeline_dispatched=False,
+        dispatched_at=None,
+        experiment_status=ExperimentStatus.REFINING,
+        research_error_detail=None,
+        user_facing_error=None,
+        refinement_count=1,
+    )
+
+    async def _fake_handle_turn(*_args: Any, **_kwargs: Any) -> ChatTurnResult:
+        experiment.refined_idea_current = _refined_idea_dict()
+        await db_session.commit()
+        return turn
+
+    with patch(
+        "app.services.subagent_executors.chat_service.handle_turn",
+        new=_fake_handle_turn,
+    ):
+        result = await exec_ask_refine_agent(
+            db_session,
+            experiment,
+            {"query": "Help me name the product"},
+            user,
+        )
+
+    assert result["assistant_text"] == "Who is the primary buyer?"
+    assert result["has_pending_mcq"] is True
+    assert result["log_entry"] == "audience"
+    assert isinstance(result["refined_idea_patch"], dict)
+    assert result["refined_idea_patch"]["project_name"] == "PolicyPal"
+
+
+@pytest.mark.asyncio
+async def test_ask_research_agent_maps_citations(
+    db_session: AsyncSession,
+) -> None:
+    from app.services.evidence_chat_service import EvidenceChatResult
+    from app.services.subagent_executors import exec_ask_research_agent
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.RESEARCH_READY
+    )
+    raw = {
+        "questions_and_findings": [
+            {
+                "question_id": "q1",
+                "question": "Is demand real?",
+                "findings": [
+                    {
+                        "citations": [
+                            {
+                                "url": "https://example.com/demand",
+                                "title": "Demand post",
+                            }
+                        ]
+                    }
+                ],
+            }
+        ],
+        "competitors": [],
+    }
+    db_session.add(ValidationReport(experiment_id=experiment.id, raw_report=raw))
+    await db_session.commit()
+
+    assistant = ChatMessage(
+        thread_id=uuid4(),
+        role=ChatRole.ASSISTANT,
+        content=(
+            "Demand looks real [cite: https://example.com/demand]. "
+            "See also [ref: q1]."
+        ),
+        experiment_id=experiment.id,
+        turn_kind=ChatTurnKind.EVIDENCE_CHAT,
+    )
+    user_msg = ChatMessage(
+        thread_id=assistant.thread_id,
+        role=ChatRole.USER,
+        content="What does research say?",
+        experiment_id=experiment.id,
+        turn_kind=ChatTurnKind.EVIDENCE_CHAT,
+    )
+
+    async def _fake_evidence(*_args: Any, **_kwargs: Any) -> EvidenceChatResult:
+        return EvidenceChatResult(
+            user_message=user_msg,
+            assistant_message=assistant,
+            thread_id=assistant.thread_id,
+        )
+
+    with patch(
+        "app.services.subagent_executors.send_evidence_chat_message",
+        new=_fake_evidence,
+    ):
+        result = await exec_ask_research_agent(
+            db_session,
+            experiment,
+            {"query": "What does the research say about demand?"},
+            user,
+        )
+
+    assert "[cite:" in result["assistant_text_with_citations"]
+    assert len(result["source_refs"]) == 2
+    assert result["source_refs"][0]["source_title"] == "Demand post"
+    assert result["source_refs"][0]["source_url"] == "https://example.com/demand"
+
+
+@pytest.mark.asyncio
+async def test_master_loop_ask_refine_agent_persists_linearly(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_tools_provider(monkeypatch, "anthropic")
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.REFINING
+    )
+
+    async def _fake_refine(
+        _db: AsyncSession,
+        _experiment: Experiment,
+        _args: dict[str, Any],
+        _user: User | None,
+    ) -> dict[str, Any]:
+        return {
+            "assistant_text": "Let's tighten the one-liner.",
+            "refined_idea_patch": None,
+            "has_pending_mcq": False,
+            "log_entry": None,
+        }
+
+    with (
+        patch(
+            "app.services.universal_chat_tools.exec_ask_refine_agent",
+            new=_fake_refine,
+        ),
+        patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete,
+    ):
+        mock_complete.side_effect = [
+            _tools_result(
+                tool_uses=[
+                    ToolUseRequest(
+                        id="toolu_refine",
+                        name="ask_refine_agent",
+                        input={"query": "Help me name this"},
+                    )
+                ],
+            ),
+            _tools_result(text="Refine suggested tightening the one-liner."),
+        ]
+        result = await send_universal_chat_message(
+            db_session, user, experiment.id, "Help me name this"
+        )
+
+    roles = [m.role for m in result.messages]
+    assert roles == [
+        ChatRole.USER,
+        ChatRole.TOOL_CALL,
+        ChatRole.TOOL_RESULT,
+        ChatRole.ASSISTANT,
+    ]
+    tool_call = result.messages[1]
+    tool_result = result.messages[2]
+    assert tool_call.tool_payload == {
+        "tool_name": "ask_refine_agent",
+        "arguments": {"query": "Help me name this"},
+    }
+    assert tool_result.tool_payload == {
+        "tool_name": "ask_refine_agent",
+        "result": {
+            "assistant_text": "Let's tighten the one-liner.",
+            "refined_idea_patch": None,
+            "has_pending_mcq": False,
+            "log_entry": None,
+        },
+    }
+    assert result.assistant_message.content == (
+        "Refine suggested tightening the one-liner."
+    )
+
+
+@pytest.mark.asyncio
+async def test_ask_refine_agent_soft_fail_continues(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_tools_provider(monkeypatch, "anthropic")
+    user, experiment = await _seed_user_and_experiment(db_session)
+
+    async def _boom(
+        _db: AsyncSession,
+        _experiment: Experiment,
+        _args: dict[str, Any],
+        _user: User | None,
+    ) -> dict[str, Any]:
+        raise RuntimeError("refine service down")
+
+    with (
+        patch(
+            "app.services.universal_chat_tools.exec_ask_refine_agent",
+            new=_boom,
+        ),
+        patch(_LLM_PATCH_TARGET, new_callable=AsyncMock) as mock_complete,
+    ):
+        mock_complete.side_effect = [
+            _tools_result(
+                tool_uses=[
+                    ToolUseRequest(
+                        id="toolu_refine_fail",
+                        name="ask_refine_agent",
+                        input={"query": "Name it"},
+                    )
+                ],
+            ),
+            _tools_result(text="Refine is briefly unavailable — try again."),
+        ]
+        result = await send_universal_chat_message(
+            db_session, user, experiment.id, "Name it"
+        )
+
+    tool_result = result.messages[2]
+    assert tool_result.role == ChatRole.TOOL_RESULT
+    assert tool_result.tool_payload is not None
+    assert "error" in tool_result.tool_payload
+    assert result.assistant_message.content.startswith("Refine is briefly unavailable")
