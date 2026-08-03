@@ -1,18 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Controls,
   ReactFlowProvider,
   useEdgesState,
   useNodesState,
   useReactFlow,
+  type DefaultEdgeOptions,
   type Edge,
   type EdgeTypes,
   type Node,
   type NodeDragHandler,
   type NodeMouseHandler,
   type NodeTypes,
+  type ProOptions,
   type Viewport,
 } from "reactflow";
 import "reactflow/dist/style.css";
@@ -100,6 +102,24 @@ const edgeTypes: EdgeTypes = {
   "dashed-straight": DashedCurvedEdge,
 };
 
+/** Stable across renders — CSS vars resolve at paint time, no theme JS dependency. */
+const DEFAULT_EDGE_OPTIONS: DefaultEdgeOptions = {
+  type: "dashed-straight",
+  style: {
+    stroke: "var(--fv-canvas-edge)",
+    strokeWidth: 1.5,
+    strokeDasharray: "6 8",
+  },
+};
+
+const PRO_OPTIONS: ProOptions = { hideAttribution: true };
+
+const FIT_VIEW_OPTIONS = { padding: 0.4 };
+
+const REACT_FLOW_STYLE = { background: "transparent" } as const;
+
+const CONTROLS_STYLE = { left: 24, bottom: 64, margin: 0 };
+
 function buildSatelliteEdges(experiment: Experiment): Edge[] {
   return SATELLITE_IDS.map((id) => ({
     id: `e-${id}`,
@@ -181,7 +201,14 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     resetLayout,
   } = useCanvasLayout(experiment.id);
   const [canvasSettled, setCanvasSettled] = useState(false);
+  /** Live viewport during pan/zoom — ref only, never triggers re-render. */
+  const viewportRef = useRef<Viewport | null>(null);
   const { resources, addResource, removeResource } = useResources(experiment.id);
+
+  // Seed ref from hydrated layout (initial load / experiment switch).
+  useEffect(() => {
+    viewportRef.current = savedViewport;
+  }, [savedViewport]);
 
   const refineSurfaceOpen = refinePanelOpen || refineFullscreen;
   const enableOpener =
@@ -655,7 +682,29 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   );
 
   useEffect(() => {
-    setNodes(buildNodes());
+    setNodes((current) => {
+      const next = buildNodes();
+      if (current.length === 0) return next;
+      const currentById = new Map(current.map((n) => [n.id, n]));
+      return next.map((n) => {
+        const prev = currentById.get(n.id);
+        if (!prev) return n;
+        // While dragging, never clobber the live RF position with a rebuild
+        // (buildNodes reads layout state, which only updates on drag-stop).
+        if (prev.dragging) {
+          return {
+            ...n,
+            position: prev.position,
+            dragging: true,
+            selected: prev.selected,
+          };
+        }
+        return {
+          ...n,
+          selected: prev.selected,
+        };
+      });
+    });
   }, [buildNodes, setNodes]);
 
   useEffect(() => {
@@ -685,11 +734,25 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   const handleMove = useCallback(
     (_event: unknown, viewport: Viewport) => {
       if (!canvasSettled) return;
-      updateViewport({
+      viewportRef.current = {
         x: viewport.x,
         y: viewport.y,
         zoom: viewport.zoom,
-      });
+      };
+    },
+    [canvasSettled],
+  );
+
+  const handleMoveEnd = useCallback(
+    (_event: unknown, viewport: Viewport) => {
+      if (!canvasSettled) return;
+      const next = {
+        x: viewport.x,
+        y: viewport.y,
+        zoom: viewport.zoom,
+      };
+      viewportRef.current = next;
+      updateViewport(next);
     },
     [canvasSettled, updateViewport],
   );
@@ -799,27 +862,25 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
             minZoom={0.3}
             maxZoom={2}
             panOnScroll
-            proOptions={{ hideAttribution: true }}
+            proOptions={PRO_OPTIONS}
             defaultViewport={savedViewport ?? undefined}
             fitView={!savedViewport}
-            fitViewOptions={{ padding: 0.4 }}
-            defaultEdgeOptions={{
-              type: "dashed-straight",
-              style: {
-                stroke: "var(--fv-canvas-edge)",
-                strokeWidth: 1.5,
-                strokeDasharray: "6 8",
-              },
-            }}
-            style={{ background: "transparent" }}
+            fitViewOptions={FIT_VIEW_OPTIONS}
+            defaultEdgeOptions={DEFAULT_EDGE_OPTIONS}
+            style={REACT_FLOW_STYLE}
             onNodeClick={onNodeClick}
             onNodeDragStop={onNodeDragStop}
             onMove={handleMove}
+            onMoveEnd={handleMoveEnd}
+            // Avoid selection/focus work while dragging satellites.
+            selectNodesOnDrag={false}
+            nodesFocusable={false}
+            edgesFocusable={false}
           >
             <Controls
               className="brutalist-controls"
               showInteractive={false}
-              style={{ left: 24, bottom: 64, margin: 0 }}
+              style={CONTROLS_STYLE}
             />
           </ReactFlow>
         </>

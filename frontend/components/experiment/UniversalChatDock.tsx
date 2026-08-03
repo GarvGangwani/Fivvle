@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -71,7 +72,10 @@ function displayProjectName(projectName?: string | null): string | null {
   return trimmed ? trimmed : null;
 }
 
-export function UniversalChatDock({ experimentId, projectName }: Props) {
+export const UniversalChatDock = memo(function UniversalChatDock({
+  experimentId,
+  projectName,
+}: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [messages, setMessages] = useState<DockMessage[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -343,7 +347,7 @@ export function UniversalChatDock({ experimentId, projectName }: Props) {
       </div>
     </aside>
   );
-}
+});
 
 function IconButton({
   children,

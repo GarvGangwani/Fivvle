@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import { Handle, Position, type NodeProps } from "reactflow";
 
 type CoreShellData = {
@@ -9,11 +10,11 @@ type CoreShellData = {
   phasesComplete: number;
 };
 
-export function CoreShellNode({ data }: NodeProps<CoreShellData>) {
+function CoreShellNodeComponent({ data }: NodeProps<CoreShellData>) {
   return (
-    <div className="bg-brand-primary text-ink-inverse rounded-md border-2 border-border-master shadow-brutal-md w-80 p-8 z-20 fv-brutal-hover-glow">
-      <div className="flex justify-between items-start mb-4">
-        <span className="bg-surface-card text-ink-primary px-2 py-0.5 font-mono text-mono-sm uppercase tracking-widest">
+    <div className="z-20 w-80 rounded-md border-2 border-border-master bg-brand-primary p-8 text-ink-inverse shadow-brutal-md fv-brutal-hover-glow">
+      <div className="mb-4 flex items-start justify-between">
+        <span className="bg-surface-card px-2 py-0.5 font-mono text-mono-sm uppercase tracking-widest text-ink-primary">
           ACTIVE SHELL
         </span>
         <span className="material-symbols-outlined text-ink-inverse" aria-hidden="true">
@@ -21,24 +22,24 @@ export function CoreShellNode({ data }: NodeProps<CoreShellData>) {
         </span>
       </div>
 
-      <h1 className="font-headline text-headline-lg leading-none uppercase mb-4 relative">
+      <h1 className="relative mb-4 font-headline text-headline-lg uppercase leading-none">
         {data.projectName}
       </h1>
 
-      <div className="border-t-2 border-ink-inverse mb-4" />
+      <div className="mb-4 border-t-2 border-ink-inverse" />
 
       {data.refinedIdea ? (
-        <p className="font-body text-body-md mb-6 line-clamp-2">
+        <p className="mb-6 line-clamp-2 font-body text-body-md">
           {data.refinedIdea}
         </p>
       ) : data.rawIdea?.trim() ? (
-        <p className="font-body text-body-md mb-6 line-clamp-2">
+        <p className="mb-6 line-clamp-2 font-body text-body-md">
           {data.rawIdea.trim().length > 120
             ? `${data.rawIdea.trim().slice(0, 120)}...`
             : data.rawIdea.trim()}
         </p>
       ) : (
-        <p className="font-body text-body-md mb-6 italic opacity-60">
+        <p className="mb-6 font-body text-body-md italic opacity-60">
           Add your idea in the Spark phase to get started.
         </p>
       )}
@@ -73,3 +74,5 @@ function StatusSquare({ filled }: { filled: boolean }) {
     />
   );
 }
+
+export const CoreShellNode = memo(CoreShellNodeComponent);

@@ -649,8 +649,7 @@ body:has([data-fivvle-public-landing]) {
   transition:
     border-color 0.15s ease,
     background-color 0.15s ease,
-    box-shadow 0.15s ease,
-    transform 0.15s ease;
+    box-shadow 0.15s ease;
 }
 
 [data-theme="light"] .fv-brutal-hover:hover {
@@ -669,9 +668,24 @@ body:has([data-fivvle-public-landing]) {
   transform: translate(-2px, -2px);
 }
 
+/*
+ * React Flow applies drag/pan via transform on `.react-flow__node`.
+ * Never apply a competing translate on node chrome — it reads as laggy drag.
+ * Keep border/shadow hover; drop the lift transform inside the flow only.
+ */
+.react-flow__node .fv-brutal-hover:hover,
+.react-flow__node .fv-brutal-hover-glow:hover {
+  transform: none;
+}
+
+.react-flow__node.dragging .fv-brutal-hover,
+.react-flow__node.dragging .fv-brutal-hover-glow {
+  transform: none !important;
+}
+
 /* Filled accent surfaces (core node, WIP prize) — glow only, keep fill */
 .fv-brutal-hover-glow {
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  transition: box-shadow 0.15s ease;
 }
 
 [data-theme="light"] .fv-brutal-hover-glow:hover {
