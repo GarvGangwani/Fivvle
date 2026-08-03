@@ -420,10 +420,15 @@ export async function getUniversalChatMessages(
 export async function sendUniversalChatMessage(
   experimentId: string,
   message: string,
+  options?: { current_open_phase?: string | null },
 ): Promise<UniversalChatSendResponse> {
+  const body: Record<string, unknown> = { message };
+  if (options?.current_open_phase != null) {
+    body.current_open_phase = options.current_open_phase;
+  }
   return apiFetch<UniversalChatSendResponse>(
     `/experiments/${experimentId}/chat/universal`,
-    { method: "POST", body: { message } },
+    { method: "POST", body },
   );
 }
 
@@ -453,8 +458,14 @@ export async function streamUniversalChatMessage(
   message: string,
   callbacks: StreamUniversalCallbacks,
   signal?: AbortSignal,
+  options?: { current_open_phase?: string | null },
 ): Promise<void> {
   const authHeader = await getAuthHeader();
+
+  const body: Record<string, unknown> = { message };
+  if (options?.current_open_phase != null) {
+    body.current_open_phase = options.current_open_phase;
+  }
 
   let response: Response;
   try {
@@ -463,7 +474,7 @@ export async function streamUniversalChatMessage(
       {
         method: "POST",
         headers: { "Content-Type": "application/json", ...authHeader },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(body),
         signal,
       },
     );

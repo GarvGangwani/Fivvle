@@ -858,6 +858,8 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         experimentId={experiment.id}
         projectName={experiment.name}
         onCollapsedChange={setChatDockCollapsed}
+        currentOpenPhase={overlayAct}
+        onOpenPhase={openPhaseOverlay}
       />
       <DeepDiveOverlay
         isOpen={overlayAct !== null}

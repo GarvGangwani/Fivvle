@@ -287,6 +287,8 @@ async def send_universal_chat_message(
     current_user: User,
     experiment_id: UUID,
     message: str,
+    *,
+    current_open_phase: str | None = None,
 ) -> UniversalChatResult:
     """Send one universal-chat turn (tool loop) and persist rows.
 
@@ -310,7 +312,9 @@ async def send_universal_chat_message(
     parent_id = thread.active_leaf_message_id
     history = await get_active_branch(db, thread.id) if parent_id is not None else []
 
-    project_context = await get_experiment_project_context(db, experiment)
+    project_context = await get_experiment_project_context(
+        db, experiment, current_open_phase=current_open_phase
+    )
     user_prompt = build_universal_chat_user_prompt(
         project_context=project_context.to_prompt_block(),
         chat_history=_history_for_prompt(history),
@@ -532,6 +536,7 @@ async def prepare_universal_stream(
     message: str,
     *,
     pacing_delay: float = _DEFAULT_PACING_DELAY_S,
+    current_open_phase: str | None = None,
 ) -> UniversalStreamPrep:
     """Persist + commit the user row before the SSE generator starts.
 
@@ -548,7 +553,9 @@ async def prepare_universal_stream(
     parent_id = thread.active_leaf_message_id
     history = await get_active_branch(db, thread.id) if parent_id is not None else []
 
-    project_context = await get_experiment_project_context(db, experiment)
+    project_context = await get_experiment_project_context(
+        db, experiment, current_open_phase=current_open_phase
+    )
     user_prompt = build_universal_chat_user_prompt(
         project_context=project_context.to_prompt_block(),
         chat_history=_history_for_prompt(history),

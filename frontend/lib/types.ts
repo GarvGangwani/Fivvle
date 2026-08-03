@@ -490,7 +490,8 @@ export type RefCitation =
   | { kind: "question"; value: string }
   | { kind: "competitor"; value: string }
   | { kind: "section"; value: string }
-  | { kind: "limitation"; value: string };
+  | { kind: "limitation"; value: string }
+  | { kind: "url"; value: string };
 
 export interface Citation {
   url: string;

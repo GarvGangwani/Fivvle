@@ -23,6 +23,7 @@ import {
   streamUniversalChatMessage,
 } from "@/lib/api";
 import { tokenizeCitations } from "@/lib/parse-citations";
+import { setPendingEvidenceFocus } from "@/lib/pending-evidence-focus";
 import type {
   ChatHistoryMessage,
   RefineSubagentToolResult,
@@ -30,17 +31,33 @@ import type {
   ResearchSubagentToolResult,
 } from "@/lib/types";
 
+export type UniversalOpenPhase =
+  | "spark"
+  | "refine"
+  | "evidence"
+  | "launch"
+  | "signal";
+
 const TOOL_CALL_LABELS: Record<string, string> = {
   get_metrics_summary: "Checked the metrics",
   get_report_summary: "Checked the validation report",
   get_landing_status: "Checked the landing page",
   ask_refine_agent: "Asked Refine agent",
   ask_research_agent: "Asked Research agent",
+  open_phase_panel: "Opening phase panel",
 };
 
 const SUBAGENT_HANDOFF: Record<string, string> = {
   ask_refine_agent: "Refine agent thinking…",
   ask_research_agent: "Research agent digging in…",
+};
+
+const PHASE_CHIP_LABEL: Record<UniversalOpenPhase, string> = {
+  spark: "Spark",
+  refine: "Refine",
+  evidence: "Evidence",
+  launch: "Launch",
+  signal: "Signal",
 };
 
 function toolCallLabel(toolPayload: ChatHistoryMessage["tool_payload"]): string {
@@ -101,6 +118,30 @@ function parseRefineSubagentError(
   return null;
 }
 
+function parseNavigateResult(
+  payload: ChatHistoryMessage["tool_payload"],
+): { navigate_to: UniversalOpenPhase; source_ref_id: string | null } | null {
+  const root = asRecord(payload);
+  if (!root || root.tool_name !== "open_phase_panel") return null;
+  if (typeof root.error === "string" && root.result == null) return null;
+  const result = asRecord(root.result) ?? root;
+  const navigateTo = result.navigate_to;
+  if (
+    navigateTo !== "spark" &&
+    navigateTo !== "refine" &&
+    navigateTo !== "evidence" &&
+    navigateTo !== "launch" &&
+    navigateTo !== "signal"
+  ) {
+    return null;
+  }
+  return {
+    navigate_to: navigateTo,
+    source_ref_id:
+      typeof result.source_ref_id === "string" ? result.source_ref_id : null,
+  };
+}
+
 function parseResearchSubagentResult(
   payload: ChatHistoryMessage["tool_payload"],
 ): ResearchSubagentToolResult | null {
@@ -131,7 +172,24 @@ function parseResearchSubagentResult(
   };
 }
 
-function SubagentStatusChip({ label }: { label: string }) {
+function SubagentStatusChip({
+  label,
+  onClick,
+}: {
+  label: string;
+  onClick?: () => void;
+}) {
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="inline-flex max-w-full items-center rounded-xs border border-border-master bg-surface-elevated px-1.5 py-0.5 text-[11px] leading-tight text-ink-tertiary transition-colors hover:border-[var(--fv-accent)] hover:text-[var(--fv-text)]"
+      >
+        {label}
+      </button>
+    );
+  }
   return (
     <span className="inline-flex max-w-full items-center rounded-xs border border-border-master bg-surface-elevated px-1.5 py-0.5 text-[11px] leading-tight text-ink-tertiary">
       {label}
@@ -142,10 +200,24 @@ function SubagentStatusChip({ label }: { label: string }) {
 function InlineCitationChip({
   label,
   title,
+  onClick,
 }: {
   label: string;
   title?: string;
+  onClick?: () => void;
 }) {
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        title={title || undefined}
+        onClick={onClick}
+        className="mx-0.5 inline-flex max-w-[12rem] align-baseline rounded-xs border border-border-master px-1 py-px text-[10px] leading-tight text-ink-tertiary transition-colors hover:border-[var(--fv-accent)] hover:text-[var(--fv-text)]"
+      >
+        <span className="truncate">{label}</span>
+      </button>
+    );
+  }
   return (
     <span
       title={title || undefined}
@@ -167,9 +239,11 @@ function chipLabelForSource(ref: ResearchSubagentSourceRef): string {
 function ResearchTextWithCitationChips({
   text,
   sourceRefs,
+  onCitationClick,
 }: {
   text: string;
   sourceRefs: ResearchSubagentSourceRef[];
+  onCitationClick?: (ref: ResearchSubagentSourceRef) => void;
 }) {
   const byMarker = new Map(
     sourceRefs.map((ref) => [ref.marker_id.toLowerCase(), ref]),
@@ -215,6 +289,9 @@ function ResearchTextWithCitationChips({
               [ref.source_title, ref.source_url].filter(Boolean).join(" — ") ||
               undefined
             }
+            onClick={
+              onCitationClick ? () => onCitationClick(ref) : undefined
+            }
           />
         );
       })}
@@ -227,6 +304,13 @@ type Props = {
   projectName?: string | null;
   /** Notify parent when collapse state changes (phase panel inset). */
   onCollapsedChange?: (collapsed: boolean) => void;
+  /** Currently open canvas overlay act (null when closed). */
+  currentOpenPhase?: UniversalOpenPhase | null;
+  /** Open a phase panel from navigate / citation / MCQ. */
+  onOpenPhase?: (
+    phase: UniversalOpenPhase,
+    options?: { sourceRef?: ResearchSubagentSourceRef | null },
+  ) => void;
 };
 
 type DockMessage = ChatHistoryMessage & {
@@ -303,6 +387,8 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   experimentId,
   projectName,
   onCollapsedChange,
+  currentOpenPhase = null,
+  onOpenPhase,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [messages, setMessages] = useState<DockMessage[]>([]);
@@ -311,6 +397,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   const [draft, setDraft] = useState("");
   const [streamingSubagent, setStreamingSubagent] =
     useState<StreamingSubagentState | null>(null);
+  const dispatchedNavigateIdsRef = useRef<Set<string>>(new Set());
 
   const named = displayProjectName(projectName);
   const placeholder = named
@@ -481,6 +568,28 @@ export const UniversalChatDock = memo(function UniversalChatDock({
               toolResultFromEvent(tool_name, message_id, payload),
             ]);
             forceScrollRef.current = true;
+            const nav = parseNavigateResult(
+              typeof payload.tool_name === "string"
+                ? payload
+                : { tool_name, ...payload },
+            );
+            if (
+              nav &&
+              onOpenPhase &&
+              !dispatchedNavigateIdsRef.current.has(message_id)
+            ) {
+              dispatchedNavigateIdsRef.current.add(message_id);
+              if (
+                nav.source_ref_id &&
+                /^https?:\/\//i.test(nav.source_ref_id)
+              ) {
+                setPendingEvidenceFocus({
+                  kind: "url",
+                  value: nav.source_ref_id,
+                });
+              }
+              onOpenPhase(nav.navigate_to);
+            }
           },
           onSubagentToken: ({ agent, text }) => {
             setStreamingSubagent((prev) => {
@@ -571,6 +680,9 @@ export const UniversalChatDock = memo(function UniversalChatDock({
           },
         },
         abort.signal,
+        {
+          current_open_phase: currentOpenPhase ?? null,
+        },
       );
     } catch {
       if (!abort.signal.aborted) markFailed();
@@ -581,7 +693,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
       setSending(false);
       streamingAssistantIdRef.current = null;
     }
-  }, [draft, experimentId, sending]);
+  }, [draft, experimentId, sending, currentOpenPhase, onOpenPhase]);
 
   const handleRetry = useCallback(
     async (message: DockMessage) => {
@@ -677,6 +789,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
                   key={msg.id}
                   message={msg}
                   showSubagentHandoff={showSubagentHandoff}
+                  onOpenPhase={onOpenPhase}
                   onRetry={
                     msg.error ? () => void handleRetry(msg) : undefined
                   }
@@ -815,10 +928,15 @@ function MessageRow({
   message,
   onRetry,
   showSubagentHandoff = false,
+  onOpenPhase,
 }: {
   message: DockMessage;
   onRetry?: () => void;
   showSubagentHandoff?: boolean;
+  onOpenPhase?: (
+    phase: UniversalOpenPhase,
+    options?: { sourceRef?: ResearchSubagentSourceRef | null },
+  ) => void;
 }) {
   if (message.role === "user") {
     return (
@@ -883,7 +1001,12 @@ function MessageRow({
                 <SubagentStatusChip label="Refined idea updated" />
               ) : null}
               {refine.has_pending_mcq ? (
-                <SubagentStatusChip label="Open Refine to answer clarifying question" />
+                <SubagentStatusChip
+                  label="Open Refine to answer clarifying question"
+                  onClick={
+                    onOpenPhase ? () => onOpenPhase("refine") : undefined
+                  }
+                />
               ) : null}
             </div>
           )}
@@ -913,7 +1036,33 @@ function MessageRow({
           <ResearchTextWithCitationChips
             text={research.assistant_text_with_citations}
             sourceRefs={research.source_refs}
+            onCitationClick={
+              onOpenPhase
+                ? (ref) => {
+                    if (ref.source_url) {
+                      setPendingEvidenceFocus({
+                        kind: "url",
+                        value: ref.source_url,
+                      });
+                    }
+                    onOpenPhase("evidence", { sourceRef: ref });
+                  }
+                : undefined
+            }
           />
+        </div>
+      );
+    }
+
+    const navigate = parseNavigateResult(message.tool_payload);
+    if (navigate) {
+      const label = PHASE_CHIP_LABEL[navigate.navigate_to] ?? navigate.navigate_to;
+      return (
+        <div
+          className="-my-2 inline-flex max-w-full items-center gap-1.5 rounded-xs border border-border-master bg-surface-elevated px-2 py-1 text-xs text-ink-tertiary"
+          aria-label={`Opened ${label}`}
+        >
+          <span className="truncate">Opened {label} ↗</span>
         </div>
       );
     }

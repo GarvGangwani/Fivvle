@@ -36,6 +36,7 @@ from app.db.models.waitlist_signup import WaitlistSignup
 from app.llm.client import LLMResult, ToolsLLMResult, ToolUseRequest
 from app.llm.prompts.universal_chat import (
     PROMPT_NAME_UNIVERSAL_CHAT,
+    UNIVERSAL_CHAT_SYSTEM_PROMPT,
     build_universal_chat_user_prompt,
 )
 from app.schemas.chat import ChatMessageItem
@@ -620,7 +621,7 @@ async def test_send_response_messages_order_one_tool_turn(
     assert mock_complete.await_count == 2
     for call in mock_complete.await_args_list:
         assert call.kwargs["phase"] == "universal_chat"
-        assert call.kwargs["prompt_name"] == "universal_chat_v3"
+        assert call.kwargs["prompt_name"] == "universal_chat_v4"
         assert call.kwargs["provider"] == "kimi"
 
 
@@ -1024,6 +1025,7 @@ def test_tool_schemas_are_provider_dialect() -> None:
         "get_landing_status",
         "ask_refine_agent",
         "ask_research_agent",
+        "open_phase_panel",
     }
     for schema in anthropic_schemas:
         assert "input_schema" in schema
@@ -1042,10 +1044,62 @@ def test_tool_schemas_are_provider_dialect() -> None:
         s for s in anthropic_schemas if s["name"] == "ask_research_agent"
     )
     assert research_schema["input_schema"]["required"] == ["query"]
+    nav_schema = next(s for s in anthropic_schemas if s["name"] == "open_phase_panel")
+    assert nav_schema["input_schema"]["required"] == ["phase"]
 
 
-def test_prompt_name_is_universal_chat_v3() -> None:
-    assert PROMPT_NAME_UNIVERSAL_CHAT == "universal_chat_v3"
+def test_prompt_name_is_universal_chat_v4() -> None:
+    from app.llm.prompts.universal_chat import (
+        PROMPT_NAME_UNIVERSAL_CHAT_V3,
+        UNIVERSAL_CHAT_SYSTEM_PROMPT_V3,
+    )
+
+    assert PROMPT_NAME_UNIVERSAL_CHAT == "universal_chat_v4"
+    assert PROMPT_NAME_UNIVERSAL_CHAT_V3 == "universal_chat_v3"
+    assert "ask_research_agent" in UNIVERSAL_CHAT_SYSTEM_PROMPT_V3
+    assert "open_phase_panel" in UNIVERSAL_CHAT_SYSTEM_PROMPT
+    assert "current_open_phase" in UNIVERSAL_CHAT_SYSTEM_PROMPT
+
+
+@pytest.mark.asyncio
+async def test_open_phase_panel_executor_payload(db_session: AsyncSession) -> None:
+    user, experiment = await _seed_user_and_experiment(db_session)
+    result = await execute_tool(
+        "open_phase_panel",
+        {"phase": "evidence", "source_ref_id": "[cite:s1]"},
+        db_session,
+        experiment,
+        user=user,
+    )
+    assert result == {
+        "navigate_to": "evidence",
+        "source_ref_id": "[cite:s1]",
+    }
+    bad = await execute_tool(
+        "open_phase_panel",
+        {"phase": "not-a-phase"},
+        db_session,
+        experiment,
+        user=user,
+    )
+    assert "error" in bad
+
+
+@pytest.mark.asyncio
+async def test_project_context_current_open_phase(db_session: AsyncSession) -> None:
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.REFINED, refined_idea=_refined_idea_dict()
+    )
+    ctx_none = await get_experiment_project_context(db_session, experiment)
+    assert ctx_none.current_open_phase is None
+    assert "current_open_phase: null" in ctx_none.to_prompt_block()
+
+    ctx_open = await get_experiment_project_context(
+        db_session, experiment, current_open_phase="evidence"
+    )
+    assert ctx_open.current_open_phase == "evidence"
+    assert "current_open_phase: evidence" in ctx_open.to_prompt_block()
+    assert user.id == experiment.user_id
 
 
 @pytest.mark.asyncio

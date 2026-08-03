@@ -305,6 +305,53 @@ async def _exec_ask_research_agent(
     return await exec_ask_research_agent(db, experiment, args, user)
 
 
+_OPEN_PHASE_VALUES = ("spark", "refine", "evidence", "launch", "signal")
+
+_OPEN_PHASE_PANEL_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "phase": {
+            "type": "string",
+            "enum": list(_OPEN_PHASE_VALUES),
+            "description": (
+                "Phase panel to open: spark, refine, evidence, launch, or signal."
+            ),
+        },
+        "source_ref_id": {
+            "type": ["string", "null"],
+            "description": (
+                "Optional citation marker id (e.g. [cite:s1]) for evidence scroll. "
+                "Pass null when not pointing at a specific source."
+            ),
+        },
+    },
+    "required": ["phase"],
+    "additionalProperties": False,
+}
+
+
+async def _exec_open_phase_panel(
+    db: AsyncSession,
+    experiment: Experiment,
+    args: dict[str, Any],
+    user: User | None,
+) -> dict[str, Any]:
+    """Return a navigate payload for the frontend. No DB side effects."""
+    _ = db, experiment, user
+    phase = args.get("phase") if isinstance(args, dict) else None
+    if not isinstance(phase, str) or phase not in _OPEN_PHASE_VALUES:
+        return {"error": "phase must be one of spark|refine|evidence|launch|signal"}
+    source_ref_id = args.get("source_ref_id")
+    if source_ref_id is not None and not isinstance(source_ref_id, str):
+        source_ref_id = None
+    if isinstance(source_ref_id, str) and not source_ref_id.strip():
+        source_ref_id = None
+    return {
+        "navigate_to": phase,
+        "source_ref_id": source_ref_id,
+    }
+
+
 _TOOLS: tuple[UniversalChatTool, ...] = (
     UniversalChatTool(
         name="get_metrics_summary",
@@ -356,6 +403,18 @@ _TOOLS: tuple[UniversalChatTool, ...] = (
         ),
         input_schema=research_agent_input_schema(),
         executor=_exec_ask_research_agent,
+    ),
+    UniversalChatTool(
+        name="open_phase_panel",
+        description=(
+            "Open a phase panel (spark, refine, evidence, launch, signal) so the "
+            "founder can see the artifact. Use after research/refine sub-agents when "
+            "the founder should look at the report or refine surface. Do not call if "
+            "that phase is already current_open_phase. Do not open for metrics-only "
+            "answers."
+        ),
+        input_schema=_OPEN_PHASE_PANEL_INPUT_SCHEMA,
+        executor=_exec_open_phase_panel,
     ),
 )
 
