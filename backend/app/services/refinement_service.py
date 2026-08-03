@@ -29,6 +29,7 @@ NOTE on the db parameter:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from uuid import UUID
 
 from instructor.core.exceptions import InstructorRetryException
@@ -276,11 +277,12 @@ async def run_turn(
     bump_refinement_count: bool = True,
     prompt_name: str | None = None,
     system_prompt: str | None = None,
+    user_prompt_builder: Callable[..., str] | None = None,
 ) -> RefinementTurnDecision:
     """Run one refinement turn. Always returns a clarify decision.
 
-    Optional ``prompt_name`` / ``system_prompt`` override phase-panel defaults
-    (used by the universal-chat refine sub-agent).
+    Optional ``prompt_name`` / ``system_prompt`` / ``user_prompt_builder`` override
+    phase-panel defaults (used by the universal-chat refine sub-agent).
 
     Side effects (in-place on experiment, no commit — caller commits):
     - When bump_refinement_count is True:
@@ -303,7 +305,8 @@ async def run_turn(
 
     settings = get_settings()
 
-    user_prompt = build_refinement_v2_chat_user_prompt(
+    build_user = user_prompt_builder or build_refinement_v2_chat_user_prompt
+    user_prompt = build_user(
         chat_history=chat_history,
         latest_message=latest_message,
         turn_count=turn_count,

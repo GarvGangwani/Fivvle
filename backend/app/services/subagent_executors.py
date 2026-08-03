@@ -22,6 +22,7 @@ from app.dispatchers.protocol import ResearchDispatcher
 from app.llm.prompts.refine_subagent import (
     PROMPT_NAME_REFINE_SUBAGENT,
     REFINE_SUBAGENT_SYSTEM_PROMPT,
+    build_refine_subagent_user_prompt,
 )
 from app.llm.prompts.research_subagent import (
     PROMPT_NAME_RESEARCH_SUBAGENT,
@@ -247,6 +248,7 @@ async def exec_ask_refine_agent(
         dispatcher=dispatcher,
         prompt_name=PROMPT_NAME_REFINE_SUBAGENT,
         system_prompt=REFINE_SUBAGENT_SYSTEM_PROMPT,
+        user_prompt_builder=build_refine_subagent_user_prompt,
     )
 
     # Reload experiment — handle_turn commits; identity may be expired.

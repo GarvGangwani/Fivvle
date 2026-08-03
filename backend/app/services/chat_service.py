@@ -6,6 +6,7 @@ refinement turns, dispatch on finalize, and plain-chat replies.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -726,6 +727,7 @@ async def handle_turn(
     *,
     prompt_name: str | None = None,
     system_prompt: str | None = None,
+    user_prompt_builder: Callable[..., str] | None = None,
 ) -> ChatTurnResult:
     """Top-level entry. Handles both DR and plain-chat paths."""
     message = _sanitize_user_message(message)
@@ -744,6 +746,7 @@ async def handle_turn(
             user_message_metadata=user_message_metadata,
             prompt_name=prompt_name,
             system_prompt=system_prompt,
+            user_prompt_builder=user_prompt_builder,
         )
     return await _handle_plain_chat_turn(
         db,
@@ -919,6 +922,7 @@ async def _handle_deep_research_turn(
     bump_refinement_count: bool = True,
     prompt_name: str | None = None,
     system_prompt: str | None = None,
+    user_prompt_builder: Callable[..., str] | None = None,
 ) -> ChatTurnResult:
     if idempotency_key is None:
         raise ValueError("idempotency_key required for deep_research=true")
@@ -971,6 +975,7 @@ async def _handle_deep_research_turn(
             bump_refinement_count=bump_refinement_count,
             prompt_name=prompt_name,
             system_prompt=system_prompt,
+            user_prompt_builder=user_prompt_builder,
         )
     except Exception as exc:
         user_error = translate_engineer_error(
