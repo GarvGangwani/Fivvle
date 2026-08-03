@@ -1258,6 +1258,108 @@ async def test_ask_refine_agent_maps_turn_decision(
 
 
 @pytest.mark.asyncio
+async def test_ask_refine_agent_soft_fails_on_user_facing_error(
+    db_session: AsyncSession,
+) -> None:
+    """Upstream parse/validation failures must not surface as assistant_text."""
+    from app.db.enums import ChatTurnKind
+    from app.services.chat_service import ChatTurnResult
+    from app.services.error_translation import UserFacingError
+    from app.services.subagent_executors import exec_ask_refine_agent
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.REFINING
+    )
+
+    turn = ChatTurnResult(
+        thread_id=uuid4(),
+        message_id=uuid4(),
+        experiment_id=experiment.id,
+        assistant_message="Something didn't parse on my side. Try once more?",
+        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+        clarifying_dimension=None,
+        clarifying_questions=(),
+        pipeline_dispatched=False,
+        dispatched_at=None,
+        experiment_status=ExperimentStatus.REFINING,
+        research_error_detail=None,
+        user_facing_error=UserFacingError(
+            "Something didn't parse on my side. Try once more?",
+            "retry_refinement_turn",
+        ),
+        refinement_count=1,
+    )
+
+    async def _fake_handle_turn(*_args: Any, **_kwargs: Any) -> ChatTurnResult:
+        return turn
+
+    with patch(
+        "app.services.subagent_executors.chat_service.handle_turn",
+        new=_fake_handle_turn,
+    ):
+        result = await exec_ask_refine_agent(
+            db_session,
+            experiment,
+            {"query": "how should I position this?"},
+            user,
+        )
+
+    assert "error" in result
+    assert result["error"] == (
+        "Refine agent had trouble — try again or open Refine phase"
+    )
+    assert "assistant_text" not in result
+    assert "Something didn't parse" not in result["error"]
+
+
+@pytest.mark.asyncio
+async def test_ask_refine_agent_soft_fails_on_empty_assistant_message(
+    db_session: AsyncSession,
+) -> None:
+    from app.db.enums import ChatTurnKind
+    from app.services.chat_service import ChatTurnResult
+    from app.services.subagent_executors import exec_ask_refine_agent
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.REFINING
+    )
+
+    turn = ChatTurnResult(
+        thread_id=uuid4(),
+        message_id=uuid4(),
+        experiment_id=experiment.id,
+        assistant_message="   ",
+        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+        clarifying_dimension=None,
+        clarifying_questions=(),
+        pipeline_dispatched=False,
+        dispatched_at=None,
+        experiment_status=ExperimentStatus.REFINING,
+        research_error_detail=None,
+        user_facing_error=None,
+        refinement_count=1,
+    )
+
+    async def _fake_handle_turn(*_args: Any, **_kwargs: Any) -> ChatTurnResult:
+        return turn
+
+    with patch(
+        "app.services.subagent_executors.chat_service.handle_turn",
+        new=_fake_handle_turn,
+    ):
+        result = await exec_ask_refine_agent(
+            db_session,
+            experiment,
+            {"query": "how should I position this?"},
+            user,
+        )
+
+    assert result == {
+        "error": "Refine agent had trouble — try again or open Refine phase"
+    }
+
+
+@pytest.mark.asyncio
 async def test_ask_research_agent_maps_citations(
     db_session: AsyncSession,
 ) -> None:

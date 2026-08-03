@@ -89,6 +89,18 @@ function parseRefineSubagentResult(
   };
 }
 
+/** Soft-fail refine result — distinct from a successful mapped payload. */
+function parseRefineSubagentError(
+  payload: ChatHistoryMessage["tool_payload"],
+): string | null {
+  const root = asRecord(payload);
+  if (!root || root.tool_name !== "ask_refine_agent") return null;
+  if (typeof root.error === "string" && root.result == null) {
+    return root.error;
+  }
+  return null;
+}
+
 function parseResearchSubagentResult(
   payload: ChatHistoryMessage["tool_payload"],
 ): ResearchSubagentToolResult | null {
@@ -875,6 +887,18 @@ function MessageRow({
               ) : null}
             </div>
           )}
+        </div>
+      );
+    }
+
+    const refineError = parseRefineSubagentError(message.tool_payload);
+    if (refineError) {
+      return (
+        <div>
+          <span className="mb-0.5 block text-xs uppercase tracking-wider text-ink-tertiary">
+            From Refine agent
+          </span>
+          <p className="text-sm text-[var(--fv-text-muted)]">{refineError}</p>
         </div>
       );
     }

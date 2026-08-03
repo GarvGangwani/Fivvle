@@ -208,6 +208,11 @@ def _refined_idea_patch(
     return after
 
 
+_REFINE_AGENT_TROUBLE = (
+    "Refine agent had trouble — try again or open Refine phase"
+)
+
+
 async def exec_ask_refine_agent(
     db: AsyncSession,
     experiment: Experiment,
@@ -240,26 +245,58 @@ async def exec_ask_refine_agent(
         user_prompt_builder=build_refine_subagent_user_prompt,
     )
 
-    # Reload experiment — handle_turn commits; identity may be expired.
-    refreshed = await db.get(Experiment, experiment.id)
-    after_idea: dict[str, Any] | None = None
-    if refreshed is not None and isinstance(refreshed.refined_idea_current, dict):
-        after_idea = refreshed.refined_idea_current
-        # Keep caller's experiment instance in sync for subsequent tools.
-        experiment.refined_idea_current = after_idea
-        experiment.thread_id = refreshed.thread_id
-        experiment.status = refreshed.status
-        experiment.refinement_count = refreshed.refinement_count
+    # handle_turn catches run_turn failures and returns a ChatTurnResult with
+    # user_facing_error set (e.g. refinement ValidationError → "Something
+    # didn't parse…"). That is not a successful sub-agent answer for the rail.
+    if turn.user_facing_error is not None:
+        _logger.warning(
+            "refine sub-agent turn failed upstream",
+            experiment_id=str(experiment.id),
+            retry_action=turn.user_facing_error.retry_action,
+            upstream_message=turn.user_facing_error.message,
+        )
+        return {"error": _REFINE_AGENT_TROUBLE}
 
-    has_mcq = len(turn.clarifying_questions) > 0
-    log_entry = turn.clarifying_dimension
+    try:
+        # Reload experiment — handle_turn commits; identity may be expired.
+        refreshed = await db.get(Experiment, experiment.id)
+        after_idea: dict[str, Any] | None = None
+        if refreshed is not None and isinstance(
+            refreshed.refined_idea_current, dict
+        ):
+            after_idea = refreshed.refined_idea_current
+            # Keep caller's experiment instance in sync for subsequent tools.
+            experiment.refined_idea_current = after_idea
+            experiment.thread_id = refreshed.thread_id
+            experiment.status = refreshed.status
+            experiment.refinement_count = refreshed.refinement_count
 
-    return {
-        "assistant_text": turn.assistant_message,
-        "refined_idea_patch": _refined_idea_patch(before_idea, after_idea),
-        "has_pending_mcq": has_mcq,
-        "log_entry": log_entry,
-    }
+        clarifying = turn.clarifying_questions
+        has_mcq = len(clarifying) > 0 if clarifying is not None else False
+        assistant_text = turn.assistant_message
+        if not isinstance(assistant_text, str) or not assistant_text.strip():
+            _logger.warning(
+                "refine sub-agent returned empty assistant_message",
+                experiment_id=str(experiment.id),
+                has_clarifying=has_mcq,
+                clarifying_dimension=turn.clarifying_dimension,
+            )
+            return {"error": _REFINE_AGENT_TROUBLE}
+
+        return {
+            "assistant_text": assistant_text,
+            "refined_idea_patch": _refined_idea_patch(before_idea, after_idea),
+            "has_pending_mcq": has_mcq,
+            "log_entry": turn.clarifying_dimension,
+        }
+    except (AttributeError, KeyError, TypeError) as exc:
+        _logger.warning(
+            "refine sub-agent result mapping failed",
+            experiment_id=str(experiment.id),
+            error_type=type(exc).__name__,
+            error=str(exc),
+        )
+        return {"error": _REFINE_AGENT_TROUBLE}
 
 
 async def exec_ask_research_agent(
