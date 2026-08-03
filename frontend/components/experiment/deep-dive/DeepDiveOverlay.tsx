@@ -17,7 +17,6 @@ import { Archive } from "lucide-react";
 import { ArchiveProjectDialog } from "@/components/experiment/ArchiveProjectDialog";
 import { ACT_CONFIG } from "@/components/experiment/act-config";
 import { RefinePhaseBody } from "@/components/experiment/refine/RefinePhaseBody";
-import type { AttachmentDraft } from "@/components/experiment/refine/RefineChatInput";
 import type { RefineChatMessageModel } from "@/components/experiment/refine/RefineChatMessage";
 import { SparkPhaseBody } from "@/components/experiment/spark/SparkPhaseBody";
 import { EvidenceStagePanel } from "@/components/research/EvidenceStagePanel";
@@ -54,24 +53,6 @@ function overlayTitle(act: DeepDiveAct): string {
 
 type RefinePanelProps = {
   messages: RefineChatMessageModel[];
-  loading: boolean;
-  generatingOpener: boolean;
-  sending: boolean;
-  send: (text: string, attachments: AttachmentDraft[]) => void | Promise<void>;
-  activeMCQFromMessageId?: string | null;
-  dismissedMCQMessageIds?: Set<string>;
-  onReopenMCQ?: (messageId: string) => void;
-  onEditMessage?: (
-    messageId: string,
-    newContent: string,
-  ) => void | Promise<void>;
-  onRetryMessage?: (messageId: string) => void | Promise<void>;
-  onSwitchBranch?: (
-    messageId: string,
-    direction: "prev" | "next",
-  ) => void | Promise<void>;
-  navigatingMessageId?: string | null;
-  regeneratingMessageId?: string | null;
   onFinalizedOrReset: () => Promise<void>;
 };
 
@@ -93,8 +74,6 @@ type Props = {
   onExperimentChange?: (experiment: Experiment) => void;
   /** Plain act switch to Launch (no tab targeting — Kit deep-link deferred). */
   onOpenLaunch: () => void;
-  /** When true, Escape dismisses MCQ only — does not close overlay. */
-  mcqActive?: boolean;
   /** Master rail collapse — drives panel right inset. */
   chatDockCollapsed?: boolean;
   refinePanel?: RefinePanelProps | null;
@@ -115,7 +94,6 @@ export function DeepDiveOverlay({
   onExperimentRefresh,
   onExperimentChange,
   onOpenLaunch,
-  mcqActive = false,
   chatDockCollapsed = false,
   refinePanel = null,
 }: Props) {
@@ -157,7 +135,6 @@ export function DeepDiveOverlay({
         setShowPublishDialog(false);
         return;
       }
-      if (mcqActive) return;
       requestClose();
     };
     window.addEventListener("keydown", onKeyDown);
@@ -167,7 +144,6 @@ export function DeepDiveOverlay({
     requestClose,
     showPublishDialog,
     showArchiveDialog,
-    mcqActive,
   ]);
 
   useEffect(() => {
@@ -370,18 +346,6 @@ export function DeepDiveOverlay({
             <RefinePhaseBody
               experiment={experiment}
               messages={refinePanel.messages}
-              loading={refinePanel.loading}
-              generatingOpener={refinePanel.generatingOpener}
-              sending={refinePanel.sending}
-              send={refinePanel.send}
-              activeMCQFromMessageId={refinePanel.activeMCQFromMessageId}
-              dismissedMCQMessageIds={refinePanel.dismissedMCQMessageIds}
-              onReopenMCQ={refinePanel.onReopenMCQ}
-              onEditMessage={refinePanel.onEditMessage}
-              onRetryMessage={refinePanel.onRetryMessage}
-              onSwitchBranch={refinePanel.onSwitchBranch}
-              navigatingMessageId={refinePanel.navigatingMessageId}
-              regeneratingMessageId={refinePanel.regeneratingMessageId}
               onFinalizedOrReset={refinePanel.onFinalizedOrReset}
             />
           </div>

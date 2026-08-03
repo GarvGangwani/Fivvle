@@ -97,10 +97,85 @@ def test_merge_activity_items_limits_user_chat_to_three() -> None:
         for idx in range(5)
     ]
 
-    items = merge_activity_items([], chat_rows, [], limit=30)
+    items = merge_activity_items(
+        [],
+        chat_rows,
+        [],
+        limit=30,
+        universal_thread_id=thread_id,
+    )
     chat_items = [item for item in items if item.event_type == "chat_message"]
     assert len(chat_items) == 1
     assert chat_items[0].summary == "You sent 3 messages"
+
+
+def test_merge_activity_items_only_universal_thread() -> None:
+    """Refine/evidence thread USER messages must not surface in activity."""
+    experiment_id = uuid4()
+    universal_thread_id = uuid4()
+    refine_thread_id = uuid4()
+    evidence_thread_id = uuid4()
+
+    chat_rows = [
+        ChatMessage(
+            id=uuid4(),
+            thread_id=universal_thread_id,
+            role=ChatRole.USER,
+            content="master rail",
+            experiment_id=experiment_id,
+            created_at=datetime(2026, 7, 9, 12, 3, tzinfo=timezone.utc),
+        ),
+        ChatMessage(
+            id=uuid4(),
+            thread_id=refine_thread_id,
+            role=ChatRole.USER,
+            content="refine chat",
+            experiment_id=experiment_id,
+            created_at=datetime(2026, 7, 9, 12, 2, tzinfo=timezone.utc),
+        ),
+        ChatMessage(
+            id=uuid4(),
+            thread_id=evidence_thread_id,
+            role=ChatRole.USER,
+            content="evidence chat",
+            experiment_id=experiment_id,
+            created_at=datetime(2026, 7, 9, 12, 1, tzinfo=timezone.utc),
+        ),
+    ]
+
+    items = merge_activity_items(
+        [],
+        chat_rows,
+        [],
+        limit=30,
+        universal_thread_id=universal_thread_id,
+    )
+    chat_items = [item for item in items if item.event_type == "chat_message"]
+    assert len(chat_items) == 1
+    assert chat_items[0].id.startswith("chat-")
+
+
+def test_merge_activity_items_no_universal_thread_hides_all_chat() -> None:
+    experiment_id = uuid4()
+    refine_thread_id = uuid4()
+    chat_rows = [
+        ChatMessage(
+            id=uuid4(),
+            thread_id=refine_thread_id,
+            role=ChatRole.USER,
+            content="legacy refine",
+            experiment_id=experiment_id,
+            created_at=datetime(2026, 7, 9, 12, 0, tzinfo=timezone.utc),
+        ),
+    ]
+    items = merge_activity_items(
+        [],
+        chat_rows,
+        [],
+        limit=30,
+        universal_thread_id=None,
+    )
+    assert [item for item in items if item.event_type == "chat_message"] == []
 
 
 def test_merge_activity_items_empty_sources() -> None:

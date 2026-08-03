@@ -190,6 +190,15 @@ export function LiveWorkspacePanel({
     return questions.length === 0;
   }, [latestAssistantMessage, hasWip, isFinalized, wipDiffers]);
 
+  /** Pending MCQ lives on the refine thread; answering is master-rail-native. */
+  const hasPendingMcq = useMemo(() => {
+    if (messages.length === 0) return false;
+    const last = messages[messages.length - 1];
+    if (last.role !== "assistant") return false;
+    const questions = last.clarifying_questions ?? [];
+    return questions.some((q) => q.options.length >= 2);
+  }, [messages]);
+
   const logEntries = useMemo(
     () => extractRefinementLog(messages),
     [messages],
@@ -252,6 +261,27 @@ export function LiveWorkspacePanel({
         LIVE WORKSPACE
       </div>
 
+      {hasPendingMcq ? (
+        <div className="mb-4 rounded-md border-2 border-border-master bg-surface-elevated p-3 flex items-start gap-3">
+          <span
+            className="material-symbols-outlined text-ink-primary shrink-0 mt-0.5"
+            style={{ fontSize: 20 }}
+            aria-hidden="true"
+          >
+            chat
+          </span>
+          <div>
+            <p className="font-mono text-mono-sm uppercase text-ink-primary font-bold mb-1">
+              PENDING CLARIFYING QUESTION
+            </p>
+            <p className="font-body text-body-sm text-ink-primary">
+              You have a pending clarifying question — answer it in the master
+              rail. Type your choice there; the refine agent will pick it up.
+            </p>
+          </div>
+        </div>
+      ) : null}
+
       {isReadyToFinalize ? (
         <div className="mb-4 rounded-md border-2 border-brutalist-yellow bg-brutalist-yellow/20 p-3 flex items-start gap-3">
           <span
@@ -267,7 +297,7 @@ export function LiveWorkspacePanel({
             </p>
             <p className="font-body text-body-sm text-ink-primary">
               The Refiner is done. Hit FINALIZE to lock in your refined idea and
-              move to Evidence, or keep chatting to sharpen it further.
+              move to Evidence, or keep refining in the master rail.
             </p>
           </div>
         </div>
@@ -333,7 +363,7 @@ export function LiveWorkspacePanel({
         </button>
         {!hasWip ? (
           <p className="font-body text-body-sm text-ink-tertiary text-center">
-            Continue the conversation until the Refiner produces a refined idea.
+            Keep refining in the master rail until a refined idea appears here.
           </p>
         ) : null}
         {canFinalize ? (
@@ -355,7 +385,7 @@ export function LiveWorkspacePanel({
       {finalizeConfirm ? (
         <BrutalistConfirm
           title={wipDiffers ? "Update final version?" : "Finalize this refinement?"}
-          body="This marks the current refined idea as ready. You can keep chatting and re-finalize later. Research still requires Confirm (credits) on Evidence."
+          body="This marks the current refined idea as ready. You can keep refining in the master rail and re-finalize later. Research still requires Confirm (credits) on Evidence."
           confirmLabel={wipDiffers ? "UPDATE FINAL" : "FINALIZE"}
           cancelLabel="CANCEL"
           onConfirm={handleFinalize}
