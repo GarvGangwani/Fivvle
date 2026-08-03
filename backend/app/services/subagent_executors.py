@@ -27,6 +27,7 @@ from app.llm.prompts.refine_subagent import (
 from app.llm.prompts.research_subagent import (
     PROMPT_NAME_RESEARCH_SUBAGENT,
     RESEARCH_SUBAGENT_SYSTEM_PROMPT,
+    format_sources_block,
 )
 from app.logging_config import get_logger
 from app.services import chat_service
@@ -34,12 +35,8 @@ from app.services.evidence_chat_service import send_evidence_chat_message
 
 _logger = get_logger(__name__)
 
-_CITE_RE = re.compile(r"\[cite:\s*([^\]]*)\]", re.IGNORECASE)
-_REF_RE = re.compile(r"\[ref:\s*([^\]]*)\]", re.IGNORECASE)
-_MARKER_RE = re.compile(
-    r"\[(?:cite|ref):\s*[^\]]*\]",
-    re.IGNORECASE,
-)
+# Rail research cites primary sources as [cite:sN] (not full URLs / [ref:]).
+_CITE_SOURCE_ID_RE = re.compile(r"\[cite:\s*(s\d+)\]", re.IGNORECASE)
 
 _QUERY_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -79,127 +76,110 @@ def _extract_query(args: dict[str, Any]) -> str | None:
     return cleaned or None
 
 
-def _title_for_url(url: str, report: dict[str, Any] | None) -> str:
-    if report:
-        for qf in report.get("questions_and_findings") or []:
-            if not isinstance(qf, dict):
-                continue
-            for finding in qf.get("findings") or []:
-                if not isinstance(finding, dict):
-                    continue
-                for cite in finding.get("citations") or []:
-                    if isinstance(cite, dict) and cite.get("url") == url:
-                        title = cite.get("title")
-                        if isinstance(title, str) and title.strip():
-                            return title.strip()
-        for comp in report.get("competitors") or []:
-            if not isinstance(comp, dict):
-                continue
-            for cite in comp.get("citations") or []:
-                if isinstance(cite, dict) and cite.get("url") == url:
-                    title = cite.get("title")
-                    if isinstance(title, str) and title.strip():
-                        return title.strip()
+def _domain_from_url(url: str) -> str:
     try:
         from urllib.parse import urlparse
 
-        host = urlparse(url).netloc
+        host = urlparse(url).netloc.lower()
+        if host.startswith("www."):
+            host = host[4:]
         return host or url
     except Exception:
         return url
 
 
-def _title_for_ref_anchor(anchor: str, report: dict[str, Any] | None) -> str:
-    cleaned = anchor.strip()
-    lower = cleaned.lower()
-    if lower.startswith("q") and lower[1:].isdigit():
-        if report:
-            for qf in report.get("questions_and_findings") or []:
-                if isinstance(qf, dict) and str(qf.get("question_id", "")).lower() == lower:
-                    q = qf.get("question")
-                    if isinstance(q, str) and q.strip():
-                        return f"{lower}: {q.strip()}"
-        return lower
-    if lower.startswith("competitor:"):
-        name = cleaned[len("competitor:") :].strip() or cleaned
-        return f"Competitor: {name}"
-    if lower.startswith("section:"):
-        return f"Section: {cleaned[len('section:') :].strip()}"
-    if lower == "limitation":
-        return "Limitation"
-    return cleaned
+def _iter_report_citations(report: dict[str, Any]) -> list[dict[str, str]]:
+    """Collect Citation-shaped dicts from findings + competitors (dedupe by URL)."""
+    collected: list[dict[str, str]] = []
+    seen_urls: set[str] = set()
 
-
-def build_source_refs_from_evidence_text(
-    text: str,
-    report: dict[str, Any] | None,
-) -> list[dict[str, Any]]:
-    """Walk evidence-chat markers in first-seen order; resolve titles from report.
-
-    Markers stay in ``assistant_text_with_citations``. This list is metadata for
-    the rail chip renderer — not a second citation format.
-    """
-    refs: list[dict[str, Any]] = []
-    seen: set[str] = set()
-
-    def _append(
-        marker_id: str,
-        *,
-        source_title: str,
-        source_url: str | None,
-    ) -> None:
-        key = marker_id.lower()
-        if key in seen:
+    def _add(cite: Any) -> None:
+        if not isinstance(cite, dict):
             return
-        seen.add(key)
-        refs.append(
+        url = cite.get("url")
+        if not isinstance(url, str) or not url.strip():
+            return
+        url = url.strip()
+        if url in seen_urls:
+            return
+        seen_urls.add(url)
+        title = cite.get("title")
+        domain = cite.get("source_domain")
+        collected.append(
             {
-                "marker_id": marker_id,
-                "source_title": source_title,
-                "source_url": source_url,
-                "ref_number": len(refs) + 1,
+                "source_title": title.strip()
+                if isinstance(title, str) and title.strip()
+                else url,
+                "source_url": url,
+                "source_domain": domain.strip()
+                if isinstance(domain, str) and domain.strip()
+                else _domain_from_url(url),
             }
         )
 
-    for match in _MARKER_RE.finditer(text):
-        marker = match.group(0)
-        cite_m = _CITE_RE.fullmatch(marker)
-        if cite_m:
-            urls = [u.strip() for u in cite_m.group(1).split(",") if u.strip()]
-            if len(urls) == 1:
-                url = urls[0]
-                _append(
-                    marker,
-                    source_title=_title_for_url(url, report),
-                    source_url=url,
-                )
-            else:
-                for url in urls:
-                    _append(
-                        f"[cite: {url}]",
-                        source_title=_title_for_url(url, report),
-                        source_url=url,
-                    )
+    for qf in report.get("questions_and_findings") or []:
+        if not isinstance(qf, dict):
             continue
+        for finding in qf.get("findings") or []:
+            if not isinstance(finding, dict):
+                continue
+            for cite in finding.get("citations") or []:
+                _add(cite)
 
-        ref_m = _REF_RE.fullmatch(marker)
-        if ref_m:
-            anchors = [a.strip() for a in ref_m.group(1).split(",") if a.strip()]
-            if len(anchors) == 1:
-                anchor = anchors[0]
-                _append(
-                    marker,
-                    source_title=_title_for_ref_anchor(anchor, report),
-                    source_url=None,
-                )
-            else:
-                for anchor in anchors:
-                    _append(
-                        f"[ref: {anchor}]",
-                        source_title=_title_for_ref_anchor(anchor, report),
-                        source_url=None,
-                    )
+    for comp in report.get("competitors") or []:
+        if not isinstance(comp, dict):
+            continue
+        for cite in comp.get("citations") or []:
+            _add(cite)
 
+    return collected
+
+
+def build_source_index(
+    report: dict[str, Any] | None,
+) -> dict[str, dict[str, str | None]]:
+    """Map ``s1``..``sN`` -> primary source metadata from the validation report."""
+    if not report:
+        return {}
+    index: dict[str, dict[str, str | None]] = {}
+    for i, cite in enumerate(_iter_report_citations(report), start=1):
+        source_id = f"s{i}"
+        index[source_id] = {
+            "source_title": cite["source_title"],
+            "source_url": cite["source_url"],
+            "source_domain": cite["source_domain"],
+        }
+    return index
+
+
+def build_source_refs_from_cite_ids(
+    text: str,
+    source_index: dict[str, dict[str, str | None]],
+) -> list[dict[str, Any]]:
+    """Resolve in-content ``[cite:sN]`` markers via ``source_index``.
+
+    Unresolved ids and ``[ref:...]`` markers are dropped (frontend shows them
+    as plain text).
+    """
+    refs: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for match in _CITE_SOURCE_ID_RE.finditer(text):
+        source_id = match.group(1).lower()
+        if source_id in seen:
+            continue
+        meta = source_index.get(source_id)
+        if meta is None:
+            continue
+        seen.add(source_id)
+        marker_id = f"[cite:{source_id}]"
+        refs.append(
+            {
+                "marker_id": marker_id,
+                "source_title": meta.get("source_title") or source_id,
+                "source_url": meta.get("source_url"),
+                "source_domain": meta.get("source_domain"),
+            }
+        )
     return refs
 
 
@@ -284,17 +264,6 @@ async def exec_ask_research_agent(
     if query is None:
         return {"error": "query is required"}
 
-    result = await send_evidence_chat_message(
-        db,
-        current_user=user,
-        experiment_id=experiment.id,
-        message=query,
-        prompt_name=PROMPT_NAME_RESEARCH_SUBAGENT,
-        system_prompt=RESEARCH_SUBAGENT_SYSTEM_PROMPT,
-    )
-
-    assistant_text = result.assistant_message.content or ""
-
     report_raw: dict[str, Any] | None = None
     exp_result = await db.execute(
         select(Experiment)
@@ -306,10 +275,30 @@ async def exec_ask_research_agent(
         raw = exp.validation_report.raw_report
         if isinstance(raw, dict):
             report_raw = raw
-        if exp.evidence_thread_id is not None:
-            experiment.evidence_thread_id = exp.evidence_thread_id
+
+    source_index = build_source_index(report_raw)
+    sources_block = format_sources_block(source_index)
+
+    result = await send_evidence_chat_message(
+        db,
+        current_user=user,
+        experiment_id=experiment.id,
+        message=query,
+        prompt_name=PROMPT_NAME_RESEARCH_SUBAGENT,
+        system_prompt=RESEARCH_SUBAGENT_SYSTEM_PROMPT,
+        sources_block=sources_block,
+    )
+
+    assistant_text = result.assistant_message.content or ""
+
+    if exp is not None and exp.evidence_thread_id is not None:
+        experiment.evidence_thread_id = exp.evidence_thread_id
+    else:
+        refreshed = await db.get(Experiment, experiment.id)
+        if refreshed is not None and refreshed.evidence_thread_id is not None:
+            experiment.evidence_thread_id = refreshed.evidence_thread_id
 
     return {
         "assistant_text_with_citations": assistant_text,
-        "source_refs": build_source_refs_from_evidence_text(assistant_text, report_raw),
+        "source_refs": build_source_refs_from_cite_ids(assistant_text, source_index),
     }

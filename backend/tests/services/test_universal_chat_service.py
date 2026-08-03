@@ -1135,40 +1135,66 @@ async def test_get_report_summary_top_findings(db_session: AsyncSession) -> None
 # --- Phase 2 sub-agents -------------------------------------------------
 
 
-def test_build_source_refs_preserves_markers_and_order() -> None:
-    from app.services.subagent_executors import build_source_refs_from_evidence_text
-
-    text = (
-        "Demand is real [cite: https://example.com/a]. "
-        "Gap on pricing [ref: q2]. Overlap with Acme [ref: competitor:Acme]."
+def test_build_source_index_and_cite_id_refs() -> None:
+    from app.llm.prompts.research_subagent import format_sources_block
+    from app.services.subagent_executors import (
+        build_source_index,
+        build_source_refs_from_cite_ids,
     )
+
     report = {
         "questions_and_findings": [
             {
-                "question_id": "q2",
-                "question": "Who competes?",
+                "question_id": "q1",
                 "findings": [
                     {
                         "citations": [
                             {
-                                "url": "https://example.com/a",
+                                "url": "https://reuters.com/a",
                                 "title": "Demand survey",
-                            }
+                                "source_domain": "reuters.com",
+                            },
+                            {
+                                "url": "https://techcrunch.com/b",
+                                "title": "Competitor roundup",
+                                "source_domain": "techcrunch.com",
+                            },
                         ]
                     }
                 ],
             }
         ],
-        "competitors": [],
+        "competitors": [
+            {
+                "citations": [
+                    {
+                        "url": "https://reuters.com/a",
+                        "title": "Demand survey",
+                        "source_domain": "reuters.com",
+                    }
+                ]
+            }
+        ],
     }
-    refs = build_source_refs_from_evidence_text(text, report)
-    assert [r["ref_number"] for r in refs] == [1, 2, 3]
-    assert refs[0]["marker_id"].lower().startswith("[cite:")
-    assert refs[0]["source_url"] == "https://example.com/a"
-    assert refs[0]["source_title"] == "Demand survey"
-    assert refs[1]["source_url"] is None
-    assert refs[1]["source_title"].startswith("q2:")
-    assert refs[2]["source_title"] == "Competitor: Acme"
+    index = build_source_index(report)
+    assert list(index.keys()) == ["s1", "s2"]
+    assert index["s1"]["source_url"] == "https://reuters.com/a"
+    assert index["s1"]["source_domain"] == "reuters.com"
+    assert index["s2"]["source_domain"] == "techcrunch.com"
+
+    block = format_sources_block(index)
+    assert '"id": "s1"' in block
+    assert "reuters.com" in block
+
+    text = (
+        "Demand is real [cite:s1]. Incumbents are noisy [cite:s2][cite:s1]. "
+        "Unresolved [cite:s9]. Report anchor [ref: q1]."
+    )
+    refs = build_source_refs_from_cite_ids(text, index)
+    assert [r["marker_id"] for r in refs] == ["[cite:s1]", "[cite:s2]"]
+    assert refs[0]["source_url"] == "https://reuters.com/a"
+    assert refs[1]["source_domain"] == "techcrunch.com"
+    assert all("ref_number" not in r for r in refs)
 
 
 @pytest.mark.asyncio
@@ -1252,7 +1278,13 @@ async def test_ask_research_agent_maps_citations(
                             {
                                 "url": "https://example.com/demand",
                                 "title": "Demand post",
-                            }
+                                "source_domain": "example.com",
+                            },
+                            {
+                                "url": "https://news.ycombinator.com/item?id=1",
+                                "title": "HN thread",
+                                "source_domain": "news.ycombinator.com",
+                            },
                         ]
                     }
                 ],
@@ -1263,12 +1295,13 @@ async def test_ask_research_agent_maps_citations(
     db_session.add(ValidationReport(experiment_id=experiment.id, raw_report=raw))
     await db_session.commit()
 
+    captured: dict[str, Any] = {}
     assistant = ChatMessage(
         thread_id=uuid4(),
         role=ChatRole.ASSISTANT,
         content=(
-            "Demand looks real [cite: https://example.com/demand]. "
-            "See also [ref: q1]."
+            "Demand looks real [cite:s1]. Forums agree [cite:s2][cite:s1]. "
+            "Ignore [cite:s99] and [ref: q1]."
         ),
         experiment_id=experiment.id,
         turn_kind=ChatTurnKind.EVIDENCE_CHAT,
@@ -1281,7 +1314,8 @@ async def test_ask_research_agent_maps_citations(
         turn_kind=ChatTurnKind.EVIDENCE_CHAT,
     )
 
-    async def _fake_evidence(*_args: Any, **_kwargs: Any) -> EvidenceChatResult:
+    async def _fake_evidence(*_args: Any, **kwargs: Any) -> EvidenceChatResult:
+        captured.update(kwargs)
         return EvidenceChatResult(
             user_message=user_msg,
             assistant_message=assistant,
@@ -1299,10 +1333,15 @@ async def test_ask_research_agent_maps_citations(
             user,
         )
 
-    assert "[cite:" in result["assistant_text_with_citations"]
+    assert captured.get("sources_block") is not None
+    assert '"id": "s1"' in captured["sources_block"]
+    assert "[cite:s1]" in result["assistant_text_with_citations"]
     assert len(result["source_refs"]) == 2
+    assert result["source_refs"][0]["marker_id"] == "[cite:s1]"
     assert result["source_refs"][0]["source_title"] == "Demand post"
     assert result["source_refs"][0]["source_url"] == "https://example.com/demand"
+    assert result["source_refs"][0]["source_domain"] == "example.com"
+    assert result["source_refs"][1]["marker_id"] == "[cite:s2]"
 
 
 @pytest.mark.asyncio
@@ -1514,6 +1553,7 @@ async def test_research_executor_passes_rail_prompt(
 
     assert captured["prompt_name"] == PROMPT_NAME_RESEARCH_SUBAGENT
     assert captured["system_prompt"] == RESEARCH_SUBAGENT_SYSTEM_PROMPT
+    assert "sources_block" in captured
 
 
 @pytest.mark.asyncio

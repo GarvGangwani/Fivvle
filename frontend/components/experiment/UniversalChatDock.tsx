@@ -109,8 +109,8 @@ function parseResearchSubagentResult(
       source_title:
         typeof row.source_title === "string" ? row.source_title : row.marker_id,
       source_url: typeof row.source_url === "string" ? row.source_url : null,
-      ref_number:
-        typeof row.ref_number === "number" ? row.ref_number : source_refs.length + 1,
+      source_domain:
+        typeof row.source_domain === "string" ? row.source_domain : null,
     });
   }
   return {
@@ -127,12 +127,29 @@ function SubagentStatusChip({ label }: { label: string }) {
   );
 }
 
-function InlineCitationChip({ label }: { label: string }) {
+function InlineCitationChip({
+  label,
+  title,
+}: {
+  label: string;
+  title?: string;
+}) {
   return (
-    <span className="mx-0.5 inline-flex max-w-[12rem] align-baseline rounded-xs border border-border-master px-1 py-px text-[10px] leading-tight text-ink-tertiary">
+    <span
+      title={title || undefined}
+      className="mx-0.5 inline-flex max-w-[12rem] align-baseline rounded-xs border border-border-master px-1 py-px text-[10px] leading-tight text-ink-tertiary"
+    >
       <span className="truncate">{label}</span>
     </span>
   );
+}
+
+function chipLabelForSource(ref: ResearchSubagentSourceRef): string {
+  const domain = ref.source_domain?.trim();
+  if (domain) return domain;
+  const title = ref.source_title.trim();
+  if (title.length <= 28) return title;
+  return `${title.slice(0, 25)}…`;
 }
 
 function ResearchTextWithCitationChips({
@@ -145,6 +162,12 @@ function ResearchTextWithCitationChips({
   const byMarker = new Map(
     sourceRefs.map((ref) => [ref.marker_id.toLowerCase(), ref]),
   );
+  // Also index by bare source id (s1) so `[cite:s1]` / `[cite: s1]` both resolve.
+  const byId = new Map<string, ResearchSubagentSourceRef>();
+  for (const ref of sourceRefs) {
+    const idMatch = /\[cite:\s*(s\d+)\]/i.exec(ref.marker_id);
+    if (idMatch) byId.set(idMatch[1].toLowerCase(), ref);
+  }
   const tokens = tokenizeCitations(text);
 
   return (
@@ -160,7 +183,11 @@ function ResearchTextWithCitationChips({
             />
           );
         }
-        const ref = byMarker.get(token.marker.toLowerCase());
+        // [ref:...] and unresolved cites stay as plain text (rail is primary-source only).
+        const idMatch = /\[cite:\s*(s\d+)\]/i.exec(token.marker);
+        const ref =
+          byMarker.get(token.marker.toLowerCase()) ??
+          (idMatch ? byId.get(idMatch[1].toLowerCase()) : undefined);
         if (!ref) {
           return (
             <span key={`raw-${index}`} className="text-ink-tertiary">
@@ -171,7 +198,11 @@ function ResearchTextWithCitationChips({
         return (
           <InlineCitationChip
             key={`cite-${index}`}
-            label={ref.source_title || String(ref.ref_number)}
+            label={chipLabelForSource(ref)}
+            title={
+              [ref.source_title, ref.source_url].filter(Boolean).join(" — ") ||
+              undefined
+            }
           />
         );
       })}
