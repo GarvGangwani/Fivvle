@@ -81,6 +81,18 @@ describe("tokenizeCitations", () => {
     ]);
   });
 
+  it("splits back-to-back primary-source cite ids into distinct tokens", () => {
+    const tokens = tokenizeCitations(
+      "Incumbents are noisy [cite:s1][cite:s3]. Done.",
+    );
+    expect(tokens).toEqual([
+      { type: "text", value: "Incumbents are noisy " },
+      { type: "marker", marker: "[cite:s1]" },
+      { type: "marker", marker: "[cite:s3]" },
+      { type: "text", value: ". Done." },
+    ]);
+  });
+
   it("returns a single text token when there are no markers", () => {
     expect(tokenizeCitations("Plain answer.")).toEqual([
       { type: "text", value: "Plain answer." },

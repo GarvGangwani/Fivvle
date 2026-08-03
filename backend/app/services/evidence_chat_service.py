@@ -347,6 +347,8 @@ def _build_user_prompt(
     selection_text: str | None,
     selection_question_id: str | None,
     history_messages: list[ChatMessage],
+    *,
+    sources_block: str | None = None,
 ) -> str:
     skeleton = _build_report_skeleton(experiment, report)
     selected_context = _build_selected_context(
@@ -358,6 +360,7 @@ def _build_user_prompt(
         selected_context=selected_context,
         chat_history=history_str,
         user_message=question_text,
+        sources_block=sources_block,
     )
 
 
@@ -476,12 +479,13 @@ async def send_evidence_chat_message(
     *,
     prompt_name: str | None = None,
     system_prompt: str | None = None,
+    sources_block: str | None = None,
 ) -> EvidenceChatResult:
     """Send one evidence-chat turn (non-streaming) and persist both rows.
 
-    Optional ``prompt_name`` / ``system_prompt`` override the phase-panel
-    defaults (used by the universal-chat research sub-agent). Streaming and
-    edit/regenerate paths are unchanged.
+    Optional ``prompt_name`` / ``system_prompt`` / ``sources_block`` override
+    phase-panel defaults (used by the universal-chat research sub-agent).
+    Streaming and edit/regenerate paths are unchanged.
 
     The new user message hangs off ``parent_message_id`` (or the current active
     leaf when omitted); the assistant reply hangs off the user message and
@@ -513,6 +517,7 @@ async def send_evidence_chat_message(
         selection_text,
         selection_question_id,
         history,
+        sources_block=sources_block,
     )
 
     user_msg = ChatMessage(

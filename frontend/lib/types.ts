@@ -370,7 +370,7 @@ export interface ResearchSubagentSourceRef {
   marker_id: string;
   source_title: string;
   source_url: string | null;
-  ref_number: number;
+  source_domain: string | null;
 }
 
 /** tool_payload.result for ask_refine_agent. */
