@@ -20,7 +20,7 @@ import {
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
 import {
   getUniversalChatMessages,
-  sendUniversalChatMessage,
+  streamUniversalChatMessage,
 } from "@/lib/api";
 import { tokenizeCitations } from "@/lib/parse-citations";
 import type {
@@ -241,6 +241,52 @@ function displayProjectName(projectName?: string | null): string | null {
   return trimmed ? trimmed : null;
 }
 
+function stubToolCallMessage(
+  toolName: string,
+  messageId: string,
+): DockMessage {
+  return {
+    id: messageId,
+    role: "tool_call",
+    content: `Called: ${toolName}`,
+    turn_kind: "universal_chat",
+    created_at: new Date().toISOString(),
+    tool_payload: { tool_name: toolName, arguments: {} },
+  };
+}
+
+function toolResultFromEvent(
+  toolName: string,
+  messageId: string,
+  payload: Record<string, unknown>,
+): DockMessage {
+  const toolPayload =
+    typeof payload.tool_name === "string"
+      ? payload
+      : { tool_name: toolName, ...payload };
+  return {
+    id: messageId,
+    role: "tool_result",
+    content: "Result received",
+    turn_kind: "universal_chat",
+    created_at: new Date().toISOString(),
+    tool_payload: toolPayload,
+  };
+}
+
+function agentForToolName(
+  toolName: string,
+): "refine" | "research" | null {
+  if (toolName === "ask_refine_agent") return "refine";
+  if (toolName === "ask_research_agent") return "research";
+  return null;
+}
+
+type StreamingSubagentState = {
+  agent: "refine" | "research";
+  text: string;
+};
+
 export const UniversalChatDock = memo(function UniversalChatDock({
   experimentId,
   projectName,
@@ -251,6 +297,8 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   const [historyLoading, setHistoryLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [draft, setDraft] = useState("");
+  const [streamingSubagent, setStreamingSubagent] =
+    useState<StreamingSubagentState | null>(null);
 
   const named = displayProjectName(projectName);
   const placeholder = named
@@ -265,6 +313,8 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const isNearBottomRef = useRef(true);
   const forceScrollRef = useRef(false);
+  const streamAbortRef = useRef<AbortController | null>(null);
+  const streamingAssistantIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const key = collapseStorageKey(experimentId);
@@ -280,6 +330,12 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     setCollapsed(next);
     onCollapsedChange?.(next);
   }, [experimentId, onCollapsedChange]);
+
+  useEffect(() => {
+    return () => {
+      streamAbortRef.current?.abort();
+    };
+  }, []);
 
   const setCollapsedPersisted = useCallback(
     (next: boolean) => {
@@ -335,7 +391,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
       scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
       forceScrollRef.current = false;
     }
-  }, [messages, sending, historyLoading]);
+  }, [messages, sending, historyLoading, streamingSubagent]);
 
   const resizeTextarea = useCallback(() => {
     const el = textareaRef.current;
@@ -352,6 +408,12 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     const trimmed = draft.trim();
     if (!trimmed || sending) return;
 
+    streamAbortRef.current?.abort();
+    const abort = new AbortController();
+    streamAbortRef.current = abort;
+    streamingAssistantIdRef.current = null;
+    setStreamingSubagent(null);
+
     const optimisticId = `local-${crypto.randomUUID()}`;
     const optimistic: DockMessage = {
       id: optimisticId,
@@ -367,14 +429,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     forceScrollRef.current = true;
     setMessages((prev) => [...prev, optimistic]);
 
-    try {
-      const result = await sendUniversalChatMessage(experimentId, trimmed);
-      setMessages((prev) => {
-        const withoutOptimistic = prev.filter((m) => m.id !== optimisticId);
-        return [...withoutOptimistic, ...result.messages];
-      });
-      forceScrollRef.current = true;
-    } catch {
+    const markFailed = () => {
       setMessages((prev) =>
         prev.map((m) =>
           m.id === optimisticId
@@ -386,8 +441,133 @@ export const UniversalChatDock = memo(function UniversalChatDock({
             : m,
         ),
       );
+      setStreamingSubagent(null);
+    };
+
+    try {
+      await streamUniversalChatMessage(
+        experimentId,
+        trimmed,
+        {
+          onToolCall: ({ tool_name, message_id }) => {
+            const agent = agentForToolName(tool_name);
+            if (agent) {
+              setStreamingSubagent({ agent, text: "" });
+            } else {
+              setStreamingSubagent(null);
+            }
+            setMessages((prev) => [
+              ...prev,
+              stubToolCallMessage(tool_name, message_id),
+            ]);
+            forceScrollRef.current = true;
+          },
+          onToolResult: ({ tool_name, message_id, payload }) => {
+            setStreamingSubagent(null);
+            setMessages((prev) => [
+              ...prev,
+              toolResultFromEvent(tool_name, message_id, payload),
+            ]);
+            forceScrollRef.current = true;
+          },
+          onSubagentToken: ({ agent, text }) => {
+            setStreamingSubagent((prev) => {
+              if (prev && prev.agent === agent) {
+                return { agent, text: `${prev.text}${text}` };
+              }
+              return { agent, text };
+            });
+            forceScrollRef.current = true;
+          },
+          onAssistantToken: ({ text }) => {
+            setStreamingSubagent(null);
+            setMessages((prev) => {
+              const existingId = streamingAssistantIdRef.current;
+              if (existingId) {
+                return prev.map((m) =>
+                  m.id === existingId
+                    ? { ...m, content: `${m.content}${text}` }
+                    : m,
+                );
+              }
+              const id = `local-assistant-${crypto.randomUUID()}`;
+              streamingAssistantIdRef.current = id;
+              return [
+                ...prev,
+                {
+                  id,
+                  role: "assistant",
+                  content: text,
+                  turn_kind: "universal_chat",
+                  created_at: new Date().toISOString(),
+                  optimistic: true,
+                },
+              ];
+            });
+            forceScrollRef.current = true;
+          },
+          onDone: ({ assistant_message_id, user_message_id }) => {
+            setStreamingSubagent(null);
+            setMessages((prev) =>
+              prev.map((m) => {
+                if (m.id === optimisticId) {
+                  return {
+                    ...m,
+                    id: user_message_id ?? m.id,
+                    optimistic: false,
+                  };
+                }
+                if (
+                  streamingAssistantIdRef.current &&
+                  m.id === streamingAssistantIdRef.current
+                ) {
+                  return {
+                    ...m,
+                    id: assistant_message_id,
+                    optimistic: false,
+                  };
+                }
+                return m;
+              }),
+            );
+          },
+          onError: () => {
+            if (abort.signal.aborted) return;
+            setStreamingSubagent(null);
+            setMessages((prev) => {
+              const cleaned = prev.filter(
+                (m) => !m.id.startsWith("local-assistant-"),
+              );
+              const hasPersistedTools = cleaned.some(
+                (m) => m.role === "tool_call" || m.role === "tool_result",
+              );
+              if (hasPersistedTools) {
+                return cleaned.map((m) =>
+                  m.id === optimisticId ? { ...m, optimistic: false } : m,
+                );
+              }
+              return cleaned.map((m) =>
+                m.id === optimisticId
+                  ? {
+                      ...m,
+                      error: true,
+                      content: `${trimmed}\n\n(Failed to send — retry)`,
+                    }
+                  : m,
+              );
+            });
+          },
+        },
+        abort.signal,
+      );
+    } catch {
+      if (!abort.signal.aborted) markFailed();
     } finally {
+      if (streamAbortRef.current === abort) {
+        streamAbortRef.current = null;
+      }
       setSending(false);
+      streamingAssistantIdRef.current = null;
     }
   }, [draft, experimentId, sending]);
 
@@ -396,7 +576,6 @@ export const UniversalChatDock = memo(function UniversalChatDock({
       const content = message.content.replace(/\n\n\(Failed to send — retry\)$/, "");
       setMessages((prev) => prev.filter((m) => m.id !== message.id));
       setDraft(content);
-      // Focus after state flush
       requestAnimationFrame(() => textareaRef.current?.focus());
     },
     [],
@@ -473,11 +652,14 @@ export const UniversalChatDock = memo(function UniversalChatDock({
             {messages.map((msg, index) => {
               const next = messages[index + 1];
               const name = toolNameFromPayload(msg.tool_payload);
+              const agent = name ? agentForToolName(name) : null;
               const showSubagentHandoff =
                 msg.role === "tool_call" &&
-                name != null &&
-                name in SUBAGENT_HANDOFF &&
-                (next == null || next.role !== "tool_result");
+                agent != null &&
+                (next == null || next.role !== "tool_result") &&
+                (streamingSubagent == null ||
+                  streamingSubagent.agent !== agent ||
+                  streamingSubagent.text.length === 0);
               return (
                 <MessageRow
                   key={msg.id}
@@ -489,7 +671,19 @@ export const UniversalChatDock = memo(function UniversalChatDock({
                 />
               );
             })}
-            {sending ? <TypingIndicator /> : null}
+            {streamingSubagent && streamingSubagent.text.length > 0 ? (
+              <StreamingSubagentBlock
+                agent={streamingSubagent.agent}
+                text={streamingSubagent.text}
+              />
+            ) : null}
+            {sending &&
+            streamingSubagent == null &&
+            (messages.length === 0 ||
+              messages[messages.length - 1]?.role === "user" ||
+              messages[messages.length - 1]?.role === "tool_call") ? (
+              <TypingIndicator />
+            ) : null}
           </>
         )}
         <div ref={scrollAnchorRef} />
@@ -579,6 +773,32 @@ function TypingIndicator() {
   );
 }
 
+function StreamingSubagentBlock({
+  agent,
+  text,
+}: {
+  agent: "refine" | "research";
+  text: string;
+}) {
+  const label =
+    agent === "refine" ? "From Refine agent" : "From Research agent";
+  return (
+    <div>
+      <span className="mb-0.5 block text-xs uppercase tracking-wider text-ink-tertiary">
+        {label}
+      </span>
+      {agent === "research" ? (
+        <ResearchTextWithCitationChips text={text} sourceRefs={[]} />
+      ) : (
+        <ChatMarkdown
+          content={text}
+          className="fv-msg-ai break-words text-sm text-[var(--fv-text)]"
+        />
+      )}
+    </div>
+  );
+}
+
 function MessageRow({
   message,
   onRetry,
@@ -639,10 +859,12 @@ function MessageRow({
           <span className="mb-0.5 block text-xs uppercase tracking-wider text-ink-tertiary">
             From Refine agent
           </span>
-          <ChatMarkdown
-            content={refine.assistant_text}
-            className="fv-msg-ai break-words text-sm text-[var(--fv-text)]"
-          />
+          {refine.assistant_text ? (
+            <ChatMarkdown
+              content={refine.assistant_text}
+              className="fv-msg-ai break-words text-sm text-[var(--fv-text)]"
+            />
+          ) : null}
           {(refine.refined_idea_patch != null || refine.has_pending_mcq) && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {refine.refined_idea_patch != null ? (

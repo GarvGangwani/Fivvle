@@ -649,6 +649,39 @@ def _sse(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
+def format_sse_event(event: str, data: dict) -> str:
+    """Public alias for SSE framing (universal chat stream endpoint)."""
+    return _sse(event, data)
+
+
+async def iter_llm_text_tokens(
+    *,
+    provider: str,
+    model: str,
+    system: str,
+    user: str,
+    usage: llm_client.StreamUsage,
+    max_tokens: int = _MAX_TOKENS,
+    temperature: float = _TEMPERATURE,
+) -> AsyncGenerator[str, None]:
+    """Yield plain LLM text tokens (no SSE framing).
+
+    Shared by the evidence-chat SSE endpoint and the research sub-agent stream
+    path. Caller owns ``usage`` and must call ``log_streamed_call`` on every
+    terminal path.
+    """
+    async for piece in llm_client.complete_stream(
+        provider=provider,  # type: ignore[arg-type]
+        model=model,
+        system=system,
+        user=user,
+        usage=usage,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    ):
+        yield piece
+
+
 async def stream_evidence_reply(
     prep: EvidenceStreamPrep,
 ) -> AsyncGenerator[str, None]:
@@ -665,14 +698,12 @@ async def stream_evidence_reply(
 
     async with sessionmaker() as gen_session:
         try:
-            async for piece in llm_client.complete_stream(
-                provider=prep.provider,  # type: ignore[arg-type]
+            async for piece in iter_llm_text_tokens(
+                provider=prep.provider,
                 model=prep.model,
                 system=EVIDENCE_CHAT_SYSTEM_PROMPT,
                 user=prep.user_prompt,
                 usage=usage,
-                max_tokens=_MAX_TOKENS,
-                temperature=_TEMPERATURE,
             ):
                 yield _sse("token", {"text": piece})
         except (asyncio.CancelledError, GeneratorExit):
@@ -736,6 +767,135 @@ async def stream_evidence_reply(
                 "sibling_info": sibling_info,
             },
         )
+
+
+async def stream_research_evidence_tokens(
+    db: AsyncSession,
+    current_user: User,
+    experiment_id: UUID,
+    message: str,
+    *,
+    prompt_name: str,
+    system_prompt: str,
+    sources_block: str | None = None,
+) -> AsyncGenerator[str, None]:
+    """Stream evidence-thread tokens for the research sub-agent (no SSE framing).
+
+    Persists the user row + commits before tokens; writes the assistant row and
+    ``log_streamed_call`` only after a successful stream (same no-partial-
+    assistant invariant as ``stream_evidence_reply``). Yields plain text pieces.
+    On failure/cancel: logs cost, leaves no assistant row, re-raises.
+    """
+    clean_message = _sanitize(message)
+    if not clean_message:
+        raise ValueError("message must not be empty")
+
+    experiment, report_row = await _load_owned_experiment_and_report(
+        db, current_user, experiment_id
+    )
+    report = ValidationReportSchema.model_validate(report_row.raw_report)
+
+    thread = await _resolve_evidence_thread(db, current_user, experiment)
+    parent_id = await _resolve_parent_message_id(db, thread, None)
+    history = await get_branch_up_to(db, parent_id) if parent_id else []
+
+    user_prompt = _build_user_prompt(
+        experiment,
+        report,
+        clean_message,
+        None,
+        None,
+        history,
+        sources_block=sources_block,
+    )
+
+    user_msg = ChatMessage(
+        thread_id=thread.id,
+        role=ChatRole.USER,
+        content=clean_message,
+        experiment_id=experiment.id,
+        turn_kind=ChatTurnKind.EVIDENCE_CHAT,
+        parent_message_id=parent_id,
+    )
+    db.add(user_msg)
+    await db.flush()
+    await set_active_leaf(db, thread.id, user_msg.id)
+    await db.commit()
+
+    settings = get_settings()
+    usage = llm_client.StreamUsage()
+    try:
+        async for piece in iter_llm_text_tokens(
+            provider=settings.refinement_provider,
+            model=settings.refinement_model,
+            system=system_prompt,
+            user=user_prompt,
+            usage=usage,
+        ):
+            yield piece
+    except (asyncio.CancelledError, GeneratorExit):
+        try:
+            await llm_client.log_streamed_call(
+                db,
+                usage=usage,
+                prompt_name=prompt_name,
+                experiment_id=experiment.id,
+                phase="evidence_chat",
+            )
+            await db.commit()
+        except Exception as log_exc:
+            with contextlib.suppress(Exception):
+                await db.rollback()
+            _logger.warning(
+                "failed to log research subagent stream on cancel",
+                error=str(log_exc),
+            )
+        raise
+    except Exception:
+        try:
+            await llm_client.log_streamed_call(
+                db,
+                usage=usage,
+                prompt_name=prompt_name,
+                experiment_id=experiment.id,
+                phase="evidence_chat",
+            )
+            await db.commit()
+        except Exception as log_exc:
+            with contextlib.suppress(Exception):
+                await db.rollback()
+            _logger.warning(
+                "failed to log research subagent stream on error",
+                error=str(log_exc),
+            )
+        raise
+
+    assistant_text = usage.text.strip() or _FALLBACK_TEXT
+    assistant_msg = ChatMessage(
+        thread_id=thread.id,
+        role=ChatRole.ASSISTANT,
+        content=assistant_text,
+        experiment_id=experiment.id,
+        turn_kind=ChatTurnKind.EVIDENCE_CHAT,
+        parent_message_id=user_msg.id,
+    )
+    db.add(assistant_msg)
+    await db.flush()
+    await set_active_leaf(db, thread.id, assistant_msg.id)
+    await llm_client.log_streamed_call(
+        db,
+        usage=usage,
+        prompt_name=prompt_name,
+        experiment_id=experiment.id,
+        phase="evidence_chat",
+    )
+    await db.commit()
+
+    _logger.info(
+        "research evidence stream completed",
+        experiment_id=str(experiment.id),
+        thread_id=str(thread.id),
+    )
 
 
 async def _log_stream_call_safely(

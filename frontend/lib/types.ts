@@ -620,6 +620,15 @@ export interface UniversalChatSendResponse {
   thread_id: string;
 }
 
+/** `done` SSE frame from POST /chat/universal/stream. */
+export interface UniversalChatStreamDone {
+  assistant_message_id: string;
+  thread_id: string;
+  user_message_id: string;
+}
+
+export type UniversalSubagentName = "refine" | "research";
+
 export interface UniversalChatMessagesResponse {
   thread_id: string | null;
   experiment_id: string;

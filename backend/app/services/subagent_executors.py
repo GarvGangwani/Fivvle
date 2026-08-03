@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import copy
 import re
+from collections.abc import AsyncGenerator
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -31,9 +32,17 @@ from app.llm.prompts.research_subagent import (
 )
 from app.logging_config import get_logger
 from app.services import chat_service
-from app.services.evidence_chat_service import send_evidence_chat_message
+from app.services.evidence_chat_service import (
+    send_evidence_chat_message,
+    stream_research_evidence_tokens,
+)
 
 _logger = get_logger(__name__)
+
+# Match evidence_chat_service streaming defaults.
+_RESEARCH_STREAM_FALLBACK = (
+    "I couldn't generate a response for that. Please try rephrasing your question."
+)
 
 # Rail research cites primary sources as [cite:sN] (not full URLs / [ref:]).
 _CITE_SOURCE_ID_RE = re.compile(r"\[cite:\s*(s\d+)\]", re.IGNORECASE)
@@ -302,3 +311,80 @@ async def exec_ask_research_agent(
         "assistant_text_with_citations": assistant_text,
         "source_refs": build_source_refs_from_cite_ids(assistant_text, source_index),
     }
+
+
+async def exec_ask_research_agent_stream(
+    db: AsyncSession,
+    experiment: Experiment,
+    args: dict[str, Any],
+    user: User,
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    """Stream research sub-agent tokens; yield ``token`` then ``complete``.
+
+    Uses ``stream_research_evidence_tokens`` (shared LLM token iterator). The
+    universal master wraps tokens with ``agent: research`` attribution. On soft
+    failure yields a single ``complete`` with ``error`` and no tokens.
+    """
+    query = _extract_query(args)
+    if query is None:
+        yield ("complete", {"error": "query is required"})
+        return
+
+    report_raw: dict[str, Any] | None = None
+    exp_result = await db.execute(
+        select(Experiment)
+        .options(selectinload(Experiment.validation_report))
+        .where(Experiment.id == experiment.id)
+    )
+    exp = exp_result.scalar_one_or_none()
+    if exp is not None and exp.validation_report is not None:
+        raw = exp.validation_report.raw_report
+        if isinstance(raw, dict):
+            report_raw = raw
+
+    source_index = build_source_index(report_raw)
+    sources_block = format_sources_block(source_index)
+
+    parts: list[str] = []
+    try:
+        async for piece in stream_research_evidence_tokens(
+            db,
+            user,
+            experiment.id,
+            query,
+            prompt_name=PROMPT_NAME_RESEARCH_SUBAGENT,
+            system_prompt=RESEARCH_SUBAGENT_SYSTEM_PROMPT,
+            sources_block=sources_block,
+        ):
+            parts.append(piece)
+            yield ("token", {"text": piece})
+    except Exception as exc:
+        _logger.warning(
+            "research subagent stream failed",
+            experiment_id=str(experiment.id),
+            error_type=type(exc).__name__,
+        )
+        yield (
+            "complete",
+            {"error": f"{type(exc).__name__}: tool execution failed"},
+        )
+        return
+
+    assistant_text = "".join(parts).strip() or _RESEARCH_STREAM_FALLBACK
+
+    if exp is not None and exp.evidence_thread_id is not None:
+        experiment.evidence_thread_id = exp.evidence_thread_id
+    else:
+        refreshed = await db.get(Experiment, experiment.id)
+        if refreshed is not None and refreshed.evidence_thread_id is not None:
+            experiment.evidence_thread_id = refreshed.evidence_thread_id
+
+    yield (
+        "complete",
+        {
+            "assistant_text_with_citations": assistant_text,
+            "source_refs": build_source_refs_from_cite_ids(
+                assistant_text, source_index
+            ),
+        },
+    )
