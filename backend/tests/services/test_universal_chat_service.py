@@ -621,7 +621,7 @@ async def test_send_response_messages_order_one_tool_turn(
     assert mock_complete.await_count == 2
     for call in mock_complete.await_args_list:
         assert call.kwargs["phase"] == "universal_chat"
-        assert call.kwargs["prompt_name"] == "universal_chat_v4"
+        assert call.kwargs["prompt_name"] == "universal_chat_v9"
         assert call.kwargs["provider"] == "kimi"
 
 
@@ -1023,8 +1023,8 @@ def test_tool_schemas_are_provider_dialect() -> None:
         "get_metrics_summary",
         "get_report_summary",
         "get_landing_status",
+        "get_research_context",
         "ask_refine_agent",
-        "ask_research_agent",
         "open_phase_panel",
     }
     for schema in anthropic_schemas:
@@ -1041,24 +1041,24 @@ def test_tool_schemas_are_provider_dialect() -> None:
     refine_schema = next(s for s in anthropic_schemas if s["name"] == "ask_refine_agent")
     assert refine_schema["input_schema"]["required"] == ["query"]
     research_schema = next(
-        s for s in anthropic_schemas if s["name"] == "ask_research_agent"
+        s for s in anthropic_schemas if s["name"] == "get_research_context"
     )
-    assert research_schema["input_schema"]["required"] == ["query"]
+    assert "query" in research_schema["input_schema"]["properties"]
     nav_schema = next(s for s in anthropic_schemas if s["name"] == "open_phase_panel")
     assert nav_schema["input_schema"]["required"] == ["phase"]
 
 
-def test_prompt_name_is_universal_chat_v4() -> None:
-    from app.llm.prompts.universal_chat import (
-        PROMPT_NAME_UNIVERSAL_CHAT_V3,
-        UNIVERSAL_CHAT_SYSTEM_PROMPT_V3,
-    )
-
-    assert PROMPT_NAME_UNIVERSAL_CHAT == "universal_chat_v4"
-    assert PROMPT_NAME_UNIVERSAL_CHAT_V3 == "universal_chat_v3"
-    assert "ask_research_agent" in UNIVERSAL_CHAT_SYSTEM_PROMPT_V3
+def test_prompt_name_is_universal_chat_v9() -> None:
+    assert PROMPT_NAME_UNIVERSAL_CHAT == "universal_chat_v9"
+    assert "get_research_context" in UNIVERSAL_CHAT_SYSTEM_PROMPT
+    assert "ask_research_agent" not in UNIVERSAL_CHAT_SYSTEM_PROMPT
     assert "open_phase_panel" in UNIVERSAL_CHAT_SYSTEM_PROMPT
     assert "current_open_phase" in UNIVERSAL_CHAT_SYSTEM_PROMPT
+    assert "[cite:sN]" in UNIVERSAL_CHAT_SYSTEM_PROMPT or "[cite:s" in UNIVERSAL_CHAT_SYSTEM_PROMPT
+    assert "NEVER ask the founder whether you should look something up" in (
+        UNIVERSAL_CHAT_SYSTEM_PROMPT
+    )
+    assert "Want me to pull up the research?" in UNIVERSAL_CHAT_SYSTEM_PROMPT
 
 
 @pytest.mark.asyncio
@@ -1190,11 +1190,16 @@ async def test_get_report_summary_top_findings(db_session: AsyncSession) -> None
 
 
 def test_build_source_index_and_cite_id_refs() -> None:
-    from app.llm.prompts.research_subagent import format_sources_block
-    from app.services.subagent_executors import (
+    from app.services.research_context import (
         build_source_index,
         build_source_refs_from_cite_ids,
+        format_sources_block,
     )
+    from app.services.subagent_executors import (
+        build_source_index as reexported_index,
+    )
+
+    assert reexported_index is build_source_index
 
     report = {
         "questions_and_findings": [
@@ -1237,7 +1242,7 @@ def test_build_source_index_and_cite_id_refs() -> None:
     assert index["s2"]["source_domain"] == "techcrunch.com"
 
     block = format_sources_block(index)
-    assert '"id": "s1"' in block
+    assert "s1:" in block
     assert "reuters.com" in block
 
     text = (
@@ -1668,90 +1673,385 @@ async def test_ask_refine_agent_soft_fails_on_empty_assistant_message(
 
 
 @pytest.mark.asyncio
-async def test_ask_research_agent_maps_citations(
+async def test_get_research_context_returns_digest_and_sources(
     db_session: AsyncSession,
 ) -> None:
-    from app.services.evidence_chat_service import EvidenceChatResult
-    from app.services.subagent_executors import exec_ask_research_agent
-
     user, experiment = await _seed_user_and_experiment(
         db_session, status=ExperimentStatus.RESEARCH_READY
     )
     raw = {
+        "overall_recommendation": "proceed",
         "questions_and_findings": [
             {
                 "question_id": "q1",
                 "question": "Is demand real?",
                 "findings": [
                     {
+                        "claim": "Indie sellers struggle with stockouts weekly.",
+                        "confidence": "high",
                         "citations": [
                             {
                                 "url": "https://example.com/demand",
                                 "title": "Demand post",
                                 "source_domain": "example.com",
                             },
-                            {
-                                "url": "https://news.ycombinator.com/item?id=1",
-                                "title": "HN thread",
-                                "source_domain": "news.ycombinator.com",
-                            },
-                        ]
+                        ],
                     }
                 ],
             }
         ],
-        "competitors": [],
+        "competitors": [
+            {
+                "name": "Cin7",
+                "summary": "Broad retail inventory suite.",
+                "citations": [],
+            }
+        ],
     }
     db_session.add(ValidationReport(experiment_id=experiment.id, raw_report=raw))
     await db_session.commit()
 
-    captured: dict[str, Any] = {}
-    assistant = ChatMessage(
-        thread_id=uuid4(),
-        role=ChatRole.ASSISTANT,
-        content=(
-            "Demand looks real [cite:s1]. Forums agree [cite:s2][cite:s1]. "
-            "Ignore [cite:s99] and [ref: q1]."
-        ),
-        experiment_id=experiment.id,
-        turn_kind=ChatTurnKind.EVIDENCE_CHAT,
+    result = await execute_tool(
+        "get_research_context",
+        {"query": "demand"},
+        db_session,
+        experiment,
+        user=user,
     )
-    user_msg = ChatMessage(
-        thread_id=assistant.thread_id,
-        role=ChatRole.USER,
-        content="What does research say?",
+    assert result["available"] is True
+    assert "Indie sellers" in result["findings_digest"]
+    assert "Cin7" in result["findings_digest"]
+    assert result["sources"][0]["id"] == "s1"
+    assert result["sources"][0]["url"] == "https://example.com/demand"
+    assert result["source_refs"][0]["marker_id"] == "[cite:s1]"
+
+
+@pytest.mark.asyncio
+async def test_get_research_context_soft_fails_without_report(
+    db_session: AsyncSession,
+) -> None:
+    user, experiment = await _seed_user_and_experiment(db_session)
+    result = await execute_tool(
+        "get_research_context", {}, db_session, experiment, user=user
+    )
+    assert result["available"] is False
+    assert result["sources"] == []
+    assert result["source_refs"] == []
+
+
+@pytest.mark.asyncio
+async def test_ask_refine_agent_allows_question_only(
+    db_session: AsyncSession,
+) -> None:
+    """Empty assistant_message is OK when clarifying_questions is present."""
+    from app.db.enums import ChatTurnKind
+    from app.schemas.refinement import ClarifyingQuestion
+    from app.services.chat_service import ChatTurnResult
+    from app.services.subagent_executors import exec_ask_refine_agent
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.REFINING
+    )
+    turn = ChatTurnResult(
+        thread_id=uuid4(),
+        message_id=uuid4(),
         experiment_id=experiment.id,
-        turn_kind=ChatTurnKind.EVIDENCE_CHAT,
+        assistant_message="   ",
+        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+        clarifying_dimension="audience",
+        clarifying_questions=(
+            ClarifyingQuestion(
+                question="Who is the buyer?",
+                selection_mode="single",
+                options=["Indie", "Enterprise", "Both"],
+            ),
+        ),
+        pipeline_dispatched=False,
+        dispatched_at=None,
+        experiment_status=ExperimentStatus.REFINING,
+        research_error_detail=None,
+        user_facing_error=None,
+        refinement_count=1,
     )
 
-    async def _fake_evidence(*_args: Any, **kwargs: Any) -> EvidenceChatResult:
-        captured.update(kwargs)
-        return EvidenceChatResult(
-            user_message=user_msg,
-            assistant_message=assistant,
-            thread_id=assistant.thread_id,
-        )
+    async def _fake_handle_turn(*_args: Any, **_kwargs: Any) -> ChatTurnResult:
+        return turn
 
     with patch(
-        "app.services.subagent_executors.send_evidence_chat_message",
-        new=_fake_evidence,
+        "app.services.subagent_executors.chat_service.handle_turn",
+        new=_fake_handle_turn,
     ):
-        result = await exec_ask_research_agent(
+        result = await exec_ask_refine_agent(
+            db_session, experiment, {"query": "help"}, user
+        )
+
+    assert result["assistant_text"] == ""
+    assert result["has_pending_mcq"] is True
+    assert result["mcq_question"] == "Who is the buyer?"
+
+
+@pytest.mark.asyncio
+async def test_ask_refine_agent_skip_submits_metadata(
+    db_session: AsyncSession,
+) -> None:
+    from app.db.enums import ChatTurnKind
+    from app.services.chat_service import ChatTurnResult
+    from app.services.subagent_executors import exec_ask_refine_agent
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.REFINING
+    )
+    pending_id = await _seed_pending_mcq_thread(
+        db_session, user=user, experiment=experiment
+    )
+    captured: dict[str, Any] = {}
+    follow_up = ChatTurnResult(
+        thread_id=experiment.thread_id or uuid4(),
+        message_id=uuid4(),
+        experiment_id=experiment.id,
+        assistant_message="Proceeding with the current wedge.",
+        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+        clarifying_dimension=None,
+        clarifying_questions=(),
+        pipeline_dispatched=False,
+        dispatched_at=None,
+        experiment_status=ExperimentStatus.REFINING,
+        research_error_detail=None,
+        user_facing_error=None,
+        refinement_count=2,
+    )
+
+    async def _fake_handle_turn(*_args: Any, **kwargs: Any) -> ChatTurnResult:
+        captured.update(kwargs)
+        return follow_up
+
+    with patch(
+        "app.services.subagent_executors.chat_service.handle_turn",
+        new=_fake_handle_turn,
+    ):
+        result = await exec_ask_refine_agent(
             db_session,
             experiment,
-            {"query": "What does the research say about demand?"},
+            {
+                "query": "Skipped",
+                "_mcq_answer": {
+                    "selected_option_indices": [],
+                    "answered_question_id": str(pending_id),
+                    "skipped": True,
+                },
+            },
             user,
         )
 
-    assert captured.get("sources_block") is not None
-    assert '"id": "s1"' in captured["sources_block"]
-    assert "[cite:s1]" in result["assistant_text_with_citations"]
-    assert len(result["source_refs"]) == 2
-    assert result["source_refs"][0]["marker_id"] == "[cite:s1]"
-    assert result["source_refs"][0]["source_title"] == "Demand post"
-    assert result["source_refs"][0]["source_url"] == "https://example.com/demand"
-    assert result["source_refs"][0]["source_domain"] == "example.com"
-    assert result["source_refs"][1]["marker_id"] == "[cite:s2]"
+    assert result["has_pending_mcq"] is False
+    assert captured["message"] == "Skipped"
+    meta = captured.get("user_message_metadata") or {}
+    assert meta.get("skipped_clarifying_question") is True
+    assert meta["answered_question_from_message_id"] == str(pending_id)
+
+
+@pytest.mark.asyncio
+async def test_ask_refine_agent_pre_finalize_ignores_question_cap(
+    db_session: AsyncSession,
+) -> None:
+    """REFINING with WIP refined_idea dict must NOT trip the post-finalize cap.
+
+    Live bug: refined_idea_version=0 + refined_idea dict → cap ate clarifying
+    questions and returned an empty-text error (no QuestionCard).
+    """
+    from app.db.enums import ChatRole, ChatTurnKind
+    from app.db.models.chat_message import ChatMessage
+    from app.db.models.chat_thread import ChatThread
+    from app.schemas.refinement import ClarifyingQuestion
+    from app.services.chat_service import ChatTurnResult
+    from app.services.subagent_executors import (
+        _is_post_finalize,
+        exec_ask_refine_agent,
+    )
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.REFINING
+    )
+    experiment.refined_idea = _refined_idea_dict()
+    experiment.refined_idea_version = 0
+    assert _is_post_finalize(experiment) is False
+
+    thread = ChatThread(user_id=user.id, title="pre-cap")
+    db_session.add(thread)
+    await db_session.flush()
+    experiment.thread_id = thread.id
+
+    parent_id = None
+    for i in range(5):
+        ask = ChatMessage(
+            thread_id=thread.id,
+            role=ChatRole.ASSISTANT,
+            content=f"Q{i}",
+            experiment_id=experiment.id,
+            turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+            clarifying_questions=[
+                {
+                    "question": f"Question {i}?",
+                    "selection_mode": "single",
+                    "options": ["A", "B"],
+                }
+            ],
+            clarifying_dimension="audience",
+            parent_message_id=parent_id,
+        )
+        db_session.add(ask)
+        await db_session.flush()
+        answer = ChatMessage(
+            thread_id=thread.id,
+            role=ChatRole.USER,
+            content=f"Answer {i}",
+            experiment_id=experiment.id,
+            parent_message_id=ask.id,
+        )
+        db_session.add(answer)
+        await db_session.flush()
+        parent_id = answer.id
+        thread.active_leaf_message_id = answer.id
+    await db_session.commit()
+    await db_session.refresh(experiment)
+
+    new_id = uuid4()
+    still_asking = ChatTurnResult(
+        thread_id=thread.id,
+        message_id=new_id,
+        experiment_id=experiment.id,
+        assistant_message="",
+        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+        clarifying_dimension="positioning",
+        clarifying_questions=(
+            ClarifyingQuestion(
+                question="Should SIP be removed entirely?",
+                selection_mode="single",
+                options=["Yes, remove it", "Keep a softer mention", "Replace it"],
+            ),
+        ),
+        pipeline_dispatched=False,
+        dispatched_at=None,
+        experiment_status=ExperimentStatus.REFINING,
+        research_error_detail=None,
+        user_facing_error=None,
+        refinement_count=6,
+    )
+
+    async def _fake_handle(*_args: Any, **kwargs: Any) -> ChatTurnResult:
+        # Cap must not inject [rail_cap] during pre-finalize.
+        assert "[rail_cap]" not in str(kwargs.get("message", ""))
+        return still_asking
+
+    with patch(
+        "app.services.subagent_executors.chat_service.handle_turn",
+        new=_fake_handle,
+    ):
+        result = await exec_ask_refine_agent(
+            db_session,
+            experiment,
+            {"query": "actually remove the sip from the idea"},
+            user,
+        )
+
+    assert "error" not in result
+    assert result["has_pending_mcq"] is True
+    assert result["mcq_question"] == "Should SIP be removed entirely?"
+    assert len(result["mcq_options"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_ask_refine_agent_post_finalize_cap_strips_questions(
+    db_session: AsyncSession,
+) -> None:
+    """After finalize, a 4th clarifying ask is stripped by the hard gate."""
+    from app.db.enums import ChatRole, ChatTurnKind
+    from app.db.models.chat_message import ChatMessage
+    from app.db.models.chat_thread import ChatThread
+    from app.schemas.refinement import ClarifyingQuestion
+    from app.services.chat_service import ChatTurnResult
+    from app.services.subagent_executors import exec_ask_refine_agent
+
+    user, experiment = await _seed_user_and_experiment(
+        db_session, status=ExperimentStatus.REFINED
+    )
+    experiment.refined_idea = _refined_idea_dict()
+    experiment.refined_idea_version = 1
+    thread = ChatThread(user_id=user.id, title="cap")
+    db_session.add(thread)
+    await db_session.flush()
+    experiment.thread_id = thread.id
+
+    parent_id = None
+    for i in range(3):
+        ask = ChatMessage(
+            thread_id=thread.id,
+            role=ChatRole.ASSISTANT,
+            content=f"Q{i}",
+            experiment_id=experiment.id,
+            turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+            clarifying_questions=[
+                {
+                    "question": f"Question {i}?",
+                    "selection_mode": "single",
+                    "options": ["A", "B"],
+                }
+            ],
+            clarifying_dimension="audience",
+            parent_message_id=parent_id,
+        )
+        db_session.add(ask)
+        await db_session.flush()
+        answer = ChatMessage(
+            thread_id=thread.id,
+            role=ChatRole.USER,
+            content=f"Answer {i}",
+            experiment_id=experiment.id,
+            parent_message_id=ask.id,
+        )
+        db_session.add(answer)
+        await db_session.flush()
+        parent_id = answer.id
+        thread.active_leaf_message_id = answer.id
+    await db_session.commit()
+    await db_session.refresh(experiment)
+
+    new_id = uuid4()
+    still_asking = ChatTurnResult(
+        thread_id=thread.id,
+        message_id=new_id,
+        experiment_id=experiment.id,
+        assistant_message="Another question?",
+        turn_kind=ChatTurnKind.REFINEMENT_CLARIFY,
+        clarifying_dimension="audience",
+        clarifying_questions=(
+            ClarifyingQuestion(
+                question="Should not survive?",
+                selection_mode="single",
+                options=["X", "Y"],
+            ),
+        ),
+        pipeline_dispatched=False,
+        dispatched_at=None,
+        experiment_status=ExperimentStatus.REFINED,
+        research_error_detail=None,
+        user_facing_error=None,
+        refinement_count=4,
+    )
+
+    async def _fake_handle_turn(*_args: Any, **_kwargs: Any) -> ChatTurnResult:
+        return still_asking
+
+    with patch(
+        "app.services.subagent_executors.chat_service.handle_turn",
+        new=_fake_handle_turn,
+    ):
+        result = await exec_ask_refine_agent(
+            db_session, experiment, {"query": "keep going"}, user
+        )
+
+    assert result["has_pending_mcq"] is False
+    assert result.get("mcq_question") is None
 
 
 @pytest.mark.asyncio
@@ -1872,24 +2172,18 @@ async def test_ask_refine_agent_soft_fail_continues(
 
 
 def test_subagent_prompt_names_and_phase_panel_defaults() -> None:
-    """Rail variants are distinct; phase-panel prompt names stay on their modules."""
+    """Rail refine variant is distinct; phase-panel prompt names stay on modules."""
     from app.llm.prompts.evidence_chat import PROMPT_NAME_EVIDENCE_CHAT
     from app.llm.prompts.refine_subagent import PROMPT_NAME_REFINE_SUBAGENT
     from app.llm.prompts.refinement import PROMPT_NAME_V5_CHAT
-    from app.llm.prompts.research_subagent import PROMPT_NAME_RESEARCH_SUBAGENT
     import app.services.subagent_executors as subagents
     import inspect
 
-    assert PROMPT_NAME_RESEARCH_SUBAGENT == "research_subagent_v1"
-    assert PROMPT_NAME_REFINE_SUBAGENT == "refine_subagent_v1"
+    assert PROMPT_NAME_REFINE_SUBAGENT == "refine_subagent_v3"
     assert PROMPT_NAME_EVIDENCE_CHAT == "evidence_chat_v3"
     assert PROMPT_NAME_V5_CHAT == "refinement_v5_chat"
+    assert subagents.PROMPT_NAME_REFINE_SUBAGENT == "refine_subagent_v3"
 
-    # Executors import the rail variants (wired at call sites).
-    assert subagents.PROMPT_NAME_RESEARCH_SUBAGENT == "research_subagent_v1"
-    assert subagents.PROMPT_NAME_REFINE_SUBAGENT == "refine_subagent_v1"
-
-    # Phase-panel defaults remain the fallbacks in service signatures.
     ev_sig = inspect.signature(
         __import__(
             "app.services.evidence_chat_service", fromlist=["send_evidence_chat_message"]
@@ -1905,65 +2199,6 @@ def test_subagent_prompt_names_and_phase_panel_defaults() -> None:
     )
     assert "prompt_name" in run_sig.parameters
     assert "system_prompt" in run_sig.parameters
-
-
-@pytest.mark.asyncio
-async def test_research_executor_passes_rail_prompt(
-    db_session: AsyncSession,
-) -> None:
-    from app.llm.prompts.research_subagent import (
-        PROMPT_NAME_RESEARCH_SUBAGENT,
-        RESEARCH_SUBAGENT_SYSTEM_PROMPT,
-    )
-    from app.services.evidence_chat_service import EvidenceChatResult
-    from app.services.subagent_executors import exec_ask_research_agent
-
-    user, experiment = await _seed_user_and_experiment(
-        db_session, status=ExperimentStatus.RESEARCH_READY
-    )
-    db_session.add(
-        ValidationReport(
-            experiment_id=experiment.id,
-            raw_report={"questions_and_findings": [], "competitors": []},
-        )
-    )
-    await db_session.commit()
-
-    captured: dict[str, Any] = {}
-
-    async def _fake_evidence(*_args: Any, **kwargs: Any) -> EvidenceChatResult:
-        captured.update(kwargs)
-        assistant = ChatMessage(
-            thread_id=uuid4(),
-            role=ChatRole.ASSISTANT,
-            content="Competitors are thin [cite: https://example.com/x].",
-            experiment_id=experiment.id,
-            turn_kind=ChatTurnKind.EVIDENCE_CHAT,
-        )
-        user_msg = ChatMessage(
-            thread_id=assistant.thread_id,
-            role=ChatRole.USER,
-            content="competitors?",
-            experiment_id=experiment.id,
-            turn_kind=ChatTurnKind.EVIDENCE_CHAT,
-        )
-        return EvidenceChatResult(
-            user_message=user_msg,
-            assistant_message=assistant,
-            thread_id=assistant.thread_id,
-        )
-
-    with patch(
-        "app.services.subagent_executors.send_evidence_chat_message",
-        new=_fake_evidence,
-    ):
-        await exec_ask_research_agent(
-            db_session, experiment, {"query": "Who competes?"}, user
-        )
-
-    assert captured["prompt_name"] == PROMPT_NAME_RESEARCH_SUBAGENT
-    assert captured["system_prompt"] == RESEARCH_SUBAGENT_SYSTEM_PROMPT
-    assert "sources_block" in captured
 
 
 @pytest.mark.asyncio
@@ -2037,8 +2272,8 @@ def test_refine_subagent_user_prompt_strips_interview_scaffolding() -> None:
 
     assert "<chat_history>" in rail
     assert "<founder_message>" in rail
-    assert "Answer in 2-4 sentences" in rail
-    assert "Do not scaffold or list" in rail
+    assert "2-4 sentences" in rail
+    assert "question card only" in rail
     assert "Prefer asking ONE clarifying question" not in rail
     assert "Soft ceiling" not in rail
     assert "exploration dimensions" not in rail

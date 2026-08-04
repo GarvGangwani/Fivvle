@@ -9,7 +9,7 @@
  * - Universal dock:  z-[80]  — stays interactive above scrim
  *
  * Panel frame matches dock gutters: top/left/bottom-6 (24px). Right inset
- * reserves the master chat rail (expanded 420px / collapsed 40px) plus a
+ * reserves the master chat rail (expanded 480px / collapsed 40px) plus a
  * matching 24px gap between panel and dock.
  */
 import { useCallback, useEffect, useState } from "react";
@@ -40,8 +40,8 @@ export type DeepDiveAct =
 const SPARK_DISCARD_CONFIRM =
   "You have unsaved changes in Spark. Close without saving?";
 
-/** Expanded: dock right-6 + 420px + 24px gap between panel and dock */
-const PANEL_RIGHT_EXPANDED = "right-[calc(420px+3rem)]";
+/** Expanded: dock right-6 + 480px + 24px gap between panel and dock */
+const PANEL_RIGHT_EXPANDED = "right-[calc(480px+3rem)]";
 /** Collapsed: dock right-6 + w-10 (2.5rem) + 24px gap between panel and dock */
 const PANEL_RIGHT_COLLAPSED = "right-[calc(2.5rem+3rem)]";
 

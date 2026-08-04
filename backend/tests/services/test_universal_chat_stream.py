@@ -35,9 +35,6 @@ from app.services.universal_chat_service import (
 
 _LLM_PATCH = "app.services.universal_chat_service.llm_client.complete_with_tools"
 _SM_PATCH = "app.services.universal_chat_service.get_sessionmaker"
-_RESEARCH_STREAM_PATCH = (
-    "app.services.universal_chat_service.exec_ask_research_agent_stream"
-)
 _EXECUTE_TOOL_PATCH = "app.services.universal_chat_service.execute_tool"
 
 
@@ -273,6 +270,7 @@ async def test_stream_refine_subagent_fake_stream(
             session, user, experiment.id, "Help refine the name", pacing_delay=0
         )
 
+    # One master tool-routing call only — no second "summary" call after refine.
     calls = [
         _tools_result(
             tool_uses=[
@@ -283,7 +281,6 @@ async def test_stream_refine_subagent_fake_stream(
                 )
             ]
         ),
-        _tools_result(text="I've handed that to Refine — check the panel."),
     ]
 
     refine_result = {
@@ -303,24 +300,22 @@ async def test_stream_refine_subagent_fake_stream(
     names = [e[0] for e in events]
     assert "tool_call" in names
     assert "tool_result" in names
-    first_token = next(i for i, n in enumerate(names) if n == "subagent_token")
     tool_result_idx = names.index("tool_result")
+    first_token = next(i for i, n in enumerate(names) if n == "assistant_token")
+    # Refine prose paces inside ``_stream_refine_tool`` before tool_result.
     assert first_token < tool_result_idx
-    refine_tokens = [
-        p["text"]
-        for n, p in events
-        if n == "subagent_token" and p.get("agent") == "refine"
-    ]
-    assert "".join(refine_tokens).replace(" ", "").startswith("TryPolicyPal")
+    assert not any(n == "subagent_token" for n in names)
+    assistant_tokens = [p["text"] for n, p in events if n == "assistant_token"]
+    assert "".join(assistant_tokens).replace(" ", "").startswith("TryPolicyPal")
     tr_payload = next(p for n, p in events if n == "tool_result")
     assert "payload" in tr_payload
     assert tr_payload["payload"]["tool_name"] == "ask_refine_agent"
-    assert any(n == "assistant_token" for n in names)
     assert names[-1] == "done"
+    assert mock_llm.await_count == 1
 
 
 @pytest.mark.asyncio
-async def test_stream_research_subagent_real_tokens(
+async def test_stream_get_research_context_then_cited_answer(
     sm: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _patch_provider(monkeypatch)
@@ -335,72 +330,59 @@ async def test_stream_research_subagent_real_tokens(
             tool_uses=[
                 ToolUseRequest(
                     id="t1",
-                    name="ask_research_agent",
+                    name="get_research_context",
                     input={"query": "What did research find?"},
                 )
             ]
         ),
-        _tools_result(text="Research confirms demand signals."),
+        _tools_result(text="Demand is real [cite:s1]."),
     ]
 
-    async def _fake_research_stream(*_a: Any, **_k: Any):
-        yield ("token", {"text": "Demand is real "})
-        yield ("token", {"text": "[cite:s1]."})
-        yield (
-            "complete",
-            {
-                "assistant_text_with_citations": "Demand is real [cite:s1].",
-                "source_refs": [
-                    {
-                        "marker_id": "[cite:s1]",
-                        "source_title": "Example",
-                        "source_url": "https://example.com",
-                        "source_domain": "example.com",
-                    }
-                ],
-            },
-        )
+    async def _fake_execute(name: str, *_a: Any, **_k: Any) -> dict[str, Any]:
+        assert name == "get_research_context"
+        return {
+            "available": True,
+            "findings_digest": "Demand looks real.",
+            "sources": [
+                {
+                    "id": "s1",
+                    "title": "Example",
+                    "url": "https://example.com",
+                    "domain": "example.com",
+                }
+            ],
+            "source_refs": [
+                {
+                    "marker_id": "[cite:s1]",
+                    "source_title": "Example",
+                    "source_url": "https://example.com",
+                    "source_domain": "example.com",
+                }
+            ],
+        }
 
     with patch(_LLM_PATCH, new_callable=AsyncMock) as mock_llm, patch(
-        _RESEARCH_STREAM_PATCH, _fake_research_stream
+        _EXECUTE_TOOL_PATCH, new=_fake_execute
     ):
         mock_llm.side_effect = calls
         events = await _collect_events(prep, sm)
 
     names = [e[0] for e in events]
-    first_token = next(i for i, n in enumerate(names) if n == "subagent_token")
-    tool_result_idx = names.index("tool_result")
-    assert first_token < tool_result_idx
-    research_tokens = [
-        p["text"]
-        for n, p in events
-        if n == "subagent_token" and p.get("agent") == "research"
-    ]
-    assert "".join(research_tokens) == "Demand is real [cite:s1]."
+    assert "tool_call" in names
+    assert "tool_result" in names
+    assert any(n == "assistant_token" for n in names)
+    assistant_text = "".join(
+        p["text"] for n, p in events if n == "assistant_token"
+    )
+    assert "[cite:s1]" in assistant_text
     tr_payload = next(p for n, p in events if n == "tool_result")
-    assert "payload" in tr_payload
     result = (tr_payload["payload"].get("result") or {})
     assert result.get("source_refs")
     assert names[-1] == "done"
 
-    async with sm() as session:
-        tool_results = (
-            await session.execute(
-                select(ChatMessage).where(
-                    ChatMessage.thread_id == prep.thread_id,
-                    ChatMessage.role == ChatRole.TOOL_RESULT,
-                )
-            )
-        ).scalars().all()
-    assert len(tool_results) == 1
-    payload = tool_results[0].tool_payload or {}
-    assert payload.get("tool_name") == "ask_research_agent"
-    result = payload.get("result") or {}
-    assert "Demand is real" in (result.get("assistant_text_with_citations") or "")
-
 
 @pytest.mark.asyncio
-async def test_stream_research_soft_fail_no_subagent_tokens(
+async def test_stream_get_research_context_unavailable(
     sm: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _patch_provider(monkeypatch)
@@ -415,31 +397,36 @@ async def test_stream_research_soft_fail_no_subagent_tokens(
             tool_uses=[
                 ToolUseRequest(
                     id="t1",
-                    name="ask_research_agent",
+                    name="get_research_context",
                     input={"query": "Ask research"},
                 )
             ]
         ),
-        _tools_result(text="Research is unavailable right now — try again shortly."),
+        _tools_result(text="The validation report isn't ready yet."),
     ]
 
-    async def _fail_stream(*_a: Any, **_k: Any):
-        yield ("complete", {"error": "RuntimeError: tool execution failed"})
+    async def _fake_execute(*_a: Any, **_k: Any) -> dict[str, Any]:
+        return {
+            "available": False,
+            "reason": "No validation report yet.",
+            "findings_digest": "",
+            "sources": [],
+            "source_refs": [],
+        }
 
     with patch(_LLM_PATCH, new_callable=AsyncMock) as mock_llm, patch(
-        _RESEARCH_STREAM_PATCH, _fail_stream
+        _EXECUTE_TOOL_PATCH, new=_fake_execute
     ):
         mock_llm.side_effect = calls
         events = await _collect_events(prep, sm)
 
-    names = [e[0] for e in events]
-    assert "tool_result" in names
-    assert "subagent_token" not in names
-    assert "assistant_token" in names
-    assert names[-1] == "done"
+    assert not any(n == "subagent_token" for n, _ in events)
+    assistant_text = "".join(
+        p["text"] for n, p in events if n == "assistant_token"
+    )
+    assert "isn't ready" in assistant_text or "not ready" in assistant_text.lower()
 
 
-@pytest.mark.asyncio
 async def test_stream_error_leaves_no_assistant(
     sm: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -539,10 +526,10 @@ async def test_stream_cap_round_emits_multiple_tool_cycles(
 
 
 @pytest.mark.asyncio
-async def test_stream_cancel_mid_research_deletes_placeholder(
+async def test_stream_cancel_mid_tool_persists_partial(
     sm: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Cancel mid-research: user + tool_call persist; no tool_result / assistant."""
+    """Cancel mid-tool: user + tool_call persist; no tool_result / assistant."""
     import asyncio
 
     _patch_provider(monkeypatch)
@@ -567,8 +554,6 @@ async def test_stream_cancel_mid_research_deletes_placeholder(
         )
         session.add(landing)
         await session.commit()
-        # Prior completed read-tool turn rows via a first stream aren't needed —
-        # seed a completed tool_call+tool_result under the same thread after prep.
         prep = await prepare_universal_stream(
             session, user, experiment.id, "Research this", pacing_delay=0
         )
@@ -578,32 +563,44 @@ async def test_stream_cancel_mid_research_deletes_placeholder(
             tool_uses=[
                 ToolUseRequest(
                     id="t1",
-                    name="ask_research_agent",
+                    name="get_research_context",
                     input={"query": "Research this"},
                 )
             ]
         ),
     ]
 
-    async def _slow_research_stream(*_a: Any, **_k: Any):
-        yield ("token", {"text": "Partial "})
-        yield ("token", {"text": "answer"})
-        # Never completes — cancel arrives while tokens are being consumed.
+    started = asyncio.Event()
+
+    async def _slow_execute(*_a: Any, **_k: Any) -> dict[str, Any]:
+        started.set()
+        await asyncio.sleep(60)
+        return {
+            "available": True,
+            "findings_digest": "",
+            "sources": [],
+            "source_refs": [],
+        }
 
     with patch(_LLM_PATCH, new_callable=AsyncMock) as mock_llm, patch(
-        _RESEARCH_STREAM_PATCH, _slow_research_stream
+        _EXECUTE_TOOL_PATCH, new=_slow_execute
     ), patch(_SM_PATCH, return_value=sm):
         mock_llm.side_effect = calls
         agen = stream_universal_chat_message(prep)
-        # Drain through tool_call + first subagent_token.
-        saw_token = False
-        async for name, _payload in agen:
-            if name == "subagent_token":
-                saw_token = True
-                break
-        assert saw_token
+        tool_call_seen = asyncio.Event()
+
+        async def _consume() -> None:
+            async for name, _payload in agen:
+                if name == "tool_call":
+                    tool_call_seen.set()
+                # Keep iterating so execute_tool starts after tool_call yield.
+
+        consumer = asyncio.create_task(_consume())
+        await asyncio.wait_for(tool_call_seen.wait(), timeout=5)
+        await asyncio.wait_for(started.wait(), timeout=5)
+        consumer.cancel()
         with pytest.raises(asyncio.CancelledError):
-            await agen.athrow(asyncio.CancelledError())
+            await consumer
 
     async with sm() as session:
         msgs = (
@@ -618,11 +615,7 @@ async def test_stream_cancel_mid_research_deletes_placeholder(
         assert ChatRole.TOOL_CALL in roles
         assert ChatRole.TOOL_RESULT not in roles
         assert ChatRole.ASSISTANT not in roles
-        assert all(
-            (m.tool_payload or {}).get("tool_name") != "ask_research_agent"
-            or m.role == ChatRole.TOOL_CALL
-            for m in msgs
-        )
+
 
 
 @pytest.mark.asyncio

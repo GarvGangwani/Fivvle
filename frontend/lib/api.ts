@@ -444,7 +444,7 @@ export interface StreamUniversalCallbacks {
   onDone: (payload: {
     assistant_message_id: string;
     thread_id: string;
-    user_message_id?: string;
+    user_message_id?: string | null;
   }) => void;
   onError: (message: string) => void;
 }
@@ -460,9 +460,13 @@ export async function streamUniversalChatMessage(
   signal?: AbortSignal,
   options?: {
     current_open_phase?: string | null;
+    attachment_ids?: string[];
+    /** Edit: fork a sibling of this user message (server sets active leaf). */
+    replace_message_id?: string | null;
     mcq_answer?: {
       selected_option_indices: number[];
       answered_question_id: string;
+      skipped?: boolean;
     } | null;
   },
 ): Promise<void> {
@@ -471,6 +475,12 @@ export async function streamUniversalChatMessage(
   const body: Record<string, unknown> = { message };
   if (options?.current_open_phase != null) {
     body.current_open_phase = options.current_open_phase;
+  }
+  if (options?.attachment_ids != null && options.attachment_ids.length > 0) {
+    body.attachment_ids = options.attachment_ids;
+  }
+  if (options?.replace_message_id != null) {
+    body.replace_message_id = options.replace_message_id;
   }
   if (options?.mcq_answer != null) {
     body.mcq_answer = options.mcq_answer;

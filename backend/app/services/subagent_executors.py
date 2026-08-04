@@ -1,22 +1,19 @@
 """Sub-agent executors for the universal-chat tool loop (Phase 2).
 
-``ask_refine_agent`` and ``ask_research_agent`` call the existing refine /
-evidence chat services so rail and phase-panel share the same threads.
-Mapped results are typed dicts persisted as ``tool_payload.result``.
+``ask_refine_agent`` calls the existing refine chat service so rail and
+phase-panel share the same refine thread. Research is master-native via
+``get_research_context`` (see ``research_context.py``). Mapped results are
+typed dicts persisted as ``tool_payload.result``.
 """
 
 from __future__ import annotations
 
 import copy
-import re
-from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 import app.llm.client as llm_client
 from app.db.enums import ChatRole
@@ -33,30 +30,21 @@ from app.llm.prompts.refine_subagent import (
     REFINE_SUBAGENT_SYSTEM_PROMPT,
     build_refine_subagent_user_prompt,
 )
-from app.llm.prompts.research_subagent import (
-    PROMPT_NAME_RESEARCH_SUBAGENT,
-    RESEARCH_SUBAGENT_SYSTEM_PROMPT,
-    format_sources_block,
-)
 from app.logging_config import get_logger
 from app.schemas.mcq_resolver import McqIndexResolution
 from app.schemas.refinement import ClarifyingQuestion
 from app.services import chat_service
 from app.services.chat_tree_service import get_active_branch
-from app.services.evidence_chat_service import (
-    send_evidence_chat_message,
-    stream_research_evidence_tokens,
+from app.services.refinement_service import _RAIL_REFINE_MAX_TOKENS
+from app.services.research_context import (  # noqa: F401 — re-export for tests
+    build_source_index,
+    build_source_refs_from_cite_ids,
+    format_sources_block,
 )
 
 _logger = get_logger(__name__)
 
-# Match evidence_chat_service streaming defaults.
-_RESEARCH_STREAM_FALLBACK = (
-    "I couldn't generate a response for that. Please try rephrasing your question."
-)
-
-# Rail research cites primary sources as [cite:sN] (not full URLs / [ref:]).
-_CITE_SOURCE_ID_RE = re.compile(r"\[cite:\s*(s\d+)\]", re.IGNORECASE)
+_POST_FINALIZE_MCQ_CAP = 3
 
 _QUERY_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -94,10 +82,6 @@ class _PendingMcq:
 
 
 def refine_agent_input_schema() -> dict[str, Any]:
-    return copy.deepcopy(_QUERY_SCHEMA)
-
-
-def research_agent_input_schema() -> dict[str, Any]:
     return copy.deepcopy(_QUERY_SCHEMA)
 
 
@@ -207,22 +191,57 @@ async def _resolve_mcq_indices(
     )
 
 
+def _sentence_case_label(label: str) -> str:
+    """Normalize UPPERCASE MCQ labels for readable chat display."""
+    lowered = label.strip().lower()
+    if not lowered:
+        return lowered
+    for i, ch in enumerate(lowered):
+        if ch.isalpha():
+            return lowered[:i] + ch.upper() + lowered[i + 1 :]
+    return lowered
+
+
+def _natural_join_labels(labels: list[str]) -> str:
+    if not labels:
+        return ""
+    if len(labels) == 1:
+        return labels[0]
+    if len(labels) == 2:
+        return f"{labels[0]} and {labels[1]}"
+    return f"{', '.join(labels[:-1])}, and {labels[-1]}"
+
+
 def _combined_mcq_answer_text(pending: _PendingMcq, indices: list[int]) -> str:
-    labels = [pending.options[i] for i in indices]
-    return " · ".join(labels)
+    labels = [_sentence_case_label(pending.options[i]) for i in indices]
+    return _natural_join_labels(labels)
 
 
 def _parse_structured_mcq_answer(
     raw: Any,
-) -> tuple[list[int], UUID] | None:
-    """Extract click-path indices + answered question id from injected args."""
+) -> tuple[list[int], UUID, bool] | None:
+    """Extract click/skip path from injected args.
+
+    Returns ``(indices, answered_id, skipped)`` or None if malformed.
+    """
     if not isinstance(raw, dict):
         return None
-    indices_raw = raw.get("selected_option_indices")
     qid_raw = raw.get("answered_question_id") or raw.get(
         "answered_question_from_message_id"
     )
-    if not isinstance(indices_raw, list) or qid_raw is None:
+    if qid_raw is None:
+        return None
+    try:
+        answered_id = qid_raw if isinstance(qid_raw, UUID) else UUID(str(qid_raw))
+    except (TypeError, ValueError):
+        return None
+
+    skipped = bool(raw.get("skipped"))
+    if skipped:
+        return [], answered_id, True
+
+    indices_raw = raw.get("selected_option_indices")
+    if not isinstance(indices_raw, list):
         return None
     indices: list[int] = []
     for item in indices_raw:
@@ -234,11 +253,34 @@ def _parse_structured_mcq_answer(
             indices.append(int(item.strip()))
     if not indices:
         return None
-    try:
-        answered_id = qid_raw if isinstance(qid_raw, UUID) else UUID(str(qid_raw))
-    except (TypeError, ValueError):
-        return None
-    return indices, answered_id
+    return indices, answered_id, False
+
+
+def _is_post_finalize(experiment: Experiment) -> bool:
+    """True only after the founder has finalized at least once.
+
+    ``refined_idea`` JSON is populated throughout REFINING as a WIP draft —
+    that must NOT trip the rail's post-finalize clarifying-question cap.
+    """
+    return experiment.refined_idea_version >= 1
+
+
+async def _count_post_finalize_clarifying_asks(
+    db: AsyncSession,
+    experiment: Experiment,
+) -> int:
+    """How many refine-thread assistant rows asked an MCQ after finalize."""
+    if not _is_post_finalize(experiment) or experiment.thread_id is None:
+        return 0
+    branch = await get_active_branch(db, experiment.thread_id)
+    count = 0
+    for msg in branch:
+        if msg.role != ChatRole.ASSISTANT:
+            continue
+        pending = _parse_pending_mcq_from_assistant(msg.clarifying_questions, msg.id)
+        if pending is not None:
+            count += 1
+    return count
 
 
 def _outbound_mcq_fields(
@@ -270,9 +312,10 @@ async def exec_ask_refine_agent(
     """Forward ``query`` into the refine thread via ``chat_service.handle_turn``.
 
     MCQ answering branches (in order):
-    1. Structured ``_mcq_answer`` from a rail click — exact indices, no resolver.
-    2. Pending MCQ + free-text query — ``mcq_resolver_v1`` maps prose → indices.
-    3. Otherwise — normal refine turn.
+    1. Structured ``_mcq_answer`` skip — proceed without option indices.
+    2. Structured ``_mcq_answer`` click — exact indices, no resolver.
+    3. Pending MCQ + free-text query — ``mcq_resolver_v1`` maps prose → indices.
+    4. Otherwise — normal refine turn (with post-finalize question cap).
     """
     query = _extract_query(args)
     if query is None:
@@ -289,13 +332,25 @@ async def exec_ask_refine_agent(
     )
     user_message_metadata: dict[str, Any] | None = None
     turn_message = query
+    force_no_question = False
 
     pending = await _fetch_pending_mcq(db, experiment)
     structured = _parse_structured_mcq_answer(args.get("_mcq_answer"))
 
     if structured is not None and pending is not None:
-        click_indices, answered_id = structured
-        if answered_id == pending.message_id:
+        click_indices, answered_id, skipped = structured
+        if answered_id == pending.message_id and skipped:
+            turn_message = "Skipped"
+            user_message_metadata = chat_service.build_user_message_metadata(
+                answered_question_from_message_id=pending.message_id,
+                skipped_clarifying_question=True,
+            )
+            _logger.info(
+                "mcq skipped by founder",
+                experiment_id=str(experiment.id),
+                pending_message_id=str(pending.message_id),
+            )
+        elif answered_id == pending.message_id:
             selected = _sanitize_selected_indices(
                 click_indices,
                 option_count=len(pending.options),
@@ -352,6 +407,23 @@ async def exec_ask_refine_agent(
                 pending_message_id=str(pending.message_id),
             )
 
+    if _is_post_finalize(experiment):
+        prior_asks = await _count_post_finalize_clarifying_asks(db, experiment)
+        if prior_asks >= _POST_FINALIZE_MCQ_CAP:
+            force_no_question = True
+            turn_message = (
+                f"{turn_message}\n\n"
+                "[rail_cap] Clarifying-question budget exhausted for this "
+                "post-finalize session. Do NOT emit clarifying_questions — "
+                "update refined_idea or answer briefly without a question."
+            )
+            _logger.info(
+                "refine post-finalize mcq cap reached",
+                experiment_id=str(experiment.id),
+                prior_asks=prior_asks,
+                cap=_POST_FINALIZE_MCQ_CAP,
+            )
+
     turn = await chat_service.handle_turn(
         db,
         user=user,
@@ -365,6 +437,7 @@ async def exec_ask_refine_agent(
         prompt_name=PROMPT_NAME_REFINE_SUBAGENT,
         system_prompt=REFINE_SUBAGENT_SYSTEM_PROMPT,
         user_prompt_builder=build_refine_subagent_user_prompt,
+        max_tokens=_RAIL_REFINE_MAX_TOKENS,
     )
 
     # handle_turn catches run_turn failures and returns a ChatTurnResult with
@@ -392,23 +465,50 @@ async def exec_ask_refine_agent(
             experiment.thread_id = refreshed.thread_id
             experiment.status = refreshed.status
             experiment.refinement_count = refreshed.refinement_count
+            experiment.refined_idea = refreshed.refined_idea
+            experiment.refined_idea_version = refreshed.refined_idea_version
 
         clarifying = turn.clarifying_questions
         clarifying_list = list(clarifying) if clarifying is not None else None
+
+        # Hard gate: strip clarifying questions if over post-finalize cap.
+        if force_no_question and clarifying_list:
+            clarifying_list = None
+            from app.db.models.chat_message import ChatMessage
+
+            assistant_row = await db.get(ChatMessage, turn.message_id)
+            if assistant_row is not None:
+                assistant_row.clarifying_questions = None
+                assistant_row.clarifying_dimension = None
+                await db.flush()
+
         assistant_text = turn.assistant_message
-        if not isinstance(assistant_text, str) or not assistant_text.strip():
-            _logger.warning(
-                "refine sub-agent returned empty assistant_message",
-                experiment_id=str(experiment.id),
-                has_clarifying=bool(clarifying_list),
-                clarifying_dimension=turn.clarifying_dimension,
-            )
-            return {"error": _REFINE_AGENT_TROUBLE}
+        has_mcq = bool(
+            clarifying_list
+            and _parse_pending_mcq_from_assistant(clarifying_list, turn.message_id)
+        )
+        if not isinstance(assistant_text, str):
+            assistant_text = ""
+        # Question-only turns: empty/minimal prose is valid when an MCQ is present.
+        if not assistant_text.strip() and not has_mcq:
+            if force_no_question:
+                # Cap stripped a question-only LLM turn — surface brief prose.
+                assistant_text = (
+                    "I've got enough to keep going without another question."
+                )
+            else:
+                _logger.warning(
+                    "refine sub-agent returned empty assistant_message",
+                    experiment_id=str(experiment.id),
+                    has_clarifying=bool(clarifying_list),
+                    clarifying_dimension=turn.clarifying_dimension,
+                )
+                return {"error": _REFINE_AGENT_TROUBLE}
 
         payload: dict[str, Any] = {
-            "assistant_text": assistant_text,
+            "assistant_text": assistant_text.strip(),
             "refined_idea_patch": _refined_idea_patch(before_idea, after_idea),
-            "log_entry": turn.clarifying_dimension,
+            "log_entry": None if force_no_question else turn.clarifying_dimension,
         }
         payload.update(_outbound_mcq_fields(clarifying_list, turn.message_id))
         return payload
@@ -422,122 +522,11 @@ async def exec_ask_refine_agent(
         return {"error": _REFINE_AGENT_TROUBLE}
 
 
-def _domain_from_url(url: str) -> str:
-    try:
-        from urllib.parse import urlparse
-
-        host = urlparse(url).netloc.lower()
-        if host.startswith("www."):
-            host = host[4:]
-        return host or url
-    except Exception:
-        return url
-
-
-def _iter_report_citations(report: dict[str, Any]) -> list[dict[str, str]]:
-    """Collect Citation-shaped dicts from findings + competitors (dedupe by URL)."""
-    collected: list[dict[str, str]] = []
-    seen_urls: set[str] = set()
-
-    def _add(cite: Any) -> None:
-        if not isinstance(cite, dict):
-            return
-        url = cite.get("url")
-        if not isinstance(url, str) or not url.strip():
-            return
-        url = url.strip()
-        if url in seen_urls:
-            return
-        seen_urls.add(url)
-        title = cite.get("title")
-        domain = cite.get("source_domain")
-        collected.append(
-            {
-                "source_title": title.strip()
-                if isinstance(title, str) and title.strip()
-                else url,
-                "source_url": url,
-                "source_domain": domain.strip()
-                if isinstance(domain, str) and domain.strip()
-                else _domain_from_url(url),
-            }
-        )
-
-    for qf in report.get("questions_and_findings") or []:
-        if not isinstance(qf, dict):
-            continue
-        for finding in qf.get("findings") or []:
-            if not isinstance(finding, dict):
-                continue
-            for cite in finding.get("citations") or []:
-                _add(cite)
-
-    for comp in report.get("competitors") or []:
-        if not isinstance(comp, dict):
-            continue
-        for cite in comp.get("citations") or []:
-            _add(cite)
-
-    return collected
-
-
-def build_source_index(
-    report: dict[str, Any] | None,
-) -> dict[str, dict[str, str | None]]:
-    """Map ``s1``..``sN`` -> primary source metadata from the validation report."""
-    if not report:
-        return {}
-    index: dict[str, dict[str, str | None]] = {}
-    for i, cite in enumerate(_iter_report_citations(report), start=1):
-        source_id = f"s{i}"
-        index[source_id] = {
-            "source_title": cite["source_title"],
-            "source_url": cite["source_url"],
-            "source_domain": cite["source_domain"],
-        }
-    return index
-
-
-def build_source_refs_from_cite_ids(
-    text: str,
-    source_index: dict[str, dict[str, str | None]],
-) -> list[dict[str, Any]]:
-    """Resolve in-content ``[cite:sN]`` markers via ``source_index``.
-
-    Unresolved ids and ``[ref:...]`` markers are dropped (frontend shows them
-    as plain text).
-    """
-    refs: list[dict[str, Any]] = []
-    seen: set[str] = set()
-    for match in _CITE_SOURCE_ID_RE.finditer(text):
-        source_id = match.group(1).lower()
-        if source_id in seen:
-            continue
-        meta = source_index.get(source_id)
-        if meta is None:
-            continue
-        seen.add(source_id)
-        marker_id = f"[cite:{source_id}]"
-        refs.append(
-            {
-                "marker_id": marker_id,
-                "source_title": meta.get("source_title") or source_id,
-                "source_url": meta.get("source_url"),
-                "source_domain": meta.get("source_domain"),
-            }
-        )
-    return refs
-
-
 def _refined_idea_patch(
     before: dict[str, Any] | None,
     after: dict[str, Any] | None,
 ) -> dict[str, Any] | None:
-    """Return the post-turn idea when a write happened; else None.
-
-    ``RefinementTurnDecision`` has no patch type — ``run_turn`` replaces
-    ``refined_idea_current`` with a full ``RefinedIdea`` dump when present.
-    """
+    """Return the post-turn idea when a write happened; else None."""
     if after is None:
         return None
     if before == after:
@@ -549,130 +538,3 @@ _REFINE_AGENT_TROUBLE = (
     "Refine agent had trouble — try again or open Refine phase"
 )
 
-
-async def exec_ask_research_agent(
-    db: AsyncSession,
-    experiment: Experiment,
-    args: dict[str, Any],
-    user: User,
-) -> dict[str, Any]:
-    """Forward ``query`` into evidence chat (non-streaming) on ``evidence_thread_id``."""
-    query = _extract_query(args)
-    if query is None:
-        return {"error": "query is required"}
-
-    report_raw: dict[str, Any] | None = None
-    exp_result = await db.execute(
-        select(Experiment)
-        .options(selectinload(Experiment.validation_report))
-        .where(Experiment.id == experiment.id)
-    )
-    exp = exp_result.scalar_one_or_none()
-    if exp is not None and exp.validation_report is not None:
-        raw = exp.validation_report.raw_report
-        if isinstance(raw, dict):
-            report_raw = raw
-
-    source_index = build_source_index(report_raw)
-    sources_block = format_sources_block(source_index)
-
-    result = await send_evidence_chat_message(
-        db,
-        current_user=user,
-        experiment_id=experiment.id,
-        message=query,
-        prompt_name=PROMPT_NAME_RESEARCH_SUBAGENT,
-        system_prompt=RESEARCH_SUBAGENT_SYSTEM_PROMPT,
-        sources_block=sources_block,
-    )
-
-    assistant_text = result.assistant_message.content or ""
-
-    if exp is not None and exp.evidence_thread_id is not None:
-        experiment.evidence_thread_id = exp.evidence_thread_id
-    else:
-        refreshed = await db.get(Experiment, experiment.id)
-        if refreshed is not None and refreshed.evidence_thread_id is not None:
-            experiment.evidence_thread_id = refreshed.evidence_thread_id
-
-    return {
-        "assistant_text_with_citations": assistant_text,
-        "source_refs": build_source_refs_from_cite_ids(assistant_text, source_index),
-    }
-
-
-async def exec_ask_research_agent_stream(
-    db: AsyncSession,
-    experiment: Experiment,
-    args: dict[str, Any],
-    user: User,
-) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
-    """Stream research sub-agent tokens; yield ``token`` then ``complete``.
-
-    Uses ``stream_research_evidence_tokens`` (shared LLM token iterator). The
-    universal master wraps tokens with ``agent: research`` attribution. On soft
-    failure yields a single ``complete`` with ``error`` and no tokens.
-    """
-    query = _extract_query(args)
-    if query is None:
-        yield ("complete", {"error": "query is required"})
-        return
-
-    report_raw: dict[str, Any] | None = None
-    exp_result = await db.execute(
-        select(Experiment)
-        .options(selectinload(Experiment.validation_report))
-        .where(Experiment.id == experiment.id)
-    )
-    exp = exp_result.scalar_one_or_none()
-    if exp is not None and exp.validation_report is not None:
-        raw = exp.validation_report.raw_report
-        if isinstance(raw, dict):
-            report_raw = raw
-
-    source_index = build_source_index(report_raw)
-    sources_block = format_sources_block(source_index)
-
-    parts: list[str] = []
-    try:
-        async for piece in stream_research_evidence_tokens(
-            db,
-            user,
-            experiment.id,
-            query,
-            prompt_name=PROMPT_NAME_RESEARCH_SUBAGENT,
-            system_prompt=RESEARCH_SUBAGENT_SYSTEM_PROMPT,
-            sources_block=sources_block,
-        ):
-            parts.append(piece)
-            yield ("token", {"text": piece})
-    except Exception as exc:
-        _logger.warning(
-            "research subagent stream failed",
-            experiment_id=str(experiment.id),
-            error_type=type(exc).__name__,
-        )
-        yield (
-            "complete",
-            {"error": f"{type(exc).__name__}: tool execution failed"},
-        )
-        return
-
-    assistant_text = "".join(parts).strip() or _RESEARCH_STREAM_FALLBACK
-
-    if exp is not None and exp.evidence_thread_id is not None:
-        experiment.evidence_thread_id = exp.evidence_thread_id
-    else:
-        refreshed = await db.get(Experiment, experiment.id)
-        if refreshed is not None and refreshed.evidence_thread_id is not None:
-            experiment.evidence_thread_id = refreshed.evidence_thread_id
-
-    yield (
-        "complete",
-        {
-            "assistant_text_with_citations": assistant_text,
-            "source_refs": build_source_refs_from_cite_ids(
-                assistant_text, source_index
-            ),
-        },
-    )

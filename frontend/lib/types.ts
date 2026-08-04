@@ -356,6 +356,12 @@ export interface ChatHistoryMessage {
     selected_option_indices?: number[];
     custom_added_text?: string | null;
     answered_question_from_message_id?: string;
+    /** Universal / chat attachment refs for history chips. */
+    attachments?: Array<{
+      id: string;
+      filename: string;
+      content_kind: string;
+    }>;
   } | null;
   /** Structured tool_call / tool_result payload (universal chat agent shape). */
   tool_payload?: Record<string, unknown> | null;
@@ -365,7 +371,7 @@ export interface ChatHistoryMessage {
   created_at: string;
 }
 
-/** Source chip metadata from ask_research_agent tool_result. */
+/** Source chip metadata from get_research_context tool_result. */
 export interface ResearchSubagentSourceRef {
   marker_id: string;
   source_title: string;
@@ -384,7 +390,7 @@ export interface RefineSubagentToolResult {
   refined_idea_patch: Record<string, unknown> | null;
   has_pending_mcq: boolean;
   log_entry: string | null;
-  /** Present when has_pending_mcq — inline rail MCQ. */
+  /** Present when has_pending_mcq — displayed in the rail question card. */
   mcq_question: string | null;
   mcq_options: RefineMcqOption[];
   mcq_answered_question_id: string | null;
@@ -392,14 +398,20 @@ export interface RefineSubagentToolResult {
   mcq_selection_mode: "single" | "multiple";
 }
 
-
-/** tool_payload.result for ask_research_agent. */
-export interface ResearchSubagentToolResult {
-  assistant_text_with_citations: string;
+/** tool_payload.result for get_research_context (master-native research). */
+export interface ResearchContextToolResult {
+  available: boolean;
+  findings_digest: string;
+  sources: Array<{
+    id: string;
+    title: string;
+    url: string | null;
+    domain: string | null;
+  }>;
   source_refs: ResearchSubagentSourceRef[];
 }
 
-export type SubagentToolName = "ask_refine_agent" | "ask_research_agent";
+export type SubagentToolName = "ask_refine_agent";
 
 export interface ExperimentChatMessagesResponse {
   thread_id: string | null;

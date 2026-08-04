@@ -68,15 +68,14 @@ function dispatchUniversalFrames(
 }
 
 describe("universal chat SSE dispatch", () => {
-  it("dispatches tokens before tool_result with payload", () => {
+  it("dispatches get_research_context then cited assistant tokens", () => {
     const calls: string[] = [];
     let lastPayload: Record<string, unknown> | null = null;
     const frames = [
-      'event: tool_call\ndata: {"tool_name":"ask_research_agent","message_id":"tc1"}\n\n',
-      'event: subagent_token\ndata: {"agent":"research","text":"Hello "}\n\n',
-      'event: subagent_token\ndata: {"agent":"research","text":"[cite:s1]"}\n\n',
-      'event: tool_result\ndata: {"tool_name":"ask_research_agent","message_id":"tr1","payload":{"tool_name":"ask_research_agent","result":{"assistant_text_with_citations":"Hello [cite:s1]","source_refs":[{"marker_id":"[cite:s1]","source_title":"Ex","source_url":"https://ex.com","source_domain":"ex.com"}]}}}\n\n',
-      'event: assistant_token\ndata: {"text":"Master wrap."}\n\n',
+      'event: tool_call\ndata: {"tool_name":"get_research_context","message_id":"tc1"}\n\n',
+      'event: tool_result\ndata: {"tool_name":"get_research_context","message_id":"tr1","payload":{"tool_name":"get_research_context","result":{"available":true,"findings_digest":"Demand is real.","source_refs":[{"marker_id":"[cite:s1]","source_title":"Ex","source_url":"https://ex.com","source_domain":"ex.com"}]}}}\n\n',
+      'event: assistant_token\ndata: {"text":"Demand is real "}\n\n',
+      'event: assistant_token\ndata: {"text":"[cite:s1]."}\n\n',
       'event: done\ndata: {"assistant_message_id":"a1","thread_id":"th1"}\n\n',
     ].join("");
 
@@ -93,17 +92,16 @@ describe("universal chat SSE dispatch", () => {
     });
 
     expect(calls).toEqual([
-      "tool_call:ask_research_agent",
-      "sub:research:Hello ",
-      "sub:research:[cite:s1]",
+      "tool_call:get_research_context",
       "tool_result:tr1",
-      "asst:Master wrap.",
+      "asst:Demand is real ",
+      "asst:[cite:s1].",
       "done:a1",
     ]);
     expect(lastPayload).toMatchObject({
-      tool_name: "ask_research_agent",
+      tool_name: "get_research_context",
       result: {
-        assistant_text_with_citations: "Hello [cite:s1]",
+        available: true,
         source_refs: [
           expect.objectContaining({ marker_id: "[cite:s1]", source_domain: "ex.com" }),
         ],

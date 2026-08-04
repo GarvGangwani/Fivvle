@@ -151,6 +151,8 @@ from app.services.universal_chat_service import (
     send_universal_chat_message,
     stream_universal_chat_message,
 )
+from app.services.chat_attachment_service import ChatAttachmentAccessError
+from app.utils.chat_attachment import ChatAttachmentValidationError
 from app.services.validation_report_editor import (
     EditedDocVersionConflict,
     apply_edited_doc_patch,
@@ -1504,6 +1506,7 @@ async def send_universal_chat(
             current_user,
             experiment_id,
             body.message,
+            attachment_ids=body.attachment_ids,
             current_open_phase=body.current_open_phase,
             mcq_answer=body.mcq_answer,
         )
@@ -1515,6 +1518,15 @@ async def send_universal_chat(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
         ) from exc
+    except ChatAttachmentValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    except ChatAttachmentAccessError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="One or more attachments are invalid or expired.",
+        ) from None
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
@@ -1563,8 +1575,10 @@ async def stream_universal_chat(
             current_user,
             experiment_id,
             body.message,
+            attachment_ids=body.attachment_ids,
             current_open_phase=body.current_open_phase,
             mcq_answer=body.mcq_answer,
+            replace_message_id=body.replace_message_id,
         )
     except UniversalChatNotFound:
         raise HTTPException(
@@ -1574,6 +1588,15 @@ async def stream_universal_chat(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail=str(exc)
         ) from exc
+    except ChatAttachmentValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)
+        ) from exc
+    except ChatAttachmentAccessError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="One or more attachments are invalid or expired.",
+        ) from None
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)

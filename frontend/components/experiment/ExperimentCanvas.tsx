@@ -293,7 +293,10 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   }, []);
 
   const openPhaseOverlay = useCallback(
-    (act: DeepDiveAct) => {
+    (
+      act: DeepDiveAct,
+      _options?: { sourceRef?: { source_url?: string | null } | null },
+    ) => {
       if (act === "refine") {
         const lockState = getNodeLockState("refine", experiment);
         if (lockState.isLocked) {

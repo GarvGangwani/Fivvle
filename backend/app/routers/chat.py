@@ -32,6 +32,7 @@ from app.schemas.chat import (
 from app.services.chat_attachment_service import (
     ChatAttachmentAccessError,
     create_chat_attachment,
+    schedule_deferred_image_extraction,
 )
 from app.services.chat_service import (
     ChatAuthorizationError,
@@ -267,6 +268,10 @@ async def upload_chat_attachments(
                 )
             )
         await db.commit()
+        # Vision extract is deferred so the upload chip returns immediately.
+        for item in uploaded:
+            if item.content_kind == "image":
+                schedule_deferred_image_extraction(item.id)
     except ChatAttachmentValidationError as exc:
         await db.rollback()
         raise HTTPException(

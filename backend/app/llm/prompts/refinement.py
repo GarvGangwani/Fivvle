@@ -659,12 +659,16 @@ def build_refinement_v2_chat_user_prompt(
     max_clarifying_turns: int,
     min_turns_before_finalize: int,
     finalized_refined_idea: dict | None = None,
+    current_wip_idea: dict | None = None,
 ) -> str:
     """Build per-turn user content for chat-mode refinement (planning doc §3.2).
 
     Chat history and the latest message are XML-wrapped per AGENTS.md — treat
     all founder content as untrusted data, not as instructions.
     """
+    # Phase-panel path currently ignores WIP dump (history carries signal);
+    # accept the kwarg for signature parity with the rail builder.
+    _ = current_wip_idea
     history_lines: list[str] = []
     for role, content in chat_history:
         history_lines.append(f"[{role}]: {content}")

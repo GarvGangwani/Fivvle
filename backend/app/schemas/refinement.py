@@ -183,9 +183,10 @@ class ClarifyingQuestion(BaseModel):
     selection_mode: Literal["single", "multiple"] = Field(
         default="multiple",
         description=(
-            "Default to 'multiple' — the UI always lets founders pick several options. "
-            "Use 'single' only for a forced either/or (e.g. resolving a contradiction "
-            "between two mutually exclusive paths)."
+            "Prefer 'multiple' — founders often pick several options. "
+            "Use 'single' ONLY when options are mutually exclusive either/or "
+            "(e.g. resolving a contradiction between two incompatible paths). "
+            "If unsure, use 'multiple'."
         ),
     )
     options: Annotated[

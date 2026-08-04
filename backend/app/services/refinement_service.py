@@ -64,6 +64,9 @@ REFINEMENT_CHAT_CACHE_BREAKPOINTS: list[llm_client.CacheBreakpoint] = [
 
 # Per .cursorrules "Required timeouts": 60s for refinement LLM calls.
 _REFINEMENT_MAX_TOKENS = 1024  # RefinedIdea output is small; cap prevents runaway cost.
+# Rail clarifying turns should stay short (question + options). Full idea
+# regeneration is discouraged by the rail prompt; 512 still fits a rare update.
+_RAIL_REFINE_MAX_TOKENS = 512
 
 _MAX_GRACEFUL_RETRIES = 1  # Service-level retry budget on ValidationError.
 # Each retry is one extra LLM call; cost depends on Settings refinement_model.
@@ -278,11 +281,14 @@ async def run_turn(
     prompt_name: str | None = None,
     system_prompt: str | None = None,
     user_prompt_builder: Callable[..., str] | None = None,
+    max_tokens: int | None = None,
 ) -> RefinementTurnDecision:
     """Run one refinement turn. Always returns a clarify decision.
 
     Optional ``prompt_name`` / ``system_prompt`` / ``user_prompt_builder`` override
     phase-panel defaults (used by the universal-chat refine sub-agent).
+    Optional ``max_tokens`` overrides the default structured-output budget
+    (rail clarifying turns use a tighter cap).
 
     Side effects (in-place on experiment, no commit — caller commits):
     - When bump_refinement_count is True:
@@ -306,6 +312,11 @@ async def run_turn(
     settings = get_settings()
 
     build_user = user_prompt_builder or build_refinement_v2_chat_user_prompt
+    current_wip = (
+        experiment.refined_idea_current
+        if isinstance(experiment.refined_idea_current, dict)
+        else None
+    )
     user_prompt = build_user(
         chat_history=chat_history,
         latest_message=latest_message,
@@ -317,7 +328,10 @@ async def run_turn(
             if isinstance(experiment.refined_idea, dict)
             else None
         ),
+        current_wip_idea=current_wip,
     )
+
+    token_budget = max_tokens if max_tokens is not None else _REFINEMENT_MAX_TOKENS
 
     parsed, meta = await llm_client.complete_structured(
         db,
@@ -327,7 +341,7 @@ async def run_turn(
         system=system_prompt or REFINEMENT_V2_CHAT_SYSTEM_PROMPT,
         user=user_prompt,
         response_model=RefinementTurnDecision,
-        max_tokens=_REFINEMENT_MAX_TOKENS,
+        max_tokens=token_budget,
         temperature=0.4,
         max_retries=6,
         experiment_id=experiment.id,
@@ -378,6 +392,8 @@ async def run_turn(
         ),
         prompt_tokens=meta.prompt_tokens,
         completion_tokens=meta.completion_tokens,
+        latency_ms=meta.latency_ms,
+        max_tokens=token_budget,
         cost_usd=str(meta.cost_usd),
     )
 
