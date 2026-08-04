@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -26,16 +27,32 @@ from app.db.models.landing_page import LandingPage
 from app.db.models.page_view import PageView
 from app.db.models.user import User
 from app.llm.client import LLMResult, ToolsLLMResult, ToolUseRequest
+from app.services.chat_tree_service import get_active_branch
 from app.services.universal_chat_service import (
     UniversalStreamPrep,
+    cancel_universal_turn,
     iter_paced_text_chunks,
     prepare_universal_stream,
+    start_universal_turn,
     stream_universal_chat_message,
+)
+from app.services.universal_chat_turn_runtime import (
+    TURN_STATUS_DONE,
+    TURN_STATUS_FAILED,
+    TURN_STATUS_KEY,
+    clear_turn_registry_for_tests,
 )
 
 _LLM_PATCH = "app.services.universal_chat_service.llm_client.complete_with_tools"
 _SM_PATCH = "app.services.universal_chat_service.get_sessionmaker"
 _EXECUTE_TOOL_PATCH = "app.services.universal_chat_service.execute_tool"
+
+
+@pytest.fixture(autouse=True)
+def _clear_turns() -> None:
+    clear_turn_registry_for_tests()
+    yield
+    clear_turn_registry_for_tests()
 
 
 @pytest.fixture
@@ -172,9 +189,12 @@ async def test_stream_pure_text_turn(
     names = [e[0] for e in events]
     assert "tool_call" not in names
     assert "subagent_token" not in names
-    assert names[0] == "assistant_token"
+    assert "turn_started" in names
+    assert "assistant_token" in names
     assert names[-1] == "done"
-    assert all(n in ("assistant_token", "done") for n in names)
+    assert all(
+        n in ("turn_started", "assistant_token", "done") for n in names
+    )
     full = "".join(p["text"] for n, p in events if n == "assistant_token")
     assert "Spark" in full
 
@@ -427,7 +447,8 @@ async def test_stream_get_research_context_unavailable(
     assert "isn't ready" in assistant_text or "not ready" in assistant_text.lower()
 
 
-async def test_stream_error_leaves_no_assistant(
+@pytest.mark.asyncio
+async def test_stream_error_persists_failed_assistant(
     sm: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _patch_provider(monkeypatch)
@@ -439,41 +460,25 @@ async def test_stream_error_leaves_no_assistant(
 
     with patch(_LLM_PATCH, new_callable=AsyncMock) as mock_llm:
         mock_llm.side_effect = RuntimeError("boom")
-        # Disable initial-call fallback so the error surfaces as SSE error.
         events = await _collect_events(prep, sm)
 
-    # Fallback may retry once on anthropic→anthropic; force no recovery by
-    # ensuring both attempts raise.
-    assert events[-1][0] == "error" or events == [
-        ("error", {"message": "Universal chat failed, please try again"})
-    ]
-    if events[-1][0] != "error":
-        # If fallback somehow returned text, skip — but with side_effect=boom both fail.
-        pass
-    assert events[-1] == (
-        "error",
-        {"message": "Universal chat failed, please try again"},
-    )
+    names = [e[0] for e in events]
+    assert "done" in names or "error" in names
+    assert names[0] == "turn_started"
 
     async with sm() as session:
-        assistant_count = await session.scalar(
-            select(func.count())
-            .select_from(ChatMessage)
-            .where(
-                ChatMessage.thread_id == prep.thread_id,
-                ChatMessage.role == ChatRole.ASSISTANT,
+        msgs = (
+            await session.execute(
+                select(ChatMessage)
+                .where(ChatMessage.thread_id == prep.thread_id)
+                .order_by(ChatMessage.created_at, ChatMessage.id)
             )
-        )
-        user_count = await session.scalar(
-            select(func.count())
-            .select_from(ChatMessage)
-            .where(
-                ChatMessage.thread_id == prep.thread_id,
-                ChatMessage.role == ChatRole.USER,
-            )
-        )
-    assert assistant_count == 0
-    assert user_count == 1
+        ).scalars().all()
+        roles = [m.role for m in msgs]
+        assert ChatRole.USER in roles
+        assert ChatRole.ASSISTANT in roles
+        user_msg = next(m for m in msgs if m.role == ChatRole.USER)
+        assert (user_msg.metadata_json or {}).get(TURN_STATUS_KEY) == TURN_STATUS_FAILED
 
 
 @pytest.mark.asyncio
@@ -526,12 +531,51 @@ async def test_stream_cap_round_emits_multiple_tool_cycles(
 
 
 @pytest.mark.asyncio
-async def test_stream_cancel_mid_tool_persists_partial(
+async def test_sse_disconnect_does_not_abandon_turn(
     sm: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Cancel mid-tool: user + tool_call persist; no tool_result / assistant."""
-    import asyncio
+    """Dropping the SSE observer must let the detached turn finish."""
+    _patch_provider(monkeypatch)
+    async with sm() as session:
+        user, experiment = await _seed(session)
+        prep = await prepare_universal_stream(
+            session, user, experiment.id, "Say hello", pacing_delay=0
+        )
 
+    calls = [_tools_result(text="Hello from durable turn.")]
+
+    with patch(_LLM_PATCH, new_callable=AsyncMock) as mock_llm, patch(
+        _SM_PATCH, return_value=sm
+    ):
+        mock_llm.side_effect = calls
+        runtime = start_universal_turn(prep)
+        agen = stream_universal_chat_message(prep)
+        first = await agen.__anext__()
+        assert first[0] == "turn_started"
+        await agen.aclose()
+        assert runtime.task is not None
+        await asyncio.wait_for(runtime.task, timeout=10)
+
+    async with sm() as session:
+        msgs = (
+            await session.execute(
+                select(ChatMessage)
+                .where(ChatMessage.thread_id == prep.thread_id)
+                .order_by(ChatMessage.created_at, ChatMessage.id)
+            )
+        ).scalars().all()
+        roles = [m.role for m in msgs]
+        assert ChatRole.USER in roles
+        assert ChatRole.ASSISTANT in roles
+        user_msg = next(m for m in msgs if m.role == ChatRole.USER)
+        assert (user_msg.metadata_json or {}).get(TURN_STATUS_KEY) == TURN_STATUS_DONE
+
+
+@pytest.mark.asyncio
+async def test_explicit_stop_cancels_turn_no_assistant(
+    sm: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Stop signal kills the task; SSE close alone does not."""
     _patch_provider(monkeypatch)
     async with sm() as session:
         user, experiment = await _seed(
@@ -586,21 +630,17 @@ async def test_stream_cancel_mid_tool_persists_partial(
         _EXECUTE_TOOL_PATCH, new=_slow_execute
     ), patch(_SM_PATCH, return_value=sm):
         mock_llm.side_effect = calls
-        agen = stream_universal_chat_message(prep)
-        tool_call_seen = asyncio.Event()
-
-        async def _consume() -> None:
-            async for name, _payload in agen:
-                if name == "tool_call":
-                    tool_call_seen.set()
-                # Keep iterating so execute_tool starts after tool_call yield.
-
-        consumer = asyncio.create_task(_consume())
-        await asyncio.wait_for(tool_call_seen.wait(), timeout=5)
+        runtime = start_universal_turn(prep)
+        assert runtime.task is not None
         await asyncio.wait_for(started.wait(), timeout=5)
-        consumer.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await consumer
+        async with sm() as session:
+            user_row = await session.get(User, prep.user_id)
+            assert user_row is not None
+            cancelled = await cancel_universal_turn(
+                session, user_row, prep.experiment_id, prep.turn_id
+            )
+        assert cancelled is True
+        await asyncio.wait_for(runtime.task, timeout=10)
 
     async with sm() as session:
         msgs = (
@@ -613,9 +653,88 @@ async def test_stream_cancel_mid_tool_persists_partial(
         roles = [m.role for m in msgs]
         assert ChatRole.USER in roles
         assert ChatRole.TOOL_CALL in roles
-        assert ChatRole.TOOL_RESULT not in roles
         assert ChatRole.ASSISTANT not in roles
+        user_msg = next(m for m in msgs if m.role == ChatRole.USER)
+        assert (user_msg.metadata_json or {}).get(TURN_STATUS_KEY) == TURN_STATUS_FAILED
+        branch = await get_active_branch(session, prep.thread_id)
+        assert any(m.role == ChatRole.TOOL_CALL for m in branch)
 
+
+@pytest.mark.asyncio
+async def test_active_leaf_includes_tool_rows_mid_turn(
+    sm: async_sessionmaker[AsyncSession], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _patch_provider(monkeypatch)
+    async with sm() as session:
+        user, experiment = await _seed(
+            session, status=ExperimentStatus.LANDING_LIVE
+        )
+        landing = LandingPage(
+            experiment_id=experiment.id,
+            slug=f"leaf-{uuid4().hex[:10]}",
+            template_id="minimal",
+            palette_id="default",
+            font_pair_id="sans",
+            density=LandingDensity.ROOMY,
+            headline="H",
+            subheadline="S",
+            problem_desc="P",
+            solution_desc="Sol",
+            cta_text="Join",
+            cta_type=LandingCtaType.WAITLIST,
+            live_at=datetime.now(UTC),
+        )
+        session.add(landing)
+        await session.commit()
+        prep = await prepare_universal_stream(
+            session, user, experiment.id, "Research this", pacing_delay=0
+        )
+
+    calls = [
+        _tools_result(
+            tool_uses=[
+                ToolUseRequest(
+                    id="t1",
+                    name="get_research_context",
+                    input={"query": "Research this"},
+                )
+            ]
+        ),
+        _tools_result(text="Findings look solid."),
+    ]
+
+    gate = asyncio.Event()
+
+    async def _gated_execute(*_a: Any, **_k: Any) -> dict[str, Any]:
+        await gate.wait()
+        return {
+            "available": True,
+            "findings_digest": "x",
+            "sources": [],
+            "source_refs": [],
+        }
+
+    with patch(_LLM_PATCH, new_callable=AsyncMock) as mock_llm, patch(
+        _EXECUTE_TOOL_PATCH, new=_gated_execute
+    ), patch(_SM_PATCH, return_value=sm):
+        mock_llm.side_effect = calls
+        runtime = start_universal_turn(prep)
+        for _ in range(100):
+            if any(n == "tool_call" for n, _p in runtime.history):
+                break
+            await asyncio.sleep(0.05)
+        else:
+            raise AssertionError("tool_call never published")
+
+        async with sm() as session:
+            branch = await get_active_branch(session, prep.thread_id)
+            roles = [m.role for m in branch]
+            assert ChatRole.USER in roles
+            assert ChatRole.TOOL_CALL in roles
+
+        gate.set()
+        assert runtime.task is not None
+        await asyncio.wait_for(runtime.task, timeout=10)
 
 
 @pytest.mark.asyncio

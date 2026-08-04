@@ -84,3 +84,13 @@ class UniversalChatMessagesResponse(BaseModel):
     experiment_id: UUID
     active_leaf_message_id: UUID | None
     messages: list[ChatMessageItem]
+    # Present when metadata_json.turn_status == running on the active branch.
+    in_progress_turn_id: UUID | None = None
+
+
+class UniversalChatCancelRequest(BaseModel):
+    """POST body for explicit stop of a durable universal-chat turn."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    turn_id: UUID

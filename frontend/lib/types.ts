@@ -362,6 +362,9 @@ export interface ChatHistoryMessage {
       filename: string;
       content_kind: string;
     }>;
+    /** Durable turn marker (running | done | failed). */
+    turn_status?: "running" | "done" | "failed" | string;
+    turn_id?: string;
   } | null;
   /** Structured tool_call / tool_result payload (universal chat agent shape). */
   tool_payload?: Record<string, unknown> | null;
@@ -659,6 +662,7 @@ export interface UniversalChatMessagesResponse {
   experiment_id: string;
   active_leaf_message_id: string | null;
   messages: ChatHistoryMessage[];
+  in_progress_turn_id?: string | null;
 }
 
 export interface ChatMessage {
