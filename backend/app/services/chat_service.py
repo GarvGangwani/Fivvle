@@ -70,6 +70,7 @@ def build_user_message_metadata(
     selected_option_indices: list[int] | None = None,
     custom_added_text: str | None = None,
     answered_question_from_message_id: UUID | None = None,
+    skipped_clarifying_question: bool = False,
 ) -> dict[str, Any] | None:
     meta: dict[str, Any] = {}
     if selected_option_indices is not None:
@@ -80,6 +81,8 @@ def build_user_message_metadata(
         meta["answered_question_from_message_id"] = str(
             answered_question_from_message_id
         )
+    if skipped_clarifying_question:
+        meta["skipped_clarifying_question"] = True
     return meta or None
 
 
@@ -728,6 +731,7 @@ async def handle_turn(
     prompt_name: str | None = None,
     system_prompt: str | None = None,
     user_prompt_builder: Callable[..., str] | None = None,
+    max_tokens: int | None = None,
 ) -> ChatTurnResult:
     """Top-level entry. Handles both DR and plain-chat paths."""
     message = _sanitize_user_message(message)
@@ -747,6 +751,7 @@ async def handle_turn(
             prompt_name=prompt_name,
             system_prompt=system_prompt,
             user_prompt_builder=user_prompt_builder,
+            max_tokens=max_tokens,
         )
     return await _handle_plain_chat_turn(
         db,
@@ -923,6 +928,7 @@ async def _handle_deep_research_turn(
     prompt_name: str | None = None,
     system_prompt: str | None = None,
     user_prompt_builder: Callable[..., str] | None = None,
+    max_tokens: int | None = None,
 ) -> ChatTurnResult:
     if idempotency_key is None:
         raise ValueError("idempotency_key required for deep_research=true")
@@ -976,6 +982,7 @@ async def _handle_deep_research_turn(
             prompt_name=prompt_name,
             system_prompt=system_prompt,
             user_prompt_builder=user_prompt_builder,
+            max_tokens=max_tokens,
         )
     except Exception as exc:
         user_error = translate_engineer_error(

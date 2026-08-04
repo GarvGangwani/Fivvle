@@ -37,7 +37,8 @@ export type CitationToken =
   | { type: "text"; value: string }
   | { type: "marker"; marker: string };
 
-function parseRefAnchor(raw: string): RefCitation | null {
+/** Parse a single `[ref: …]` anchor body into a typed RefCitation. */
+export function parseRefAnchor(raw: string): RefCitation | null {
   const anchor = raw.trim();
   if (!anchor) return null;
   const lower = anchor.toLowerCase();

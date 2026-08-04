@@ -7,29 +7,40 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type DragEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import {
   ArrowUp,
+  Check,
+  File,
+  FileText,
+  Loader2,
   Maximize2,
   MessageSquare,
-  Paperclip,
-  Search,
+  Pencil,
+  Plus,
+  Square,
   X,
 } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
+import { MessageAttachments } from "@/components/experiment/refine/MessageAttachments";
+import { useToast } from "@/components/ui/ToastProvider";
 import {
   getUniversalChatMessages,
   streamUniversalChatMessage,
+  uploadChatAttachments,
 } from "@/lib/api";
-import { tokenizeCitations } from "@/lib/parse-citations";
+import { downscaleImageForUpload } from "@/lib/downscale-image";
+import { parseRefAnchor, tokenizeCitations } from "@/lib/parse-citations";
 import { setPendingEvidenceFocus } from "@/lib/pending-evidence-focus";
 import type {
   ChatHistoryMessage,
   RefineMcqOption,
   RefineSubagentToolResult,
+  RefCitation,
   ResearchSubagentSourceRef,
-  ResearchSubagentToolResult,
 } from "@/lib/types";
 
 export type UniversalOpenPhase =
@@ -39,39 +50,17 @@ export type UniversalOpenPhase =
   | "launch"
   | "signal";
 
-const TOOL_CALL_LABELS: Record<string, string> = {
-  get_metrics_summary: "Checked the metrics",
-  get_report_summary: "Checked the validation report",
-  get_landing_status: "Checked the landing page",
-  ask_refine_agent: "Asked Refine agent",
-  ask_research_agent: "Asked Research agent",
-  open_phase_panel: "Opening phase panel",
+const WORKING_LABELS: Record<string, string | null> = {
+  get_metrics_summary: "Checking your metrics…",
+  get_report_summary: "Reading the report…",
+  get_research_context: "Pulling the research…",
+  get_landing_status: "Checking the landing page…",
+  ask_refine_agent: "Thinking through your idea…",
+  open_phase_panel: null,
 };
 
-const SUBAGENT_HANDOFF: Record<string, string> = {
-  ask_refine_agent: "Refine agent thinking…",
-  ask_research_agent: "Research agent digging in…",
-};
-
-const PHASE_CHIP_LABEL: Record<UniversalOpenPhase, string> = {
-  spark: "Spark",
-  refine: "Refine",
-  evidence: "Evidence",
-  launch: "Launch",
-  signal: "Signal",
-};
-
-function toolCallLabel(toolPayload: ChatHistoryMessage["tool_payload"]): string {
-  const name =
-    toolPayload &&
-    typeof toolPayload === "object" &&
-    typeof toolPayload.tool_name === "string"
-      ? toolPayload.tool_name
-      : null;
-  if (name && TOOL_CALL_LABELS[name]) {
-    return TOOL_CALL_LABELS[name];
-  }
-  return "Checked project data";
+function workingLabelForTool(toolName: string): string | null {
+  return toolName in WORKING_LABELS ? WORKING_LABELS[toolName] : "Working…";
 }
 
 function toolNameFromPayload(
@@ -88,6 +77,24 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return null;
 }
 
+/** Sentence-case UPPERCASE MCQ labels for readable chat bubbles. */
+function sentenceCaseMcqLabel(label: string): string {
+  const lowered = label.trim().toLowerCase();
+  if (!lowered) return lowered;
+  const idx = lowered.search(/[a-z]/);
+  if (idx < 0) return lowered;
+  return lowered.slice(0, idx) + lowered[idx]!.toUpperCase() + lowered.slice(idx + 1);
+}
+
+/** Natural join: "A", "A and B", "A, B, and C". */
+function formatMcqAnswerDisplay(labels: string[]): string {
+  const cleaned = labels.map(sentenceCaseMcqLabel).filter(Boolean);
+  if (cleaned.length === 0) return "";
+  if (cleaned.length === 1) return cleaned[0]!;
+  if (cleaned.length === 2) return `${cleaned[0]} and ${cleaned[1]}`;
+  return `${cleaned.slice(0, -1).join(", ")}, and ${cleaned[cleaned.length - 1]}`;
+}
+
 function parseRefineSubagentResult(
   payload: ChatHistoryMessage["tool_payload"],
 ): RefineSubagentToolResult | null {
@@ -95,15 +102,28 @@ function parseRefineSubagentResult(
   if (!root || root.tool_name !== "ask_refine_agent") return null;
   if (typeof root.error === "string" && root.result == null) return null;
   const result = asRecord(root.result);
-  if (!result || typeof result.assistant_text !== "string") return null;
+  if (!result) return null;
+  // Question-only turns may omit prose; treat missing assistant_text as "".
+  if (
+    result.assistant_text != null &&
+    typeof result.assistant_text !== "string"
+  ) {
+    return null;
+  }
 
   const optionsRaw = Array.isArray(result.mcq_options) ? result.mcq_options : [];
   const mcq_options: RefineMcqOption[] = [];
   for (const item of optionsRaw) {
     const row = asRecord(item);
-    if (!row) continue;
-    if (typeof row.index !== "number" || typeof row.label !== "string") continue;
-    mcq_options.push({ index: row.index, label: row.label });
+    if (!row || typeof row.label !== "string") continue;
+    const index =
+      typeof row.index === "number"
+        ? row.index
+        : typeof row.index === "string"
+          ? Number(row.index)
+          : NaN;
+    if (!Number.isFinite(index)) continue;
+    mcq_options.push({ index, label: row.label });
   }
 
   const mode = result.mcq_selection_mode;
@@ -111,7 +131,8 @@ function parseRefineSubagentResult(
     mode === "single" ? "single" : "multiple";
 
   return {
-    assistant_text: result.assistant_text,
+    assistant_text:
+      typeof result.assistant_text === "string" ? result.assistant_text : "",
     refined_idea_patch:
       result.refined_idea_patch && typeof result.refined_idea_patch === "object"
         ? (result.refined_idea_patch as Record<string, unknown>)
@@ -165,16 +186,10 @@ function parseNavigateResult(
   };
 }
 
-function parseResearchSubagentResult(
-  payload: ChatHistoryMessage["tool_payload"],
-): ResearchSubagentToolResult | null {
-  const root = asRecord(payload);
-  if (!root || root.tool_name !== "ask_research_agent") return null;
-  if (typeof root.error === "string" && root.result == null) return null;
-  const result = asRecord(root.result);
-  if (!result || typeof result.assistant_text_with_citations !== "string") {
-    return null;
-  }
+function extractSourceRefs(
+  payload: Record<string, unknown>,
+): ResearchSubagentSourceRef[] {
+  const result = asRecord(payload.result) ?? payload;
   const rawRefs = Array.isArray(result.source_refs) ? result.source_refs : [];
   const source_refs: ResearchSubagentSourceRef[] = [];
   for (const item of rawRefs) {
@@ -189,96 +204,53 @@ function parseResearchSubagentResult(
         typeof row.source_domain === "string" ? row.source_domain : null,
     });
   }
-  return {
-    assistant_text_with_citations: result.assistant_text_with_citations,
-    source_refs,
-  };
+  return source_refs;
 }
 
-function SubagentStatusChip({
-  label,
-  onClick,
-}: {
-  label: string;
-  onClick?: () => void;
-}) {
-  if (onClick) {
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className="inline-flex max-w-full items-center rounded-xs border border-border-master bg-surface-elevated px-1.5 py-0.5 text-[11px] leading-tight text-ink-tertiary transition-colors hover:border-[var(--fv-accent)] hover:text-[var(--fv-text)]"
-      >
-        {label}
-      </button>
-    );
-  }
-  return (
-    <span className="inline-flex max-w-full items-center rounded-xs border border-border-master bg-surface-elevated px-1.5 py-0.5 text-[11px] leading-tight text-ink-tertiary">
-      {label}
-    </span>
-  );
-}
-
-function InlineRailMcq({
+function QuestionCard({
   question,
   options,
   answeredQuestionId,
   selectionMode,
-  chosenLabels,
   disabled = false,
   onAnswer,
+  onSkip,
 }: {
   question: string | null;
   options: RefineMcqOption[];
   answeredQuestionId: string;
   selectionMode: "single" | "multiple";
-  chosenLabels?: string[];
   disabled?: boolean;
-  onAnswer?: (answer: {
-    selected_option_indices: number[];
-    answered_question_id: string;
-    labels: string[];
-  }) => void;
+  onAnswer?: (answer: { indices: number[]; labels: string[] }) => void;
+  onSkip?: () => void;
 }) {
   const [selected, setSelected] = useState<number[]>([]);
-  const answered = chosenLabels != null && chosenLabels.length > 0;
-
-  if (answered) {
-    return (
-      <div className="mt-3 w-full">
-        <p className="flex items-start gap-2 border-2 border-border-master bg-surface-elevated px-3 py-2 text-sm text-ink-tertiary">
-          <span aria-hidden="true" className="mt-0.5 shrink-0">
-            ✓
-          </span>
-          <span>
-            You chose: {chosenLabels.join(" · ")}
-          </span>
-        </p>
-      </div>
-    );
-  }
 
   const submit = (indices: number[]) => {
     if (!onAnswer || indices.length === 0) return;
     const labels = indices
       .map((i) => options.find((o) => o.index === i)?.label)
       .filter((label): label is string => typeof label === "string");
-    onAnswer({
-      selected_option_indices: indices,
-      answered_question_id: answeredQuestionId,
-      labels,
-    });
+    onAnswer({ indices, labels });
   };
 
   return (
-    <div className="mt-3 w-full space-y-2">
-      {question ? (
-        <p className="text-xs font-mono uppercase tracking-wide text-ink-tertiary">
-          {question}
+    <section
+      aria-label={`Question ${answeredQuestionId}`}
+      className="flex max-h-[min(50vh,24rem)] w-full flex-col rounded-t-md rounded-b-none border border-b-0 border-border-master bg-[var(--fv-surface-muted)] px-2.5 pb-2 pt-2"
+    >
+      <div className="shrink-0 space-y-1.5 pb-2">
+        <p className="font-mono text-mono-sm uppercase tracking-[0.14em] text-[var(--fv-accent)]">
+          Question
         </p>
-      ) : null}
-      <div className="flex w-full flex-col gap-2">
+        {question ? (
+          <h3 className="text-[13px] font-medium leading-snug text-ink-primary">
+            {question}
+          </h3>
+        ) : null}
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto pr-0.5">
         {options.map((opt) => {
           const isSelected = selected.includes(opt.index);
           return (
@@ -297,76 +269,293 @@ function InlineRailMcq({
                     : [...prev, opt.index].sort((a, b) => a - b),
                 );
               }}
-              className={`w-full border-2 border-border-master px-3 py-2 text-left text-sm text-[var(--fv-text)] transition-colors hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-50 ${
-                isSelected ? "bg-surface-elevated" : "bg-transparent"
+              className={`group relative flex w-full items-start gap-2 overflow-hidden rounded-sm border bg-[var(--fv-surface-card)] py-1.5 pl-3 pr-2 text-left transition-[background-color,border-color,transform] duration-100 ease-out disabled:cursor-not-allowed disabled:opacity-50 ${
+                isSelected
+                  ? "border-[var(--fv-accent)] bg-[var(--fv-brand-soft)]"
+                  : "border-border-master hover:border-[color-mix(in_srgb,var(--fv-accent)_55%,var(--fv-border-master))] hover:bg-[color-mix(in_srgb,var(--fv-accent)_6%,var(--fv-surface-card))] active:translate-x-px"
               }`}
             >
-              {opt.label}
+              <span
+                aria-hidden
+                className={`absolute inset-y-0 left-0 w-[3px] transition-colors duration-100 ${
+                  isSelected
+                    ? "bg-[var(--fv-accent)]"
+                    : "bg-transparent group-hover:bg-[var(--fv-accent)]"
+                }`}
+              />
+              <span
+                className={`mt-px shrink-0 font-mono text-[10px] font-medium tabular-nums leading-none tracking-tight transition-colors duration-100 ${
+                  isSelected
+                    ? "text-[var(--fv-accent)]"
+                    : "text-ink-tertiary group-hover:text-[var(--fv-accent)]"
+                }`}
+              >
+                {String(opt.index + 1).padStart(2, "0")}
+              </span>
+              <span className="min-w-0 flex-1 text-[13px] leading-snug text-ink-primary">
+                {opt.label}
+              </span>
+              {selectionMode === "multiple" && isSelected ? (
+                <Check
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--fv-accent)]"
+                  aria-hidden
+                  strokeWidth={2.5}
+                />
+              ) : null}
             </button>
           );
         })}
       </div>
-      {selectionMode === "multiple" ? (
+
+      <div className="flex shrink-0 items-center justify-between gap-2 px-0.5 pt-2">
         <button
           type="button"
-          disabled={disabled || !onAnswer || selected.length === 0}
-          onClick={() => submit(selected)}
-          className="w-full border-2 border-border-master bg-[var(--fv-accent-muted)] px-3 py-2 text-sm font-mono uppercase tracking-wide text-[var(--fv-text)] transition-colors hover:bg-surface-elevated disabled:cursor-not-allowed disabled:opacity-40"
+          disabled={disabled || !onSkip}
+          onClick={onSkip}
+          className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-tertiary transition-colors hover:text-ink-primary disabled:opacity-40"
         >
-          Submit selection
+          Skip
         </button>
-      ) : null}
-    </div>
+        {selectionMode === "multiple" ? (
+          <button
+            type="button"
+            disabled={disabled || !onAnswer || selected.length === 0}
+            onClick={() => submit(selected)}
+            className="h-7 shrink-0 rounded-sm border border-border-master bg-[var(--fv-accent)] px-3 font-mono text-[10px] uppercase tracking-wider text-white transition-colors hover:bg-[var(--fv-accent-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Submit
+          </button>
+        ) : null}
+      </div>
+    </section>
   );
 }
 
+type PendingQuestion = {
+  messageId: string;
+  question: string | null;
+  options: RefineMcqOption[];
+  answeredQuestionId: string;
+  selectionMode: "single" | "multiple";
+};
+
+function refineResultAsPendingQuestion(
+  messageId: string,
+  refine: RefineSubagentToolResult,
+): PendingQuestion | null {
+  if (
+    !(refine.has_pending_mcq || refine.mcq_question != null) ||
+    refine.mcq_options.length === 0 ||
+    refine.mcq_answered_question_id == null
+  ) {
+    return null;
+  }
+  return {
+    messageId,
+    question: refine.mcq_question,
+    options: refine.mcq_options,
+    answeredQuestionId: refine.mcq_answered_question_id,
+    selectionMode: refine.mcq_selection_mode,
+  };
+}
+
+/** Latest unanswered refine MCQ in history, or null. */
+function pendingQuestionFromMessages(
+  messages: ChatHistoryMessage[],
+): PendingQuestion | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== "tool_result") continue;
+    const refine = parseRefineSubagentResult(msg.tool_payload);
+    if (!refine) continue;
+    const pending = refineResultAsPendingQuestion(msg.id, refine);
+    if (!pending) continue;
+    const answeredLater = messages
+      .slice(i + 1)
+      .some(
+        (m) =>
+          m.role === "user" ||
+          m.role === "tool_call" ||
+          m.role === "assistant",
+      );
+    return answeredLater ? null : pending;
+  }
+  return null;
+}
+
+function isExternalHttpUrl(url: string | null | undefined): url is string {
+  if (!url?.trim()) return false;
+  try {
+    const parsed = new URL(url.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function citationDomain(ref: ResearchSubagentSourceRef): string | null {
+  const fromMeta = ref.source_domain?.trim().replace(/^www\./i, "");
+  if (fromMeta) return fromMeta;
+  if (!isExternalHttpUrl(ref.source_url)) return null;
+  try {
+    return new URL(ref.source_url).hostname.replace(/^www\./i, "") || null;
+  } catch {
+    return null;
+  }
+}
+
+function googleFaviconUrl(domain: string): string {
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(domain)}&sz=64`;
+}
+
 function InlineCitationChip({
-  label,
+  variant,
+  indexLabel,
+  domain,
   title,
+  href,
   onClick,
 }: {
-  label: string;
+  variant: "source" | "report";
+  /** Superscript fallback when favicon fails, e.g. "1" from s1. */
+  indexLabel: string;
+  domain?: string | null;
   title?: string;
+  /** External source — opens in a new tab. */
+  href?: string;
   onClick?: () => void;
 }) {
+  const [faviconFailed, setFaviconFailed] = useState(false);
+  const className =
+    "ml-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center align-text-bottom text-ink-tertiary transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--fv-accent)]";
+
+  let body: ReactNode;
+  if (variant === "report") {
+    body = <FileText className="h-3.5 w-3.5" aria-hidden />;
+  } else if (domain && !faviconFailed) {
+    body = (
+      // eslint-disable-next-line @next/next/no-img-element -- remote favicon service; next/image not appropriate
+      <img
+        src={googleFaviconUrl(domain)}
+        alt=""
+        width={14}
+        height={14}
+        className="h-3.5 w-3.5 rounded-[2px]"
+        loading="lazy"
+        decoding="async"
+        onError={() => setFaviconFailed(true)}
+      />
+    );
+  } else {
+    body = (
+      <span className="align-super text-[0.65em] font-medium leading-none tracking-tight">
+        {indexLabel}
+      </span>
+    );
+  }
+
+  if (href) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        title={title || undefined}
+        className={className}
+        aria-label={title || "Open source"}
+      >
+        {body}
+      </a>
+    );
+  }
+
   if (onClick) {
     return (
       <button
         type="button"
         title={title || undefined}
         onClick={onClick}
-        className="mx-0.5 inline-flex max-w-[12rem] align-baseline rounded-xs border border-border-master px-1 py-px text-[10px] leading-tight text-ink-tertiary transition-colors hover:border-[var(--fv-accent)] hover:text-[var(--fv-text)]"
+        className={className}
+        aria-label={title || "Open in report"}
       >
-        <span className="truncate">{label}</span>
+        {body}
       </button>
     );
   }
+
   return (
-    <span
-      title={title || undefined}
-      className="mx-0.5 inline-flex max-w-[12rem] align-baseline rounded-xs border border-border-master px-1 py-px text-[10px] leading-tight text-ink-tertiary"
-    >
-      <span className="truncate">{label}</span>
+    <span title={title || undefined} className={className}>
+      {body}
     </span>
   );
 }
 
-function chipLabelForSource(ref: ResearchSubagentSourceRef): string {
+function citationIndexLabel(ref: ResearchSubagentSourceRef): string {
+  const idMatch = /\[cite:\s*s(\d+)\]/i.exec(ref.marker_id);
+  if (idMatch) return idMatch[1];
   const domain = ref.source_domain?.trim();
-  if (domain) return domain;
-  const title = ref.source_title.trim();
-  if (title.length <= 28) return title;
-  return `${title.slice(0, 25)}…`;
+  if (domain) return domain.slice(0, 12);
+  return "·";
+}
+
+function citationHoverTitle(ref: ResearchSubagentSourceRef): string | undefined {
+  const parts = [
+    ref.source_domain?.trim() || null,
+    ref.source_title.trim() || null,
+    ref.source_url,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" — ") : undefined;
+}
+
+function reportRefHoverTitle(ref: RefCitation): string {
+  switch (ref.kind) {
+    case "question":
+      return `Report — ${ref.value.toUpperCase()}`;
+    case "competitor":
+      return `Report — competitor: ${ref.value}`;
+    case "section":
+      return `Report — section: ${ref.value}`;
+    case "limitation":
+      return "Report — Research Limitations";
+    case "url":
+      return `Report — ${ref.value}`;
+  }
+}
+
+function openReportCitationInEvidence(
+  onOpenPhase: (
+    phase: UniversalOpenPhase,
+    options?: { sourceRef?: ResearchSubagentSourceRef | null },
+  ) => void,
+  anchor: RefCitation,
+  sourceRef?: ResearchSubagentSourceRef,
+): void {
+  setPendingEvidenceFocus(anchor);
+  onOpenPhase("evidence", sourceRef ? { sourceRef } : undefined);
+}
+
+function focusAnchorForSourceRef(ref: ResearchSubagentSourceRef): RefCitation {
+  if (ref.source_url?.trim()) {
+    return { kind: "url", value: ref.source_url.trim() };
+  }
+  if (ref.source_domain?.trim()) {
+    return { kind: "url", value: ref.source_domain.trim() };
+  }
+  return { kind: "url", value: "" };
 }
 
 function ResearchTextWithCitationChips({
   text,
   sourceRefs,
-  onCitationClick,
+  onSourceCitationClick,
+  onReportRefClick,
 }: {
   text: string;
   sourceRefs: ResearchSubagentSourceRef[];
-  onCitationClick?: (ref: ResearchSubagentSourceRef) => void;
+  /** Non-external cites (no usable http URL) — open evidence panel. */
+  onSourceCitationClick?: (ref: ResearchSubagentSourceRef) => void;
+  /** `[ref:…]` in-report anchors. */
+  onReportRefClick?: (ref: RefCitation) => void;
 }) {
   const byMarker = new Map(
     sourceRefs.map((ref) => [ref.marker_id.toLowerCase(), ref]),
@@ -392,28 +581,55 @@ function ResearchTextWithCitationChips({
             />
           );
         }
-        // [ref:...] and unresolved cites stay as plain text (rail is primary-source only).
+
+        const reportBody = /\[ref:\s*([^\]]*)\]/i.exec(token.marker);
+        if (reportBody) {
+          const reportRef = parseRefAnchor(reportBody[1]);
+          if (reportRef) {
+            return (
+              <InlineCitationChip
+                key={`ref-${index}`}
+                variant="report"
+                indexLabel="¶"
+                title={reportRefHoverTitle(reportRef)}
+                onClick={
+                  onReportRefClick
+                    ? () => onReportRefClick(reportRef)
+                    : undefined
+                }
+              />
+            );
+          }
+        }
+
         const idMatch = /\[cite:\s*(s\d+)\]/i.exec(token.marker);
         const ref =
           byMarker.get(token.marker.toLowerCase()) ??
           (idMatch ? byId.get(idMatch[1].toLowerCase()) : undefined);
         if (!ref) {
           return (
-            <span key={`raw-${index}`} className="text-ink-tertiary">
+            <span
+              key={`raw-${index}`}
+              className="align-super text-[0.65em] text-ink-tertiary"
+            >
               {token.marker}
             </span>
           );
         }
+
+        const external = isExternalHttpUrl(ref.source_url);
         return (
           <InlineCitationChip
             key={`cite-${index}`}
-            label={chipLabelForSource(ref)}
-            title={
-              [ref.source_title, ref.source_url].filter(Boolean).join(" — ") ||
-              undefined
-            }
+            variant={external ? "source" : "report"}
+            indexLabel={citationIndexLabel(ref)}
+            domain={external ? citationDomain(ref) : null}
+            title={citationHoverTitle(ref)}
+            href={external ? ref.source_url! : undefined}
             onClick={
-              onCitationClick ? () => onCitationClick(ref) : undefined
+              !external && onSourceCitationClick
+                ? () => onSourceCitationClick(ref)
+                : undefined
             }
           />
         );
@@ -442,12 +658,130 @@ type DockMessage = ChatHistoryMessage & {
   error?: boolean;
 };
 
+type DraftAttachment = {
+  localId: string;
+  file: File;
+  filename: string;
+  previewUrl: string | null;
+  status: "uploading" | "ready" | "error";
+  serverId?: string;
+  contentKind?: string;
+  errorMessage?: string;
+};
+
 const SCROLL_NEAR_BOTTOM_THRESHOLD_PX = 100;
 const TEXTAREA_MAX_PX = 120;
 const COLLAPSE_KEY_PREFIX = "fivvle-universal-chat-collapsed";
+const MAX_DRAFT_ATTACHMENTS = 5;
+const MAX_DRAFT_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const ACCEPTED_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "pdf",
+  "txt",
+  "md",
+  "markdown",
+  "docx",
+]);
+const FILE_ACCEPT =
+  "image/png,image/jpeg,image/webp,application/pdf,text/plain,text/markdown,.md,.txt,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
 function collapseStorageKey(experimentId: string): string {
   return `${COLLAPSE_KEY_PREFIX}:${experimentId}`;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function fileExtension(name: string): string {
+  const idx = name.lastIndexOf(".");
+  return idx >= 0 ? name.slice(idx + 1).toLowerCase() : "";
+}
+
+function isAcceptedAttachmentFile(file: File): boolean {
+  const ext = fileExtension(file.name);
+  if (ACCEPTED_EXTENSIONS.has(ext)) return true;
+  const mime = file.type.toLowerCase();
+  return (
+    mime === "image/png" ||
+    mime === "image/jpeg" ||
+    mime === "image/webp" ||
+    mime === "application/pdf" ||
+    mime === "text/plain" ||
+    mime === "text/markdown" ||
+    mime ===
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  );
+}
+
+function revokePreview(url: string | null) {
+  if (url) URL.revokeObjectURL(url);
+}
+
+/** Session-scoped blob URLs for sent attachment thumbs (lost on full reload). */
+const attachmentPreviewById = new Map<string, string>();
+
+function registerAttachmentPreview(id: string, url: string) {
+  const prev = attachmentPreviewById.get(id);
+  if (prev && prev !== url) URL.revokeObjectURL(prev);
+  attachmentPreviewById.set(id, url);
+}
+
+function getAttachmentPreview(id: string): string | null {
+  return attachmentPreviewById.get(id) ?? null;
+}
+
+function unregisterAttachmentPreview(id: string) {
+  const url = attachmentPreviewById.get(id);
+  if (url) {
+    URL.revokeObjectURL(url);
+    attachmentPreviewById.delete(id);
+  }
+}
+
+function isImageAttachmentFile(file: File): boolean {
+  if (file.type.startsWith("image/")) return true;
+  const ext = fileExtension(file.name);
+  return ext === "png" || ext === "jpg" || ext === "jpeg" || ext === "webp";
+}
+
+function DocGlyph({ filename }: { filename: string }) {
+  const ext = fileExtension(filename);
+  if (ext === "pdf") return <File className="h-3.5 w-3.5 shrink-0" aria-hidden />;
+  return <FileText className="h-3.5 w-3.5 shrink-0" aria-hidden />;
+}
+
+function DraftThumb({
+  previewUrl,
+  filename,
+}: {
+  previewUrl: string | null;
+  filename: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (!previewUrl || failed) {
+    return (
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-border-master bg-[var(--fv-surface-muted)] text-[var(--fv-text-muted)]">
+        <DocGlyph filename={filename} />
+      </div>
+    );
+  }
+  return (
+    <div className="h-9 w-9 shrink-0 overflow-hidden rounded-sm border border-border-master bg-[var(--fv-surface-muted)]">
+      {/* eslint-disable-next-line @next/next/no-img-element -- local blob: preview */}
+      <img
+        src={previewUrl}
+        alt=""
+        className="h-9 w-9 object-cover"
+        onError={() => setFailed(true)}
+      />
+    </div>
+  );
 }
 
 function isNarrowViewport(): boolean {
@@ -493,19 +827,6 @@ function toolResultFromEvent(
   };
 }
 
-function agentForToolName(
-  toolName: string,
-): "refine" | "research" | null {
-  if (toolName === "ask_refine_agent") return "refine";
-  if (toolName === "ask_research_agent") return "research";
-  return null;
-}
-
-type StreamingSubagentState = {
-  agent: "refine" | "research";
-  text: string;
-};
-
 export const UniversalChatDock = memo(function UniversalChatDock({
   experimentId,
   projectName,
@@ -513,23 +834,39 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   currentOpenPhase = null,
   onOpenPhase,
 }: Props) {
+  const { toast } = useToast();
   const [collapsed, setCollapsed] = useState(false);
   const [messages, setMessages] = useState<DockMessage[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [draft, setDraft] = useState("");
-  const [streamingSubagent, setStreamingSubagent] =
-    useState<StreamingSubagentState | null>(null);
-  /** tool_result message id → chosen option labels (collapse after answer). */
-  const [resolvedMcqByMessageId, setResolvedMcqByMessageId] = useState<
-    Record<string, string[]>
-  >({});
+  const [draftAttachments, setDraftAttachments] = useState<DraftAttachment[]>(
+    [],
+  );
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+  const [workingLabel, setWorkingLabel] = useState<string | null>(null);
+  const [streamingAssistantText, setStreamingAssistantText] = useState("");
+  const [pendingSourceRefs, setPendingSourceRefs] = useState<
+    ResearchSubagentSourceRef[]
+  >([]);
+  /** Active refine question docked above the input (null when none). */
+  const [pendingQuestion, setPendingQuestion] = useState<PendingQuestion | null>(
+    null,
+  );
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
+  /** Hold MCQ from tool_result until the turn finishes so the card never races streaming text. */
+  const heldPendingQuestionRef = useRef<PendingQuestion | null>(null);
   const dispatchedNavigateIdsRef = useRef<Set<string>>(new Set());
+  const stoppedRef = useRef(false);
 
   const named = displayProjectName(projectName);
-  const placeholder = named
-    ? `Ask anything about ${named}`
-    : "Ask anything about this project";
+  const placeholder = pendingQuestion
+    ? "Type your own answer…"
+    : named
+      ? `Ask anything about ${named}`
+      : "Ask anything about this project";
   const emptyCopy = named
     ? `Ask me anything about ${named}.`
     : "Ask me anything about your project.";
@@ -537,10 +874,224 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const dragDepthRef = useRef(0);
   const isNearBottomRef = useRef(true);
   const forceScrollRef = useRef(false);
   const streamAbortRef = useRef<AbortController | null>(null);
   const streamingAssistantIdRef = useRef<string | null>(null);
+  /** Full token accumulation — commit source of truth (never read inside setState). */
+  const streamingAssistantTextRef = useRef("");
+
+  const resetStreamingState = useCallback(() => {
+    streamingAssistantTextRef.current = "";
+    setStreamingAssistantText("");
+  }, []);
+
+  const readyAttachmentIds = draftAttachments
+    .filter((a) => a.status === "ready" && a.serverId)
+    .map((a) => a.serverId!);
+  const attachmentsUploading = draftAttachments.some(
+    (a) => a.status === "uploading",
+  );
+  const canSend =
+    !sending &&
+    !attachmentsUploading &&
+    (draft.trim().length > 0 || readyAttachmentIds.length > 0);
+
+  const uploadOneDraft = useCallback(async (localId: string, file: File) => {
+    try {
+      const toUpload = isImageAttachmentFile(file)
+        ? await downscaleImageForUpload(file)
+        : file;
+      const uploaded = await uploadChatAttachments([toUpload]);
+      const item = uploaded[0];
+      if (!item) throw new Error("Upload returned no attachment.");
+      setDraftAttachments((prev) =>
+        prev.map((row) => {
+          if (row.localId !== localId) return row;
+          if (row.previewUrl) {
+            registerAttachmentPreview(item.id, row.previewUrl);
+          }
+          return {
+            ...row,
+            status: "ready" as const,
+            serverId: item.id,
+            contentKind: item.content_kind,
+            errorMessage: undefined,
+          };
+        }),
+      );
+    } catch (err) {
+      let message = "Upload failed. Try again.";
+      if (err instanceof Error && err.message && !err.message.startsWith("API ")) {
+        message = err.message;
+      } else if (err && typeof err === "object" && "body" in err) {
+        const body = (err as { body: unknown }).body;
+        if (typeof body === "string" && body.trim()) message = body;
+        else if (
+          body &&
+          typeof body === "object" &&
+          "detail" in body &&
+          typeof (body as { detail: unknown }).detail === "string"
+        ) {
+          message = (body as { detail: string }).detail;
+        }
+      }
+      setDraftAttachments((prev) =>
+        prev.map((row) =>
+          row.localId === localId
+            ? { ...row, status: "error", errorMessage: message }
+            : row,
+        ),
+      );
+      toast(message, "error");
+    }
+  }, [toast]);
+
+  const addFiles = useCallback(
+    (files: File[]) => {
+      if (files.length === 0) return;
+      setAttachError(null);
+
+      const accepted: File[] = [];
+      for (const file of files) {
+        if (!isAcceptedAttachmentFile(file)) {
+          setAttachError(
+            `"${file.name}" isn’t supported. Use PNG, JPEG, WebP, PDF, TXT, Markdown, or DOCX.`,
+          );
+          continue;
+        }
+        if (file.size > MAX_DRAFT_ATTACHMENT_BYTES) {
+          setAttachError(`"${file.name}" is larger than 10 MB.`);
+          continue;
+        }
+        accepted.push(file);
+      }
+      if (accepted.length === 0) return;
+
+      setDraftAttachments((prev) => {
+        const remaining = MAX_DRAFT_ATTACHMENTS - prev.length;
+        if (remaining <= 0) {
+          setAttachError(
+            `You can attach up to ${MAX_DRAFT_ATTACHMENTS} files per message.`,
+          );
+          return prev;
+        }
+        if (accepted.length > remaining) {
+          setAttachError(
+            `Only ${remaining} more file(s) can be attached (max ${MAX_DRAFT_ATTACHMENTS}).`,
+          );
+        }
+        const batch = accepted.slice(0, remaining).map((file) => {
+          const localId = crypto.randomUUID();
+          const previewUrl = isImageAttachmentFile(file)
+            ? URL.createObjectURL(file)
+            : null;
+          void uploadOneDraft(localId, file);
+          return {
+            localId,
+            file,
+            filename: file.name,
+            previewUrl,
+            status: "uploading" as const,
+          };
+        });
+        return [...prev, ...batch];
+      });
+    },
+    [uploadOneDraft],
+  );
+
+  const removeDraftAttachment = useCallback((localId: string) => {
+    setDraftAttachments((prev) => {
+      const target = prev.find((row) => row.localId === localId);
+      if (target?.serverId && attachmentPreviewById.has(target.serverId)) {
+        // Keep registered URL if somehow already sent — only revoke unregistered.
+        // Draft removal before send: unregister so we don't leak.
+        unregisterAttachmentPreview(target.serverId);
+      } else {
+        revokePreview(target?.previewUrl ?? null);
+      }
+      return prev.filter((row) => row.localId !== localId);
+    });
+    setAttachError(null);
+  }, []);
+
+  const retryDraftAttachment = useCallback(
+    (localId: string) => {
+      const target = draftAttachments.find((row) => row.localId === localId);
+      if (!target) return;
+      setDraftAttachments((prev) =>
+        prev.map((row) =>
+          row.localId === localId
+            ? { ...row, status: "uploading", errorMessage: undefined }
+            : row,
+        ),
+      );
+      void uploadOneDraft(localId, target.file);
+    },
+    [draftAttachments, uploadOneDraft],
+  );
+
+  useEffect(() => {
+    return () => {
+      for (const [id, url] of [...attachmentPreviewById.entries()]) {
+        URL.revokeObjectURL(url);
+        attachmentPreviewById.delete(id);
+      }
+    };
+  }, [experimentId]);
+
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    const handlePaste = (e: ClipboardEvent) => {
+      const collected: File[] = [];
+      if (e.clipboardData?.files && e.clipboardData.files.length > 0) {
+        collected.push(...Array.from(e.clipboardData.files));
+      } else if (e.clipboardData?.items) {
+        for (const item of Array.from(e.clipboardData.items)) {
+          if (item.kind !== "file") continue;
+          const file = item.getAsFile();
+          if (file) collected.push(file);
+        }
+      }
+      if (collected.length === 0) return;
+      e.preventDefault();
+      addFiles(collected);
+    };
+    el.addEventListener("paste", handlePaste);
+    return () => el.removeEventListener("paste", handlePaste);
+  }, [addFiles, pendingQuestion]);
+
+  const onDragEnter = (e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current += 1;
+    if (e.dataTransfer.types.includes("Files")) setDragActive(true);
+  };
+  const onDragLeave = (e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragActive(false);
+  };
+  const onDragOver = (e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer.types.includes("Files")) {
+      e.dataTransfer.dropEffect = "copy";
+    }
+  };
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = 0;
+    setDragActive(false);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length > 0) addFiles(files);
+  };
 
   useEffect(() => {
     const key = collapseStorageKey(experimentId);
@@ -582,11 +1133,13 @@ export const UniversalChatDock = memo(function UniversalChatDock({
       .then((data) => {
         if (cancelled) return;
         setMessages(data.messages);
+        setPendingQuestion(pendingQuestionFromMessages(data.messages));
         forceScrollRef.current = true;
       })
       .catch(() => {
         if (cancelled) return;
         setMessages([]);
+        setPendingQuestion(null);
       })
       .finally(() => {
         if (!cancelled) setHistoryLoading(false);
@@ -612,12 +1165,26 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     updateNearBottom();
   }, [updateNearBottom]);
 
-  useEffect(() => {
-    if (forceScrollRef.current || isNearBottomRef.current) {
-      scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
-      forceScrollRef.current = false;
-    }
-  }, [messages, sending, historyLoading, streamingSubagent]);
+  const pinScrollToBottom = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  }, []);
+
+  // Instant stick-to-bottom before paint. Smooth scrollIntoView per token was
+  // fighting content growth (and browser scroll-anchoring) → jitter.
+  useLayoutEffect(() => {
+    if (!(forceScrollRef.current || isNearBottomRef.current)) return;
+    pinScrollToBottom();
+    forceScrollRef.current = false;
+  }, [
+    messages,
+    sending,
+    historyLoading,
+    workingLabel,
+    streamingAssistantText,
+    pinScrollToBottom,
+  ]);
 
   const resizeTextarea = useCallback(() => {
     const el = textareaRef.current;
@@ -630,67 +1197,155 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     resizeTextarea();
   }, [draft, resizeTextarea]);
 
+  const handleStop = useCallback(() => {
+    const partial = streamingAssistantTextRef.current.trim();
+    stoppedRef.current = true;
+    streamAbortRef.current?.abort();
+    streamAbortRef.current = null;
+    setWorkingLabel(null);
+    heldPendingQuestionRef.current = null;
+    setPendingQuestion(null);
+    setSending(false);
+
+    setMessages((prev) => {
+      const next = prev.map((m) =>
+        m.optimistic ? { ...m, optimistic: false } : m,
+      );
+      if (partial) {
+        next.push({
+          id: `stopped-${crypto.randomUUID()}`,
+          role: "assistant",
+          content: partial,
+          turn_kind: "universal_chat",
+          created_at: new Date().toISOString(),
+          tool_payload: null,
+        });
+      }
+      return next;
+    });
+    resetStreamingState();
+  }, [resetStreamingState]);
+
   const handleSend = useCallback(
     async (
       overrideText?: string,
       mcqAnswer?: {
         selected_option_indices: number[];
         answered_question_id: string;
+        skipped?: boolean;
       } | null,
-      resolveMcq?: { messageId: string; labels: string[] } | null,
+      sendOptions?: {
+        replaceMessageId?: string;
+        attachmentIds?: string[];
+        attachmentMeta?: Array<{
+          id: string;
+          filename: string;
+          content_kind: string;
+        }>;
+      },
     ) => {
       const trimmed = (overrideText ?? draft).trim();
-      if (!trimmed || sending) return;
+      // Card selection/skip: submit indices without echoing a user bubble.
+      const isCardAnswer = mcqAnswer != null;
+      const attachmentIds = isCardAnswer
+        ? []
+        : (sendOptions?.attachmentIds ?? readyAttachmentIds);
+      const attachmentsForOptimistic = isCardAnswer
+        ? []
+        : sendOptions?.attachmentMeta
+          ? sendOptions.attachmentMeta
+          : draftAttachments
+              .filter((a) => a.status === "ready" && a.serverId)
+              .map((a) => ({
+                id: a.serverId!,
+                filename: a.filename,
+                content_kind: a.contentKind ?? "document",
+              }));
+
+      if (sending || attachmentsUploading) return;
+      if (!trimmed && attachmentIds.length === 0) return;
+
+      // Dismiss docked card when answering (option / custom / skip / prose).
+      const dismissedPending = pendingQuestion;
+      if (pendingQuestion) setPendingQuestion(null);
+      heldPendingQuestionRef.current = null;
+      setEditingMessageId(null);
 
       streamAbortRef.current?.abort();
       const abort = new AbortController();
       streamAbortRef.current = abort;
       streamingAssistantIdRef.current = null;
-      setStreamingSubagent(null);
+      stoppedRef.current = false;
+      resetStreamingState();
+      setWorkingLabel("Thinking…");
+      setPendingSourceRefs([]);
 
-      const optimisticId = `local-${crypto.randomUUID()}`;
-      const optimistic: DockMessage = {
-        id: optimisticId,
-        role: "user",
-        content: trimmed,
-        turn_kind: "universal_chat",
-        created_at: new Date().toISOString(),
-        optimistic: true,
-      };
+      const displayContent =
+        trimmed ||
+        (attachmentIds.length > 0 ? "Shared attachments" : "");
 
-      if (overrideText == null) {
-        setDraft("");
+      const optimisticId = isCardAnswer
+        ? null
+        : `local-${crypto.randomUUID()}`;
+      if (!isCardAnswer) {
+        const optimistic: DockMessage = {
+          id: optimisticId!,
+          role: "user",
+          content: displayContent,
+          turn_kind: "universal_chat",
+          created_at: new Date().toISOString(),
+          optimistic: true,
+          metadata:
+            attachmentsForOptimistic.length > 0
+              ? { attachments: attachmentsForOptimistic }
+              : null,
+        };
+        if (overrideText == null) {
+          setDraft("");
+        }
+        // Keep blob URLs registered by attachment id for sent-message thumbs.
+        setDraftAttachments((prev) => {
+          for (const row of prev) {
+            if (row.serverId && attachmentPreviewById.has(row.serverId)) {
+              continue;
+            }
+            revokePreview(row.previewUrl);
+          }
+          return [];
+        });
+        setAttachError(null);
+        setMessages((prev) => {
+          let base = prev;
+          if (sendOptions?.replaceMessageId) {
+            const idx = prev.findIndex(
+              (m) => m.id === sendOptions.replaceMessageId,
+            );
+            if (idx >= 0) base = prev.slice(0, idx);
+          }
+          return [...base, optimistic];
+        });
       }
+
       setSending(true);
       forceScrollRef.current = true;
-      setMessages((prev) => [...prev, optimistic]);
-      if (resolveMcq) {
-        setResolvedMcqByMessageId((prev) => ({
-          ...prev,
-          [resolveMcq.messageId]: resolveMcq.labels,
-        }));
-      }
 
       const markFailed = () => {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === optimisticId
-              ? {
-                  ...m,
-                  error: true,
-                  content: `${trimmed}\n\n(Failed to send — retry)`,
-                }
-              : m,
-          ),
-        );
-        setStreamingSubagent(null);
-        if (resolveMcq) {
-          setResolvedMcqByMessageId((prev) => {
-            const next = { ...prev };
-            delete next[resolveMcq.messageId];
-            return next;
-          });
+        if (optimisticId) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === optimisticId
+                ? {
+                    ...m,
+                    error: true,
+                    content: `${displayContent}\n\n(Failed to send — retry)`,
+                  }
+                : m,
+            ),
+          );
         }
+        resetStreamingState();
+        setWorkingLabel(null);
+        if (dismissedPending) setPendingQuestion(dismissedPending);
       };
 
       try {
@@ -699,12 +1354,8 @@ export const UniversalChatDock = memo(function UniversalChatDock({
           trimmed,
           {
             onToolCall: ({ tool_name, message_id }) => {
-              const agent = agentForToolName(tool_name);
-              if (agent) {
-                setStreamingSubagent({ agent, text: "" });
-              } else {
-                setStreamingSubagent(null);
-              }
+              const label = workingLabelForTool(tool_name);
+              if (label) setWorkingLabel(label);
               setMessages((prev) => [
                 ...prev,
                 stubToolCallMessage(tool_name, message_id),
@@ -712,16 +1363,32 @@ export const UniversalChatDock = memo(function UniversalChatDock({
               forceScrollRef.current = true;
             },
             onToolResult: ({ tool_name, message_id, payload }) => {
-              setStreamingSubagent(null);
+              // Never clear the working label here — keep it until the first
+              // assistant token so there's no blank gap after tools finish.
+              const toolPayload =
+                typeof payload.tool_name === "string"
+                  ? payload
+                  : { tool_name, ...payload };
+              if (tool_name === "get_research_context") {
+                const refs = extractSourceRefs(toolPayload);
+                setPendingSourceRefs(refs);
+              }
+              if (tool_name === "ask_refine_agent") {
+                const refine = parseRefineSubagentResult(toolPayload);
+                if (refine) {
+                  heldPendingQuestionRef.current = refineResultAsPendingQuestion(
+                    message_id,
+                    refine,
+                  );
+                }
+              }
               setMessages((prev) => [
                 ...prev,
                 toolResultFromEvent(tool_name, message_id, payload),
               ]);
               forceScrollRef.current = true;
               const nav = parseNavigateResult(
-                typeof payload.tool_name === "string"
-                  ? payload
-                  : { tool_name, ...payload },
+                toolPayload,
               );
               if (
                 nav &&
@@ -741,80 +1408,77 @@ export const UniversalChatDock = memo(function UniversalChatDock({
                 onOpenPhase(nav.navigate_to);
               }
             },
-            onSubagentToken: ({ agent, text }) => {
-              setStreamingSubagent((prev) => {
-                if (prev && prev.agent === agent) {
-                  return { agent, text: `${prev.text}${text}` };
-                }
-                return { agent, text };
-              });
-              forceScrollRef.current = true;
-            },
+            onSubagentToken: () => {},
             onAssistantToken: ({ text }) => {
-              setStreamingSubagent(null);
-              setMessages((prev) => {
-                const existingId = streamingAssistantIdRef.current;
-                if (existingId) {
-                  return prev.map((m) =>
-                    m.id === existingId
-                      ? { ...m, content: `${m.content}${text}` }
-                      : m,
-                  );
-                }
-                const id = `local-assistant-${crypto.randomUUID()}`;
-                streamingAssistantIdRef.current = id;
-                return [
-                  ...prev,
-                  {
-                    id,
-                    role: "assistant",
-                    content: text,
-                    turn_kind: "universal_chat",
-                    created_at: new Date().toISOString(),
-                    optimistic: true,
-                  },
-                ];
-              });
-              forceScrollRef.current = true;
+              setWorkingLabel(null);
+              streamingAssistantTextRef.current += text;
+              setStreamingAssistantText(streamingAssistantTextRef.current);
             },
             onDone: ({ assistant_message_id, user_message_id }) => {
-              setStreamingSubagent(null);
-              setMessages((prev) =>
-                prev.map((m) => {
-                  if (m.id === optimisticId) {
+              if (stoppedRef.current) return;
+              if (
+                assistant_message_id &&
+                streamingAssistantIdRef.current === assistant_message_id
+              ) {
+                return;
+              }
+              if (assistant_message_id) {
+                streamingAssistantIdRef.current = assistant_message_id;
+              }
+              setWorkingLabel(null);
+
+              const committedAssistantText = streamingAssistantTextRef.current;
+              setStreamingAssistantText(committedAssistantText);
+
+              setMessages((prev) => [
+                ...prev.map((m) => {
+                  if (optimisticId && m.id === optimisticId) {
                     return {
                       ...m,
                       id: user_message_id ?? m.id,
                       optimistic: false,
                     };
                   }
-                  if (
-                    streamingAssistantIdRef.current &&
-                    m.id === streamingAssistantIdRef.current
-                  ) {
-                    return {
-                      ...m,
-                      id: assistant_message_id,
-                      optimistic: false,
-                    };
-                  }
                   return m;
                 }),
-              );
+                ...(committedAssistantText && assistant_message_id
+                  ? [
+                      {
+                        id: assistant_message_id,
+                        role: "assistant" as const,
+                        content: committedAssistantText,
+                        turn_kind: "universal_chat" as const,
+                        created_at: new Date().toISOString(),
+                        tool_payload: null,
+                      },
+                    ]
+                  : []),
+              ]);
+
+              const held = heldPendingQuestionRef.current;
+              heldPendingQuestionRef.current = null;
+              if (held) setPendingQuestion(held);
+
+              requestAnimationFrame(() => {
+                streamingAssistantTextRef.current = "";
+                setStreamingAssistantText("");
+              });
             },
             onError: () => {
-              if (abort.signal.aborted) return;
-              setStreamingSubagent(null);
+              if (abort.signal.aborted || stoppedRef.current) return;
+              setWorkingLabel(null);
+              heldPendingQuestionRef.current = null;
+              resetStreamingState();
               setMessages((prev) => {
-                const cleaned = prev.filter(
-                  (m) => !m.id.startsWith("local-assistant-"),
-                );
+                const cleaned = prev;
                 const hasPersistedTools = cleaned.some(
                   (m) => m.role === "tool_call" || m.role === "tool_result",
                 );
-                if (hasPersistedTools) {
+                if (hasPersistedTools || !optimisticId) {
                   return cleaned.map((m) =>
-                    m.id === optimisticId ? { ...m, optimistic: false } : m,
+                    optimisticId && m.id === optimisticId
+                      ? { ...m, optimistic: false }
+                      : m,
                   );
                 }
                 return cleaned.map((m) =>
@@ -822,60 +1486,65 @@ export const UniversalChatDock = memo(function UniversalChatDock({
                     ? {
                         ...m,
                         error: true,
-                        content: `${trimmed}\n\n(Failed to send — retry)`,
+                        content: `${displayContent}\n\n(Failed to send — retry)`,
                       }
                     : m,
                 );
               });
-              if (resolveMcq) {
-                setResolvedMcqByMessageId((prev) => {
-                  const next = { ...prev };
-                  delete next[resolveMcq.messageId];
-                  return next;
-                });
-              }
+              if (dismissedPending) setPendingQuestion(dismissedPending);
             },
           },
           abort.signal,
           {
             current_open_phase: currentOpenPhase ?? null,
+            attachment_ids: attachmentIds,
+            replace_message_id: sendOptions?.replaceMessageId ?? null,
             mcq_answer: mcqAnswer ?? null,
           },
         );
       } catch {
-        if (!abort.signal.aborted) markFailed();
+        if (!abort.signal.aborted && !stoppedRef.current) markFailed();
       } finally {
         if (streamAbortRef.current === abort) {
           streamAbortRef.current = null;
         }
         setSending(false);
-        streamingAssistantIdRef.current = null;
       }
     },
-    [draft, experimentId, sending, currentOpenPhase, onOpenPhase],
+    [
+      draft,
+      draftAttachments,
+      readyAttachmentIds,
+      attachmentsUploading,
+      experimentId,
+      sending,
+      currentOpenPhase,
+      onOpenPhase,
+      resetStreamingState,
+      pendingQuestion,
+    ],
   );
 
   const handleMcqAnswer = useCallback(
-    (
-      messageId: string,
-      answer: {
-        selected_option_indices: number[];
-        answered_question_id: string;
-        labels: string[];
-      },
-    ) => {
-      const display = answer.labels.join(" · ");
-      void handleSend(
-        display,
-        {
-          selected_option_indices: answer.selected_option_indices,
-          answered_question_id: answer.answered_question_id,
-        },
-        { messageId, labels: answer.labels },
-      );
+    (answer: { indices: number[]; labels: string[] }) => {
+      if (!pendingQuestion) return;
+      const display = formatMcqAnswerDisplay(answer.labels);
+      void handleSend(display, {
+        selected_option_indices: answer.indices,
+        answered_question_id: pendingQuestion.answeredQuestionId,
+      });
     },
-    [handleSend],
+    [handleSend, pendingQuestion],
   );
+
+  const handleMcqSkip = useCallback(() => {
+    if (!pendingQuestion) return;
+    void handleSend("Skipped", {
+      selected_option_indices: [],
+      answered_question_id: pendingQuestion.answeredQuestionId,
+      skipped: true,
+    });
+  }, [handleSend, pendingQuestion]);
 
   const handleRetry = useCallback(
     async (message: DockMessage) => {
@@ -894,11 +1563,110 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     }
   };
 
-  const canSend = draft.trim().length > 0 && !sending;
+  const draftChips = (
+    <>
+      {draftAttachments.length > 0 || attachError ? (
+        <div className="mb-2 space-y-1.5">
+          {draftAttachments.length > 0 ? (
+            <ul className="flex flex-wrap gap-1.5">
+              {draftAttachments.map((item) => (
+                <li
+                  key={item.localId}
+                  className={`group relative flex h-12 max-w-full items-center gap-1.5 rounded-md border border-border-master bg-[var(--fv-surface-2)] px-1.5 ${
+                    item.status === "uploading" ? "opacity-70" : ""
+                  } ${item.status === "error" ? "border-status-critical" : ""}`}
+                  title={
+                    item.status === "error"
+                      ? item.errorMessage || "Upload failed"
+                      : item.filename
+                  }
+                >
+                  <DraftThumb
+                    previewUrl={item.previewUrl}
+                    filename={item.filename}
+                  />
+                  <div className="min-w-0 max-w-[7.5rem]">
+                    <p className="truncate font-mono text-[10px] uppercase leading-tight text-[var(--fv-text)]">
+                      {item.filename}
+                    </p>
+                    <p className="font-mono text-[10px] text-[var(--fv-text-muted)]">
+                      {item.status === "uploading"
+                        ? "Uploading…"
+                        : item.status === "error"
+                          ? "Failed"
+                          : formatFileSize(item.file.size)}
+                    </p>
+                  </div>
+                  {item.status === "uploading" ? (
+                    <Loader2
+                      className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--fv-accent)]"
+                      aria-hidden
+                    />
+                  ) : item.status === "error" ? (
+                    <button
+                      type="button"
+                      onClick={() => retryDraftAttachment(item.localId)}
+                      className="shrink-0 px-1 font-mono text-[10px] uppercase text-[var(--fv-accent)] hover:underline"
+                    >
+                      Retry
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => removeDraftAttachment(item.localId)}
+                    aria-label={`Remove ${item.filename}`}
+                    disabled={sending}
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[var(--fv-text-muted)] hover:bg-[var(--fv-accent-muted)] hover:text-[var(--fv-text)] disabled:opacity-40"
+                  >
+                    <X className="h-3.5 w-3.5" aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {attachError ? (
+            <p
+              role="alert"
+              className="font-mono text-[10px] uppercase text-status-critical"
+            >
+              {attachError}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={FILE_ACCEPT}
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          const selected = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          if (selected.length > 0) addFiles(selected);
+        }}
+      />
+    </>
+  );
+
+  const attachButton = (
+    <button
+      type="button"
+      onClick={() => fileInputRef.current?.click()}
+      disabled={
+        sending || draftAttachments.length >= MAX_DRAFT_ATTACHMENTS
+      }
+      title="Attach file"
+      aria-label="Attach file"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-[var(--fv-text-muted)] transition-colors hover:bg-[var(--fv-accent-muted)] hover:text-[var(--fv-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+    >
+      <Plus className="h-4 w-4" aria-hidden />
+    </button>
+  );
 
   if (collapsed) {
     return (
-      <aside className="fixed right-6 top-6 z-[80] w-10 rounded-lg border-2 border-border-master bg-[var(--fv-surface-card)] shadow-brutal-md">
+      <aside className="fixed right-6 top-6 z-[80] w-10 rounded-md border-2 border-border-master bg-[var(--fv-surface-card)] shadow-brutal-md">
         <button
           type="button"
           onClick={() => setCollapsedPersisted(false)}
@@ -915,7 +1683,27 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   }
 
   return (
-    <aside className="fixed bottom-6 right-6 top-6 z-[80] flex w-[420px] flex-col overflow-hidden rounded-sm border-2 border-border-master bg-[var(--fv-surface-card)] shadow-brutal-md">
+    <aside
+      className={`fixed bottom-6 right-6 top-6 z-[80] flex w-[480px] flex-col overflow-hidden rounded-md border-2 bg-[var(--fv-surface-card)] shadow-brutal-md ${
+        dragActive
+          ? "border-[var(--fv-accent)]"
+          : "border-border-master"
+      }`}
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+    >
+      {dragActive ? (
+        <div
+          className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-[color-mix(in_srgb,var(--fv-accent)_12%,transparent)]"
+          aria-hidden
+        >
+          <div className="rounded-md border-2 border-dashed border-[var(--fv-accent)] bg-[var(--fv-surface-card)] px-4 py-3 font-mono text-mono-sm uppercase tracking-wide text-[var(--fv-accent)] shadow-brutal-sm">
+            Drop files to attach
+          </div>
+        </div>
+      ) : null}
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-[var(--fv-border)] px-3">
         <h2 className="min-w-0 truncate text-sm font-medium text-[var(--fv-text)]">
           Fivvle
@@ -941,13 +1729,13 @@ export const UniversalChatDock = memo(function UniversalChatDock({
       <div
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4"
+        className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4 [overflow-anchor:none]"
       >
         {historyLoading ? (
           <div className="flex h-full items-center justify-center">
             <p className="text-sm text-[var(--fv-text-muted)]">Loading…</p>
           </div>
-        ) : messages.length === 0 && !sending ? (
+        ) : messages.length === 0 && !sending && !pendingQuestion ? (
           <div className="flex h-full items-center justify-center px-4">
             <p className="text-center text-sm text-[var(--fv-text-muted)]">
               {emptyCopy}
@@ -955,88 +1743,191 @@ export const UniversalChatDock = memo(function UniversalChatDock({
           </div>
         ) : (
           <>
-            {messages.map((msg, index) => {
-              const next = messages[index + 1];
-              const name = toolNameFromPayload(msg.tool_payload);
-              const agent = name ? agentForToolName(name) : null;
-              const showSubagentHandoff =
-                msg.role === "tool_call" &&
-                agent != null &&
-                (next == null || next.role !== "tool_result") &&
-                (streamingSubagent == null ||
-                  streamingSubagent.agent !== agent ||
-                  streamingSubagent.text.length === 0);
+            {(() => {
+              let turnSourceRefs: ResearchSubagentSourceRef[] = [];
+              const lastMsg = messages[messages.length - 1];
+              const streamingSupersededByCommit =
+                Boolean(streamingAssistantText) &&
+                lastMsg?.role === "assistant" &&
+                lastMsg.content === streamingAssistantText;
+              return (
+                <>
+            {messages.map((msg) => {
+              if (msg.role === "user") turnSourceRefs = [];
+              if (
+                msg.role === "tool_result" &&
+                toolNameFromPayload(msg.tool_payload) === "get_research_context"
+              ) {
+                turnSourceRefs = extractSourceRefs(msg.tool_payload ?? {});
+              }
+              const sourceRefs =
+                msg.role === "assistant" ? turnSourceRefs : undefined;
               return (
                 <MessageRow
                   key={msg.id}
                   message={msg}
-                  showSubagentHandoff={showSubagentHandoff}
                   onOpenPhase={onOpenPhase}
-                  resolvedMcqLabels={resolvedMcqByMessageId[msg.id]}
-                  mcqDisabled={sending}
-                  onMcqAnswer={
-                    sending
+                  sourceRefs={sourceRefs}
+                  editing={editingMessageId === msg.id}
+                  editDraft={editingMessageId === msg.id ? editDraft : ""}
+                  onStartEdit={
+                    sending || msg.error
                       ? undefined
-                      : (answer) => handleMcqAnswer(msg.id, answer)
+                      : () => {
+                          const text =
+                            msg.content === "Shared attachments"
+                              ? ""
+                              : msg.content;
+                          setEditingMessageId(msg.id);
+                          setEditDraft(text);
+                        }
                   }
+                  onEditDraftChange={setEditDraft}
+                  onCancelEdit={() => setEditingMessageId(null)}
+                  onSaveEdit={() => {
+                    if (!editingMessageId) return;
+                    const meta = msg.metadata?.attachments ?? [];
+                    void handleSend(editDraft, null, {
+                      replaceMessageId: msg.id,
+                      attachmentIds: meta.map((a) => a.id),
+                      attachmentMeta: meta.map((a) => ({
+                        id: a.id,
+                        filename: a.filename,
+                        content_kind: a.content_kind,
+                      })),
+                    });
+                  }}
                   onRetry={
                     msg.error ? () => void handleRetry(msg) : undefined
                   }
                 />
               );
             })}
-            {streamingSubagent && streamingSubagent.text.length > 0 ? (
-              <StreamingSubagentBlock
-                agent={streamingSubagent.agent}
-                text={streamingSubagent.text}
+            {streamingAssistantText && !streamingSupersededByCommit ? (
+              <ResearchTextWithCitationChips
+                text={streamingAssistantText}
+                sourceRefs={pendingSourceRefs}
+                onSourceCitationClick={
+                  onOpenPhase
+                    ? (ref) =>
+                        openReportCitationInEvidence(
+                          onOpenPhase,
+                          focusAnchorForSourceRef(ref),
+                          ref,
+                        )
+                    : undefined
+                }
+                onReportRefClick={
+                  onOpenPhase
+                    ? (anchor) =>
+                        openReportCitationInEvidence(onOpenPhase, anchor)
+                    : undefined
+                }
               />
             ) : null}
+            {workingLabel ? (
+              <p className="text-sm italic text-ink-tertiary">{workingLabel}</p>
+            ) : null}
             {sending &&
-            streamingSubagent == null &&
+            !workingLabel &&
+            !streamingAssistantText &&
             (messages.length === 0 ||
               messages[messages.length - 1]?.role === "user" ||
               messages[messages.length - 1]?.role === "tool_call") ? (
               <TypingIndicator />
             ) : null}
+                </>
+              );
+            })()}
           </>
         )}
         <div ref={scrollAnchorRef} />
       </div>
 
-      <div className="shrink-0 border-t border-[var(--fv-border)] p-3">
-        <div className="flex items-end gap-2">
-          <button
-            type="button"
-            disabled
-            title="Attachments coming soon"
-            aria-label="Attachments coming soon"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-[var(--fv-text-muted)] opacity-50 cursor-not-allowed"
-          >
-            <Paperclip className="h-4 w-4" aria-hidden />
-          </button>
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={handleKeyDown}
-            disabled={sending}
-            rows={1}
-            placeholder={placeholder}
-            aria-label={placeholder}
-            className="min-h-[40px] min-w-0 flex-1 resize-none rounded-md border border-[var(--fv-border)] bg-[var(--fv-surface-2)] px-3 py-2 text-sm text-[var(--fv-text)] placeholder:text-[var(--fv-text-muted)] focus:border-[var(--fv-accent)] focus:outline-none disabled:opacity-60"
-            style={{ maxHeight: TEXTAREA_MAX_PX }}
-          />
-          <button
-            type="button"
-            onClick={() => void handleSend()}
-            disabled={!canSend}
-            aria-label="Send message"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--fv-accent)] text-white transition-colors hover:bg-[var(--fv-accent-hover)] disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            <ArrowUp className="h-4 w-4" aria-hidden />
-          </button>
+      {pendingQuestion ? (
+        <div className="shrink-0 px-4 pb-3 pt-2">
+          <div className="overflow-hidden rounded-t-md">
+            <QuestionCard
+              question={pendingQuestion.question}
+              options={pendingQuestion.options}
+              answeredQuestionId={pendingQuestion.answeredQuestionId}
+              selectionMode={pendingQuestion.selectionMode}
+              disabled={sending}
+              onAnswer={sending ? undefined : handleMcqAnswer}
+              onSkip={sending ? undefined : handleMcqSkip}
+            />
+            <div className="rounded-b-md border border-t-0 border-border-master bg-[var(--fv-surface-muted)] px-2.5 py-2">
+              {draftChips}
+              <div className="flex items-end gap-2">
+                {attachButton}
+                <textarea
+                  ref={textareaRef}
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={sending}
+                  rows={1}
+                  placeholder={placeholder}
+                  aria-label={placeholder}
+                  className="min-h-[40px] min-w-0 flex-1 resize-none rounded-md border border-[var(--fv-border)] bg-[var(--fv-surface-2)] px-3 py-2 text-sm text-[var(--fv-text)] placeholder:text-[var(--fv-text-muted)] focus:border-[var(--fv-accent)] focus:outline-none disabled:opacity-60"
+                  style={{ maxHeight: TEXTAREA_MAX_PX }}
+                />
+                <button
+                  type="button"
+                  onClick={() =>
+                    sending ? handleStop() : void handleSend()
+                  }
+                  disabled={sending ? false : !canSend}
+                  aria-label={sending ? "Stop generating" : "Send message"}
+                  title={sending ? "Stop" : "Send"}
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--fv-accent)] text-white transition-colors hover:bg-[var(--fv-accent-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {sending ? (
+                    <Square className="h-3.5 w-3.5 fill-current" aria-hidden />
+                  ) : (
+                    <ArrowUp className="h-4 w-4" aria-hidden />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="shrink-0 border-t border-[var(--fv-border)] p-3">
+          {draftChips}
+          <div className="flex items-end gap-2">
+            {attachButton}
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={sending}
+              rows={1}
+              placeholder={placeholder}
+              aria-label={placeholder}
+              className="min-h-[40px] min-w-0 flex-1 resize-none rounded-md border border-[var(--fv-border)] bg-[var(--fv-surface-2)] px-3 py-2 text-sm text-[var(--fv-text)] placeholder:text-[var(--fv-text-muted)] focus:border-[var(--fv-accent)] focus:outline-none disabled:opacity-60"
+              style={{ maxHeight: TEXTAREA_MAX_PX }}
+            />
+            <button
+              type="button"
+              onClick={() =>
+                sending ? handleStop() : void handleSend()
+              }
+              disabled={sending ? false : !canSend}
+              aria-label={sending ? "Stop generating" : "Send message"}
+              title={sending ? "Stop" : "Send"}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--fv-accent)] text-white transition-colors hover:bg-[var(--fv-accent-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {sending ? (
+                <Square className="h-3.5 w-3.5 fill-current" aria-hidden />
+              ) : (
+                <ArrowUp className="h-4 w-4" aria-hidden />
+              )}
+            </button>
+          </div>
+        </div>
+      )}
     </aside>
   );
 });
@@ -1070,45 +1961,14 @@ function IconButton({
 
 function TypingIndicator() {
   return (
-    <div>
-      <span className="mb-1 block text-xs uppercase tracking-wide text-[var(--fv-text-muted)]">
-        Fivvle
-      </span>
-      <div className="flex items-center gap-1.5 py-1">
-        {[0, 150, 300].map((delay) => (
-          <span
-            key={delay}
-            className="h-2 w-2 animate-pulse rounded-full bg-[var(--fv-accent)]"
-            style={{ animationDelay: `${delay}ms` }}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function StreamingSubagentBlock({
-  agent,
-  text,
-}: {
-  agent: "refine" | "research";
-  text: string;
-}) {
-  const label =
-    agent === "refine" ? "From Refine agent" : "From Research agent";
-  return (
-    <div>
-      <span className="mb-0.5 block text-xs uppercase tracking-wider text-ink-tertiary">
-        {label}
-      </span>
-      {agent === "research" ? (
-        <ResearchTextWithCitationChips text={text} sourceRefs={[]} />
-      ) : (
-        <ChatMarkdown
-          content={text}
-          className="fv-msg-ai break-words text-sm text-[var(--fv-text)]"
+    <div className="flex items-center gap-1.5 py-1">
+      {[0, 150, 300].map((delay) => (
+        <span
+          key={delay}
+          className="h-2 w-2 animate-pulse rounded-full bg-[var(--fv-accent)]"
+          style={{ animationDelay: `${delay}ms` }}
         />
-      )}
+      ))}
     </div>
   );
 }
@@ -1116,51 +1976,118 @@ function StreamingSubagentBlock({
 function MessageRow({
   message,
   onRetry,
-  showSubagentHandoff = false,
   onOpenPhase,
-  resolvedMcqLabels,
-  mcqDisabled = false,
-  onMcqAnswer,
+  sourceRefs = [],
+  editing = false,
+  editDraft = "",
+  onStartEdit,
+  onEditDraftChange,
+  onCancelEdit,
+  onSaveEdit,
 }: {
   message: DockMessage;
   onRetry?: () => void;
-  showSubagentHandoff?: boolean;
   onOpenPhase?: (
     phase: UniversalOpenPhase,
     options?: { sourceRef?: ResearchSubagentSourceRef | null },
   ) => void;
-  resolvedMcqLabels?: string[];
-  mcqDisabled?: boolean;
-  onMcqAnswer?: (answer: {
-    selected_option_indices: number[];
-    answered_question_id: string;
-    labels: string[];
-  }) => void;
+  sourceRefs?: ResearchSubagentSourceRef[];
+  editing?: boolean;
+  editDraft?: string;
+  onStartEdit?: () => void;
+  onEditDraftChange?: (value: string) => void;
+  onCancelEdit?: () => void;
+  onSaveEdit?: () => void;
 }) {
   if (message.role === "user") {
+    const attachments = (message.metadata?.attachments ?? []).map((a) => ({
+      id: a.id,
+      filename: a.filename,
+      content_kind: a.content_kind,
+      previewUrl: getAttachmentPreview(a.id),
+    }));
+    const bodyText = message.error
+      ? message.content.replace(/\n\n\(Failed to send — retry\)$/, "")
+      : message.content;
+    const hideSharedLabel =
+      bodyText === "Shared attachments" && attachments.length > 0;
+
+    if (editing) {
+      return (
+        <div className="flex justify-end">
+          <div className="flex w-full max-w-[85%] flex-col items-end gap-2">
+            <textarea
+              value={editDraft}
+              onChange={(e) => onEditDraftChange?.(e.target.value)}
+              rows={3}
+              className="w-full resize-y rounded-md border-2 border-[var(--fv-accent)] bg-[var(--fv-surface-2)] p-3 font-body text-body-sm text-[var(--fv-text)] focus:outline-none"
+              aria-label="Edit message"
+              autoFocus
+            />
+            {attachments.length > 0 ? (
+              <MessageAttachments attachments={attachments} />
+            ) : null}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onCancelEdit}
+                className="rounded-md px-2 py-1 font-mono text-[10px] uppercase text-[var(--fv-text-muted)] hover:text-[var(--fv-text)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onSaveEdit}
+                disabled={!editDraft.trim() && attachments.length === 0}
+                className="rounded-md bg-[var(--fv-accent)] px-3 py-1 font-mono text-[10px] uppercase text-white disabled:opacity-40"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className="flex justify-end">
+      <div className="group flex justify-end">
         <div className="flex max-w-[85%] flex-col items-end gap-1">
           <div
             className={`rounded-md border-2 border-border-master bg-[var(--fv-accent-muted)] p-3 shadow-brutal-sm ${
               message.error ? "opacity-80" : ""
             } ${message.optimistic && !message.error ? "opacity-90" : ""}`}
           >
-            <p className="whitespace-pre-wrap font-body text-body-sm text-[var(--fv-text)]">
-              {message.error
-                ? message.content.replace(/\n\n\(Failed to send — retry\)$/, "")
-                : message.content}
-            </p>
+            {!hideSharedLabel && bodyText ? (
+              <p className="whitespace-pre-wrap font-body text-body-sm text-[var(--fv-text)]">
+                {bodyText}
+              </p>
+            ) : null}
+            {attachments.length > 0 ? (
+              <MessageAttachments attachments={attachments} />
+            ) : null}
           </div>
-          {message.error && onRetry ? (
-            <button
-              type="button"
-              onClick={onRetry}
-              className="text-xs text-[var(--fv-accent)] hover:underline"
-            >
-              Failed to send — retry
-            </button>
-          ) : null}
+          <div className="flex items-center gap-2">
+            {onStartEdit && !message.optimistic ? (
+              <button
+                type="button"
+                onClick={onStartEdit}
+                aria-label="Edit message"
+                title="Edit"
+                className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              >
+                <Pencil className="h-3.5 w-3.5 text-[var(--fv-text-muted)] hover:text-[var(--fv-text)]" />
+              </button>
+            ) : null}
+            {message.error && onRetry ? (
+              <button
+                type="button"
+                onClick={onRetry}
+                className="text-xs text-[var(--fv-accent)] hover:underline"
+              >
+                Failed to send — retry
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
     );
@@ -1168,136 +2095,61 @@ function MessageRow({
 
   if (message.role === "assistant") {
     return (
-      <div>
-        <span className="mb-1 block text-xs uppercase tracking-wide text-[var(--fv-text-muted)]">
-          Fivvle
-        </span>
-        <ChatMarkdown
-          content={message.content}
-          className="fv-msg-ai break-words text-sm text-[var(--fv-text)]"
-        />
-      </div>
+      <ResearchTextWithCitationChips
+        text={message.content}
+        sourceRefs={sourceRefs}
+        onSourceCitationClick={
+          onOpenPhase
+            ? (ref) =>
+                openReportCitationInEvidence(
+                  onOpenPhase,
+                  focusAnchorForSourceRef(ref),
+                  ref,
+                )
+            : undefined
+        }
+        onReportRefClick={
+          onOpenPhase
+            ? (anchor) => openReportCitationInEvidence(onOpenPhase, anchor)
+            : undefined
+        }
+      />
     );
   }
 
   if (message.role === "tool_result") {
     const refine = parseRefineSubagentResult(message.tool_payload);
     if (refine) {
-      const showInlineMcq =
-        refine.has_pending_mcq &&
+      // Question cards dock above the input — never plant them in history.
+      if (
+        (refine.has_pending_mcq || refine.mcq_question != null) &&
         refine.mcq_options.length > 0 &&
-        refine.mcq_answered_question_id != null;
-      return (
-        <div>
-          <span className="mb-0.5 block text-xs uppercase tracking-wider text-ink-tertiary">
-            From Refine agent
-          </span>
-          {refine.assistant_text ? (
-            <ChatMarkdown
-              content={refine.assistant_text}
-              className="fv-msg-ai break-words text-sm text-[var(--fv-text)]"
-            />
-          ) : null}
-          {refine.refined_idea_patch != null ? (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <SubagentStatusChip label="Refined idea updated" />
-            </div>
-          ) : null}
-          {showInlineMcq ? (
-            <InlineRailMcq
-              question={refine.mcq_question}
-              options={refine.mcq_options}
-              answeredQuestionId={refine.mcq_answered_question_id!}
-              selectionMode={refine.mcq_selection_mode}
-              chosenLabels={resolvedMcqLabels}
-              disabled={mcqDisabled}
-              onAnswer={onMcqAnswer}
-            />
-          ) : refine.has_pending_mcq ? (
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <SubagentStatusChip label="Answer the clarifying question below" />
-            </div>
-          ) : null}
-        </div>
-      );
+        refine.mcq_answered_question_id != null
+      ) {
+        return null;
+      }
+      const prose = refine.assistant_text.trim();
+      return prose ? (
+        <ChatMarkdown
+          content={prose}
+          className="fv-msg-ai break-words text-sm text-[var(--fv-text)]"
+        />
+      ) : null;
     }
 
     const refineError = parseRefineSubagentError(message.tool_payload);
     if (refineError) {
       return (
-        <div>
-          <span className="mb-0.5 block text-xs uppercase tracking-wider text-ink-tertiary">
-            From Refine agent
-          </span>
-          <p className="text-sm text-[var(--fv-text-muted)]">{refineError}</p>
-        </div>
+        <p className="text-sm text-[var(--fv-text-muted)]">{refineError}</p>
       );
     }
 
-    const research = parseResearchSubagentResult(message.tool_payload);
-    if (research) {
-      return (
-        <div>
-          <span className="mb-0.5 block text-xs uppercase tracking-wider text-ink-tertiary">
-            From Research agent
-          </span>
-          <ResearchTextWithCitationChips
-            text={research.assistant_text_with_citations}
-            sourceRefs={research.source_refs}
-            onCitationClick={
-              onOpenPhase
-                ? (ref) => {
-                    if (ref.source_url) {
-                      setPendingEvidenceFocus({
-                        kind: "url",
-                        value: ref.source_url,
-                      });
-                    }
-                    onOpenPhase("evidence", { sourceRef: ref });
-                  }
-                : undefined
-            }
-          />
-        </div>
-      );
-    }
-
-    const navigate = parseNavigateResult(message.tool_payload);
-    if (navigate) {
-      const label = PHASE_CHIP_LABEL[navigate.navigate_to] ?? navigate.navigate_to;
-      return (
-        <div
-          className="-my-2 inline-flex max-w-full items-center gap-1.5 rounded-xs border border-border-master bg-surface-elevated px-2 py-1 text-xs text-ink-tertiary"
-          aria-label={`Opened ${label}`}
-        >
-          <span className="truncate">Opened {label} ↗</span>
-        </div>
-      );
-    }
-
-    // Phase 1 read-tool results stay hidden in the rail.
+    // Read tools render nothing — the master's assistant row is the answer.
     return null;
   }
 
   if (message.role === "tool_call") {
-    const name = toolNameFromPayload(message.tool_payload);
-    const label = toolCallLabel(message.tool_payload);
-    const handoff =
-      showSubagentHandoff && name != null ? SUBAGENT_HANDOFF[name] : null;
-    return (
-      <div className="space-y-1">
-        <div
-          className="-my-2 inline-flex max-w-full items-center gap-1.5 rounded-xs border border-border-master bg-surface-elevated px-2 py-1 text-xs text-ink-tertiary"
-          aria-label={label}
-        >
-          <Search className="h-3.5 w-3.5 shrink-0 text-ink-tertiary" aria-hidden />
-          <span className="truncate">{label}</span>
-        </div>
-        {handoff ? (
-          <p className="text-xs italic text-ink-tertiary">{handoff}</p>
-        ) : null}
-      </div>
-    );
+    return null;
   }
 
   return null;

@@ -11,7 +11,8 @@ children; ``content`` is a short label and data lives in ``tool_payload``.
 Streaming (``stream_universal_chat_message``): user row committed pre-stream;
 tool_call / tool_result committed as they happen; assistant only on success.
 Tool decisions are batched per loop iteration (non-stream ``complete_with_tools``);
-sub-agent + final assistant text stream to the client as SSE events.
+final assistant text is paced-chunked uniformly. When ``ask_refine_agent``
+succeeds, the master's follow-up text call is skipped — refine owns the turn.
 
 Per AGENTS.md: project context, chat history, and tool results are untrusted
 data. LLMCall cost logging happens inside llm_client (phase=universal_chat).
@@ -44,9 +45,16 @@ from app.llm.prompts.universal_chat import (
     build_universal_chat_user_prompt,
 )
 from app.logging_config import get_logger
-from app.services.chat_tree_service import get_active_branch, set_active_leaf
+from app.services.chat_tree_service import (
+    get_active_branch,
+    get_branch_up_to,
+    set_active_leaf,
+)
+from app.services.chat_attachment_service import (
+    build_message_with_attachment_context,
+    resolve_chat_attachments,
+)
 from app.services.experiment_project_context import get_experiment_project_context
-from app.services.subagent_executors import exec_ask_research_agent_stream
 from app.services.universal_chat_tools import execute_tool, get_tool_schemas
 
 _logger = get_logger(__name__)
@@ -63,11 +71,11 @@ _FALLBACK_TEXT = (
 )
 
 _TOOL_REFINE = "ask_refine_agent"
-_TOOL_RESEARCH = "ask_research_agent"
 
 # Default pacing for refine / master final text fake-streams.
-_DEFAULT_PACING_DELAY_S = 0.04
-_CHUNK_WORD_SIZES = (3, 4, 5, 6, 7, 8)
+_DEFAULT_PACING_DELAY_S = 0.03
+# Small groups so short answers still visibly stream (same path as long ones).
+_CHUNK_WORD_SIZES = (1, 2, 2, 3, 3, 4)
 
 
 class UniversalChatNotFound(Exception):
@@ -108,7 +116,7 @@ class UniversalStreamPrep:
     experiment_id: UUID
     user_id: UUID
     thread_id: UUID
-    user_message_id: UUID
+    user_message_id: UUID | None
     user_prompt: str
     clean_message: str
     provider: str
@@ -118,10 +126,88 @@ class UniversalStreamPrep:
     pacing_delay: float = _DEFAULT_PACING_DELAY_S
     # Exact rail MCQ click — injected into ask_refine_agent once (skips resolver).
     mcq_answer: dict[str, Any] | None = None
+    # Card selection/skip: no new USER row in the universal thread (no echo bubble).
+    suppress_user_echo: bool = False
 
 
 def _sanitize(message: str) -> str:
     return message.strip()
+
+
+def _display_content_for_attachments(
+    clean_message: str,
+    filenames: list[str],
+) -> str:
+    """Visible user-bubble text. Attachment chips render from metadata_json."""
+    if clean_message:
+        return clean_message
+    if filenames:
+        return "Shared attachments"
+    return ""
+
+
+async def _prepare_attachment_turn(
+    db: AsyncSession,
+    *,
+    user: User,
+    message: str,
+    attachment_ids: list[UUID],
+    allow_consumed_attachments: bool = False,
+) -> tuple[str, str, dict[str, Any] | None]:
+    """Resolve uploads and build display text, LLM text, and metadata.
+
+    Reuses the extract-to-text pipeline from ``chat_service`` /
+    ``chat_attachment_service`` (no multimodal blocks).
+    """
+    clean_message = _sanitize(message)
+    attachments = await resolve_chat_attachments(
+        db,
+        user=user,
+        attachment_ids=attachment_ids,
+        allow_consumed=allow_consumed_attachments,
+    )
+    filenames = [item.filename for item in attachments]
+    display = _display_content_for_attachments(clean_message, filenames)
+    llm_message = build_message_with_attachment_context(clean_message, attachments)
+    if not display:
+        raise ValueError("message or attachment_ids is required")
+
+    metadata: dict[str, Any] | None = None
+    if attachments:
+        metadata = {
+            "attachments": [
+                {
+                    "id": str(item.id),
+                    "filename": item.filename,
+                    "content_kind": item.content_kind,
+                }
+                for item in attachments
+            ]
+        }
+    return display, llm_message, metadata
+
+
+async def _resolve_edit_parent(
+    db: AsyncSession,
+    *,
+    thread: ChatThread,
+    replace_message_id: UUID | None,
+) -> tuple[UUID | None, bool]:
+    """Return (parent_id for new USER row, is_edit).
+
+    Edit forks a sibling of ``replace_message_id`` (same parent). Append uses
+    the thread's active leaf.
+    """
+    if replace_message_id is None:
+        return thread.active_leaf_message_id, False
+    old = await db.get(ChatMessage, replace_message_id)
+    if (
+        old is None
+        or old.thread_id != thread.id
+        or old.role != ChatRole.USER
+    ):
+        raise ValueError("replace_message_id is not a user message in this thread")
+    return old.parent_message_id, True
 
 
 async def iter_paced_text_chunks(
@@ -240,17 +326,19 @@ def _mcq_answer_as_dict(mcq_answer: Any) -> dict[str, Any] | None:
     if hasattr(mcq_answer, "model_dump"):
         dumped = mcq_answer.model_dump(mode="json")
         return {
-            "selected_option_indices": list(dumped["selected_option_indices"]),
+            "selected_option_indices": list(dumped.get("selected_option_indices") or []),
             "answered_question_id": str(dumped["answered_question_id"]),
+            "skipped": bool(dumped.get("skipped")),
         }
     if isinstance(mcq_answer, dict):
-        indices = mcq_answer.get("selected_option_indices")
+        indices = mcq_answer.get("selected_option_indices") or []
         qid = mcq_answer.get("answered_question_id")
-        if not isinstance(indices, list) or qid is None:
+        if qid is None:
             return None
         return {
             "selected_option_indices": list(indices),
             "answered_question_id": str(qid),
+            "skipped": bool(mcq_answer.get("skipped")),
         }
     return None
 
@@ -358,6 +446,7 @@ async def send_universal_chat_message(
     experiment_id: UUID,
     message: str,
     *,
+    attachment_ids: list[UUID] | None = None,
     current_open_phase: str | None = None,
     mcq_answer: Any = None,
 ) -> UniversalChatResult:
@@ -370,12 +459,18 @@ async def send_universal_chat_message(
     Raises:
         UniversalChatNotFound: experiment not found / not owned.
         UniversalChatUnavailable: archived experiment.
-        ValueError: message empty after sanitization.
+        ValueError: message empty after sanitization (and no attachments).
+        ChatAttachmentValidationError / ChatAttachmentAccessError: bad uploads.
         LLM provider errors propagate (mapped to 502 by the router).
     """
+    ids = list(attachment_ids or [])
+    display_content, llm_message, attachment_meta = await _prepare_attachment_turn(
+        db,
+        user=current_user,
+        message=message,
+        attachment_ids=ids,
+    )
     clean_message = _sanitize(message)
-    if not clean_message:
-        raise ValueError("message must not be empty")
 
     mcq_inject = _mcq_answer_as_dict(mcq_answer)
 
@@ -391,16 +486,17 @@ async def send_universal_chat_message(
     user_prompt = build_universal_chat_user_prompt(
         project_context=project_context.to_prompt_block(),
         chat_history=_history_for_prompt(history),
-        user_message=clean_message,
+        user_message=llm_message,
     )
 
     user_msg = ChatMessage(
         thread_id=thread.id,
         role=ChatRole.USER,
-        content=clean_message,
+        content=display_content,
         experiment_id=experiment.id,
         turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
         parent_message_id=parent_id,
+        metadata_json=attachment_meta,
     )
     db.add(user_msg)
     await db.flush()
@@ -432,7 +528,7 @@ async def send_universal_chat_message(
             tool_use = llm_client.ToolUseRequest(
                 id=f"mcq-click-{user_msg.id}",
                 name=_TOOL_REFINE,
-                input={"query": clean_message},
+                input={"query": clean_message or display_content},
             )
             tool_call_msg = ChatMessage(
                 thread_id=thread.id,
@@ -537,6 +633,8 @@ async def send_universal_chat_message(
         if result.tool_uses and not force_text:
             tool_rounds += 1
             result_contents: list[str] = []
+            end_after_refine = False
+            refine_text = ""
 
             for tool_use in result.tool_uses:
                 tool_call_msg = ChatMessage(
@@ -569,6 +667,10 @@ async def send_universal_chat_message(
                     user=current_user,
                 )
                 payload = _tool_result_payload(tool_use.name, exec_result)
+                if tool_use.name == _TOOL_REFINE and "error" not in payload:
+                    end_after_refine = True
+                    if isinstance(exec_result.get("assistant_text"), str):
+                        refine_text = exec_result["assistant_text"].strip()
                 tool_result_msg = ChatMessage(
                     thread_id=thread.id,
                     role=ChatRole.TOOL_RESULT,
@@ -584,6 +686,10 @@ async def send_universal_chat_message(
                 chain_parent_id = tool_result_msg.id
                 result_contents.append(_tool_result_content_json(payload))
 
+            if end_after_refine:
+                assistant_text = refine_text
+                break
+
             _append_tool_followups(
                 provider,
                 api_messages,
@@ -596,18 +702,21 @@ async def send_universal_chat_message(
         assistant_text = (result.assistant_text or "").strip() or _FALLBACK_TEXT
         break
 
-    assistant_msg = ChatMessage(
-        thread_id=thread.id,
-        role=ChatRole.ASSISTANT,
-        content=assistant_text,
-        experiment_id=experiment.id,
-        turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
-        parent_message_id=chain_parent_id,
-    )
-    db.add(assistant_msg)
-    await db.flush()
-    turn_messages.append(assistant_msg)
-    await set_active_leaf(db, thread.id, assistant_msg.id)
+    if assistant_text:
+        assistant_msg = ChatMessage(
+            thread_id=thread.id,
+            role=ChatRole.ASSISTANT,
+            content=assistant_text,
+            experiment_id=experiment.id,
+            turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
+            parent_message_id=chain_parent_id,
+        )
+        db.add(assistant_msg)
+        await db.flush()
+        turn_messages.append(assistant_msg)
+        await set_active_leaf(db, thread.id, assistant_msg.id)
+    elif chain_parent_id is not None:
+        await set_active_leaf(db, thread.id, chain_parent_id)
     await db.commit()
 
     for msg in turn_messages:
@@ -622,7 +731,22 @@ async def send_universal_chat_message(
         tool_rounds=tool_rounds,
         turn_message_count=len(turn_messages),
         provider=provider,
+        has_assistant_text=bool(assistant_text),
     )
+
+    # Non-stream callers historically always received an assistant message.
+    # Refine MCQ-only turns may have none — synthesize a stub for the result type.
+    if not assistant_text:
+        assistant_msg = ChatMessage(
+            thread_id=thread.id,
+            role=ChatRole.ASSISTANT,
+            content="",
+            experiment_id=experiment.id,
+            turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
+            parent_message_id=chain_parent_id,
+        )
+        # Not persisted — result envelope only for type compatibility.
+        turn_messages.append(assistant_msg)
 
     return UniversalChatResult(
         user_message=user_msg,
@@ -676,24 +800,53 @@ async def prepare_universal_stream(
     experiment_id: UUID,
     message: str,
     *,
+    attachment_ids: list[UUID] | None = None,
     pacing_delay: float = _DEFAULT_PACING_DELAY_S,
     current_open_phase: str | None = None,
     mcq_answer: Any = None,
+    replace_message_id: UUID | None = None,
 ) -> UniversalStreamPrep:
     """Persist + commit the user row before the SSE generator starts.
 
     Mirrors evidence-chat prepare: mid-stream disconnect never loses the user
     message; active leaf points at the user until the assistant lands.
+
+    Card MCQ selections (structured ``mcq_answer``) do **not** create a new
+    USER row — the answer stays invisible in the rail and attaches under the
+    existing active leaf. Attachment IDs are ignored on that path.
+
+    ``replace_message_id`` forks the active branch (message edit): history is
+    the chain up to that message's parent; the new USER row becomes the leaf.
     """
-    clean_message = _sanitize(message)
-    if not clean_message:
-        raise ValueError("message must not be empty")
+    mcq_inject = _mcq_answer_as_dict(mcq_answer)
+    suppress_user_echo = mcq_inject is not None
+    # MCQ clicks are invisible — do not consume / inject attachments.
+    ids = [] if suppress_user_echo else list(attachment_ids or [])
 
     experiment = await _load_owned_experiment(db, current_user, experiment_id)
     thread = await _resolve_universal_thread(db, current_user, experiment)
 
-    parent_id = thread.active_leaf_message_id
-    history = await get_active_branch(db, thread.id) if parent_id is not None else []
+    if suppress_user_echo:
+        parent_id = thread.active_leaf_message_id
+        is_edit = False
+    else:
+        parent_id, is_edit = await _resolve_edit_parent(
+            db, thread=thread, replace_message_id=replace_message_id
+        )
+
+    display_content, llm_message, attachment_meta = await _prepare_attachment_turn(
+        db,
+        user=current_user,
+        message=message,
+        attachment_ids=ids,
+        allow_consumed_attachments=is_edit,
+    )
+    clean_message = _sanitize(message)
+
+    if parent_id is not None:
+        history = await get_branch_up_to(db, parent_id)
+    else:
+        history = []
 
     project_context = await get_experiment_project_context(
         db, experiment, current_open_phase=current_open_phase
@@ -701,37 +854,44 @@ async def prepare_universal_stream(
     user_prompt = build_universal_chat_user_prompt(
         project_context=project_context.to_prompt_block(),
         chat_history=_history_for_prompt(history),
-        user_message=clean_message,
+        user_message=llm_message,
     )
 
-    user_msg = ChatMessage(
-        thread_id=thread.id,
-        role=ChatRole.USER,
-        content=clean_message,
-        experiment_id=experiment.id,
-        turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
-        parent_message_id=parent_id,
-    )
-    db.add(user_msg)
-    await db.flush()
-    await set_active_leaf(db, thread.id, user_msg.id)
-    await db.commit()
-    await db.refresh(user_msg)
+    user_message_id: UUID | None = parent_id
+    if not suppress_user_echo:
+        user_msg = ChatMessage(
+            thread_id=thread.id,
+            role=ChatRole.USER,
+            content=display_content,
+            experiment_id=experiment.id,
+            turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
+            parent_message_id=parent_id,
+            metadata_json=attachment_meta,
+        )
+        db.add(user_msg)
+        await db.flush()
+        await set_active_leaf(db, thread.id, user_msg.id)
+        await db.commit()
+        await db.refresh(user_msg)
+        user_message_id = user_msg.id
+    else:
+        await db.commit()
 
     settings = get_settings()
     return UniversalStreamPrep(
         experiment_id=experiment.id,
         user_id=current_user.id,
         thread_id=thread.id,
-        user_message_id=user_msg.id,
+        user_message_id=user_message_id,
         user_prompt=user_prompt,
-        clean_message=clean_message,
+        clean_message=clean_message or display_content,
         provider=settings.universal_chat_tools_provider,
         model=settings.universal_chat_tools_model,
         fallback_provider=settings.universal_chat_tools_fallback_provider,
         fallback_model=settings.universal_chat_tools_fallback_model,
         pacing_delay=pacing_delay,
-        mcq_answer=_mcq_answer_as_dict(mcq_answer),
+        mcq_answer=mcq_inject,
+        suppress_user_echo=suppress_user_echo,
     )
 
 
@@ -773,6 +933,8 @@ async def stream_universal_chat_message(
         tool_rounds = 0
         fallback_armed = True
         assistant_text = _FALLBACK_TEXT
+        skip_master_final = False
+        refine_already_streamed = False
         mcq_inject = dict(prep.mcq_answer) if prep.mcq_answer else None
         mcq_forced = False
 
@@ -782,7 +944,7 @@ async def stream_universal_chat_message(
                     mcq_forced = True
                     tool_rounds += 1
                     tool_use = llm_client.ToolUseRequest(
-                        id=f"mcq-click-{prep.user_message_id}",
+                        id=f"mcq-click-{prep.user_message_id or prep.thread_id}",
                         name=_TOOL_REFINE,
                         input={"query": prep.clean_message},
                     )
@@ -810,6 +972,8 @@ async def stream_universal_chat_message(
                         },
                     )
                     in_flight_tool_result_id: UUID | None = None
+                    refine_owned = False
+                    refine_text = ""
                     try:
                         async for evt in _stream_refine_tool(
                             db,
@@ -820,7 +984,12 @@ async def stream_universal_chat_message(
                             chain_parent_id,
                             mcq_answer=mcq_inject,
                         ):
-                            if evt[0] == "_chain_parent":
+                            if evt[0] == "_refine_outcome":
+                                refine_owned = bool(evt[1].get("ok"))
+                                refine_text = str(evt[1].get("assistant_text") or "")
+                                if evt[1].get("already_streamed"):
+                                    refine_already_streamed = True
+                            elif evt[0] == "_chain_parent":
                                 chain_parent_id = evt[1]["id"]  # type: ignore[index]
                                 result_content = evt[1]["content_json"]
                                 in_flight_tool_result_id = None
@@ -846,6 +1015,10 @@ async def stream_universal_chat_message(
                     refreshed = await db.get(Experiment, experiment.id)
                     if refreshed is not None:
                         experiment = refreshed
+                    if refine_owned:
+                        skip_master_final = True
+                        assistant_text = refine_text
+                        break
                     continue
 
                 force_text = tool_rounds >= _MAX_TOOL_ROUNDS
@@ -869,7 +1042,10 @@ async def stream_universal_chat_message(
                         phase="universal_chat",
                     )
                 except Exception as exc:
-                    only_user = chain_parent_id == prep.user_message_id
+                    only_user = (
+                        not prep.suppress_user_echo
+                        and chain_parent_id == prep.user_message_id
+                    )
                     if (
                         fallback_armed
                         and only_user
@@ -896,7 +1072,9 @@ async def stream_universal_chat_message(
                 if result.tool_uses and not force_text:
                     tool_rounds += 1
                     result_contents: list[str] = []
-                    in_flight_tool_result_id: UUID | None = None
+                    in_flight_tool_result_id = None
+                    end_after_refine = False
+                    refine_text = ""
 
                     for tool_use in result.tool_uses:
                         tool_call_msg = ChatMessage(
@@ -923,33 +1101,6 @@ async def stream_universal_chat_message(
                             },
                         )
 
-                        if tool_use.name == _TOOL_RESEARCH:
-                            try:
-                                async for evt in _stream_research_tool(
-                                    db,
-                                    experiment,
-                                    user,
-                                    tool_use,
-                                    prep,
-                                    chain_parent_id,
-                                ):
-                                    if evt[0] == "_chain_parent":
-                                        chain_parent_id = evt[1]["id"]  # type: ignore[index]
-                                        result_contents.append(
-                                            evt[1]["content_json"]
-                                        )
-                                        in_flight_tool_result_id = None
-                                    elif evt[0] == "_in_flight_tool_result":
-                                        in_flight_tool_result_id = evt[1]["id"]
-                                    else:
-                                        yield evt
-                            except (asyncio.CancelledError, GeneratorExit):
-                                await _delete_in_flight_tool_result(
-                                    db, in_flight_tool_result_id
-                                )
-                                raise
-                            continue
-
                         if tool_use.name == _TOOL_REFINE:
                             refine_mcq = mcq_inject
                             if refine_mcq is not None:
@@ -964,7 +1115,15 @@ async def stream_universal_chat_message(
                                     chain_parent_id,
                                     mcq_answer=refine_mcq,
                                 ):
-                                    if evt[0] == "_chain_parent":
+                                    if evt[0] == "_refine_outcome":
+                                        if evt[1].get("ok"):
+                                            end_after_refine = True
+                                            refine_text = str(
+                                                evt[1].get("assistant_text") or ""
+                                            )
+                                            if evt[1].get("already_streamed"):
+                                                refine_already_streamed = True
+                                    elif evt[0] == "_chain_parent":
                                         chain_parent_id = evt[1]["id"]  # type: ignore[index]
                                         result_contents.append(
                                             evt[1]["content_json"]
@@ -979,10 +1138,10 @@ async def stream_universal_chat_message(
                                     db, in_flight_tool_result_id
                                 )
                                 raise
-                            # handle_turn may have committed/expired identity
                             refreshed = await db.get(Experiment, experiment.id)
                             if refreshed is not None:
                                 experiment = refreshed
+                            # Keep going so open_phase_panel in the same round still runs.
                             continue
 
                         exec_result = await execute_tool(
@@ -1021,6 +1180,12 @@ async def stream_universal_chat_message(
                             },
                         )
 
+                    if end_after_refine:
+                        # Refine owned the turn — do not call the master again.
+                        skip_master_final = True
+                        assistant_text = refine_text
+                        break
+
                     _append_tool_followups(
                         provider,
                         api_messages,
@@ -1035,23 +1200,32 @@ async def stream_universal_chat_message(
                 )
                 break
 
-            async for chunk in iter_paced_text_chunks(
-                assistant_text, pacing_delay=prep.pacing_delay
-            ):
-                yield ("assistant_token", {"text": chunk})
+            if assistant_text:
+                if not refine_already_streamed:
+                    async for chunk in iter_paced_text_chunks(
+                        assistant_text, pacing_delay=prep.pacing_delay
+                    ):
+                        yield ("assistant_token", {"text": chunk})
 
-            assistant_msg = ChatMessage(
-                thread_id=prep.thread_id,
-                role=ChatRole.ASSISTANT,
-                content=assistant_text,
-                experiment_id=experiment.id,
-                turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
-                parent_message_id=chain_parent_id,
-            )
-            db.add(assistant_msg)
-            await db.flush()
-            await set_active_leaf(db, prep.thread_id, assistant_msg.id)
-            await db.commit()
+                assistant_msg = ChatMessage(
+                    thread_id=prep.thread_id,
+                    role=ChatRole.ASSISTANT,
+                    content=assistant_text,
+                    experiment_id=experiment.id,
+                    turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
+                    parent_message_id=chain_parent_id,
+                )
+                db.add(assistant_msg)
+                await db.flush()
+                await set_active_leaf(db, prep.thread_id, assistant_msg.id)
+                await db.commit()
+                assistant_message_id = str(assistant_msg.id)
+            else:
+                # Refine MCQ-only (or empty refine prose): no master bubble.
+                if chain_parent_id is not None:
+                    await set_active_leaf(db, prep.thread_id, chain_parent_id)
+                    await db.commit()
+                assistant_message_id = ""
 
             _logger.info(
                 "universal chat stream completed",
@@ -1059,13 +1233,20 @@ async def stream_universal_chat_message(
                 thread_id=str(prep.thread_id),
                 tool_rounds=tool_rounds,
                 provider=provider,
+                skip_master_final=skip_master_final,
+                has_assistant_text=bool(assistant_text),
+                refine_already_streamed=refine_already_streamed,
             )
             yield (
                 "done",
                 {
-                    "assistant_message_id": str(assistant_msg.id),
+                    "assistant_message_id": assistant_message_id,
                     "thread_id": str(prep.thread_id),
-                    "user_message_id": str(prep.user_message_id),
+                    "user_message_id": (
+                        str(prep.user_message_id)
+                        if prep.user_message_id and not prep.suppress_user_echo
+                        else None
+                    ),
                 },
             )
         except (asyncio.CancelledError, GeneratorExit):
@@ -1108,62 +1289,6 @@ async def _delete_in_flight_tool_result(
         )
 
 
-async def _stream_research_tool(
-    db: AsyncSession,
-    experiment: Experiment,
-    user: User,
-    tool_use: Any,
-    prep: UniversalStreamPrep,
-    chain_parent_id: UUID | None,
-) -> AsyncGenerator[tuple[str, Any], None]:
-    """Research: tokens first, then commit + emit tool_result with full payload."""
-    final_payload: dict[str, Any] | None = None
-    async for kind, payload in exec_ask_research_agent_stream(
-        db, experiment, tool_use.input, user
-    ):
-        if kind == "token":
-            text = payload.get("text")
-            if isinstance(text, str) and text:
-                yield ("subagent_token", {"agent": "research", "text": text})
-        elif kind == "complete":
-            final_payload = payload
-
-    if final_payload is None:
-        final_payload = {"error": "Research agent returned no result"}
-
-    stored = _tool_result_payload(tool_use.name, final_payload)
-    tool_result_msg = ChatMessage(
-        thread_id=prep.thread_id,
-        role=ChatRole.TOOL_RESULT,
-        content="Result received",
-        experiment_id=experiment.id,
-        turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
-        parent_message_id=chain_parent_id,
-        tool_payload=stored,
-    )
-    db.add(tool_result_msg)
-    await db.flush()
-    # Track until commit succeeds so cancel can delete a half-written row.
-    yield ("_in_flight_tool_result", {"id": tool_result_msg.id})
-    await db.commit()
-
-    yield (
-        "tool_result",
-        {
-            "tool_name": tool_use.name,
-            "message_id": str(tool_result_msg.id),
-            "payload": stored,
-        },
-    )
-    yield (
-        "_chain_parent",
-        {
-            "id": tool_result_msg.id,
-            "content_json": _tool_result_content_json(stored),
-        },
-    )
-
-
 async def _stream_refine_tool(
     db: AsyncSession,
     experiment: Experiment,
@@ -1174,7 +1299,12 @@ async def _stream_refine_tool(
     *,
     mcq_answer: dict[str, Any] | None = None,
 ) -> AsyncGenerator[tuple[str, Any], None]:
-    """Refine: sync execute, fake-stream tokens, then commit + emit tool_result."""
+    """Refine: sync execute, pace assistant tokens, then emit tool_result.
+
+    Tokens are yielded here (not after the whole tool batch) so refine prose
+    streams progressively like master text. Yields ``_refine_outcome`` so the
+    stream loop can skip the master's final text call and avoid double-pacing.
+    """
     exec_args = _inject_mcq_into_tool_args(
         tool_use.name, tool_use.input, mcq_answer
     )
@@ -1186,13 +1316,31 @@ async def _stream_refine_tool(
         user=user,
     )
     payload = _tool_result_payload(tool_use.name, exec_result)
+    refine_ok = "error" not in payload
+    refine_text = ""
+    if refine_ok and isinstance(exec_result.get("assistant_text"), str):
+        refine_text = exec_result["assistant_text"].strip()
 
-    if "error" not in payload and isinstance(exec_result.get("assistant_text"), str):
+    # Pace refine prose immediately — before tool_result / sibling tools.
+    if refine_text:
         async for chunk in iter_paced_text_chunks(
-            exec_result["assistant_text"],
-            pacing_delay=prep.pacing_delay,
+            refine_text, pacing_delay=prep.pacing_delay
         ):
-            yield ("subagent_token", {"agent": "refine", "text": chunk})
+            yield ("assistant_token", {"text": chunk})
+
+    yield (
+        "_refine_outcome",
+        {
+            "ok": refine_ok,
+            "assistant_text": refine_text,
+            "already_streamed": bool(refine_text),
+            "has_pending_mcq": bool(
+                isinstance(exec_result.get("has_pending_mcq"), bool)
+                and exec_result.get("has_pending_mcq")
+            )
+            or bool(exec_result.get("mcq_question")),
+        },
+    )
 
     tool_result_msg = ChatMessage(
         thread_id=prep.thread_id,

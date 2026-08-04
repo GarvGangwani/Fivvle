@@ -187,6 +187,20 @@ function findRefRange(
       return true;
     });
     if (found) return found;
+
+    // The rendered report stores domains as italic parentheticals, not hrefs.
+    // Match hostname (or bare domain) so we land on the finding that cited it.
+    const domain = hostnameFromCitationValue(anchor.value);
+    if (domain) {
+      const domainRange = findDomainTextRange(editor, domain);
+      if (domainRange) {
+        // Prefer the claim H3 above the evidence paragraph (exact-ish claim).
+        return (
+          findNearestPrecedingHeading(editor, domainRange.from, 3) ?? domainRange
+        );
+      }
+    }
+
     // Fallback: first text occurrence of the URL / domain fragment.
     doc.descendants((node, pos) => {
       if (found) return false;
@@ -203,6 +217,90 @@ function findRefRange(
   }
 
   return null;
+}
+
+function hostnameFromCitationValue(value: string): string | null {
+  const raw = value.trim();
+  if (!raw) return null;
+  try {
+    const host = new URL(raw).hostname.replace(/^www\./i, "").toLowerCase();
+    return host || null;
+  } catch {
+    const cleaned = raw
+      .toLowerCase()
+      .replace(/^www\./, "")
+      .replace(/\/.*$/, "");
+    if (cleaned && !cleaned.includes("://") && cleaned.includes(".")) {
+      return cleaned;
+    }
+    return null;
+  }
+}
+
+/** First italic (or plain) text span containing the source domain. */
+function findDomainTextRange(
+  editor: Editor,
+  domain: string,
+): { from: number; to: number } | null {
+  const needle = domain.toLowerCase();
+  let italicHit: { from: number; to: number } | null = null;
+  let plainHit: { from: number; to: number } | null = null;
+
+  editor.state.doc.descendants((node, pos) => {
+    if (italicHit) return false;
+    if (!node.isText || !node.text) return true;
+    const idx = node.text.toLowerCase().indexOf(needle);
+    if (idx === -1) return true;
+    const range = {
+      from: pos + idx,
+      to: pos + idx + needle.length,
+    };
+    const isItalic = node.marks.some((m) => m.type.name === "italic");
+    if (isItalic) {
+      italicHit = range;
+      return false;
+    }
+    if (!plainHit) plainHit = range;
+    return true;
+  });
+
+  return italicHit ?? plainHit;
+}
+
+/** Nearest heading of the given level at or before `from`. */
+function findNearestPrecedingHeading(
+  editor: Editor,
+  from: number,
+  level: number,
+): { from: number; to: number } | null {
+  let found: { from: number; to: number } | null = null;
+  editor.state.doc.nodesBetween(0, from, (node, pos) => {
+    if (node.type.name === "heading" && node.attrs.level === level) {
+      found = { from: pos + 1, to: pos + 1 + node.content.size };
+    }
+  });
+  return found;
+}
+
+/** Fallback scroll target when a URL citation isn't present as a link mark. */
+function findSectionHeadingRange(
+  editor: Editor,
+  pattern: RegExp,
+): { from: number; to: number } | null {
+  let found: { from: number; to: number } | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (found) return false;
+    if (
+      node.type.name === "heading" &&
+      node.attrs.level <= 2 &&
+      pattern.test(node.textContent.trim())
+    ) {
+      found = { from: pos + 1, to: pos + 1 + node.content.size };
+      return false;
+    }
+    return true;
+  });
+  return found;
 }
 
 /**
@@ -390,8 +488,18 @@ export const EvidenceReportEditor = forwardRef<
     () => ({
       focusReference: (anchor: RefCitation) => {
         if (!editor || editor.isDestroyed) return;
-        const range = findRefRange(editor, anchor);
-        if (!range) return; // silent no-op when the anchor isn't in the doc
+        let range = findRefRange(editor, anchor);
+        // URL/domain may be absent from the doc — fall back to the findings
+        // section H1. Prefer an exact heading match: the old `/findings/i`
+        // pattern matched "Questions & Findings" (correct section) but felt
+        // like landing on "Questions" with no claim highlight.
+        if (!range && anchor.kind === "url") {
+          range = findSectionHeadingRange(
+            editor,
+            /^questions\s*&\s*findings$/i,
+          );
+        }
+        if (!range) return;
 
         editor.view.dispatch(editor.state.tr.setMeta(refHighlightKey, range));
         const { node } = editor.view.domAtPos(range.from);

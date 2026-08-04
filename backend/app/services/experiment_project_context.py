@@ -155,8 +155,10 @@ def _format_staleness_line(info: SparkPhaseVersionInfo) -> str | None:
     return (
         "STALENESS: The user has changed "
         f"{changed} since generating {phases}. "
-        "Any content from that phase reflects the older version — "
-        "mention this when referring to it."
+        "Any content from that phase reflects the older version. "
+        "When answering research questions while evidence is stale, "
+        "lead with a clear honest flag that the report predates the latest "
+        "idea change before citing findings."
     )
 
 

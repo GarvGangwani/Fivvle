@@ -1,7 +1,7 @@
 """Tools for the universal-chat Anthropic/Kimi tool loop.
 
-Phase 1 read tools: get_metrics_summary, get_report_summary, get_landing_status.
-Phase 2 sub-agents: ask_refine_agent, ask_research_agent.
+Read tools: get_metrics_summary, get_report_summary, get_landing_status,
+get_research_context. Sub-agent: ask_refine_agent. Navigate: open_phase_panel.
 
 Executors soft-fail: exceptions become ``{"error": "..."}`` via ``execute_tool``.
 """
@@ -24,11 +24,14 @@ from app.db.models.waitlist_signup import WaitlistSignup
 from app.logging_config import get_logger
 from app.services.experiment_service import metrics_from_validation_report
 from app.services.landing_page_publish_service import get_open_cohort
+from app.services.research_context import (
+    build_findings_digest,
+    build_source_index,
+    source_refs_from_index,
+)
 from app.services.subagent_executors import (
     exec_ask_refine_agent,
-    exec_ask_research_agent,
     refine_agent_input_schema,
-    research_agent_input_schema,
 )
 
 _logger = get_logger(__name__)
@@ -294,15 +297,62 @@ async def _exec_ask_refine_agent(
     return await exec_ask_refine_agent(db, experiment, args, user)
 
 
-async def _exec_ask_research_agent(
+_RESEARCH_CONTEXT_INPUT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "query": {
+            "type": "string",
+            "description": (
+                "Optional hint of what the founder is asking about — used only "
+                "to focus your reading, not filtered server-side."
+            ),
+        },
+    },
+    "additionalProperties": False,
+}
+
+
+async def _exec_get_research_context(
     db: AsyncSession,
     experiment: Experiment,
     args: dict[str, Any],
     user: User | None,
 ) -> dict[str, Any]:
-    if user is None:
-        return {"error": "user required for ask_research_agent"}
-    return await exec_ask_research_agent(db, experiment, args, user)
+    """Fuller report substrate for master-native research answers + citations."""
+    _ = args, user
+    result = await db.execute(
+        select(Experiment)
+        .options(selectinload(Experiment.validation_report))
+        .where(Experiment.id == experiment.id)
+    )
+    exp = result.scalar_one()
+    report = exp.validation_report
+    if report is None or not isinstance(report.raw_report, dict):
+        return {
+            "available": False,
+            "reason": "No validation report yet.",
+            "findings_digest": "",
+            "sources": [],
+            "source_refs": [],
+        }
+
+    raw = report.raw_report
+    source_index = build_source_index(raw)
+    sources = [
+        {
+            "id": source_id,
+            "title": meta.get("source_title"),
+            "url": meta.get("source_url"),
+            "domain": meta.get("source_domain"),
+        }
+        for source_id, meta in source_index.items()
+    ]
+    return {
+        "available": True,
+        "findings_digest": build_findings_digest(raw),
+        "sources": sources,
+        "source_refs": source_refs_from_index(source_index),
+    }
 
 
 _OPEN_PHASE_VALUES = ("spark", "refine", "evidence", "launch", "signal")
@@ -384,6 +434,17 @@ _TOOLS: tuple[UniversalChatTool, ...] = (
         executor=_exec_get_landing_status,
     ),
     UniversalChatTool(
+        name="get_research_context",
+        description=(
+            "Load the validation report findings digest and primary-source index "
+            "(s1..sN) so you can answer research, market, competitor, or report "
+            "questions with [cite:sN] citations. Call this BEFORE answering any "
+            "empirical research question. Do not invent sources."
+        ),
+        input_schema=_RESEARCH_CONTEXT_INPUT_SCHEMA,
+        executor=_exec_get_research_context,
+    ),
+    UniversalChatTool(
         name="ask_refine_agent",
         description=(
             "Ask the Refine sub-agent to continue refining the idea (naming, target "
@@ -395,23 +456,13 @@ _TOOLS: tuple[UniversalChatTool, ...] = (
         executor=_exec_ask_refine_agent,
     ),
     UniversalChatTool(
-        name="ask_research_agent",
-        description=(
-            "Ask the Research/Evidence sub-agent about the validation report, market "
-            "signals, competitors, findings, or citations. Read-only; writes to the "
-            "evidence chat thread. Pass the founder's research question as query."
-        ),
-        input_schema=research_agent_input_schema(),
-        executor=_exec_ask_research_agent,
-    ),
-    UniversalChatTool(
         name="open_phase_panel",
         description=(
             "Open a phase panel (spark, refine, evidence, launch, signal) so the "
-            "founder can see the artifact. Use after research/refine sub-agents when "
-            "the founder should look at the report or refine surface. Do not call if "
-            "that phase is already current_open_phase. Do not open for metrics-only "
-            "answers."
+            "founder can see the artifact. Use after research answers or refine "
+            "when the founder should look at the report or refine surface. Do not "
+            "call if that phase is already current_open_phase. Do not open for "
+            "metrics-only answers."
         ),
         input_schema=_OPEN_PHASE_PANEL_INPUT_SCHEMA,
         executor=_exec_open_phase_panel,

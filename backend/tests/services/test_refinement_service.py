@@ -710,7 +710,7 @@ async def test_run_turn_soft_ceiling_prompt_prefers_empty_questions(
 
     user_prompt: str = mock_complete.call_args.kwargs["user"]
     assert "Soft ceiling reached" in user_prompt
-    assert "clarifying_questions empty" in user_prompt
+    assert "empty clarifying_questions" in user_prompt
     assert mock_complete.call_args.kwargs["prompt_name"] == PROMPT_NAME_V5_CHAT
     assert mock_complete.call_args.kwargs["phase"] == "refinement_chat"
 
@@ -858,7 +858,7 @@ def test_build_refinement_v2_chat_user_prompt_soft_ceiling_at_six() -> None:
         min_turns_before_finalize=3,
     )
     assert "soft ceiling reached" in prompt.lower()
-    assert "clarifying_questions empty" in prompt.lower()
+    assert "empty clarifying_questions" in prompt.lower()
     assert "you never finalize" in prompt.lower()
 
 
