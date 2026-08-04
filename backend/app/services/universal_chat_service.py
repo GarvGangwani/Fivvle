@@ -8,11 +8,12 @@ v2 runs an Anthropic tool loop (``complete_with_tools``). Linear persistence:
 user → tool_call → tool_result → … → assistant. Tool rows are non-branchable
 children; ``content`` is a short label and data lives in ``tool_payload``.
 
-Streaming (``stream_universal_chat_message``): user row committed pre-stream;
-tool_call / tool_result committed as they happen; assistant only on success.
-Tool decisions are batched per loop iteration (non-stream ``complete_with_tools``);
-final assistant text is paced-chunked uniformly. When ``ask_refine_agent``
-succeeds, the master's follow-up text call is skipped — refine owns the turn.
+Streaming (``stream_universal_chat_message``): user row committed in prepare;
+the turn body runs in a detached ``asyncio.create_task`` (own sessionmaker,
+ADR 0009-style). SSE observes an in-process event fan-out — disconnect does
+not cancel the task. Explicit ``cancel_universal_turn`` stops it. tool_call /
+tool_result commit as they happen (and advance ``active_leaf``); assistant on
+success. ``metadata_json.turn_status`` on the turn anchor tracks running/done/failed.
 
 Per AGENTS.md: project context, chat history, and tool results are untrusted
 data. LLMCall cost logging happens inside llm_client (phase=universal_chat).
@@ -26,7 +27,7 @@ import json
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Any, cast
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -56,6 +57,20 @@ from app.services.chat_attachment_service import (
 )
 from app.services.experiment_project_context import get_experiment_project_context
 from app.services.universal_chat_tools import execute_tool, get_tool_schemas
+from app.services.universal_chat_turn_runtime import (
+    TURN_ID_KEY,
+    TURN_STATUS_DONE,
+    TURN_STATUS_FAILED,
+    TURN_STATUS_KEY,
+    TURN_STATUS_RUNNING,
+    UniversalTurnRuntime,
+    close_turn_runtime,
+    publish_turn_event,
+    register_turn_runtime,
+    request_turn_cancel,
+    subscribe_turn_events,
+    unsubscribe_turn_events,
+)
 
 _logger = get_logger(__name__)
 
@@ -107,11 +122,12 @@ class UniversalChatMessages:
     thread_id: UUID | None
     active_leaf_message_id: UUID | None
     messages: list[ChatMessage]
+    in_progress_turn_id: UUID | None = None
 
 
 @dataclass(frozen=True)
 class UniversalStreamPrep:
-    """Request-session prep: user row committed before the SSE generator starts."""
+    """Request-session prep: user row committed before the turn task starts."""
 
     experiment_id: UUID
     user_id: UUID
@@ -123,11 +139,98 @@ class UniversalStreamPrep:
     model: str
     fallback_provider: str
     fallback_model: str
+    turn_id: UUID
+    # Message whose metadata_json holds turn_status (user row, or MCQ parent).
+    status_message_id: UUID | None
     pacing_delay: float = _DEFAULT_PACING_DELAY_S
     # Exact rail MCQ click — injected into ask_refine_agent once (skips resolver).
     mcq_answer: dict[str, Any] | None = None
     # Card selection/skip: no new USER row in the universal thread (no echo bubble).
     suppress_user_echo: bool = False
+
+
+def _merge_turn_metadata(
+    existing: dict[str, Any] | None,
+    *,
+    turn_id: UUID,
+    turn_status: str,
+) -> dict[str, Any]:
+    meta = dict(existing or {})
+    meta[TURN_ID_KEY] = str(turn_id)
+    meta[TURN_STATUS_KEY] = turn_status
+    return meta
+
+
+async def _set_turn_status(
+    db: AsyncSession,
+    message_id: UUID | None,
+    *,
+    turn_id: UUID,
+    status: str,
+) -> None:
+    if message_id is None:
+        return
+    row = await db.get(ChatMessage, message_id)
+    if row is None:
+        return
+    row.metadata_json = _merge_turn_metadata(
+        row.metadata_json if isinstance(row.metadata_json, dict) else None,
+        turn_id=turn_id,
+        turn_status=status,
+    )
+    await db.flush()
+
+
+def _in_progress_turn_id_from_messages(messages: list[ChatMessage]) -> UUID | None:
+    for msg in reversed(messages):
+        meta = msg.metadata_json if isinstance(msg.metadata_json, dict) else None
+        if not meta or meta.get(TURN_STATUS_KEY) != TURN_STATUS_RUNNING:
+            continue
+        raw = meta.get(TURN_ID_KEY)
+        if isinstance(raw, str) and raw:
+            try:
+                return UUID(raw)
+            except ValueError:
+                return msg.id
+        return msg.id
+    return None
+
+
+def _raise_if_turn_cancelled(cancel: asyncio.Event | None) -> None:
+    if cancel is not None and cancel.is_set():
+        raise asyncio.CancelledError()
+
+
+async def _await_unless_cancelled(
+    awaitable: Any,
+    cancel: asyncio.Event | None,
+) -> Any:
+    """Await ``awaitable``, but abort promptly when ``cancel`` is set."""
+    if cancel is None:
+        return await awaitable
+    work = asyncio.ensure_future(awaitable)
+    stopper = asyncio.ensure_future(cancel.wait())
+    try:
+        done, pending = await asyncio.wait(
+            {work, stopper},
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        if stopper in done and cancel.is_set():
+            raise asyncio.CancelledError()
+        return work.result()
+    finally:
+        if not work.done():
+            work.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await work
+        if not stopper.done():
+            stopper.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await stopper
 
 
 def _sanitize(message: str) -> str:
@@ -214,6 +317,7 @@ async def iter_paced_text_chunks(
     text: str,
     *,
     pacing_delay: float = _DEFAULT_PACING_DELAY_S,
+    cancel: asyncio.Event | None = None,
 ) -> AsyncGenerator[str, None]:
     """Yield word-boundary chunks with optional pacing (refine / master final).
 
@@ -224,11 +328,13 @@ async def iter_paced_text_chunks(
         return
     words = cleaned.split()
     if not words:
+        _raise_if_turn_cancelled(cancel)
         yield cleaned
         return
     i = 0
     size_idx = 0
     while i < len(words):
+        _raise_if_turn_cancelled(cancel)
         n = _CHUNK_WORD_SIZES[size_idx % len(_CHUNK_WORD_SIZES)]
         size_idx += 1
         chunk_words = words[i : i + n]
@@ -781,6 +887,7 @@ async def list_universal_chat_messages(
             thread_id=None,
             active_leaf_message_id=None,
             messages=[],
+            in_progress_turn_id=None,
         )
 
     thread = await db.get(ChatThread, experiment.universal_thread_id)
@@ -791,6 +898,7 @@ async def list_universal_chat_messages(
         thread_id=experiment.universal_thread_id,
         active_leaf_message_id=active_leaf_id,
         messages=branch,
+        in_progress_turn_id=_in_progress_turn_id_from_messages(branch),
     )
 
 
@@ -858,7 +966,14 @@ async def prepare_universal_stream(
     )
 
     user_message_id: UUID | None = parent_id
+    turn_id = uuid4()
+    status_message_id: UUID | None = None
     if not suppress_user_echo:
+        turn_meta = _merge_turn_metadata(
+            attachment_meta,
+            turn_id=turn_id,
+            turn_status=TURN_STATUS_RUNNING,
+        )
         user_msg = ChatMessage(
             thread_id=thread.id,
             role=ChatRole.USER,
@@ -866,7 +981,7 @@ async def prepare_universal_stream(
             experiment_id=experiment.id,
             turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
             parent_message_id=parent_id,
-            metadata_json=attachment_meta,
+            metadata_json=turn_meta,
         )
         db.add(user_msg)
         await db.flush()
@@ -874,7 +989,16 @@ async def prepare_universal_stream(
         await db.commit()
         await db.refresh(user_msg)
         user_message_id = user_msg.id
+        status_message_id = user_msg.id
     else:
+        status_message_id = parent_id
+        if parent_id is not None:
+            await _set_turn_status(
+                db,
+                parent_id,
+                turn_id=turn_id,
+                status=TURN_STATUS_RUNNING,
+            )
         await db.commit()
 
     settings = get_settings()
@@ -889,30 +1013,143 @@ async def prepare_universal_stream(
         model=settings.universal_chat_tools_model,
         fallback_provider=settings.universal_chat_tools_fallback_provider,
         fallback_model=settings.universal_chat_tools_fallback_model,
+        turn_id=turn_id,
+        status_message_id=status_message_id,
         pacing_delay=pacing_delay,
         mcq_answer=mcq_inject,
         suppress_user_echo=suppress_user_echo,
     )
 
 
+def start_universal_turn(prep: UniversalStreamPrep) -> UniversalTurnRuntime:
+    """Kick off the detached turn task (idempotent per turn_id)."""
+    existing = register_turn_runtime(
+        turn_id=prep.turn_id,
+        experiment_id=prep.experiment_id,
+        thread_id=prep.thread_id,
+        status_message_id=prep.status_message_id,
+    )
+    if existing.task is not None and not existing.task.done():
+        return existing
+
+    def _on_done(task: asyncio.Task[None]) -> None:
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            _logger.warning(
+                "universal chat turn task crashed",
+                turn_id=str(prep.turn_id),
+                error_type=type(exc).__name__,
+            )
+
+    existing.task = asyncio.create_task(
+        _run_universal_turn_task(prep, existing),
+        name=f"universal_chat_turn_{prep.turn_id}",
+    )
+    existing.task.add_done_callback(_on_done)
+    return existing
+
+
+async def _run_universal_turn_task(
+    prep: UniversalStreamPrep,
+    runtime: UniversalTurnRuntime,
+) -> None:
+    """Background worker: own sessionmaker path via _iter_universal_turn_events."""
+    try:
+        async for event_name, payload in _iter_universal_turn_events(
+            prep, cancel=runtime.cancel
+        ):
+            if event_name.startswith("_"):
+                continue
+            await publish_turn_event(runtime, event_name, payload)
+    except asyncio.CancelledError:
+        _logger.info(
+            "universal chat turn cancelled",
+            turn_id=str(prep.turn_id),
+            experiment_id=str(prep.experiment_id),
+        )
+        # Swallow — task should finish cleanly after status=failed is written.
+    except Exception as exc:
+        _logger.error(
+            "universal chat turn task failed",
+            turn_id=str(prep.turn_id),
+            error_type=type(exc).__name__,
+            exc_info=exc,
+        )
+    finally:
+        await close_turn_runtime(runtime)
+
+
 async def stream_universal_chat_message(
     prep: UniversalStreamPrep,
 ) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
-    """SSE event tuples for one universal-chat turn (own DB session).
+    """Observe a detached turn (SSE live view). Disconnect does not cancel work.
 
-    Yields ``(event_name, payload)`` for:
-    ``tool_call``, ``tool_result``, ``subagent_token``, ``assistant_token``,
+    Yields ``turn_started``, ``tool_call``, ``tool_result``, ``assistant_token``,
     ``done``, ``error``.
+    """
+    runtime = start_universal_turn(prep)
+    yield (
+        "turn_started",
+        {
+            "turn_id": str(prep.turn_id),
+            "user_message_id": (
+                str(prep.user_message_id)
+                if prep.user_message_id and not prep.suppress_user_echo
+                else None
+            ),
+            "thread_id": str(prep.thread_id),
+        },
+    )
+    queue = await subscribe_turn_events(runtime)
+    try:
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield item
+    except (asyncio.CancelledError, GeneratorExit):
+        _logger.info(
+            "universal chat SSE observer cancelled",
+            turn_id=str(prep.turn_id),
+            experiment_id=str(prep.experiment_id),
+        )
+        raise
+    finally:
+        await unsubscribe_turn_events(runtime, queue)
 
-    Final master text is paced-chunked from ``complete_with_tools`` (not
-    ``complete_stream``): the LLM client stream API only accepts a single user
-    string and cannot carry the multi-turn tool-loop messages.
+
+async def cancel_universal_turn(
+    db: AsyncSession,
+    current_user: User,
+    experiment_id: UUID,
+    turn_id: UUID,
+) -> bool:
+    """Explicit stop: signal in-process task (reload must NOT call this)."""
+    await _load_owned_experiment(db, current_user, experiment_id)
+    return request_turn_cancel(turn_id)
+
+
+async def _iter_universal_turn_events(
+    prep: UniversalStreamPrep,
+    *,
+    cancel: asyncio.Event | None = None,
+) -> AsyncGenerator[tuple[str, dict[str, Any]], None]:
+    """Turn body (tool loop + final text). Runs inside the detached task.
     """
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as db:
         user = await db.get(User, prep.user_id)
         experiment = await db.get(Experiment, prep.experiment_id)
         if user is None or experiment is None:
+            await _set_turn_status(
+                db,
+                prep.status_message_id,
+                turn_id=prep.turn_id,
+                status=TURN_STATUS_FAILED,
+            )
+            await db.commit()
             yield ("error", {"message": "Universal chat failed, please try again"})
             return
 
@@ -926,6 +1163,13 @@ async def stream_universal_chat_message(
         provider = prep.provider
         model = prep.model
         if provider not in ("anthropic", "kimi"):
+            await _set_turn_status(
+                db,
+                prep.status_message_id,
+                turn_id=prep.turn_id,
+                status=TURN_STATUS_FAILED,
+            )
+            await db.commit()
             yield ("error", {"message": "Universal chat failed, please try again"})
             return
 
@@ -940,6 +1184,7 @@ async def stream_universal_chat_message(
 
         try:
             while True:
+                _raise_if_turn_cancelled(cancel)
                 if mcq_inject is not None and not mcq_forced:
                     mcq_forced = True
                     tool_rounds += 1
@@ -962,6 +1207,7 @@ async def stream_universal_chat_message(
                     )
                     db.add(tool_call_msg)
                     await db.flush()
+                    await set_active_leaf(db, prep.thread_id, tool_call_msg.id)
                     await db.commit()
                     chain_parent_id = tool_call_msg.id
                     yield (
@@ -983,6 +1229,7 @@ async def stream_universal_chat_message(
                             prep,
                             chain_parent_id,
                             mcq_answer=mcq_inject,
+                            cancel=cancel,
                         ):
                             if evt[0] == "_refine_outcome":
                                 refine_owned = bool(evt[1].get("ok"))
@@ -1026,20 +1273,24 @@ async def stream_universal_chat_message(
                     provider, force_text=force_text, tool_schemas=tool_schemas
                 )
 
+                _raise_if_turn_cancelled(cancel)
                 try:
-                    result = await llm_client.complete_with_tools(
-                        db,
-                        provider=cast(Any, provider),
-                        model=model,
-                        prompt_name=PROMPT_NAME_UNIVERSAL_CHAT,
-                        system=UNIVERSAL_CHAT_SYSTEM_PROMPT,
-                        messages=api_messages,
-                        tools=tools_arg,
-                        tool_choice=tool_choice,
-                        max_tokens=_MAX_TOKENS,
-                        temperature=_TEMPERATURE,
-                        experiment_id=experiment.id,
-                        phase="universal_chat",
+                    result = await _await_unless_cancelled(
+                        llm_client.complete_with_tools(
+                            db,
+                            provider=cast(Any, provider),
+                            model=model,
+                            prompt_name=PROMPT_NAME_UNIVERSAL_CHAT,
+                            system=UNIVERSAL_CHAT_SYSTEM_PROMPT,
+                            messages=api_messages,
+                            tools=tools_arg,
+                            tool_choice=tool_choice,
+                            max_tokens=_MAX_TOKENS,
+                            temperature=_TEMPERATURE,
+                            experiment_id=experiment.id,
+                            phase="universal_chat",
+                        ),
+                        cancel,
                     )
                 except Exception as exc:
                     only_user = (
@@ -1091,6 +1342,7 @@ async def stream_universal_chat_message(
                         )
                         db.add(tool_call_msg)
                         await db.flush()
+                        await set_active_leaf(db, prep.thread_id, tool_call_msg.id)
                         await db.commit()
                         chain_parent_id = tool_call_msg.id
                         yield (
@@ -1114,6 +1366,7 @@ async def stream_universal_chat_message(
                                     prep,
                                     chain_parent_id,
                                     mcq_answer=refine_mcq,
+                                    cancel=cancel,
                                 ):
                                     if evt[0] == "_refine_outcome":
                                         if evt[1].get("ok"):
@@ -1144,12 +1397,15 @@ async def stream_universal_chat_message(
                             # Keep going so open_phase_panel in the same round still runs.
                             continue
 
-                        exec_result = await execute_tool(
-                            tool_use.name,
-                            tool_use.input,
-                            db,
-                            experiment,
-                            user=user,
+                        exec_result = await _await_unless_cancelled(
+                            execute_tool(
+                                tool_use.name,
+                                tool_use.input,
+                                db,
+                                experiment,
+                                user=user,
+                            ),
+                            cancel,
                         )
                         refreshed = await db.get(Experiment, experiment.id)
                         if refreshed is not None:
@@ -1167,6 +1423,7 @@ async def stream_universal_chat_message(
                         )
                         db.add(tool_result_msg)
                         await db.flush()
+                        await set_active_leaf(db, prep.thread_id, tool_result_msg.id)
                         await db.commit()
                         chain_parent_id = tool_result_msg.id
                         content_json = _tool_result_content_json(payload)
@@ -1203,7 +1460,9 @@ async def stream_universal_chat_message(
             if assistant_text:
                 if not refine_already_streamed:
                     async for chunk in iter_paced_text_chunks(
-                        assistant_text, pacing_delay=prep.pacing_delay
+                        assistant_text,
+                        pacing_delay=prep.pacing_delay,
+                        cancel=cancel,
                     ):
                         yield ("assistant_token", {"text": chunk})
 
@@ -1218,13 +1477,25 @@ async def stream_universal_chat_message(
                 db.add(assistant_msg)
                 await db.flush()
                 await set_active_leaf(db, prep.thread_id, assistant_msg.id)
+                await _set_turn_status(
+                    db,
+                    prep.status_message_id,
+                    turn_id=prep.turn_id,
+                    status=TURN_STATUS_DONE,
+                )
                 await db.commit()
                 assistant_message_id = str(assistant_msg.id)
             else:
                 # Refine MCQ-only (or empty refine prose): no master bubble.
                 if chain_parent_id is not None:
                     await set_active_leaf(db, prep.thread_id, chain_parent_id)
-                    await db.commit()
+                await _set_turn_status(
+                    db,
+                    prep.status_message_id,
+                    turn_id=prep.turn_id,
+                    status=TURN_STATUS_DONE,
+                )
+                await db.commit()
                 assistant_message_id = ""
 
             _logger.info(
@@ -1242,6 +1513,7 @@ async def stream_universal_chat_message(
                 {
                     "assistant_message_id": assistant_message_id,
                     "thread_id": str(prep.thread_id),
+                    "turn_id": str(prep.turn_id),
                     "user_message_id": (
                         str(prep.user_message_id)
                         if prep.user_message_id and not prep.suppress_user_echo
@@ -1251,21 +1523,77 @@ async def stream_universal_chat_message(
             )
         except (asyncio.CancelledError, GeneratorExit):
             _logger.info(
-                "universal chat stream cancelled",
+                "universal chat turn cancelled",
                 experiment_id=str(prep.experiment_id),
                 thread_id=str(prep.thread_id),
+                turn_id=str(prep.turn_id),
             )
+            with contextlib.suppress(Exception):
+                await _set_turn_status(
+                    db,
+                    prep.status_message_id,
+                    turn_id=prep.turn_id,
+                    status=TURN_STATUS_FAILED,
+                )
+                await db.commit()
             raise
         except Exception as exc:
             _logger.warning(
-                "universal chat stream failed",
+                "universal chat turn failed",
                 experiment_id=str(prep.experiment_id),
                 thread_id=str(prep.thread_id),
+                turn_id=str(prep.turn_id),
                 error_type=type(exc).__name__,
             )
             with contextlib.suppress(Exception):
                 await db.rollback()
-            yield ("error", {"message": "Universal chat failed, please try again"})
+            err_text = "Universal chat failed, please try again"
+            with contextlib.suppress(Exception):
+                err_msg = ChatMessage(
+                    thread_id=prep.thread_id,
+                    role=ChatRole.ASSISTANT,
+                    content=err_text,
+                    experiment_id=prep.experiment_id,
+                    turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
+                    parent_message_id=chain_parent_id,
+                )
+                db.add(err_msg)
+                await db.flush()
+                await set_active_leaf(db, prep.thread_id, err_msg.id)
+                await _set_turn_status(
+                    db,
+                    prep.status_message_id,
+                    turn_id=prep.turn_id,
+                    status=TURN_STATUS_FAILED,
+                )
+                await db.commit()
+                yield (
+                    "assistant_token",
+                    {"text": err_text},
+                )
+                yield (
+                    "done",
+                    {
+                        "assistant_message_id": str(err_msg.id),
+                        "thread_id": str(prep.thread_id),
+                        "turn_id": str(prep.turn_id),
+                        "user_message_id": (
+                            str(prep.user_message_id)
+                            if prep.user_message_id and not prep.suppress_user_echo
+                            else None
+                        ),
+                    },
+                )
+                return
+            await _set_turn_status(
+                db,
+                prep.status_message_id,
+                turn_id=prep.turn_id,
+                status=TURN_STATUS_FAILED,
+            )
+            with contextlib.suppress(Exception):
+                await db.commit()
+            yield ("error", {"message": err_text})
 
 
 async def _delete_in_flight_tool_result(
@@ -1298,6 +1626,7 @@ async def _stream_refine_tool(
     chain_parent_id: UUID | None,
     *,
     mcq_answer: dict[str, Any] | None = None,
+    cancel: asyncio.Event | None = None,
 ) -> AsyncGenerator[tuple[str, Any], None]:
     """Refine: sync execute, pace assistant tokens, then emit tool_result.
 
@@ -1308,12 +1637,15 @@ async def _stream_refine_tool(
     exec_args = _inject_mcq_into_tool_args(
         tool_use.name, tool_use.input, mcq_answer
     )
-    exec_result = await execute_tool(
-        tool_use.name,
-        exec_args,
-        db,
-        experiment,
-        user=user,
+    exec_result = await _await_unless_cancelled(
+        execute_tool(
+            tool_use.name,
+            exec_args,
+            db,
+            experiment,
+            user=user,
+        ),
+        cancel,
     )
     payload = _tool_result_payload(tool_use.name, exec_result)
     refine_ok = "error" not in payload
@@ -1324,7 +1656,7 @@ async def _stream_refine_tool(
     # Pace refine prose immediately — before tool_result / sibling tools.
     if refine_text:
         async for chunk in iter_paced_text_chunks(
-            refine_text, pacing_delay=prep.pacing_delay
+            refine_text, pacing_delay=prep.pacing_delay, cancel=cancel
         ):
             yield ("assistant_token", {"text": chunk})
 
@@ -1354,6 +1686,7 @@ async def _stream_refine_tool(
     db.add(tool_result_msg)
     await db.flush()
     yield ("_in_flight_tool_result", {"id": tool_result_msg.id})
+    await set_active_leaf(db, prep.thread_id, tool_result_msg.id)
     await db.commit()
 
     yield (

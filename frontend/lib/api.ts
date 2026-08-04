@@ -417,6 +417,16 @@ export async function getUniversalChatMessages(
   );
 }
 
+export async function cancelUniversalChatTurn(
+  experimentId: string,
+  turnId: string,
+): Promise<{ cancelled: boolean }> {
+  return apiFetch<{ cancelled: boolean }>(
+    `/experiments/${experimentId}/chat/universal/cancel`,
+    { method: "POST", body: { turn_id: turnId } },
+  );
+}
+
 export async function sendUniversalChatMessage(
   experimentId: string,
   message: string,
@@ -433,6 +443,11 @@ export async function sendUniversalChatMessage(
 }
 
 export interface StreamUniversalCallbacks {
+  onTurnStarted?: (payload: {
+    turn_id: string;
+    user_message_id?: string | null;
+    thread_id: string;
+  }) => void;
   onToolCall: (payload: { tool_name: string; message_id: string }) => void;
   onToolResult: (payload: {
     tool_name: string;
@@ -445,6 +460,7 @@ export interface StreamUniversalCallbacks {
     assistant_message_id: string;
     thread_id: string;
     user_message_id?: string | null;
+    turn_id?: string | null;
   }) => void;
   onError: (message: string) => void;
 }
@@ -531,7 +547,27 @@ export async function streamUniversalChatMessage(
   }
 
   const dispatch = (event: SSEEvent): void => {
-    if (event.event === "tool_call") {
+    if (event.event === "turn_started") {
+      try {
+        const data = JSON.parse(event.data) as {
+          turn_id?: string;
+          user_message_id?: string | null;
+          thread_id?: string;
+        };
+        if (
+          typeof data.turn_id === "string" &&
+          typeof data.thread_id === "string"
+        ) {
+          callbacks.onTurnStarted?.({
+            turn_id: data.turn_id,
+            user_message_id: data.user_message_id,
+            thread_id: data.thread_id,
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+    } else if (event.event === "tool_call") {
       try {
         const data = JSON.parse(event.data) as {
           tool_name?: string;
@@ -602,15 +638,17 @@ export async function streamUniversalChatMessage(
           assistant_message_id?: string;
           thread_id?: string;
           user_message_id?: string;
+          turn_id?: string;
         };
-        if (
-          typeof data.assistant_message_id === "string" &&
-          typeof data.thread_id === "string"
-        ) {
+        if (typeof data.thread_id === "string") {
           callbacks.onDone({
-            assistant_message_id: data.assistant_message_id,
+            assistant_message_id:
+              typeof data.assistant_message_id === "string"
+                ? data.assistant_message_id
+                : "",
             thread_id: data.thread_id,
             user_message_id: data.user_message_id,
+            turn_id: data.turn_id,
           });
         } else {
           callbacks.onError("The reply finished but couldn't be read — retry");

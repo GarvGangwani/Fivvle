@@ -119,6 +119,7 @@ from app.schemas.evidence_chat_feedback import (
     EvidenceChatFeedbackResponse,
 )
 from app.schemas.universal_chat import (
+    UniversalChatCancelRequest,
     UniversalChatMessagesResponse,
     UniversalChatSendRequest,
     UniversalChatSendResponse,
@@ -146,9 +147,11 @@ from app.services.evidence_chat_service import (
 from app.services.universal_chat_service import (
     UniversalChatNotFound,
     UniversalChatUnavailable,
+    cancel_universal_turn,
     list_universal_chat_messages,
     prepare_universal_stream,
     send_universal_chat_message,
+    start_universal_turn,
     stream_universal_chat_message,
 )
 from app.services.chat_attachment_service import ChatAttachmentAccessError
@@ -1602,6 +1605,10 @@ async def stream_universal_chat(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
 
+    # Detach work before the StreamingResponse is consumed so a fast disconnect
+    # cannot prevent the turn task from starting.
+    start_universal_turn(prep)
+
     async def _frames():
         async for event_name, payload in stream_universal_chat_message(prep):
             if event_name.startswith("_"):
@@ -1616,6 +1623,31 @@ async def stream_universal_chat(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post(
+    "/{experiment_id}/chat/universal/cancel",
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def cancel_universal_chat_turn(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: UniversalChatCancelRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> dict[str, bool]:
+    """Explicit stop — does not run on reload/disconnect."""
+    try:
+        cancelled = await cancel_universal_turn(
+            db, current_user, experiment_id, body.turn_id
+        )
+    except UniversalChatNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Experiment not found"
+        ) from None
+    return {"cancelled": cancelled}
 
 
 @router.get(
@@ -1642,6 +1674,7 @@ async def get_universal_chat_messages(
         experiment_id=experiment_id,
         active_leaf_message_id=result.active_leaf_message_id,
         messages=[ChatMessageItem.from_orm_message(m) for m in result.messages],
+        in_progress_turn_id=result.in_progress_turn_id,
     )
 
 

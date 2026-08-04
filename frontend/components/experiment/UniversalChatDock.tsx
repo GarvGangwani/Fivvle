@@ -28,6 +28,7 @@ import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
 import { MessageAttachments } from "@/components/experiment/refine/MessageAttachments";
 import { useToast } from "@/components/ui/ToastProvider";
 import {
+  cancelUniversalChatTurn,
   getUniversalChatMessages,
   streamUniversalChatMessage,
   uploadChatAttachments,
@@ -879,6 +880,9 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   const isNearBottomRef = useRef(true);
   const forceScrollRef = useRef(false);
   const streamAbortRef = useRef<AbortController | null>(null);
+  /** Durable turn id for explicit stop (reload must not cancel). */
+  const activeTurnIdRef = useRef<string | null>(null);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamingAssistantIdRef = useRef<string | null>(null);
   /** Full token accumulation — commit source of truth (never read inside setState). */
   const streamingAssistantTextRef = useRef("");
@@ -1110,7 +1114,12 @@ export const UniversalChatDock = memo(function UniversalChatDock({
 
   useEffect(() => {
     return () => {
+      // Abort SSE only — do NOT cancel the server turn on unmount/reload.
       streamAbortRef.current?.abort();
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -1129,12 +1138,73 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   useEffect(() => {
     let cancelled = false;
     setHistoryLoading(true);
+
+    const stopPolling = () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+
+    const applyHistory = (data: {
+      messages: ChatHistoryMessage[];
+      in_progress_turn_id?: string | null;
+    }) => {
+      setMessages(data.messages);
+      setPendingQuestion(pendingQuestionFromMessages(data.messages));
+      forceScrollRef.current = true;
+
+      const runningId = data.in_progress_turn_id ?? null;
+      if (runningId) {
+        activeTurnIdRef.current = runningId;
+        setSending(true);
+        setWorkingLabel("Thinking…");
+        stopPolling();
+        pollTimerRef.current = setInterval(() => {
+          void getUniversalChatMessages(experimentId)
+            .then((next) => {
+              if (cancelled) return;
+              setMessages(next.messages);
+              setPendingQuestion(pendingQuestionFromMessages(next.messages));
+              if (!next.in_progress_turn_id) {
+                stopPolling();
+                activeTurnIdRef.current = null;
+                setSending(false);
+                setWorkingLabel(null);
+                const last = next.messages[next.messages.length - 1];
+                const failed = next.messages.some(
+                  (m) => m.metadata?.turn_status === "failed",
+                );
+                if (failed && last?.role === "user") {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === last.id
+                        ? {
+                            ...m,
+                            error: true,
+                            content: `${m.content}\n\n(Failed to send — retry)`,
+                          }
+                        : m,
+                    ),
+                  );
+                }
+              }
+            })
+            .catch(() => {
+              /* keep polling */
+            });
+        }, 1500);
+      } else {
+        activeTurnIdRef.current = null;
+        setSending(false);
+        setWorkingLabel(null);
+      }
+    };
+
     void getUniversalChatMessages(experimentId)
       .then((data) => {
         if (cancelled) return;
-        setMessages(data.messages);
-        setPendingQuestion(pendingQuestionFromMessages(data.messages));
-        forceScrollRef.current = true;
+        applyHistory(data);
       })
       .catch(() => {
         if (cancelled) return;
@@ -1146,6 +1216,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
       });
     return () => {
       cancelled = true;
+      stopPolling();
     };
   }, [experimentId]);
 
@@ -1199,13 +1270,25 @@ export const UniversalChatDock = memo(function UniversalChatDock({
 
   const handleStop = useCallback(() => {
     const partial = streamingAssistantTextRef.current.trim();
+    const turnId = activeTurnIdRef.current;
     stoppedRef.current = true;
     streamAbortRef.current?.abort();
     streamAbortRef.current = null;
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
     setWorkingLabel(null);
     heldPendingQuestionRef.current = null;
     setPendingQuestion(null);
     setSending(false);
+    activeTurnIdRef.current = null;
+
+    if (turnId) {
+      void cancelUniversalChatTurn(experimentId, turnId).catch(() => {
+        /* best-effort */
+      });
+    }
 
     setMessages((prev) => {
       const next = prev.map((m) =>
@@ -1224,7 +1307,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
       return next;
     });
     resetStreamingState();
-  }, [resetStreamingState]);
+  }, [experimentId, resetStreamingState]);
 
   const handleSend = useCallback(
     async (
@@ -1353,6 +1436,18 @@ export const UniversalChatDock = memo(function UniversalChatDock({
           experimentId,
           trimmed,
           {
+            onTurnStarted: ({ turn_id, user_message_id }) => {
+              activeTurnIdRef.current = turn_id;
+              if (optimisticId && user_message_id) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === optimisticId
+                      ? { ...m, id: user_message_id, optimistic: false }
+                      : m,
+                  ),
+                );
+              }
+            },
             onToolCall: ({ tool_name, message_id }) => {
               const label = workingLabelForTool(tool_name);
               if (label) setWorkingLabel(label);
@@ -1416,6 +1511,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
             },
             onDone: ({ assistant_message_id, user_message_id }) => {
               if (stoppedRef.current) return;
+              activeTurnIdRef.current = null;
               if (
                 assistant_message_id &&
                 streamingAssistantIdRef.current === assistant_message_id
