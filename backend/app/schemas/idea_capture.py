@@ -22,6 +22,18 @@ class IdeaThemeOutput(BaseModel):
     ]
 
 
+class OriginFrozenAttachment(BaseModel):
+    """Frozen chat attachment surfaced on experiment detail / artifact."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: UUID
+    original_filename: str
+    content_kind: str
+    media_type: str | None = None
+    created_at: datetime
+
+
 class CaptureIdeaRequest(BaseModel):
     """Body for POST /experiments/{id}/capture-idea."""
 
@@ -65,3 +77,4 @@ class CaptureIdeaResponse(BaseModel):
     original_idea_captured_at: datetime
     idea_theme: IdeaTheme
     frozen_attachments: list[CaptureIdeaFrozenAttachment]
+    confirmation_message: str

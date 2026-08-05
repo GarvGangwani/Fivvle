@@ -47,6 +47,7 @@ def test_capture_idea_writes_and_second_returns_409(
     assert body["idea_theme"] == "violet"
     assert body["original_idea_captured_at"] is not None
     assert body["frozen_attachments"] == []
+    assert "sealed" in body["confirmation_message"].lower()
 
     second = client.post(
         f"/experiments/{experiment_id}/capture-idea",

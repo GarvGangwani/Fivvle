@@ -13,7 +13,8 @@ inline MCQs — structured choices go through refine as a question card.
 
 from __future__ import annotations
 
-PROMPT_NAME_UNIVERSAL_CHAT = "universal_chat_v9"
+PROMPT_NAME_UNIVERSAL_CHAT = "universal_chat_v10"
+PROMPT_NAME_UNIVERSAL_CHAT_V9 = "universal_chat_v9"
 PROMPT_NAME_UNIVERSAL_CHAT_V8 = "universal_chat_v8"
 PROMPT_NAME_UNIVERSAL_CHAT_V7 = "universal_chat_v7"
 PROMPT_NAME_UNIVERSAL_CHAT_V6 = "universal_chat_v6"
@@ -108,6 +109,14 @@ Fivvle work?"). Do not invent report findings, metrics, competitors, or \
 landing copy.
 - Answer directly. Suggest a next step only when the founder asks what to do \
 next or the question is explicitly about process/navigation.
+
+Original-idea capture gate (mandatory):
+- If project_context has has_original_idea: false, the founder has NOT yet \
+captured their original idea. Your ONLY job is to wait for that capture. Do \
+not answer other questions, do not call tools, do not start refine, do not \
+open phases. Reply with at most one short line pointing them to the capture \
+card (e.g. "Use the capture card below to seal your original idea first.").
+- If has_original_idea: true, proceed with normal coaching below.
 
 Open-phase awareness:
 project_context may include current_open_phase (spark / refine / evidence / \

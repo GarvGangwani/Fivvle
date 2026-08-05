@@ -621,7 +621,7 @@ async def test_send_response_messages_order_one_tool_turn(
     assert mock_complete.await_count == 2
     for call in mock_complete.await_args_list:
         assert call.kwargs["phase"] == "universal_chat"
-        assert call.kwargs["prompt_name"] == "universal_chat_v9"
+        assert call.kwargs["prompt_name"] == "universal_chat_v10"
         assert call.kwargs["provider"] == "kimi"
 
 
@@ -1048,8 +1048,8 @@ def test_tool_schemas_are_provider_dialect() -> None:
     assert nav_schema["input_schema"]["required"] == ["phase"]
 
 
-def test_prompt_name_is_universal_chat_v9() -> None:
-    assert PROMPT_NAME_UNIVERSAL_CHAT == "universal_chat_v9"
+def test_prompt_name_is_universal_chat_v10() -> None:
+    assert PROMPT_NAME_UNIVERSAL_CHAT == "universal_chat_v10"
     assert "get_research_context" in UNIVERSAL_CHAT_SYSTEM_PROMPT
     assert "ask_research_agent" not in UNIVERSAL_CHAT_SYSTEM_PROMPT
     assert "open_phase_panel" in UNIVERSAL_CHAT_SYSTEM_PROMPT

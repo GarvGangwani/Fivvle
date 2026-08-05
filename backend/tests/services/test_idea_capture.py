@@ -163,6 +163,8 @@ async def test_capture_original_idea_writes_fields_and_freezes_attachments(
 
     assert result.original_idea == "A dating app for couples."
     assert result.idea_theme == "pink"
+    assert result.confirmation_message
+    assert "sealed" in result.confirmation_message.lower()
     assert result.original_idea_captured_at is not None
     assert experiment.original_idea == "A dating app for couples."
     assert experiment.idea_theme == "pink"

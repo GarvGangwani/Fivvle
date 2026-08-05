@@ -395,6 +395,14 @@ async def _load_owned_experiment(
     return experiment
 
 
+def _ensure_original_idea_captured(experiment: Experiment) -> None:
+    """Block agent turns until the write-once original idea is captured."""
+    if experiment.original_idea is None:
+        raise UniversalChatUnavailable(
+            "Capture your original idea before chatting with the agent."
+        )
+
+
 async def _resolve_universal_thread(
     db: AsyncSession,
     user: User,
@@ -581,6 +589,7 @@ async def send_universal_chat_message(
     mcq_inject = _mcq_answer_as_dict(mcq_answer)
 
     experiment = await _load_owned_experiment(db, current_user, experiment_id)
+    _ensure_original_idea_captured(experiment)
     thread = await _resolve_universal_thread(db, current_user, experiment)
 
     parent_id = thread.active_leaf_message_id
@@ -932,6 +941,7 @@ async def prepare_universal_stream(
     ids = [] if suppress_user_echo else list(attachment_ids or [])
 
     experiment = await _load_owned_experiment(db, current_user, experiment_id)
+    _ensure_original_idea_captured(experiment)
     thread = await _resolve_universal_thread(db, current_user, experiment)
 
     if suppress_user_echo:

@@ -191,10 +191,12 @@ from app.services.idea_capture_service import (
     IdeaCaptureValidationError,
     capture_original_idea,
 )
+from app.db.models.chat_attachment import ChatAttachment
 from app.schemas.idea_capture import (
     CaptureIdeaFrozenAttachment,
     CaptureIdeaRequest,
     CaptureIdeaResponse,
+    OriginFrozenAttachment,
 )
 from app.services.logo_upload_service import (
     LogoUploadError,
@@ -399,6 +401,34 @@ class GetExperimentDetailResponse(BaseModel):
     evidence_stale_reasons: list[str] = Field(default_factory=list)
     launch_stale_reasons: list[str] = Field(default_factory=list)
     signal_stale_reasons: list[str] = Field(default_factory=list)
+    # Immutable original idea (write-once at capture). Null until captured.
+    has_original_idea: bool = False
+    original_idea: str | None = None
+    original_idea_captured_at: datetime | None = None
+    idea_theme: str | None = None
+    origin_attachments: list[OriginFrozenAttachment] = Field(default_factory=list)
+
+
+async def _list_origin_attachments(
+    db: AsyncSession,
+    experiment_id: UUID,
+) -> list[OriginFrozenAttachment]:
+    result = await db.execute(
+        select(ChatAttachment)
+        .where(ChatAttachment.origin_experiment_id == experiment_id)
+        .order_by(ChatAttachment.created_at.asc())
+    )
+    rows = list(result.scalars().all())
+    return [
+        OriginFrozenAttachment(
+            id=row.id,
+            original_filename=row.original_filename,
+            content_kind=row.content_kind,
+            media_type=row.media_type,
+            created_at=row.created_at,
+        )
+        for row in rows
+    ]
 
 
 async def _build_experiment_detail_response(
@@ -418,6 +448,8 @@ async def _build_experiment_detail_response(
         validation_raw=validation_raw,
     )
     spark_info = await fetch_spark_phase_version_info(db, experiment)
+    origin_attachments = await _list_origin_attachments(db, experiment.id)
+    has_original = experiment.original_idea is not None
 
     return GetExperimentDetailResponse(
         id=experiment.id,
@@ -462,6 +494,11 @@ async def _build_experiment_detail_response(
         evidence_stale_reasons=spark_info.evidence_stale_reasons,
         launch_stale_reasons=spark_info.launch_stale_reasons,
         signal_stale_reasons=spark_info.signal_stale_reasons,
+        has_original_idea=has_original,
+        original_idea=experiment.original_idea,
+        original_idea_captured_at=experiment.original_idea_captured_at,
+        idea_theme=experiment.idea_theme,
+        origin_attachments=origin_attachments,
     )
 
 
@@ -2581,6 +2618,7 @@ async def capture_experiment_idea(
             )
             for att in captured.frozen_attachments
         ],
+        confirmation_message=captured.confirmation_message,
     )
 
 

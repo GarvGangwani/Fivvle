@@ -272,6 +272,15 @@ export interface Experiment {
   resource_count?: number;
   attachment_count?: number;
   demand_score?: number | null;
+  /** True once write-once original_idea has been captured. */
+  has_original_idea?: boolean;
+  /** Immutable original idea text (null until captured). */
+  original_idea?: string | null;
+  original_idea_captured_at?: string | null;
+  /** Origin Artifact theme — violet | pink | green | orange. */
+  idea_theme?: string | null;
+  /** Chat attachments frozen to the original idea at capture. */
+  origin_attachments?: OriginFrozenAttachment[];
   /** Research validation overall_recommendation — not the founder Signal decision. */
   verdict?: string | null;
   founder_decision?: FounderDecision | null;
@@ -862,6 +871,15 @@ export type AttachmentType =
   | "pasted_text"
   | "link";
 
+/** Frozen chat attachment on the original idea (GET experiment detail). */
+export interface OriginFrozenAttachment {
+  id: string;
+  original_filename: string;
+  content_kind: string;
+  media_type: string | null;
+  created_at: string;
+}
+
 export interface ExperimentAttachment {
   id: string;
   experiment_id: string;
@@ -873,6 +891,21 @@ export interface ExperimentAttachment {
   file_mime: string | null;
   file_size_bytes: number | null;
   created_at: string;
+}
+
+export type IdeaTheme = "violet" | "pink" | "green" | "orange";
+
+export interface CaptureIdeaResponse {
+  experiment_id: string;
+  original_idea: string;
+  original_idea_captured_at: string;
+  idea_theme: IdeaTheme;
+  frozen_attachments: Array<{
+    id: string;
+    original_filename: string;
+    content_kind: string;
+  }>;
+  confirmation_message: string;
 }
 
 export interface AttachmentUploadUrl {
