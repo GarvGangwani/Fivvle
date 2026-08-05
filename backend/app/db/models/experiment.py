@@ -62,6 +62,21 @@ class Experiment(Base):
         Text,
         nullable=False,
     )
+    # Immutable original idea — write-once at capture (chat-driven). Separate
+    # from raw_idea / refined_idea which remain the working refine copy.
+    original_idea: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    original_idea_captured_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    # Origin Artifact palette — classified once at capture, then frozen.
+    idea_theme: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
+    )
     refined_idea: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     refined_idea_current: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     refined_idea_updated_at: Mapped[datetime | None] = mapped_column(

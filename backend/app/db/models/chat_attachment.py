@@ -40,6 +40,14 @@ class ChatAttachment(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    # Non-null → frozen as an original-idea attachment for that experiment.
+    # Write-once at capture; SET NULL if the experiment is deleted.
+    origin_experiment_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("experiments.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

@@ -186,6 +186,16 @@ from app.services.founder_decision_service import (
     apply_founder_decision,
 )
 from app.services.spark_version_service import fetch_spark_phase_version_info
+from app.services.idea_capture_service import (
+    IdeaAlreadyCapturedError,
+    IdeaCaptureValidationError,
+    capture_original_idea,
+)
+from app.schemas.idea_capture import (
+    CaptureIdeaFrozenAttachment,
+    CaptureIdeaRequest,
+    CaptureIdeaResponse,
+)
 from app.services.logo_upload_service import (
     LogoUploadError,
     upload_landing_page_logo,
@@ -2513,6 +2523,65 @@ async def unarchive_experiment(
     await db.commit()
 
     return await _build_experiment_detail_response(db, experiment)
+
+
+@router.post(
+    "/{experiment_id}/capture-idea",
+    response_model=CaptureIdeaResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def capture_experiment_idea(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: CaptureIdeaRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> CaptureIdeaResponse:
+    """Freeze the immutable original idea + attachments + theme (write-once)."""
+    result = await db.execute(
+        select(Experiment).where(Experiment.id == experiment_id)
+    )
+    experiment = result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Experiment not found",
+        )
+    try:
+        captured = await capture_original_idea(
+            db,
+            experiment=experiment,
+            user_id=current_user.id,
+            idea_text=body.idea_text,
+            attachment_ids=body.attachment_ids,
+        )
+    except IdeaAlreadyCapturedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=exc.message,
+        ) from exc
+    except IdeaCaptureValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=exc.message,
+        ) from exc
+
+    return CaptureIdeaResponse(
+        experiment_id=captured.experiment_id,
+        original_idea=captured.original_idea,
+        original_idea_captured_at=captured.original_idea_captured_at,
+        idea_theme=captured.idea_theme,
+        frozen_attachments=[
+            CaptureIdeaFrozenAttachment(
+                id=att.id,
+                original_filename=att.original_filename,
+                content_kind=att.content_kind,
+            )
+            for att in captured.frozen_attachments
+        ],
+    )
 
 
 @router.patch(
