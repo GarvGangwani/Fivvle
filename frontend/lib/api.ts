@@ -4,6 +4,7 @@ import { handleSessionExpired } from "./session-expired";
 import { createSSEParser, type SSEEvent } from "./sse-parser";
 import type {
   ArchiveExperimentResponse,
+  CaptureIdeaResponse,
   ChatHistoryMessage,
   ChatTurnResponse,
   DeleteExperimentResponse,
@@ -191,6 +192,19 @@ export async function createExperiment(
 
 export async function getExperiment(id: string): Promise<Experiment> {
   return apiFetch<Experiment>(`/experiments/${id}`);
+}
+
+export async function captureExperimentIdea(
+  experimentId: string,
+  body: { idea_text: string; attachment_ids: string[] },
+): Promise<CaptureIdeaResponse> {
+  return apiFetch<CaptureIdeaResponse>(
+    `/experiments/${experimentId}/capture-idea`,
+    {
+      method: "POST",
+      body,
+    },
+  );
 }
 
 export async function renameExperiment(

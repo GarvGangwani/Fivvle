@@ -5,6 +5,13 @@ export type NodeLockState = {
   unlockRequirement?: string;
 };
 
+/** True once write-once original_idea has been captured (PR1/PR2). */
+export function experimentHasOriginalIdea(experiment: Experiment): boolean {
+  if (experiment.has_original_idea === true) return true;
+  if (experiment.has_original_idea === false) return false;
+  return Boolean(experiment.original_idea?.trim());
+}
+
 const LANDING_PAGE_CREATED = new Set([
   "LANDING_DRAFT",
   "LANDING_LIVE",
@@ -25,13 +32,21 @@ function hasRefinedIdeaPayload(experiment: Experiment): boolean {
 }
 
 /**
- * Workflow lock for canvas satellites. Spark + Resources are always open.
- * Evidence / Launch / Signal keys on GET /experiments/{id} fields + status.
+ * Workflow lock for canvas satellites.
+ * Pre-capture: all phases (including spark) are dormant until original idea is sealed.
+ * Post-capture: Spark + Resources are open; Evidence / Launch / Signal key on status.
  */
 export function getNodeLockState(
   nodeId: string,
   experiment: Experiment,
 ): NodeLockState {
+  if (!experimentHasOriginalIdea(experiment)) {
+    return {
+      isLocked: true,
+      unlockRequirement: "Capture your original idea in chat to unlock phases.",
+    };
+  }
+
   switch (nodeId) {
     case "spark":
     case "resources":
@@ -39,11 +54,9 @@ export function getNodeLockState(
 
     case "refine":
       if ((experiment.current_spark_version ?? 0) < 1) {
-        return {
-          isLocked: true,
-          unlockRequirement:
-            "Save your idea in Spark first to unlock Refine.",
-        };
+        // Soft unlock refine after capture even before spark_version bump (PR3 removes spark editor).
+        // Still require capture (gated above). Allow refine once idea exists.
+        return { isLocked: false };
       }
       return { isLocked: false };
 

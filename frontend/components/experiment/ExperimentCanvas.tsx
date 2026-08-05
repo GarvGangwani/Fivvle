@@ -35,6 +35,7 @@ import {
   DEFAULT_CANVAS_ZOOM,
   DEFAULT_POSITIONS,
   MIN_CANVAS_ZOOM,
+  experimentHasOriginalIdea,
   formatCanvasMetric,
   getNodeLockState,
   getPhasesComplete,
@@ -42,6 +43,7 @@ import {
   snapOutOfExclusionZone,
   snapToGrid,
 } from "./canvas-helpers";
+import { originAttachmentsForArtifact } from "./idea-capture-helpers";
 import {
   DeepDiveOverlay,
   type DeepDiveAct,
@@ -52,6 +54,7 @@ import { useCanvasLayout } from "./hooks/useCanvasLayout";
 import { useResources } from "./hooks/useResources";
 import { ActNode } from "./nodes/ActNode";
 import { CoreShellNode } from "./nodes/CoreShellNode";
+import { OriginArtifactNode } from "./nodes/OriginArtifactNode";
 import { useRefineChat } from "./refine/useRefineChat";
 import { SparkExpandedNode } from "./nodes/SparkExpandedNode";
 import { SparkNode, type SparkMetricState } from "./nodes/SparkNode";
@@ -80,6 +83,7 @@ const nodeTypes: NodeTypes = {
   actNode: ActNode,
   sparkNode: SparkNode,
   sparkExpanded: SparkExpandedNode,
+  originArtifact: OriginArtifactNode,
 };
 
 const edgeTypes: EdgeTypes = {
@@ -412,15 +416,30 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       },
       {
         id: "spark",
-        type: "sparkNode",
+        type: experimentHasOriginalIdea(experiment)
+          ? ("originArtifact" as const)
+          : ("sparkNode" as const),
         position: positions.spark ?? DEFAULT_POSITIONS.spark,
-        data: {
-          rawIdea: experiment.raw_idea ?? null,
-          sparkMetric,
-          isFocused: sparkPanelOpen || overlayAct === "spark",
-          isRunning: isActRunning("spark", experiment.status),
-          currentSparkVersion,
-        },
+        data: experimentHasOriginalIdea(experiment)
+          ? {
+              originalIdea: experiment.original_idea ?? "",
+              capturedAt: experiment.original_idea_captured_at ?? null,
+              theme: experiment.idea_theme ?? null,
+              attachments: originAttachmentsForArtifact(
+                experiment.id,
+                experiment.origin_attachments,
+              ),
+            }
+          : {
+              rawIdea: experiment.raw_idea ?? null,
+              sparkMetric: {
+                value: "LOCKED",
+                state: "locked" as SparkMetricState,
+              },
+              isFocused: false,
+              isRunning: false,
+              currentSparkVersion,
+            },
       },
       ...ACT_NODE_IDS.map((id) => {
         const config = ACT_CONFIG[id];
@@ -455,7 +474,11 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       }),
     ];
 
-    if (sparkPanelOpen && sparkPanelPosition) {
+    if (
+      sparkPanelOpen &&
+      sparkPanelPosition &&
+      !experimentHasOriginalIdea(experiment)
+    ) {
       base.push({
         id: SPARK_EXPANDED_ID,
         type: "sparkExpanded",
@@ -594,7 +617,8 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     }
 
     if (node.id === "spark") {
-      openPhaseOverlay("spark");
+      // Soft-hide spark editor: post-capture shows Origin Artifact (read-only).
+      // Pre-capture is locked via getNodeLockState — never open the editable surface.
       return;
     }
     if (node.id === "refine") {
@@ -703,6 +727,8 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         onCollapsedChange={setChatDockCollapsed}
         currentOpenPhase={overlayAct}
         onOpenPhase={openPhaseOverlay}
+        needsIdeaCapture={!experimentHasOriginalIdea(experiment)}
+        onIdeaCaptured={onExperimentRefresh}
       />
       <DeepDiveOverlay
         isOpen={overlayAct !== null}

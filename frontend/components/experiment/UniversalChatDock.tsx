@@ -28,11 +28,14 @@ import { ChatMarkdown } from "@/components/chat/ChatMarkdown";
 import { MessageAttachments } from "@/components/experiment/refine/MessageAttachments";
 import { useToast } from "@/components/ui/ToastProvider";
 import {
+  ApiError,
   cancelUniversalChatTurn,
+  captureExperimentIdea,
   getUniversalChatMessages,
   streamUniversalChatMessage,
   uploadChatAttachments,
 } from "@/lib/api";
+import { IdeaCaptureCard } from "@/components/experiment/IdeaCaptureCard";
 import { downscaleImageForUpload } from "@/lib/downscale-image";
 import { parseRefAnchor, tokenizeCitations } from "@/lib/parse-citations";
 import { setPendingEvidenceFocus } from "@/lib/pending-evidence-focus";
@@ -651,6 +654,10 @@ type Props = {
     phase: UniversalOpenPhase,
     options?: { sourceRef?: ResearchSubagentSourceRef | null },
   ) => void;
+  /** When true, show the one-shot idea capture card as the first turn. */
+  needsIdeaCapture?: boolean;
+  /** After successful capture — parent refreshes experiment detail. */
+  onIdeaCaptured?: () => void | Promise<void>;
 };
 
 type DockMessage = ChatHistoryMessage & {
@@ -834,9 +841,12 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   onCollapsedChange,
   currentOpenPhase = null,
   onOpenPhase,
+  needsIdeaCapture = false,
+  onIdeaCaptured,
 }: Props) {
   const { toast } = useToast();
   const [collapsed, setCollapsed] = useState(false);
+  const [capturing, setCapturing] = useState(false);
   const [messages, setMessages] = useState<DockMessage[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -868,10 +878,41 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     : named
       ? `Ask anything about ${named}`
       : "Ask anything about this project";
-  const emptyCopy = named
-    ? `Ask me anything about ${named}.`
-    : "Ask me anything about your project.";
+  const emptyCopy = needsIdeaCapture
+    ? "Capture your original idea to unlock the canvas."
+    : named
+      ? `Ask me anything about ${named}.`
+      : "Ask me anything about your project.";
 
+  const handleIdeaCapture = useCallback(
+    async (payload: { ideaText: string; attachmentIds: string[] }) => {
+      if (capturing) return;
+      setCapturing(true);
+      try {
+        await captureExperimentIdea(experimentId, {
+          idea_text: payload.ideaText,
+          attachment_ids: payload.attachmentIds,
+        });
+        await onIdeaCaptured?.();
+        // Reload rail so the persisted confirmation message appears.
+        const history = await getUniversalChatMessages(experimentId);
+        setMessages(history.messages ?? []);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409) {
+          await onIdeaCaptured?.();
+          return;
+        }
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : "Couldn’t capture your idea. Try again.";
+        toast(message, "error");
+      } finally {
+        setCapturing(false);
+      }
+    },
+    [capturing, experimentId, onIdeaCaptured, toast],
+  );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1101,7 +1142,9 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     const key = collapseStorageKey(experimentId);
     const raw = localStorage.getItem(key);
     let next = false;
-    if (raw === "1") {
+    if (needsIdeaCapture) {
+      next = false;
+    } else if (raw === "1") {
       next = true;
     } else if (raw === "0") {
       next = false;
@@ -1110,8 +1153,14 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     }
     setCollapsed(next);
     onCollapsedChange?.(next);
-  }, [experimentId, onCollapsedChange]);
+  }, [experimentId, onCollapsedChange, needsIdeaCapture]);
 
+  useEffect(() => {
+    if (needsIdeaCapture) {
+      setCollapsed(false);
+      onCollapsedChange?.(false);
+    }
+  }, [needsIdeaCapture, onCollapsedChange]);
   useEffect(() => {
     return () => {
       // Abort SSE only — do NOT cancel the server turn on unmount/reload.
@@ -1940,7 +1989,17 @@ export const UniversalChatDock = memo(function UniversalChatDock({
         <div ref={scrollAnchorRef} />
       </div>
 
-      {pendingQuestion ? (
+      {needsIdeaCapture ? (
+        <div className="shrink-0 px-4 pb-3 pt-2">
+          <div className="overflow-hidden rounded-md border border-border-master">
+            <IdeaCaptureCard
+              disabled={capturing}
+              submitting={capturing}
+              onCapture={handleIdeaCapture}
+            />
+          </div>
+        </div>
+      ) : pendingQuestion ? (
         <div className="shrink-0 px-4 pb-3 pt-2">
           <div className="overflow-hidden rounded-t-md">
             <QuestionCard
