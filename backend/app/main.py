@@ -54,7 +54,7 @@ from app.routers.experiment_activity import router as experiment_activity_router
 from app.routers.experiment_attachments import router as experiment_attachments_router
 from app.routers.experiment_refine import router as experiment_refine_router
 from app.routers.experiment_resources import router as experiment_resources_router
-from app.routers.experiment_spark import router as experiment_spark_router
+from app.routers.experiment_refine import router as experiment_refine_router
 from app.routers.experiments import router as experiments_router
 from app.routers.health import router as health_router
 from app.routers.launch_kit import router as launch_kit_router
@@ -239,7 +239,6 @@ app.include_router(launch_kit_router)
 app.include_router(canvas_layout_router)
 app.include_router(experiment_resources_router)
 app.include_router(experiment_attachments_router)
-app.include_router(experiment_spark_router)
 app.include_router(experiment_refine_router)
 app.include_router(experiment_activity_router)
 app.include_router(chat_router)

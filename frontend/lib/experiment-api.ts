@@ -11,7 +11,6 @@ import type {
   ExperimentResource,
   NodePosition,
   ResourceType,
-  SparkVersion,
 } from "./types";
 import { apiFetch } from "./api";
 import { getFirebaseAuth } from "./firebase";
@@ -106,24 +105,6 @@ export async function createExperimentEvent(
     method: "POST",
     body: payload,
   });
-}
-
-export async function saveSparkVersion(
-  experimentId: string,
-  payload: { raw_idea: string },
-): Promise<SparkVersion> {
-  return apiFetch<SparkVersion>(`/experiments/${experimentId}/spark/save`, {
-    method: "POST",
-    body: payload,
-  });
-}
-
-export async function listSparkVersions(
-  experimentId: string,
-): Promise<SparkVersion[]> {
-  return apiFetch<SparkVersion[]>(
-    `/experiments/${experimentId}/spark/versions`,
-  );
 }
 
 export async function rerunEvidence(

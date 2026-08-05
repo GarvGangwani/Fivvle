@@ -18,7 +18,6 @@ import { ArchiveProjectDialog } from "@/components/experiment/ArchiveProjectDial
 import { ACT_CONFIG } from "@/components/experiment/act-config";
 import { RefinePhaseBody } from "@/components/experiment/refine/RefinePhaseBody";
 import type { RefineChatMessageModel } from "@/components/experiment/refine/RefineChatMessage";
-import { SparkPhaseBody } from "@/components/experiment/spark/SparkPhaseBody";
 import { EvidenceStagePanel } from "@/components/research/EvidenceStagePanel";
 import {
   LaunchStagePanel,
@@ -31,14 +30,10 @@ import type { Experiment, ExperimentStatus, FounderDecision } from "@/lib/types"
 import { useToast } from "@/components/ui/ToastProvider";
 
 export type DeepDiveAct =
-  | "spark"
   | "refine"
   | "evidence"
   | "launch"
   | "signal";
-
-const SPARK_DISCARD_CONFIRM =
-  "You have unsaved changes in Spark. Close without saving?";
 
 /** Expanded: dock right-6 + 480px + 24px gap between panel and dock */
 const PANEL_RIGHT_EXPANDED = "right-[calc(480px+3rem)]";
@@ -105,23 +100,14 @@ export function DeepDiveOverlay({
   const [landingRefreshKey, setLandingRefreshKey] = useState(0);
   const [resolvedProjectName, setResolvedProjectName] = useState(projectName);
   const [republishing, setRepublishing] = useState(false);
-  const [sparkDirty, setSparkDirty] = useState(false);
 
   useEffect(() => {
     setResolvedProjectName(projectName);
   }, [projectName]);
 
-  useEffect(() => {
-    if (act !== "spark") setSparkDirty(false);
-  }, [act]);
-
   const requestClose = useCallback(() => {
-    if (act === "spark" && sparkDirty) {
-      const confirmed = window.confirm(SPARK_DISCARD_CONFIRM);
-      if (!confirmed) return;
-    }
     onClose();
-  }, [act, sparkDirty, onClose]);
+  }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -333,15 +319,7 @@ export function DeepDiveOverlay({
           </div>
         </div>
 
-        {act === "spark" ? (
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <SparkPhaseBody
-              experiment={experiment}
-              onExperimentChange={onExperimentChange}
-              onDirtyChange={setSparkDirty}
-            />
-          </div>
-        ) : act === "refine" && refinePanel ? (
+        {act === "refine" && refinePanel ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <RefinePhaseBody
               experiment={experiment}

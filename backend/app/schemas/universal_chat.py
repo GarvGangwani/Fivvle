@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.chat import ChatMessageItem
 
-UniversalOpenPhase = Literal["spark", "refine", "evidence", "launch", "signal"]
+UniversalOpenPhase = Literal["refine", "evidence", "launch", "signal"]
 
 
 class UniversalMcqAnswer(BaseModel):

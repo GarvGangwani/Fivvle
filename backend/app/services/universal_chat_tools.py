@@ -355,7 +355,7 @@ async def _exec_get_research_context(
     }
 
 
-_OPEN_PHASE_VALUES = ("spark", "refine", "evidence", "launch", "signal")
+_OPEN_PHASE_VALUES = ("refine", "evidence", "launch", "signal")
 
 _OPEN_PHASE_PANEL_INPUT_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -364,7 +364,7 @@ _OPEN_PHASE_PANEL_INPUT_SCHEMA: dict[str, Any] = {
             "type": "string",
             "enum": list(_OPEN_PHASE_VALUES),
             "description": (
-                "Phase panel to open: spark, refine, evidence, launch, or signal."
+                "Phase panel to open: refine, evidence, launch, or signal."
             ),
         },
         "source_ref_id": {
@@ -390,7 +390,7 @@ async def _exec_open_phase_panel(
     _ = db, experiment, user
     phase = args.get("phase") if isinstance(args, dict) else None
     if not isinstance(phase, str) or phase not in _OPEN_PHASE_VALUES:
-        return {"error": "phase must be one of spark|refine|evidence|launch|signal"}
+        return {"error": "phase must be one of refine|evidence|launch|signal"}
     source_ref_id = args.get("source_ref_id")
     if source_ref_id is not None and not isinstance(source_ref_id, str):
         source_ref_id = None
@@ -458,11 +458,11 @@ _TOOLS: tuple[UniversalChatTool, ...] = (
     UniversalChatTool(
         name="open_phase_panel",
         description=(
-            "Open a phase panel (spark, refine, evidence, launch, signal) so the "
+            "Open a phase panel (refine, evidence, launch, signal) so the "
             "founder can see the artifact. Use after research answers or refine "
             "when the founder should look at the report or refine surface. Do not "
             "call if that phase is already current_open_phase. Do not open for "
-            "metrics-only answers."
+            "metrics-only answers. Origin capture lives in chat — never open spark."
         ),
         input_schema=_OPEN_PHASE_PANEL_INPUT_SCHEMA,
         executor=_exec_open_phase_panel,

@@ -119,7 +119,7 @@ card (e.g. "Use the capture card below to seal your original idea first.").
 - If has_original_idea: true, proceed with normal coaching below.
 
 Open-phase awareness:
-project_context may include current_open_phase (spark / refine / evidence / \
+project_context may include current_open_phase (refine / evidence / \
 launch / signal, or null). When set, referential questions ("this finding", \
 "the report", "this positioning") refer to that phase's artifact.
 
