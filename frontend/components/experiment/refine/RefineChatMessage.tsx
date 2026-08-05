@@ -81,7 +81,7 @@ const BRUTALIST_MARKDOWN_COMPONENTS: Components = {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-brand-primary underline hover:no-underline"
+        className="text-accent underline hover:no-underline"
       >
         {children}
       </a>
@@ -121,7 +121,7 @@ const BRUTALIST_MARKDOWN_COMPONENTS: Components = {
     </ol>
   ),
   blockquote: ({ children }) => (
-    <blockquote className="border-l-4 border-brand-primary pl-4 italic my-2 text-ink-secondary">
+    <blockquote className="border-l-4 border-accent pl-4 italic my-2 text-ink-secondary">
       {children}
     </blockquote>
   ),
@@ -234,7 +234,7 @@ function UserMessage({
   return (
     <div className="flex justify-end gap-3 mb-6">
       <div className="max-w-[75%] flex flex-col items-end">
-        <div className="rounded-md border-2 border-border-master bg-brand-primary-soft shadow-brutal-sm p-4">
+        <div className="rounded-md border-2 border-border-master bg-accent-muted shadow-brutal-sm p-4">
           {message.content ? (
             <p className="font-body text-body-md whitespace-pre-wrap">
               {message.content}
@@ -300,7 +300,7 @@ function AssistantMessage({
   return (
     <div className="flex justify-start mb-6">
       <div className="max-w-[85%]">
-        <p className="font-mono text-mono-sm uppercase text-brand-primary mb-2 flex items-center gap-2">
+        <p className="font-mono text-mono-sm uppercase text-accent mb-2 flex items-center gap-2">
           REFINER
           {isCompletionSignal ? (
             <span className="bg-brutalist-yellow text-ink-primary px-2 py-0.5 font-mono text-mono-sm uppercase">
@@ -313,7 +313,7 @@ function AssistantMessage({
             "rounded-md border-2 border-border-master border-l-4 bg-surface-elevated shadow-brutal-sm p-4",
             isCompletionSignal
               ? "border-l-brutalist-yellow"
-              : "border-l-brand-primary",
+              : "border-l-accent",
             message.error ? "opacity-80" : "",
           ]
             .filter(Boolean)
@@ -321,13 +321,13 @@ function AssistantMessage({
         >
           {isRegenerating ? (
             <div className="flex items-center gap-3">
-              <div className="w-2 h-2 bg-brand-primary animate-pulse" />
+              <div className="w-2 h-2 bg-accent animate-pulse" />
               <div
-                className="w-2 h-2 bg-brand-primary animate-pulse"
+                className="w-2 h-2 bg-accent animate-pulse"
                 style={{ animationDelay: "150ms" }}
               />
               <div
-                className="w-2 h-2 bg-brand-primary animate-pulse"
+                className="w-2 h-2 bg-accent animate-pulse"
                 style={{ animationDelay: "300ms" }}
               />
               <span className="font-mono text-mono-sm uppercase text-ink-tertiary ml-2">
@@ -348,7 +348,7 @@ function AssistantMessage({
               ) : null}
               {message.is_streaming ? (
                 <span
-                  className="animate-pulse text-brand-primary"
+                  className="animate-pulse text-accent"
                   aria-hidden="true"
                 >
                   ▊
@@ -361,7 +361,7 @@ function AssistantMessage({
                     <button
                       type="button"
                       onClick={() => onReopenMCQ?.(message.id)}
-                      className="mt-4 w-full border-2 border-dashed border-brand-primary bg-surface-card hover:bg-brand-primary hover:text-ink-inverse px-4 py-3 font-label-md text-label-md uppercase tracking-wider text-brand-primary transition-all flex items-center justify-center gap-2"
+                      className="mt-4 w-full border-2 border-dashed border-accent bg-surface-card hover:bg-accent hover:text-ink-inverse px-4 py-3 font-label-md text-label-md uppercase tracking-wider text-accent transition-all flex items-center justify-center gap-2"
                     >
                       <span
                         className="material-symbols-outlined"

@@ -8,7 +8,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
   return (
     <div className="canvas-grid-bg relative flex min-h-screen flex-col overflow-hidden bg-canvas-bg text-ink-primary">
       <div
-        className="pointer-events-none absolute -left-16 top-24 hidden h-48 w-48 rotate-12 border-2 border-dashed border-brand-primary opacity-20 lg:block"
+        className="pointer-events-none absolute -left-16 top-24 hidden h-48 w-48 rotate-12 border-2 border-dashed border-accent opacity-20 lg:block"
         aria-hidden="true"
       />
       <div
@@ -42,7 +42,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
         aria-hidden="true"
       >
         <div className="h-1 w-24 bg-ink-primary" />
-        <div className="h-1 w-16 bg-brand-primary" />
+        <div className="h-1 w-16 bg-accent" />
         <div className="h-1 w-32 bg-ink-tertiary" />
       </div>
       <p className="pointer-events-none fixed bottom-6 right-6 z-10 font-mono text-mono-sm uppercase tracking-wider text-ink-primary">

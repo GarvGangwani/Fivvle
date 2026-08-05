@@ -73,7 +73,7 @@ export function ComingSoonPage({
       <main className="canvas-grid-bg relative flex flex-1 flex-col border-b-2 border-border-master pt-16">
         <div className="flex flex-1 items-center justify-center px-gutter py-24">
           <article className="mx-auto w-full max-w-2xl rounded-md border-2 border-border-master bg-surface-card p-12 shadow-brutal-md">
-            <p className="font-label-md text-label-md uppercase text-brand-primary">
+            <p className="font-label-md text-label-md uppercase text-accent">
               {eyebrow}
             </p>
             <h1 className="mt-4 font-display text-display-lg uppercase leading-none text-ink-primary">
@@ -95,13 +95,13 @@ export function ComingSoonPage({
                     disabled={status === "done"}
                     placeholder="you@company.com"
                     autoComplete="email"
-                    className="w-full rounded-md border-2 border-border-master bg-canvas-bg px-4 py-3 font-body-md text-body-md shadow-brutal-sm focus:border-brand-primary focus:outline-none disabled:opacity-60"
+                    className="w-full rounded-md border-2 border-border-master bg-canvas-bg px-4 py-3 font-body-md text-body-md shadow-brutal-sm focus:border-accent focus:outline-none disabled:opacity-60"
                   />
                 </label>
                 <button
                   type="submit"
                   disabled={status === "loading" || status === "done"}
-                  className={`${marketingButtonClass} bg-brand-primary px-8 py-4 font-bold uppercase tracking-wider text-ink-inverse disabled:opacity-60`}
+                  className={`${marketingButtonClass} bg-accent px-8 py-4 font-bold uppercase tracking-wider text-ink-inverse disabled:opacity-60`}
                 >
                   {status === "loading" ? "SUBMITTING…" : ctaLabel}
                 </button>
@@ -126,14 +126,14 @@ export function ComingSoonPage({
             ) : isMailto ? (
               <a
                 href={ctaHref}
-                className={`${marketingButtonClass} mt-10 inline-flex bg-brand-primary px-8 py-4 font-bold uppercase tracking-wider text-ink-inverse no-underline`}
+                className={`${marketingButtonClass} mt-10 inline-flex bg-accent px-8 py-4 font-bold uppercase tracking-wider text-ink-inverse no-underline`}
               >
                 {ctaLabel}
               </a>
             ) : (
               <Link
                 href={ctaHref}
-                className={`${marketingButtonClass} mt-10 inline-flex bg-brand-primary px-8 py-4 font-bold uppercase tracking-wider text-ink-inverse no-underline`}
+                className={`${marketingButtonClass} mt-10 inline-flex bg-accent px-8 py-4 font-bold uppercase tracking-wider text-ink-inverse no-underline`}
               >
                 {ctaLabel}
               </Link>

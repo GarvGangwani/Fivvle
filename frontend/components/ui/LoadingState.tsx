@@ -13,7 +13,7 @@ export function LoadingState({
     <div
       className={`flex flex-col items-center justify-center gap-3 py-16 ${className}`}
     >
-      <Loader2 className="h-6 w-6 animate-spin text-[var(--fv-accent)]" />
+      <Loader2 className="h-6 w-6 animate-spin text-accent" />
       <p className="text-sm text-[var(--fv-text-muted)]">{label}</p>
     </div>
   );

@@ -39,6 +39,7 @@ import type {
   ValidationReport,
   WaitlistSignupsResponse,
 } from "./types";
+import type { ThemePaletteName } from "./theme-palettes";
 const API_BASE = (
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"
 ).replace(/\/+$/, "");
@@ -205,6 +206,17 @@ export async function captureExperimentIdea(
       body,
     },
   );
+}
+
+/** Activate a curated canvas palette. Null reverts to the platform default. */
+export async function setExperimentTheme(
+  id: string,
+  paletteName: ThemePaletteName | null,
+): Promise<Experiment> {
+  return apiFetch<Experiment>(`/experiments/${id}/theme`, {
+    method: "PATCH",
+    body: { palette_name: paletteName },
+  });
 }
 
 export async function renameExperiment(

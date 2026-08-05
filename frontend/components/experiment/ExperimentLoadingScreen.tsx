@@ -27,7 +27,7 @@ export function ExperimentLoadingScreen({ projectName }: Props) {
       <div className="relative flex w-full max-w-md flex-col gap-6 rounded-lg border-2 border-border-master bg-surface-card p-8 shadow-brutal-lg">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 flex-col">
-            <span className="mb-2 font-mono text-mono-sm uppercase tracking-wider text-brand-primary">
+            <span className="mb-2 font-mono text-mono-sm uppercase tracking-wider text-accent">
               OPENING WORKSPACE
             </span>
             {projectName ? (
@@ -39,16 +39,16 @@ export function ExperimentLoadingScreen({ projectName }: Props) {
             )}
           </div>
           <div className="mt-2 flex shrink-0 gap-1">
-            <span className="h-2 w-2 animate-pulse bg-brand-primary" />
-            <span className="h-2 w-2 bg-brand-primary/40" />
-            <span className="h-2 w-2 bg-brand-primary/10" />
+            <span className="h-2 w-2 animate-pulse bg-accent" />
+            <span className="h-2 w-2 bg-accent/40" />
+            <span className="h-2 w-2 bg-accent/10" />
           </div>
         </div>
 
         <div className="w-full">
           <div className="relative h-4 w-full overflow-hidden rounded-sm border-2 border-border-master bg-surface-card">
             <div
-              className="h-full bg-brand-primary transition-all duration-300 ease-out"
+              className="h-full bg-accent transition-all duration-300 ease-out"
               style={{ width: `${progress}%` }}
             />
           </div>
@@ -64,7 +64,7 @@ export function ExperimentLoadingScreen({ projectName }: Props) {
 
         <div className="flex items-end justify-between border-t-2 border-border-master/20 pt-4">
           <div className="flex items-center gap-2">
-            <div className="h-1.5 w-1.5 animate-ping bg-brand-primary" />
+            <div className="h-1.5 w-1.5 animate-ping bg-accent" />
             <span className="font-mono text-mono-sm uppercase text-ink-tertiary">
               FIVVLE
             </span>

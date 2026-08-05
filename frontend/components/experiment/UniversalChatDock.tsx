@@ -243,7 +243,7 @@ function QuestionCard({
       className="flex max-h-[min(50vh,24rem)] w-full flex-col rounded-t-md rounded-b-none border border-b-0 border-border-master bg-[var(--fv-surface-muted)] px-2.5 pb-2 pt-2"
     >
       <div className="shrink-0 space-y-1.5 pb-2">
-        <p className="font-mono text-mono-sm uppercase tracking-[0.14em] text-[var(--fv-accent)]">
+        <p className="font-mono text-mono-sm uppercase tracking-[0.14em] text-accent">
           Question
         </p>
         {question ? (
@@ -274,7 +274,7 @@ function QuestionCard({
               }}
               className={`group relative flex w-full items-start gap-2 overflow-hidden rounded-sm border bg-[var(--fv-surface-card)] py-1.5 pl-3 pr-2 text-left transition-[background-color,border-color,transform] duration-100 ease-out disabled:cursor-not-allowed disabled:opacity-50 ${
                 isSelected
-                  ? "border-[var(--fv-accent)] bg-[var(--fv-brand-soft)]"
+                  ? "border-accent bg-accent-muted"
                   : "border-border-master hover:border-[color-mix(in_srgb,var(--fv-accent)_55%,var(--fv-border-master))] hover:bg-[color-mix(in_srgb,var(--fv-accent)_6%,var(--fv-surface-card))] active:translate-x-px"
               }`}
             >
@@ -282,15 +282,15 @@ function QuestionCard({
                 aria-hidden
                 className={`absolute inset-y-0 left-0 w-[3px] transition-colors duration-100 ${
                   isSelected
-                    ? "bg-[var(--fv-accent)]"
-                    : "bg-transparent group-hover:bg-[var(--fv-accent)]"
+                    ? "bg-accent"
+                    : "bg-transparent group-hover:bg-accent"
                 }`}
               />
               <span
                 className={`mt-px shrink-0 font-mono text-[10px] font-medium tabular-nums leading-none tracking-tight transition-colors duration-100 ${
                   isSelected
-                    ? "text-[var(--fv-accent)]"
-                    : "text-ink-tertiary group-hover:text-[var(--fv-accent)]"
+                    ? "text-accent"
+                    : "text-ink-tertiary group-hover:text-accent"
                 }`}
               >
                 {String(opt.index + 1).padStart(2, "0")}
@@ -300,7 +300,7 @@ function QuestionCard({
               </span>
               {selectionMode === "multiple" && isSelected ? (
                 <Check
-                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[var(--fv-accent)]"
+                  className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent"
                   aria-hidden
                   strokeWidth={2.5}
                 />
@@ -324,7 +324,7 @@ function QuestionCard({
             type="button"
             disabled={disabled || !onAnswer || selected.length === 0}
             onClick={() => submit(selected)}
-            className="h-7 shrink-0 rounded-sm border border-border-master bg-[var(--fv-accent)] px-3 font-mono text-[10px] uppercase tracking-wider text-white transition-colors hover:bg-[var(--fv-accent-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+            className="h-7 shrink-0 rounded-sm border border-border-master bg-accent px-3 font-mono text-[10px] uppercase tracking-wider text-accent-fg transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
           >
             Submit
           </button>
@@ -430,7 +430,7 @@ function InlineCitationChip({
 }) {
   const [faviconFailed, setFaviconFailed] = useState(false);
   const className =
-    "ml-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center align-text-bottom text-ink-tertiary transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--fv-accent)]";
+    "ml-0.5 inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center align-text-bottom text-ink-tertiary transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent-ring";
 
   let body: ReactNode;
   if (variant === "report") {
@@ -657,6 +657,11 @@ type Props = {
   needsIdeaCapture?: boolean;
   /** After successful capture — parent refreshes experiment detail. */
   onIdeaCaptured?: () => void | Promise<void>;
+  /**
+   * Ask the founder about the AI-suggested canvas palette. Resolves once they
+   * answer (either way), which is what holds the refine handoff until then.
+   */
+  onPaletteSuggested?: (paletteName: string) => Promise<void>;
 };
 
 type DockMessage = ChatHistoryMessage & {
@@ -842,6 +847,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   onOpenPhase,
   needsIdeaCapture = false,
   onIdeaCaptured,
+  onPaletteSuggested,
 }: Props) {
   const { toast } = useToast();
   const [collapsed, setCollapsed] = useState(false);
@@ -915,7 +921,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
       if (capturing) return;
       setCapturing(true);
       try {
-        await captureExperimentIdea(experimentId, {
+        const captured = await captureExperimentIdea(experimentId, {
           idea_text: payload.ideaText,
           attachment_ids: payload.attachmentIds,
         });
@@ -924,6 +930,9 @@ export const UniversalChatDock = memo(function UniversalChatDock({
         setMessages(history.messages ?? []);
         setPendingQuestion(pendingQuestionFromMessages(history.messages ?? []));
         forceScrollRef.current = true;
+
+        // Founder answers the theme suggestion before refine takes over the canvas.
+        await onPaletteSuggested?.(captured.suggested_palette);
 
         // Agent-initiated refine handoff — no new founder message.
         const abort = new AbortController();
@@ -1066,6 +1075,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
       experimentId,
       onIdeaCaptured,
       onOpenPhase,
+      onPaletteSuggested,
       resetStreamingState,
       toast,
     ],
@@ -1967,14 +1977,14 @@ export const UniversalChatDock = memo(function UniversalChatDock({
                   </div>
                   {item.status === "uploading" ? (
                     <Loader2
-                      className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--fv-accent)]"
+                      className="h-3.5 w-3.5 shrink-0 animate-spin text-accent"
                       aria-hidden
                     />
                   ) : item.status === "error" ? (
                     <button
                       type="button"
                       onClick={() => retryDraftAttachment(item.localId)}
-                      className="shrink-0 px-1 font-mono text-[10px] uppercase text-[var(--fv-accent)] hover:underline"
+                      className="shrink-0 px-1 font-mono text-[10px] uppercase text-accent hover:underline"
                     >
                       Retry
                     </button>
@@ -1984,7 +1994,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
                     onClick={() => removeDraftAttachment(item.localId)}
                     aria-label={`Remove ${item.filename}`}
                     disabled={sending}
-                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[var(--fv-text-muted)] hover:bg-[var(--fv-accent-muted)] hover:text-[var(--fv-text)] disabled:opacity-40"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[var(--fv-text-muted)] hover:bg-accent-muted hover:text-[var(--fv-text)] disabled:opacity-40"
                   >
                     <X className="h-3.5 w-3.5" aria-hidden />
                   </button>
@@ -2026,7 +2036,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
       }
       title="Attach file"
       aria-label="Attach file"
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-[var(--fv-text-muted)] transition-colors hover:bg-[var(--fv-accent-muted)] hover:text-[var(--fv-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-[var(--fv-text-muted)] transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
     >
       <Plus className="h-4 w-4" aria-hidden />
     </button>
@@ -2041,7 +2051,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
           className="flex h-full min-h-[140px] w-full flex-col items-center justify-center gap-2 py-4 text-[var(--fv-text)]"
           aria-label="Open universal chat"
         >
-          <MessageSquare className="h-4 w-4 text-[var(--fv-accent)]" aria-hidden />
+          <MessageSquare className="h-4 w-4 text-accent" aria-hidden />
           <span className="font-label-md text-label-sm uppercase tracking-widest [writing-mode:vertical-rl]">
             CHAT
           </span>
@@ -2054,7 +2064,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     <aside
       className={`fixed bottom-6 right-6 top-6 z-[80] flex w-[480px] flex-col overflow-hidden rounded-md border-2 bg-[var(--fv-surface-card)] shadow-brutal-md ${
         dragActive
-          ? "border-[var(--fv-accent)]"
+          ? "border-accent"
           : "border-border-master"
       }`}
       onDragEnter={onDragEnter}
@@ -2067,7 +2077,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
           className="pointer-events-none absolute inset-0 z-20 flex items-center justify-center bg-[color-mix(in_srgb,var(--fv-accent)_12%,transparent)]"
           aria-hidden
         >
-          <div className="rounded-md border-2 border-dashed border-[var(--fv-accent)] bg-[var(--fv-surface-card)] px-4 py-3 font-mono text-mono-sm uppercase tracking-wide text-[var(--fv-accent)] shadow-brutal-sm">
+          <div className="rounded-md border-2 border-dashed border-accent bg-[var(--fv-surface-card)] px-4 py-3 font-mono text-mono-sm uppercase tracking-wide text-accent shadow-brutal-sm">
             Drop files to attach
           </div>
         </div>
@@ -2252,7 +2262,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
                   rows={1}
                   placeholder={placeholder}
                   aria-label={placeholder}
-                  className="min-h-[40px] min-w-0 flex-1 resize-none rounded-md border border-[var(--fv-border)] bg-[var(--fv-surface-2)] px-3 py-2 text-sm text-[var(--fv-text)] placeholder:text-[var(--fv-text-muted)] focus:border-[var(--fv-accent)] focus:outline-none disabled:opacity-60"
+                  className="min-h-[40px] min-w-0 flex-1 resize-none rounded-md border border-[var(--fv-border)] bg-[var(--fv-surface-2)] px-3 py-2 text-sm text-[var(--fv-text)] placeholder:text-[var(--fv-text-muted)] focus:border-accent focus:outline-none disabled:opacity-60"
                   style={{ maxHeight: TEXTAREA_MAX_PX }}
                 />
                 <button
@@ -2263,7 +2273,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
                   disabled={sending ? false : !canSend}
                   aria-label={sending ? "Stop generating" : "Send message"}
                   title={sending ? "Stop" : "Send"}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--fv-accent)] text-white transition-colors hover:bg-[var(--fv-accent-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-accent text-accent-fg transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {sending ? (
                     <Square className="h-3.5 w-3.5 fill-current" aria-hidden />
@@ -2289,7 +2299,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
               rows={1}
               placeholder={placeholder}
               aria-label={placeholder}
-              className="min-h-[40px] min-w-0 flex-1 resize-none rounded-md border border-[var(--fv-border)] bg-[var(--fv-surface-2)] px-3 py-2 text-sm text-[var(--fv-text)] placeholder:text-[var(--fv-text-muted)] focus:border-[var(--fv-accent)] focus:outline-none disabled:opacity-60"
+              className="min-h-[40px] min-w-0 flex-1 resize-none rounded-md border border-[var(--fv-border)] bg-[var(--fv-surface-2)] px-3 py-2 text-sm text-[var(--fv-text)] placeholder:text-[var(--fv-text-muted)] focus:border-accent focus:outline-none disabled:opacity-60"
               style={{ maxHeight: TEXTAREA_MAX_PX }}
             />
             <button
@@ -2300,7 +2310,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
               disabled={sending ? false : !canSend}
               aria-label={sending ? "Stop generating" : "Send message"}
               title={sending ? "Stop" : "Send"}
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[var(--fv-accent)] text-white transition-colors hover:bg-[var(--fv-accent-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-accent text-accent-fg transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
             >
               {sending ? (
                 <Square className="h-3.5 w-3.5 fill-current" aria-hidden />
@@ -2348,7 +2358,7 @@ function TypingIndicator() {
       {[0, 150, 300].map((delay) => (
         <span
           key={delay}
-          className="h-2 w-2 animate-pulse rounded-full bg-[var(--fv-accent)]"
+          className="h-2 w-2 animate-pulse rounded-full bg-accent"
           style={{ animationDelay: `${delay}ms` }}
         />
       ))}
@@ -2403,7 +2413,7 @@ function MessageRow({
               value={editDraft}
               onChange={(e) => onEditDraftChange?.(e.target.value)}
               rows={3}
-              className="w-full resize-y rounded-md border-2 border-[var(--fv-accent)] bg-[var(--fv-surface-2)] p-3 font-body text-body-sm text-[var(--fv-text)] focus:outline-none"
+              className="w-full resize-y rounded-md border-2 border-accent bg-[var(--fv-surface-2)] p-3 font-body text-body-sm text-[var(--fv-text)] focus:outline-none"
               aria-label="Edit message"
               autoFocus
             />
@@ -2422,7 +2432,7 @@ function MessageRow({
                 type="button"
                 onClick={onSaveEdit}
                 disabled={!editDraft.trim() && attachments.length === 0}
-                className="rounded-md bg-[var(--fv-accent)] px-3 py-1 font-mono text-[10px] uppercase text-white disabled:opacity-40"
+                className="rounded-md bg-accent px-3 py-1 font-mono text-[10px] uppercase text-accent-fg disabled:opacity-40"
               >
                 Save
               </button>
@@ -2436,7 +2446,7 @@ function MessageRow({
       <div className="group flex justify-end">
         <div className="flex max-w-[85%] flex-col items-end gap-1">
           <div
-            className={`rounded-md border-2 border-border-master bg-[var(--fv-accent-muted)] p-3 shadow-brutal-sm ${
+            className={`rounded-md border-2 border-border-master bg-accent-muted p-3 shadow-brutal-sm ${
               message.error ? "opacity-80" : ""
             } ${message.optimistic && !message.error ? "opacity-90" : ""}`}
           >
@@ -2465,7 +2475,7 @@ function MessageRow({
               <button
                 type="button"
                 onClick={onRetry}
-                className="text-xs text-[var(--fv-accent)] hover:underline"
+                className="text-xs text-accent hover:underline"
               >
                 Failed to send — retry
               </button>

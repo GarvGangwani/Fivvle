@@ -42,7 +42,7 @@ export function ProfileAvatar({
           />
         ) : (
           <span
-            className={`font-headline-md ${sizing.text} font-bold text-brand-primary`}
+            className={`font-headline-md ${sizing.text} font-bold text-accent`}
           >
             {initials}
           </span>

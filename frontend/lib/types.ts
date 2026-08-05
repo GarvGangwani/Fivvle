@@ -277,10 +277,12 @@ export interface Experiment {
   /** Immutable original idea text (null until captured). */
   original_idea?: string | null;
   original_idea_captured_at?: string | null;
-  /** Origin Artifact theme — violet | pink | green | orange. */
-  idea_theme?: string | null;
   /** Chat attachments frozen to the original idea at capture. */
   origin_attachments?: OriginFrozenAttachment[];
+  /** Active canvas palette. Null = platform default (founder purple). */
+  theme_palette?: string | null;
+  /** Palette the AI picked at capture, offered by the canvas theme control. */
+  suggested_palette?: string | null;
   /** Research validation overall_recommendation — not the founder Signal decision. */
   verdict?: string | null;
   founder_decision?: FounderDecision | null;
@@ -885,13 +887,12 @@ export interface ExperimentAttachment {
   created_at: string;
 }
 
-export type IdeaTheme = "violet" | "pink" | "green" | "orange";
-
 export interface CaptureIdeaResponse {
   experiment_id: string;
   original_idea: string;
   original_idea_captured_at: string;
-  idea_theme: IdeaTheme;
+  /** AI-classified palette. A suggestion only — needs founder consent. */
+  suggested_palette: string;
   frozen_attachments: Array<{
     id: string;
     original_filename: string;

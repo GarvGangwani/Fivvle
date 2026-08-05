@@ -179,7 +179,7 @@ export function PublishConfirmDialog({
                         {preview.subhead}
                       </p>
                     ) : null}
-                    <p className="mt-3 font-label-md text-label-sm uppercase text-brand-primary">
+                    <p className="mt-3 font-label-md text-label-sm uppercase text-accent">
                       {preview.cta}
                     </p>
                   </div>
@@ -202,7 +202,7 @@ export function PublishConfirmDialog({
             type="button"
             onClick={() => void handlePublish()}
             disabled={publishing || loading || !page}
-            className="flex-1 border-2 border-border-master bg-brand-primary px-4 py-3 font-label-md text-label-md uppercase text-ink-inverse shadow-brutal-md transition-all hover:shadow-brutal-lg disabled:opacity-50"
+            className="flex-1 border-2 border-border-master bg-accent px-4 py-3 font-label-md text-label-md uppercase text-ink-inverse shadow-brutal-md transition-all hover:shadow-brutal-lg disabled:opacity-50"
           >
             {publishing ? "Publishing…" : "Publish this page"}
           </button>

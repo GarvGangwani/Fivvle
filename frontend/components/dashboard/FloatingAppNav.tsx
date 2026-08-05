@@ -190,7 +190,7 @@ function AccountMenu({
 function barItemClass(active: boolean) {
   return `flex items-center gap-2 px-4 py-2 rounded-md text-sm transition-colors no-underline ${
     active
-      ? "text-[var(--fv-accent)] bg-[var(--fv-accent-muted)]"
+      ? "text-accent bg-accent-muted"
       : "text-[var(--fv-text-muted)] hover:text-[var(--fv-text)] hover:bg-[var(--fv-surface-2)]"
   }`;
 }
@@ -247,7 +247,7 @@ function DashboardNavBar() {
 function canvasItemClass(active: boolean) {
   return `group relative flex items-center justify-center rounded-md p-2.5 transition-colors no-underline ${
     active
-      ? "text-[var(--fv-accent)] bg-[var(--fv-accent-muted)]"
+      ? "text-accent bg-accent-muted"
       : "text-[var(--fv-text-muted)] hover:text-[var(--fv-text)] hover:bg-[var(--fv-surface-2)]"
   }`;
 }

@@ -237,7 +237,7 @@ export function LaunchDesignTab({
           <button
             type="button"
             onClick={onGenerateLandingPage}
-            className="border-2 border-border-master bg-brand-primary px-4 py-2 font-label-md text-label-md uppercase tracking-wider text-ink-inverse shadow-brutal-sm transition-all hover:shadow-brutal-md"
+            className="border-2 border-border-master bg-accent px-4 py-2 font-label-md text-label-md uppercase tracking-wider text-ink-inverse shadow-brutal-sm transition-all hover:shadow-brutal-md"
           >
             Generate landing page
           </button>

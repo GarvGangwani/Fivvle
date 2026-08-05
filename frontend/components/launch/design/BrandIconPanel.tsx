@@ -190,7 +190,7 @@ export function BrandIconPanel({
                   logo_url: v.trim() || undefined,
                 });
               }}
-              className="w-full border-2 border-border-master bg-surface-elevated px-2 py-1.5 font-mono text-body-sm outline-none focus:border-brand-primary disabled:opacity-50"
+              className="w-full border-2 border-border-master bg-surface-elevated px-2 py-1.5 font-mono text-body-sm outline-none focus:border-accent disabled:opacity-50"
             />
           </div>
         </div>
@@ -215,7 +215,7 @@ export function BrandIconPanel({
                 logo_emoji: v.trim() || undefined,
               });
             }}
-            className="w-20 border-2 border-border-master bg-surface-elevated px-2 py-1.5 text-center text-2xl outline-none focus:border-brand-primary disabled:opacity-50"
+            className="w-20 border-2 border-border-master bg-surface-elevated px-2 py-1.5 text-center text-2xl outline-none focus:border-accent disabled:opacity-50"
           />
         </div>
       ) : null}

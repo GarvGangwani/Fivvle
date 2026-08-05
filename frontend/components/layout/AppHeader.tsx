@@ -17,7 +17,7 @@ export function AppHeader({ badge, actions }: AppHeaderProps) {
               Fivvle
             </span>
           </Link>          {badge && (
-            <span className="rounded-full border border-[var(--fv-accent)]/30 bg-[var(--fv-accent-muted)] px-3 py-1 text-xs font-medium text-[var(--fv-accent)]">
+            <span className="rounded-full border border-accent/30 bg-accent-muted px-3 py-1 text-xs font-medium text-accent">
               {badge}
             </span>
           )}

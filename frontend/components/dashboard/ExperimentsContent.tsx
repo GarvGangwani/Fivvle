@@ -35,7 +35,7 @@ const DROPDOWN_CLASSES =
   "font-label-md text-label-md uppercase tracking-wider text-ink-primary " +
   "appearance-none pr-10 cursor-pointer " +
   "hover:shadow-brutal-md hover:-translate-x-0.5 hover:-translate-y-0.5 " +
-  "transition-all min-w-[140px] focus:border-brand-primary focus:outline-none";
+  "transition-all min-w-[140px] focus:border-accent focus:outline-none";
 
 function FilterDropdown({
   value,
@@ -196,7 +196,7 @@ export function ExperimentsContent() {
         </h1>
         <Link
           href="/new"
-          className={`${marketingButtonClass} inline-flex shrink-0 bg-brand-primary px-6 py-3 font-label-md text-label-md uppercase text-ink-inverse no-underline`}
+          className={`${marketingButtonClass} inline-flex shrink-0 bg-accent px-6 py-3 font-label-md text-label-md uppercase text-ink-inverse no-underline`}
         >
           START NEW VALIDATION
         </Link>
@@ -204,7 +204,7 @@ export function ExperimentsContent() {
 
       <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <label className="relative block w-full max-w-md flex-1">
-          <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-primary">
+          <span className="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-accent">
             auto_awesome
           </span>
           <input
@@ -212,7 +212,7 @@ export function ExperimentsContent() {
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             placeholder="Search experiments by title, idea, or tag..."
-            className="w-full rounded-md border-2 border-border-master bg-surface-card py-3 pl-11 pr-4 font-body-md text-body-md text-ink-primary placeholder:text-ink-tertiary focus:border-brand-primary focus:outline-none"
+            className="w-full rounded-md border-2 border-border-master bg-surface-card py-3 pl-11 pr-4 font-body-md text-body-md text-ink-primary placeholder:text-ink-tertiary focus:border-accent focus:outline-none"
           />
         </label>
         <div className="flex items-center gap-4">

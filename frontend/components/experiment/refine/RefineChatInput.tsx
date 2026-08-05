@@ -184,7 +184,7 @@ export function RefineChatInput({
                     type="button"
                     onClick={() => removeAttachment(item.id)}
                     aria-label={`Remove ${item.file.name}`}
-                    className="p-1 hover:bg-brand-primary-soft shrink-0"
+                    className="p-1 hover:bg-accent-muted shrink-0"
                     disabled={isBusy}
                   >
                     <span
@@ -233,7 +233,7 @@ export function RefineChatInput({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="p-2 hover:bg-brand-primary-soft disabled:opacity-50"
+            className="p-2 hover:bg-accent-muted disabled:opacity-50"
             aria-label="Attach file"
             disabled={isBusy || attachments.length >= MAX_ATTACHMENTS}
           >
@@ -254,7 +254,7 @@ export function RefineChatInput({
             type="button"
             onClick={() => void handleSend()}
             disabled={!canSend}
-            className="rounded-sm bg-brand-primary text-ink-inverse px-6 py-2 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-sm hover:shadow-brutal-md hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="rounded-sm bg-accent text-ink-inverse px-6 py-2 border-2 border-border-master font-label-md text-label-md uppercase tracking-wider shadow-brutal-sm hover:shadow-brutal-md hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {sending ? "SENDING..." : "SEND"}
           </button>

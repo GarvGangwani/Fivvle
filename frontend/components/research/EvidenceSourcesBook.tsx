@@ -88,7 +88,7 @@ export function EvidenceSourcesBook({ report }: { report: ValidationReport }) {
                         href={citation.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-start gap-1 text-sm text-brand-primary underline underline-offset-2"
+                        className="inline-flex items-start gap-1 text-sm text-accent underline underline-offset-2"
                       >
                         <span>{citation.title}</span>
                         <ExternalLink className="mt-0.5 h-3 w-3 shrink-0 opacity-70" />

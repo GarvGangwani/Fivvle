@@ -47,7 +47,7 @@ export function CanvasComposerPill({ experimentId, focusedAct }: Props) {
   return (
     <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-30 w-full max-w-2xl px-4">
       <div className="flex items-center gap-3 rounded-md bg-surface-card border-2 border-border-master shadow-brutal-md px-4 py-3">
-        <span className="material-symbols-outlined text-brand-primary" aria-hidden="true">
+        <span className="material-symbols-outlined text-accent" aria-hidden="true">
           auto_awesome
         </span>
         <input

@@ -205,7 +205,7 @@ export function ShellSidebar() {
                     title={displayName}
                     className={`relative mx-auto flex h-10 w-10 items-center justify-center rounded-lg text-[13px] font-semibold no-underline transition-colors ${
                       isActive
-                        ? "bg-[color-mix(in_srgb,var(--fv-accent)_14%,transparent)] text-[var(--fv-accent)] ring-1 ring-[color-mix(in_srgb,var(--fv-accent)_35%,transparent)]"
+                        ? "bg-[color-mix(in_srgb,var(--fv-accent)_14%,transparent)] text-accent ring-1 ring-[color-mix(in_srgb,var(--fv-accent)_35%,transparent)]"
                         : "text-[var(--fv-text-soft)] hover:bg-[var(--fv-hover-overlay)]"
                     }`}
                   >

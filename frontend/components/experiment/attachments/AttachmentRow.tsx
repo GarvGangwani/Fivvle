@@ -121,7 +121,7 @@ function getIconForType(type: string): string {
 function getIconColorForType(type: string): string {
   switch (type) {
     case "link":
-      return "text-brand-primary";
+      return "text-accent";
     case "pdf":
       return "text-status-critical";
     case "image":

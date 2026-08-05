@@ -47,7 +47,7 @@ export function WaitlistForm() {
     <div className="min-h-screen bg-canvas-bg text-ink-primary">
       <MarketingNav />
       <main className="mx-auto max-w-xl px-gutter pb-24 pt-28">
-        <p className="font-label-md text-label-md uppercase text-brand-primary">
+        <p className="font-label-md text-label-md uppercase text-accent">
           WAITLIST
         </p>
         <h1 className="mt-3 font-headline text-headline-lg uppercase">
@@ -72,7 +72,7 @@ export function WaitlistForm() {
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="mt-2 w-full rounded-md border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md shadow-brutal-sm focus:border-brand-primary focus:outline-none"
+              className="mt-2 w-full rounded-md border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md shadow-brutal-sm focus:border-accent focus:outline-none"
               placeholder="you@company.com"
               autoComplete="email"
             />
@@ -80,7 +80,7 @@ export function WaitlistForm() {
           <button
             type="submit"
             disabled={status === "loading"}
-            className={`${marketingButtonClass} w-full bg-brand-primary px-4 py-3 font-label-md text-label-md uppercase text-ink-inverse disabled:opacity-60`}
+            className={`${marketingButtonClass} w-full bg-accent px-4 py-3 font-label-md text-label-md uppercase text-ink-inverse disabled:opacity-60`}
           >
             {status === "loading" ? "SUBMITTING…" : "NOTIFY ME"}
           </button>
@@ -97,7 +97,7 @@ export function WaitlistForm() {
 
         <Link
           href="/"
-          className="mt-8 inline-block font-body-md text-body-md text-brand-primary no-underline hover:underline"
+          className="mt-8 inline-block font-body-md text-body-md text-accent no-underline hover:underline"
         >
           ← Back to home
         </Link>

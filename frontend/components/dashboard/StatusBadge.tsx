@@ -14,11 +14,11 @@ const PILL_STYLES: Record<
   },
   REFINING: {
     container: "bg-brand-primary-soft text-brand-primary-deep",
-    dot: "bg-brand-primary",
+    dot: "bg-accent",
     pulse: true,
   },
   RESEARCHING: {
-    container: "bg-brand-primary text-ink-inverse",
+    container: "bg-accent text-ink-inverse",
     dot: "bg-ink-inverse",
     pulse: true,
   },

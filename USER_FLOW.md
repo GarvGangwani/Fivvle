@@ -227,6 +227,7 @@ See: ADR 0019, `docs/planning/chat-mode-refinement.md`, ARCHITECTURE.md Sequence
 | PATCH | `/experiments/{id}` | Edit refined idea |
 | POST | `/experiments/{id}/refine` | Re-run refinement with feedback |
 | POST | `/experiments/{id}/confirm` | Accept refinement, trigger research |
+| PATCH | `/experiments/{id}/theme` | Set the experiment's canvas palette (null = default) |
 | GET | `/experiments/{id}/validation-report` | Fetch research output |
 | GET | `/experiments/{id}/research-status` | Poll live phase status |
 | GET | `/landing-templates` | List available templates with metadata |

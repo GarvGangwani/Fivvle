@@ -76,21 +76,21 @@ export function DistributeSection({
       ) : analytics ? (
         <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-[var(--fv-text-soft)]">
           <span>
-            <span className="font-mono font-semibold text-[var(--fv-accent)]">
+            <span className="font-mono font-semibold text-accent">
               {analytics.total_page_views.toLocaleString()}
             </span>
             {" views"}
           </span>
           <span className="text-[var(--fv-text-dim)]">·</span>
           <span>
-            <span className="font-mono font-semibold text-[var(--fv-accent)]">
+            <span className="font-mono font-semibold text-accent">
               {analytics.total_signups.toLocaleString()}
             </span>
             {" signups"}
           </span>
           <span className="text-[var(--fv-text-dim)]">·</span>
           <span>
-            <span className="font-mono font-semibold text-[var(--fv-accent)]">
+            <span className="font-mono font-semibold text-accent">
               {formatPercent(analytics.conversion_rate)}
             </span>
             {" conversion"}
@@ -107,7 +107,7 @@ export function DistributeSection({
         <ul className="space-y-2 text-[13px] text-[var(--fv-text-soft)]">
           {DISTRIBUTION_TIPS.map((tip) => (
             <li key={tip} className="flex gap-2">
-              <span className="shrink-0 text-[var(--fv-accent)]" aria-hidden>
+              <span className="shrink-0 text-accent" aria-hidden>
                 →
               </span>
               <span>{tip}</span>

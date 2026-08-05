@@ -122,7 +122,7 @@ function SourcePills({
         const letter = (domain[0] ?? "?").toUpperCase();
         const title = lookup.get(url)?.title || domain;
         const avatar = (
-          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-brand-primary text-[10px] font-mono font-bold text-ink-inverse">
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] font-mono font-bold text-ink-inverse">
             {letter}
           </span>
         );
@@ -665,7 +665,7 @@ export function EvidenceChatPane({
               void navigateSibling(info, 1);
             }
           }}
-          className="inline-flex items-center gap-1 font-mono text-mono-sm text-ink-tertiary focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-primary"
+          className="inline-flex items-center gap-1 font-mono text-mono-sm text-ink-tertiary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-ring"
         >
           <button
             type="button"
@@ -745,7 +745,7 @@ export function EvidenceChatPane({
                             type="button"
                             onClick={() => saveEdit(m.id)}
                             disabled={!editValue.trim()}
-                            className="border-2 border-border-master bg-brand-primary px-3 py-1 font-mono text-mono-sm uppercase text-ink-inverse shadow-brutal-sm disabled:opacity-40"
+                            className="border-2 border-border-master bg-accent px-3 py-1 font-mono text-mono-sm uppercase text-ink-inverse shadow-brutal-sm disabled:opacity-40"
                           >
                             Save
                           </button>
@@ -753,7 +753,7 @@ export function EvidenceChatPane({
                       </div>
                     ) : (
                       <>
-                        <div className="max-w-[85%] whitespace-pre-wrap break-words border-2 border-border-master bg-brand-primary p-3 text-sm text-ink-inverse shadow-brutal-sm">
+                        <div className="max-w-[85%] whitespace-pre-wrap break-words border-2 border-border-master bg-accent p-3 text-sm text-ink-inverse shadow-brutal-sm">
                           {m.content}
                         </div>
                         {renderSiblingNav(m.id, "end")}
@@ -868,7 +868,7 @@ export function EvidenceChatPane({
                         title="Good response"
                         className={`transition-colors ${
                           verdict === "up"
-                            ? "text-brand-primary"
+                            ? "text-accent"
                             : "hover:text-ink-primary"
                         }`}
                       >
@@ -882,7 +882,7 @@ export function EvidenceChatPane({
                         title="Bad response"
                         className={`transition-colors ${
                           verdict === "down"
-                            ? "text-brand-primary"
+                            ? "text-accent"
                             : "hover:text-ink-primary"
                         }`}
                       >
@@ -945,7 +945,7 @@ export function EvidenceChatPane({
             className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center border-2 border-border-master shadow-brutal-sm ${
               sendDisabled
                 ? "bg-surface-muted text-ink-tertiary"
-                : "bg-brand-primary text-ink-inverse"
+                : "bg-accent text-ink-inverse"
             }`}
           >
             <Send className="h-4 w-4" />

@@ -3,22 +3,22 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-IdeaTheme = Literal["violet", "pink", "green", "orange"]
+from app.services.idea_theme_palettes import THEME_PALETTE_NAMES, ThemePaletteName
 
 
 class IdeaThemeOutput(BaseModel):
-    """Structured LLM output for idea_theme_v1."""
+    """Structured LLM output for idea_theme_v2."""
 
     model_config = ConfigDict(extra="forbid")
 
     theme: Annotated[
-        IdeaTheme,
-        Field(description="One of: violet, pink, green, orange."),
+        ThemePaletteName,
+        Field(description=f"One of: {', '.join(THEME_PALETTE_NAMES)}."),
     ]
 
 
@@ -75,6 +75,8 @@ class CaptureIdeaResponse(BaseModel):
     experiment_id: UUID
     original_idea: str
     original_idea_captured_at: datetime
-    idea_theme: IdeaTheme
+    #: AI-classified palette. Only a suggestion — the founder must accept it
+    #: before it becomes the experiment's active `theme_palette`.
+    suggested_palette: ThemePaletteName
     frozen_attachments: list[CaptureIdeaFrozenAttachment]
     user_message_id: UUID

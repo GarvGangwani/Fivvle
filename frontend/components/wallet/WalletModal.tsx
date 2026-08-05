@@ -63,7 +63,7 @@ export function WalletModal({ open, onClose }: WalletModalProps) {
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--fv-border)] px-5 py-4">
           <div className="flex items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--fv-border)] bg-[var(--fv-surface-2)]">
-              <Coins className="h-4 w-4 text-[var(--fv-accent)]" aria-hidden />
+              <Coins className="h-4 w-4 text-accent" aria-hidden />
             </span>
             <div>
               <h2

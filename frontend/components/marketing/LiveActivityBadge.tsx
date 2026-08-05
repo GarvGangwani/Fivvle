@@ -12,10 +12,10 @@ export function LiveActivityBadge() {
           className="relative flex h-2.5 w-2.5 shrink-0"
           aria-hidden="true"
         >
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-primary opacity-60 motion-reduce:animate-none" />
-          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand-primary" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent opacity-60 motion-reduce:animate-none" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-accent" />
         </span>
-        <span className="font-label-md text-label-md uppercase text-brand-primary">
+        <span className="font-label-md text-label-md uppercase text-accent">
           ACTIVE VALIDATION
         </span>
       </div>

@@ -24,7 +24,7 @@ export function WorkspaceInsightCard({
 
   if (!hasExperiments || !experiment) {
     return (
-      <div className="flex min-h-[280px] flex-col justify-between rounded-md border-2 border-border-master bg-brand-primary p-6 pb-8 text-ink-inverse shadow-brutal-md lg:min-h-[320px]">
+      <div className="flex min-h-[280px] flex-col justify-between rounded-md border-2 border-border-master bg-accent p-6 pb-8 text-ink-inverse shadow-brutal-md lg:min-h-[320px]">
         <div>
           <p className="font-label-md text-label-md uppercase opacity-70">
             LATEST SIGNAL
@@ -39,7 +39,7 @@ export function WorkspaceInsightCard({
         </div>
         <Link
           href="/new"
-          className={`${marketingButtonClass} mt-6 inline-flex w-fit bg-brand-primary px-6 py-3 font-label-md text-label-md uppercase text-ink-inverse no-underline`}
+          className={`${marketingButtonClass} mt-6 inline-flex w-fit bg-accent px-6 py-3 font-label-md text-label-md uppercase text-ink-inverse no-underline`}
         >
           START NEW VALIDATION
         </Link>
@@ -52,7 +52,7 @@ export function WorkspaceInsightCard({
   const dataPoint = getInsightDataPoint(experiment);
 
   return (
-    <div className="flex min-h-[280px] flex-col justify-between rounded-md border-2 border-border-master bg-brand-primary p-6 pb-8 text-ink-inverse shadow-brutal-md lg:min-h-[320px]">
+    <div className="flex min-h-[280px] flex-col justify-between rounded-md border-2 border-border-master bg-accent p-6 pb-8 text-ink-inverse shadow-brutal-md lg:min-h-[320px]">
       <div>
         <p className="font-label-md text-label-md uppercase opacity-70">
           LATEST SIGNAL

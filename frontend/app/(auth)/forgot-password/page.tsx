@@ -10,7 +10,7 @@ import { marketingButtonClass } from "@/components/marketing/marketing-styles";
 import { getFirebaseAuth } from "@/lib/firebase";
 
 const inputClassName =
-  "mt-2 w-full rounded-md border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md text-ink-primary shadow-brutal-sm transition-shadow focus:border-brand-primary focus:shadow-brutal-primary focus:outline-none disabled:opacity-60";
+  "mt-2 w-full rounded-md border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md text-ink-primary shadow-brutal-sm transition-shadow focus:border-accent focus:shadow-brutal-primary focus:outline-none disabled:opacity-60";
 
 function formatPasswordResetError(err: unknown): string {
   if (err instanceof FirebaseError) {
@@ -69,7 +69,7 @@ export default function ForgotPasswordPage() {
             </p>
             <Link
               href="/login"
-              className={`${marketingButtonClass} mt-8 inline-flex bg-brand-primary px-8 py-4 text-base font-bold uppercase tracking-wider text-ink-inverse no-underline`}
+              className={`${marketingButtonClass} mt-8 inline-flex bg-accent px-8 py-4 text-base font-bold uppercase tracking-wider text-ink-inverse no-underline`}
             >
               Back to login
             </Link>
@@ -119,7 +119,7 @@ export default function ForgotPasswordPage() {
                 className={`${marketingButtonClass} w-full py-4 text-base font-bold uppercase tracking-wider disabled:cursor-not-allowed ${
                   loading
                     ? "bg-brutalist-yellow text-ink-primary"
-                    : "bg-brand-primary text-ink-inverse"
+                    : "bg-accent text-ink-inverse"
                 }`}
               >
                 {loading ? "PROCESSING..." : "SEND RESET LINK"}
@@ -130,7 +130,7 @@ export default function ForgotPasswordPage() {
               Remember your password?{" "}
               <Link
                 href="/login"
-                className="font-semibold text-brand-primary no-underline hover:underline"
+                className="font-semibold text-accent no-underline hover:underline"
               >
                 Sign In
               </Link>

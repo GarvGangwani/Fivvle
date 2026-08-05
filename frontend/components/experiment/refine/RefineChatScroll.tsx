@@ -75,13 +75,13 @@ export function RefineChatScroll({
     return (
       <div className="flex min-h-[280px] flex-col items-center justify-center px-8 text-center">
         <span
-          className="material-symbols-outlined mb-4 animate-pulse text-brand-primary"
+          className="material-symbols-outlined mb-4 animate-pulse text-accent"
           style={{ fontSize: 48 }}
           aria-hidden="true"
         >
           bolt
         </span>
-        <div className="mb-2 font-mono text-mono-md uppercase text-brand-primary">
+        <div className="mb-2 font-mono text-mono-md uppercase text-accent">
           REFINER IS READING YOUR IDEA
         </div>
         <p className="font-body text-body-md text-ink-secondary">
@@ -96,7 +96,7 @@ export function RefineChatScroll({
       <EmptyState
         icon={
           <span
-            className="material-symbols-outlined text-brand-primary"
+            className="material-symbols-outlined text-accent"
             style={{ fontSize: 28 }}
             aria-hidden="true"
           >

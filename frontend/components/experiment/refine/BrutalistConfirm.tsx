@@ -1,6 +1,7 @@
 "use client";
 
 import { createPortal } from "react-dom";
+import { getCanvasAccentPortalTarget } from "@/components/experiment/canvas-accent";
 
 type Props = {
   title: string;
@@ -48,7 +49,7 @@ export function BrutalistConfirm({
             onClick={() => void onConfirm()}
             disabled={loading}
             className={`flex-1 rounded-sm px-6 py-3 border-2 border-border-master font-label-md text-label-md uppercase text-ink-inverse shadow-brutal-md hover:shadow-brutal-lg hover:-translate-x-0.5 hover:-translate-y-0.5 active:translate-x-0 active:translate-y-0 active:shadow-none transition-all disabled:opacity-50 ${
-              variant === "critical" ? "bg-status-critical" : "bg-brand-primary"
+              variant === "critical" ? "bg-status-critical" : "bg-accent"
             }`}
           >
             {loading ? "..." : confirmLabel}
@@ -56,6 +57,6 @@ export function BrutalistConfirm({
         </div>
       </div>
     </div>,
-    document.body,
+    getCanvasAccentPortalTarget(),
   );
 }

@@ -71,7 +71,7 @@ function SignupPageContent() {
           Already registered?{" "}
           <Link
             href="/login"
-            className="font-semibold text-brand-primary no-underline hover:underline"
+            className="font-semibold text-accent no-underline hover:underline"
           >
             Sign In
           </Link>

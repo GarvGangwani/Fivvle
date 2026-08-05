@@ -40,7 +40,7 @@ export default function SettingsPage() {
         id="profile"
         className="rounded-md border-2 border-border-master bg-surface-card p-8 shadow-brutal-md"
       >
-        <div className="mb-2 font-label-md text-label-md uppercase text-brand-primary">
+        <div className="mb-2 font-label-md text-label-md uppercase text-accent">
           PROFILE
         </div>
         <h2 className="mb-6 font-headline text-headline-lg text-ink-primary">
@@ -73,7 +73,7 @@ export default function SettingsPage() {
         id="billing"
         className="rounded-md border-2 border-border-master bg-surface-card p-8 shadow-brutal-md"
       >
-        <div className="mb-2 font-label-md text-label-md uppercase text-brand-primary">
+        <div className="mb-2 font-label-md text-label-md uppercase text-accent">
           BILLING
         </div>
         <h2 className="mb-6 font-headline text-headline-lg text-ink-primary">
@@ -97,7 +97,7 @@ export default function SettingsPage() {
         id="preferences"
         className="rounded-md border-2 border-border-master bg-surface-card p-8 shadow-brutal-md"
       >
-        <div className="mb-2 font-label-md text-label-md uppercase text-brand-primary">
+        <div className="mb-2 font-label-md text-label-md uppercase text-accent">
           PREFERENCES
         </div>
         <h2 className="mb-6 font-headline text-headline-lg text-ink-primary">
@@ -139,7 +139,7 @@ export default function SettingsPage() {
       <p className="text-center">
         <Link
           href="/"
-          className="font-label-md text-label-md uppercase text-brand-primary no-underline hover:underline"
+          className="font-label-md text-label-md uppercase text-accent no-underline hover:underline"
         >
           ← Back to home
         </Link>

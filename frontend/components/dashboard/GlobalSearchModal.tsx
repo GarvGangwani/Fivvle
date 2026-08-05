@@ -89,7 +89,7 @@ export function GlobalSearchModal() {
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center gap-3 border-b-2 border-border-master pb-4">
-          <span className="material-symbols-outlined text-brand-primary" aria-hidden>
+          <span className="material-symbols-outlined text-accent" aria-hidden>
             auto_awesome
           </span>
           <input

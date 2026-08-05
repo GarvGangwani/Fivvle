@@ -5,10 +5,6 @@ import { Handle, Position, type NodeProps } from "reactflow";
 import type { ExperimentAttachment } from "@/lib/types";
 import { OriginProvenanceCard } from "@/components/experiment/origin-artifact/OriginProvenanceCard";
 import {
-  isOriginArtifactTheme,
-  type OriginArtifactTheme,
-} from "@/components/experiment/origin-artifact/origin-artifact-themes";
-import {
   formatCaptureDateTime,
   originVersionLabel,
 } from "@/components/experiment/origin-artifact/origin-artifact-utils";
@@ -27,19 +23,12 @@ const INVISIBLE_HANDLE = {
 export type OriginArtifactNodeData = {
   originalIdea: string;
   capturedAt: string | null;
-  theme: string | null;
   attachments: ExperimentAttachment[];
 };
-
-function resolveTheme(theme: string | null): OriginArtifactTheme {
-  return isOriginArtifactTheme(theme) ? theme : "violet";
-}
 
 function OriginArtifactNodeComponent({
   data,
 }: NodeProps<OriginArtifactNodeData>) {
-  const theme = resolveTheme(data.theme);
-
   return (
     <div className="relative" style={{ width: CARD_WIDTH }}>
       <OriginProvenanceCard
@@ -47,7 +36,6 @@ function OriginArtifactNodeComponent({
         captureDate={formatCaptureDateTime(data.capturedAt)}
         versionTag={originVersionLabel()}
         attachments={data.attachments}
-        theme={theme}
       />
 
       <Handle

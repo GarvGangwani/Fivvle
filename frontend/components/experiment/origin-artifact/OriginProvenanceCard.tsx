@@ -3,11 +3,8 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ExperimentAttachment } from "@/lib/types";
-import {
-  ORIGIN_INK,
-  ORIGIN_THEME_TOKENS,
-  type OriginArtifactTheme,
-} from "./origin-artifact-themes";
+import { ORIGIN_ACCENT_TOKENS, ORIGIN_INK } from "./origin-artifact-themes";
+import { getCanvasAccentPortalTarget } from "@/components/experiment/canvas-accent";
 import {
   formatCaptureDateTime,
   originVersionLabel,
@@ -44,7 +41,6 @@ type Props = {
   captureDate: string;
   versionTag: string;
   attachments: ExperimentAttachment[];
-  theme: OriginArtifactTheme;
 };
 
 function wrapLines(text: string, charsPerLine: number): string[] {
@@ -97,9 +93,8 @@ export function OriginProvenanceCard({
   captureDate,
   versionTag,
   attachments,
-  theme,
 }: Props) {
-  const tokens = ORIGIN_THEME_TOKENS[theme];
+  const tokens = ORIGIN_ACCENT_TOKENS;
   const [expanded, setExpanded] = useState(false);
 
   const idea = rawIdea.trim() || "No idea captured yet.";
@@ -362,7 +357,7 @@ function OriginRawIdeaOverlay({
         </div>
       </div>
     </div>,
-    document.body,
+    getCanvasAccentPortalTarget(),
   );
 }
 
@@ -372,13 +367,11 @@ export function buildProvenanceProps(
     original_idea_captured_at?: string | null;
   },
   attachments: ExperimentAttachment[],
-  theme: OriginArtifactTheme,
 ): Props {
   return {
     rawIdea: experiment.original_idea ?? "",
     captureDate: formatCaptureDateTime(experiment.original_idea_captured_at),
     versionTag: originVersionLabel(),
     attachments,
-    theme,
   };
 }

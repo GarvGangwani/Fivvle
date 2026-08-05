@@ -31,7 +31,7 @@ export function AppSideRail() {
   const iconClass = (active: boolean) =>
     `flex h-12 w-12 items-center justify-center rounded-sm border-2 transition-colors ${
       active
-        ? "border-border-master bg-brand-primary text-ink-inverse shadow-brutal-sm"
+        ? "border-border-master bg-accent text-ink-inverse shadow-brutal-sm"
         : "border-transparent text-ink-secondary fv-brutal-hover hover:text-ink-primary"
     }`;
 

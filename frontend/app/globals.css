@@ -63,10 +63,20 @@
 }
 
 :root {
+  /*
+   * Platform accent default (Fivvle purple). Global chrome always reads these.
+   * Companions derive from --fv-accent so a single override (canvas scope) recolors
+   * every accent role. Per-experiment themes set --fv-accent on a canvas wrapper only.
+   * NEVER leave a red/dev test value here — platform default is always #7c3aed.
+   */
   --fv-accent: #7c3aed;
-  --fv-accent-hover: #6d28d9;
-  --fv-accent-gradient-end: #a78bfa;
-  --fv-on-accent: #ffffff;
+  --fv-accent-hover: color-mix(in srgb, var(--fv-accent) 78%, #000000);
+  --fv-accent-muted: color-mix(in srgb, var(--fv-accent) 12%, transparent);
+  --fv-accent-fg: #ffffff;
+  --fv-accent-ring: var(--fv-accent);
+  --fv-accent-gradient-end: color-mix(in srgb, var(--fv-accent) 45%, #ffffff);
+  /* Legacy alias — prefer --fv-accent-fg */
+  --fv-on-accent: var(--fv-accent-fg);
   --fv-success: #22c55e;
   --fv-warning: #f59e0b;
   --fv-danger: #ef4444;
@@ -87,7 +97,6 @@
   --fv-text-soft: #475569;
   --fv-text-dim: #94a3b8;
   --fv-inactive: #cbd5e1;
-  --fv-accent-muted: color-mix(in srgb, var(--fv-accent) 12%, transparent);
   --fv-danger-light: #dc2626;
   --fv-header-bg: rgba(255, 255, 255, 0.88);
   --fv-skeleton-base: rgba(15, 23, 42, 0.04);
@@ -97,8 +106,10 @@
   /* Brutalist surface palette (was hardcoded in tailwind config) */
   --fv-canvas-bg: #fafafa;
   --fv-surface-card: #ffffff;
-  --fv-surface-elevated-brutal: #eae6f4;
-  --fv-surface-muted: #f5f2ff;
+  /* Accent-tinted panels (question card, composer strip, thumbs) — derived so
+     a canvas theme recolors them instead of staying lavender. */
+  --fv-surface-elevated-brutal: color-mix(in srgb, var(--fv-accent) 13%, #ffffff);
+  --fv-surface-muted: color-mix(in srgb, var(--fv-accent) 5%, #ffffff);
 
   /* Ink */
   --fv-ink-primary: #1b1b24;
@@ -110,17 +121,18 @@
   --fv-border-master: #000000;
   --fv-border-subtle: #e5e7eb;
   --fv-shadow-color: #000000;
-  --fv-shadow-color-primary: #7c3aed;
+  /* Accent-colored brutalist shadow — follows --fv-accent */
+  --fv-shadow-color-primary: var(--fv-accent);
 
-  /* Brand soft/deep (tailwind brand-primary-* ) */
-  --fv-brand-soft: #ede9fe;
-  --fv-brand-deep: #5b21b6;
+  /* Soft/deep fills — derived so canvas --fv-accent overrides follow */
+  --fv-brand-soft: color-mix(in srgb, var(--fv-accent) 12%, #ffffff);
+  --fv-brand-deep: color-mix(in srgb, var(--fv-accent) 65%, #000000);
 
   /* Accents */
   --fv-yellow: #ffff00;
 
   /* Code blocks */
-  --fv-code-bg: #f5f2ff;
+  --fv-code-bg: var(--fv-surface-muted);
   --fv-code-fg: #1b1b24;
   --fv-code-border: rgba(15, 23, 42, 0.1);
 
@@ -146,9 +158,9 @@
   --fv-text-dim: #6b6b6b;
   --fv-inactive: #3a3a3a;
   --fv-header-bg: rgba(23, 19, 43, 0.88);
-  --fv-hover-overlay: rgba(167, 139, 250, 0.08);
-  --fv-skeleton-base: rgba(167, 139, 250, 0.08);
-  --fv-skeleton-shine: rgba(167, 139, 250, 0.14);
+  --fv-hover-overlay: color-mix(in srgb, var(--fv-accent) 8%, transparent);
+  --fv-skeleton-base: color-mix(in srgb, var(--fv-accent) 8%, transparent);
+  --fv-skeleton-shine: color-mix(in srgb, var(--fv-accent) 14%, transparent);
   --fv-accent-muted: color-mix(in srgb, var(--fv-accent) 18%, transparent);
 
   /* Brutalist surface palette */
@@ -167,19 +179,19 @@
   --fv-border-master: #2a2a2a;
   --fv-border-subtle: #2a2540;
   --fv-shadow-color: transparent;
-  --fv-shadow-color-primary: #a78bfa;
+  --fv-shadow-color-primary: var(--fv-accent-gradient-end);
 
   /* Brand soft/deep */
   --fv-brand-soft: color-mix(in srgb, var(--fv-accent) 22%, var(--fv-surface));
-  --fv-brand-deep: #c4b5fd;
+  --fv-brand-deep: color-mix(in srgb, var(--fv-accent) 45%, #ffffff);
 
   /* Accents */
   --fv-yellow: #d9bc1f;
 
   /* Code blocks */
-  --fv-code-bg: #1d1836;
+  --fv-code-bg: color-mix(in srgb, var(--fv-accent) 14%, #141414);
   --fv-code-fg: #e4ddfb;
-  --fv-code-border: rgba(167, 139, 250, 0.18);
+  --fv-code-border: color-mix(in srgb, var(--fv-accent) 18%, transparent);
 
   /* Canvas specifics */
   --fv-canvas-dot: rgba(255, 255, 255, 0.28);
@@ -190,7 +202,45 @@
   --fv-warning: #f59e0b;
   --fv-danger: #f87171;
   --fv-danger-light: #ef4444;
-  --fv-on-accent: #ffffff;
+  --fv-accent-fg: #ffffff;
+  --fv-on-accent: var(--fv-accent-fg);
+  --fv-accent-ring: var(--fv-accent);
+}
+
+/*
+ * Canvas accent scope.
+ *
+ * Custom properties are substituted where they are DECLARED, so tokens derived
+ * from --fv-accent at :root keep the platform purple even when a descendant
+ * re-declares --fv-accent. The canvas wrapper therefore re-declares every
+ * derived token here, on its own scope, so a per-experiment accent set inline
+ * (just --fv-accent) recolors all of them. Split by theme so dark stays dark.
+ */
+[data-canvas-accent-scope] {
+  --fv-accent-hover: color-mix(in srgb, var(--fv-accent) 78%, #000000);
+  --fv-accent-muted: color-mix(in srgb, var(--fv-accent) 12%, transparent);
+  --fv-accent-ring: var(--fv-accent);
+  --fv-accent-gradient-end: color-mix(in srgb, var(--fv-accent) 45%, #ffffff);
+  --fv-shadow-color-primary: var(--fv-accent);
+  --fv-brand-soft: color-mix(in srgb, var(--fv-accent) 12%, #ffffff);
+  --fv-brand-deep: color-mix(in srgb, var(--fv-accent) 65%, #000000);
+  --fv-surface-elevated-brutal: color-mix(in srgb, var(--fv-accent) 13%, #ffffff);
+  --fv-surface-muted: color-mix(in srgb, var(--fv-accent) 5%, #ffffff);
+  --fv-code-bg: var(--fv-surface-muted);
+}
+
+[data-theme="dark"] [data-canvas-accent-scope] {
+  --fv-accent-muted: color-mix(in srgb, var(--fv-accent) 18%, transparent);
+  --fv-shadow-color-primary: var(--fv-accent-gradient-end);
+  --fv-hover-overlay: color-mix(in srgb, var(--fv-accent) 8%, transparent);
+  --fv-skeleton-base: color-mix(in srgb, var(--fv-accent) 8%, transparent);
+  --fv-skeleton-shine: color-mix(in srgb, var(--fv-accent) 14%, transparent);
+  --fv-brand-soft: color-mix(in srgb, var(--fv-accent) 22%, var(--fv-surface));
+  --fv-brand-deep: color-mix(in srgb, var(--fv-accent) 45%, #ffffff);
+  --fv-surface-elevated-brutal: #1f1f1f;
+  --fv-surface-muted: #171717;
+  --fv-code-bg: color-mix(in srgb, var(--fv-accent) 14%, #141414);
+  --fv-code-border: color-mix(in srgb, var(--fv-accent) 18%, transparent);
 }
 
 * {
@@ -746,7 +796,7 @@ body:has([data-fivvle-public-landing]) {
   background: var(--fv-accent);
   border: none;
   border-radius: var(--fv-radius-md);
-  color: var(--fv-on-accent);
+  color: var(--fv-accent-fg);
   font-weight: 600;
   cursor: pointer;
   transition: background 200ms ease, transform 200ms cubic-bezier(0.16, 1, 0.3, 1),
@@ -1013,7 +1063,7 @@ body:has([data-fivvle-public-landing]) {
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s;
-  color: var(--fv-on-accent);
+  color: var(--fv-accent-fg);
   width: 36px;
   height: 36px;
   display: flex;
@@ -1275,7 +1325,7 @@ body:has([data-fivvle-public-landing]) {
   background: var(--fv-accent);
   border: none;
   border-radius: 12px;
-  color: var(--fv-on-accent);
+  color: var(--fv-accent-fg);
   cursor: pointer;
   font-family: inherit;
   font-weight: 600;
@@ -1644,7 +1694,7 @@ body:has([data-fivvle-public-landing]) {
     var(--fv-accent),
     var(--fv-accent-gradient-end)
   );
-  color: var(--fv-on-accent);
+  color: var(--fv-accent-fg);
   font-weight: 700;
   flex-shrink: 0;
 }
@@ -1900,14 +1950,22 @@ body:has([data-fivvle-public-landing]) {
   background: color-mix(in srgb, var(--fv-accent) 4%, transparent);
 }
 
-/* Marketing hero */
+/* Marketing hero — follows platform --fv-accent (global chrome, not canvas-scoped) */
 .fv-hero-glow {
   pointer-events: none;
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 70% 50% at 50% -10%, rgba(124, 58, 237, 0.18), transparent 55%),
-    radial-gradient(ellipse 40% 30% at 80% 20%, rgba(167, 139, 250, 0.12), transparent 50%);
+    radial-gradient(
+      ellipse 70% 50% at 50% -10%,
+      color-mix(in srgb, var(--fv-accent) 18%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse 40% 30% at 80% 20%,
+      color-mix(in srgb, var(--fv-accent-gradient-end) 12%, transparent),
+      transparent 50%
+    );
 }
 
 /* Experiment canvas — React Flow chrome

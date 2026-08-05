@@ -103,6 +103,7 @@ from app.schemas.experiment import (
     RegenerateRefinementRequest,
     RenameExperimentRequest,
     ResearchStatusResponse,
+    SetExperimentThemeRequest,
 )
 from app.schemas.chat import ChatMessageItem
 from app.schemas.evidence_chat import (
@@ -411,8 +412,11 @@ class GetExperimentDetailResponse(BaseModel):
     has_original_idea: bool = False
     original_idea: str | None = None
     original_idea_captured_at: datetime | None = None
-    idea_theme: str | None = None
     origin_attachments: list[OriginFrozenAttachment] = Field(default_factory=list)
+    # Canvas palette: active founder choice (null = platform purple) and the
+    # AI suggestion from capture, offered separately by the canvas control.
+    theme_palette: str | None = None
+    suggested_palette: str | None = None
 
 
 async def _list_origin_attachments(
@@ -503,8 +507,9 @@ async def _build_experiment_detail_response(
         has_original_idea=has_original,
         original_idea=experiment.original_idea,
         original_idea_captured_at=experiment.original_idea_captured_at,
-        idea_theme=experiment.idea_theme,
         origin_attachments=origin_attachments,
+        theme_palette=experiment.theme_palette,
+        suggested_palette=experiment.suggested_palette,
     )
 
 
@@ -2656,7 +2661,7 @@ async def capture_experiment_idea(
     db: Annotated[AsyncSession, Depends(get_session)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> CaptureIdeaResponse:
-    """Freeze the immutable original idea + attachments + theme (write-once)."""
+    """Freeze the immutable original idea + attachments, suggest a palette."""
     result = await db.execute(
         select(Experiment).where(Experiment.id == experiment_id)
     )
@@ -2689,7 +2694,7 @@ async def capture_experiment_idea(
         experiment_id=captured.experiment_id,
         original_idea=captured.original_idea,
         original_idea_captured_at=captured.original_idea_captured_at,
-        idea_theme=captured.idea_theme,
+        suggested_palette=captured.suggested_palette,
         frozen_attachments=[
             CaptureIdeaFrozenAttachment(
                 id=att.id,
@@ -2745,6 +2750,42 @@ async def rename_experiment(
         )
 
     await db.commit()
+
+    return await _build_experiment_detail_response(db, experiment)
+
+
+@router.patch(
+    "/{experiment_id}/theme",
+    response_model=GetExperimentDetailResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def set_experiment_theme(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    body: SetExperimentThemeRequest,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> GetExperimentDetailResponse:
+    """Activate a curated canvas palette for this experiment (null = default)."""
+    result = await db.execute(
+        select(Experiment)
+        .options(selectinload(Experiment.validation_report))
+        .where(Experiment.id == experiment_id),
+    )
+    experiment = result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Experiment not found",
+        )
+
+    experiment.theme_palette = body.palette_name
+    await db.commit()
+    # commit releases the connection; the detail builder fans out with
+    # asyncio.gather, which cannot re-provision one concurrently.
+    await db.refresh(experiment)
 
     return await _build_experiment_detail_response(db, experiment)
 

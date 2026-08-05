@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.enums import ExperimentStage, ExperimentStatus, FounderDecision
 from app.schemas.refinement import RefinedIdea
+from app.services.idea_theme_palettes import ThemePaletteName
 
 
 class CreateExperimentRequest(BaseModel):
@@ -45,6 +46,17 @@ class RenameExperimentRequest(BaseModel):
     name: str = Field(
         max_length=100,
         description="User-defined project name (1-100 characters).",
+    )
+
+
+class SetExperimentThemeRequest(BaseModel):
+    """Body for PATCH /experiments/{id}/theme."""
+
+    palette_name: ThemePaletteName | None = Field(
+        description=(
+            "Curated palette name to activate for this experiment. "
+            "Null reverts to the platform default (founder purple)."
+        ),
     )
 
 

@@ -27,7 +27,7 @@ describe("idea capture helpers", () => {
         baseExperiment({
           has_original_idea: true,
           original_idea: "A dating app for couples",
-          idea_theme: "pink",
+          suggested_palette: "rose",
         }),
       ),
     ).toBe(false);
@@ -40,7 +40,7 @@ describe("idea capture helpers", () => {
         baseExperiment({
           has_original_idea: true,
           original_idea: "Sealed idea",
-          idea_theme: "green",
+          suggested_palette: "emerald",
         }),
       ),
     ).toBe(true);
@@ -78,7 +78,6 @@ describe("idea capture helpers", () => {
     const captured = baseExperiment({
       has_original_idea: true,
       original_idea: "Captured",
-      idea_theme: "violet",
     });
     expect(getNodeLockState("spark", captured).isLocked).toBe(false);
     expect(getNodeLockState("refine", captured).isLocked).toBe(false);

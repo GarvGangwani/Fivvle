@@ -31,7 +31,7 @@ export function ValidationResearchPrompt({
               tracked landing page.
             </p>
             <p className="mt-3 flex items-center gap-1.5 text-sm font-semibold text-[var(--fv-text)]">
-              <Coins className="h-4 w-4 text-[var(--fv-accent)]" aria-hidden />
+              <Coins className="h-4 w-4 text-accent" aria-hidden />
               {VALIDATION_PAYWALL_CREDITS} Credits
             </p>
             <button

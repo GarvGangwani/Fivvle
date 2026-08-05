@@ -16,8 +16,8 @@ from app.db.models.chat_message import ChatMessage
 from app.db.models.chat_thread import ChatThread
 from app.db.models.experiment import Experiment
 from app.logging_config import get_logger
-from app.schemas.idea_capture import IdeaTheme
-from app.services.idea_theme_service import classify_idea_theme
+from app.services.idea_theme_palettes import ThemePaletteName
+from app.services.idea_theme_service import classify_theme_palette
 
 _logger = get_logger(__name__)
 
@@ -52,7 +52,7 @@ class CaptureOriginalIdeaResult:
     experiment_id: UUID
     original_idea: str
     original_idea_captured_at: datetime
-    idea_theme: IdeaTheme
+    suggested_palette: ThemePaletteName
     frozen_attachments: list[FrozenAttachmentRef]
     user_message_id: UUID
 
@@ -65,7 +65,11 @@ async def capture_original_idea(
     idea_text: str,
     attachment_ids: list[UUID],
 ) -> CaptureOriginalIdeaResult:
-    """Freeze the original idea + attachments + theme. Write-once.
+    """Freeze the original idea + attachments, and suggest a palette. Write-once.
+
+    The classified palette lands in `suggested_palette` only. The canvas stays on
+    the platform default until the founder accepts it via PATCH /theme, so the AI
+    never silently recolors an experiment.
 
     Does not modify raw_idea, refined_idea, or spark_version.
     Persists the idea as a USER message on the universal chat thread
@@ -91,7 +95,7 @@ async def capture_original_idea(
     )
 
     captured_at = datetime.now(UTC)
-    theme = await classify_idea_theme(
+    suggested_palette = await classify_theme_palette(
         db,
         stripped,
         experiment_id=experiment.id,
@@ -99,7 +103,7 @@ async def capture_original_idea(
 
     experiment.original_idea = stripped
     experiment.original_idea_captured_at = captured_at
-    experiment.idea_theme = theme
+    experiment.suggested_palette = suggested_palette
     # Seed the mutable working copy so SPARK → REFINING / ask_refine_agent
     # can start immediately after capture (original_idea stays immutable).
     if not (experiment.raw_idea or "").strip():
@@ -119,7 +123,7 @@ async def capture_original_idea(
     _logger.info(
         "original_idea_captured",
         experiment_id=str(experiment.id),
-        theme=theme,
+        suggested_palette=suggested_palette,
         attachment_count=len(frozen_rows),
         user_message_id=str(user_msg.id),
     )
@@ -128,7 +132,7 @@ async def capture_original_idea(
         experiment_id=experiment.id,
         original_idea=stripped,
         original_idea_captured_at=experiment.original_idea_captured_at or captured_at,
-        idea_theme=theme,
+        suggested_palette=suggested_palette,
         frozen_attachments=frozen_rows,
         user_message_id=user_msg.id,
     )

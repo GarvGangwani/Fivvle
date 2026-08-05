@@ -70,7 +70,7 @@ function LoginPageContent() {
           Don&apos;t have an account?{" "}
           <Link
             href="/signup"
-            className="font-semibold text-brand-primary no-underline hover:underline"
+            className="font-semibold text-accent no-underline hover:underline"
           >
             Create Account
           </Link>

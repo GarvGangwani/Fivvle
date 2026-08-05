@@ -148,7 +148,7 @@ function BrutalistInput({
 }) {
   const over = value.length > maxLength;
   const shared =
-    "w-full border-2 border-border-master bg-surface-elevated px-3 py-2 font-body text-body-sm text-ink-primary outline-none focus:border-brand-primary disabled:opacity-50";
+    "w-full border-2 border-border-master bg-surface-elevated px-3 py-2 font-body text-body-sm text-ink-primary outline-none focus:border-accent disabled:opacity-50";
 
   return (
     <div>
@@ -468,7 +468,7 @@ export function LaunchCopyTab({
           <button
             type="button"
             onClick={onGenerateLandingPage}
-            className="border-2 border-border-master bg-brand-primary px-4 py-2 font-label-md text-label-md uppercase tracking-wider text-ink-inverse shadow-brutal-sm transition-all hover:shadow-brutal-md"
+            className="border-2 border-border-master bg-accent px-4 py-2 font-label-md text-label-md uppercase tracking-wider text-ink-inverse shadow-brutal-sm transition-all hover:shadow-brutal-md"
           >
             Generate landing page
           </button>

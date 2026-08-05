@@ -240,7 +240,7 @@ export function PhaseIndicator({
               <span
                 className={`absolute left-[15px] top-8 h-[calc(100%-2rem)] w-0.5 ${
                   state === "completed"
-                    ? "bg-[var(--fv-accent)]"
+                    ? "bg-accent"
                     : "bg-[var(--fv-border)]"
                 }`}
                 aria-hidden
@@ -249,12 +249,12 @@ export function PhaseIndicator({
 
             <div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full">
               {state === "completed" && (
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-2 ring-[color-mix(in_srgb,var(--fv-accent)_30%,transparent)]">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted text-accent ring-2 ring-[color-mix(in_srgb,var(--fv-accent)_30%,transparent)]">
                   <Check className="h-4 w-4" strokeWidth={2.5} />
                 </span>
               )}
               {state === "active" && (
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--fv-accent-muted)] text-[var(--fv-accent)] ring-2 ring-[var(--fv-accent)]">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted text-accent ring-2 ring-accent-ring">
                   <Loader2 className="h-4 w-4 animate-spin" />
                 </span>
               )}
@@ -269,7 +269,7 @@ export function PhaseIndicator({
               <p
                 className={`text-sm font-medium ${
                   state === "active"
-                    ? "text-[var(--fv-accent)]"
+                    ? "text-accent"
                     : state === "completed"
                       ? "text-[var(--fv-text)]"
                       : "text-[var(--fv-text-muted)]"
@@ -278,7 +278,7 @@ export function PhaseIndicator({
                 {label}
               </p>
               {state === "active" && (
-                <p className="mt-0.5 text-xs text-[var(--fv-accent)]">
+                <p className="mt-0.5 text-xs text-accent">
                   In progress…
                 </p>
               )}

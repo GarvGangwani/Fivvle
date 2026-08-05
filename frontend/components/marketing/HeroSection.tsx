@@ -19,7 +19,7 @@ export function HeroSection({ onDemoClick }: HeroSectionProps) {
 
           <h1 className="mt-8 max-w-4xl font-display text-display-lg uppercase leading-[1.05] tracking-tight text-ink-primary">
             Turn &quot;I have an idea&quot; into a defensible{" "}
-            <span className="text-brand-primary-deep underline decoration-brand-primary decoration-[6px] underline-offset-8">
+            <span className="text-brand-primary-deep underline decoration-accent decoration-[6px] underline-offset-8">
               proceed / kill
             </span>{" "}
             decision.
@@ -34,7 +34,7 @@ export function HeroSection({ onDemoClick }: HeroSectionProps) {
           <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center">
             <Link
               href="/signup"
-              className={`${marketingButtonClass} bg-brand-primary px-8 py-4 text-base font-bold uppercase tracking-wider text-ink-inverse shadow-brutal-md hover:shadow-brutal-lg no-underline`}
+              className={`${marketingButtonClass} bg-accent px-8 py-4 text-base font-bold uppercase tracking-wider text-ink-inverse shadow-brutal-md hover:shadow-brutal-lg no-underline`}
             >
               START A VALIDATION →
             </Link>

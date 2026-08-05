@@ -29,8 +29,8 @@ def test_capture_idea_writes_and_second_returns_409(
     experiment_id = created["id"]
 
     with patch(
-        "app.services.idea_capture_service.classify_idea_theme",
-        AsyncMock(return_value="violet"),
+        "app.services.idea_capture_service.classify_theme_palette",
+        AsyncMock(return_value="emerald"),
     ):
         first = client.post(
             f"/experiments/{experiment_id}/capture-idea",
@@ -43,7 +43,7 @@ def test_capture_idea_writes_and_second_returns_409(
     assert first.status_code == 200, first.text
     body = first.json()
     assert body["original_idea"] == "First capture of the original idea text."
-    assert body["idea_theme"] == "violet"
+    assert body["suggested_palette"] == "emerald"
     assert body["original_idea_captured_at"] is not None
     assert body["frozen_attachments"] == []
     assert body["user_message_id"]
@@ -72,6 +72,9 @@ def test_capture_idea_writes_and_second_returns_409(
     # Working copy seeded from capture so refine can start immediately.
     assert detail.json()["raw_idea"] == "First capture of the original idea text."
     assert detail.json()["original_idea"] == "First capture of the original idea text."
+    # Capture suggests a palette but must not activate it.
+    assert detail.json()["suggested_palette"] == "emerald"
+    assert detail.json()["theme_palette"] is None
 
 
 def test_capture_idea_unauthenticated_returns_401(client: TestClient) -> None:

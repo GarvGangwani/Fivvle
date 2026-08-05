@@ -109,7 +109,7 @@ export function getHardcodedProgressPercent(
 export function getProgressBarFillClass(pill: PillState): string {
   if (pill === "CRITICAL") return "bg-status-critical";
   if (pill === "ARCHIVED") return "bg-ink-tertiary";
-  return "bg-brand-primary";
+  return "bg-accent";
 }
 
 export function formatExperimentId(id: string): string {

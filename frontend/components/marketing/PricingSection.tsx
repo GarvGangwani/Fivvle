@@ -59,7 +59,7 @@ const TIERS = [
 function CheckIcon({ inverse }: { inverse?: boolean }) {
   return (
     <span
-      className={`material-symbols-outlined shrink-0 ${inverse ? "text-ink-inverse" : "text-brand-primary"}`}
+      className={`material-symbols-outlined shrink-0 ${inverse ? "text-ink-inverse" : "text-accent"}`}
       aria-hidden="true"
     >
       check
@@ -86,7 +86,7 @@ export function PricingSection() {
                 key={tier.id}
                 className={`${marketingCardClass} relative flex flex-col overflow-visible p-card-padding ${
                   inverse
-                    ? "bg-brand-primary pt-12 text-ink-inverse"
+                    ? "bg-accent pt-12 text-ink-inverse"
                     : "bg-surface-card text-ink-primary"
                 }`}
               >
@@ -125,7 +125,7 @@ export function PricingSection() {
                   href={`/waitlist?tier=${tier.id}`}
                   className={`${marketingButtonClass} mt-8 w-full px-4 py-3 text-center font-label-md text-label-md uppercase no-underline ${
                     inverse
-                      ? "bg-ink-inverse text-brand-primary"
+                      ? "bg-ink-inverse text-accent"
                       : "bg-surface-card text-ink-primary"
                   }`}
                 >

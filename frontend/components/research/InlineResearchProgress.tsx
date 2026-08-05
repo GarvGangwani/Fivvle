@@ -110,7 +110,7 @@ export function InlineResearchProgress({
                     className={`h-[14px] w-[14px] ${
                       isFailed
                         ? "text-[var(--fv-warning)]"
-                        : "text-[var(--fv-accent)]"
+                        : "text-accent"
                     }`}
                   />
                 )}
@@ -120,7 +120,7 @@ export function InlineResearchProgress({
                       ? "text-[var(--fv-success)]"
                       : isFailed
                         ? "text-[var(--fv-warning)]"
-                        : "text-[var(--fv-accent)]"
+                        : "text-accent"
                   }`}
                 >
                   {isComplete

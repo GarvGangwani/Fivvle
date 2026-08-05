@@ -7,7 +7,7 @@ import { useAuth } from "@/lib/auth-context";
 import { formatLoginError, formatSignupError } from "@/lib/auth-errors";
 
 const inputClassName =
-  "mt-2 w-full rounded-md border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md text-ink-primary shadow-brutal-sm transition-shadow focus:border-brand-primary focus:shadow-brutal-primary focus:outline-none disabled:opacity-60";
+  "mt-2 w-full rounded-md border-2 border-border-master bg-surface-card px-4 py-3 font-body-md text-body-md text-ink-primary shadow-brutal-sm transition-shadow focus:border-accent focus:shadow-brutal-primary focus:outline-none disabled:opacity-60";
 
 const labelClassName =
   "font-label-md text-label-md uppercase text-ink-secondary";
@@ -129,7 +129,7 @@ export function EmailPasswordForm({
     if (submitState === "success") {
       return "bg-status-success text-ink-inverse";
     }
-    return "bg-brand-primary text-ink-inverse";
+    return "bg-accent text-ink-inverse";
   }
 
   return (
@@ -193,7 +193,7 @@ export function EmailPasswordForm({
           {mode === "login" ? (
             <Link
               href="/forgot-password"
-              className="font-label-md text-label-md uppercase text-brand-primary no-underline hover:underline"
+              className="font-label-md text-label-md uppercase text-accent no-underline hover:underline"
             >
               FORGOT?
             </Link>
