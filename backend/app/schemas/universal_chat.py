@@ -60,9 +60,15 @@ class UniversalChatSendRequest(BaseModel):
     # the LLM is the branch up to that parent; the new USER row becomes the
     # active leaf so prior subsequent turns drop off the active branch.
     replace_message_id: UUID | None = None
+    # Agent-initiated kick after idea capture — no new USER bubble; forces refine.
+    kick: Literal["post_capture_refine"] | None = None
 
     @model_validator(mode="after")
     def _require_message_or_attachments(self) -> "UniversalChatSendRequest":
+        if self.kick is not None:
+            return self
+        if self.mcq_answer is not None:
+            return self
         if not self.message.strip() and not self.attachment_ids:
             raise ValueError("message or attachment_ids is required")
         return self

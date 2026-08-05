@@ -122,7 +122,27 @@ async def begin_refinement_from_spark(
     if experiment.status != ExperimentStatus.SPARK:
         return experiment
 
-    validate_raw_idea_for_refine(experiment.raw_idea)
+    # Post-capture: original_idea is the sealed seed; copy into raw_idea if
+    # the working copy was never filled (name-only Spark create).
+    if not (experiment.raw_idea or "").strip() and experiment.original_idea:
+        experiment.raw_idea = experiment.original_idea.strip()
+
+    if experiment.original_idea is not None:
+        # Capture already validated length (1–2000). Allow refine handoff on
+        # sealed ideas shorter than the legacy Spark min (50).
+        stripped = (experiment.raw_idea or "").strip()
+        if not stripped:
+            raise ValueError(
+                "raw_idea must not be empty when starting refine after capture"
+            )
+        if len(experiment.raw_idea or "") > _RAW_IDEA_MAX_LEN:
+            raise ValueError(
+                f"raw_idea must be at most {_RAW_IDEA_MAX_LEN} characters"
+            )
+        experiment.raw_idea = stripped
+    else:
+        validate_raw_idea_for_refine(experiment.raw_idea)
+
     now = datetime.now(timezone.utc)
     experiment.status = ExperimentStatus.REFINING
     if experiment.refinement_started_at is None:

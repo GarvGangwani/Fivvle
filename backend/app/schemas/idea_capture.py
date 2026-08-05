@@ -77,4 +77,4 @@ class CaptureIdeaResponse(BaseModel):
     original_idea_captured_at: datetime
     idea_theme: IdeaTheme
     frozen_attachments: list[CaptureIdeaFrozenAttachment]
-    confirmation_message: str
+    user_message_id: UUID

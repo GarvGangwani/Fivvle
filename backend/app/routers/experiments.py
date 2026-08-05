@@ -18,6 +18,7 @@ Per AGENTS.md «Error handling»:
 
 from __future__ import annotations
 
+import asyncio
 import csv
 import io
 import re
@@ -190,6 +191,11 @@ from app.services.idea_capture_service import (
     IdeaAlreadyCapturedError,
     IdeaCaptureValidationError,
     capture_original_idea,
+)
+from app.services.capture_greeting_service import (
+    CaptureGreetingError,
+    ensure_capture_greeting,
+    stream_capture_greeting_tokens,
 )
 from app.db.models.chat_attachment import ChatAttachment
 from app.schemas.idea_capture import (
@@ -1629,6 +1635,7 @@ async def stream_universal_chat(
             current_open_phase=body.current_open_phase,
             mcq_answer=body.mcq_answer,
             replace_message_id=body.replace_message_id,
+            kick=body.kick,
         )
     except UniversalChatNotFound:
         raise HTTPException(
@@ -2563,6 +2570,79 @@ async def unarchive_experiment(
 
 
 @router.post(
+    "/{experiment_id}/chat/universal/capture-greeting/stream",
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def stream_capture_greeting(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> StreamingResponse:
+    """Seed + stream the pre-capture greeting (template tokens; no LLM).
+
+    Idempotent: if the greeting already exists, streams the existing text then
+    done. Capture card should appear only after the client receives ``done``.
+    """
+    result = await db.execute(
+        select(Experiment).where(Experiment.id == experiment_id)
+    )
+    experiment = result.scalar_one_or_none()
+    if experiment is None or experiment.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Experiment not found",
+        )
+    try:
+        greeting, created = await ensure_capture_greeting(
+            db, experiment=experiment, user=current_user
+        )
+    except CaptureGreetingError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=exc.message,
+        ) from exc
+
+    text = greeting.content or ""
+    message_id = str(greeting.id)
+    thread_id = str(greeting.thread_id)
+
+    async def _frames():
+        yield format_sse_event(
+            "turn_started",
+            {
+                "message_id": message_id,
+                "thread_id": thread_id,
+                "created": created,
+            },
+        )
+        async for chunk in stream_capture_greeting_tokens(text):
+            yield format_sse_event("assistant_token", {"text": chunk})
+            # Light pacing so the dock can paint tokens.
+            await asyncio.sleep(0.012)
+        yield format_sse_event(
+            "done",
+            {
+                "assistant_message_id": message_id,
+                "thread_id": thread_id,
+                "user_message_id": None,
+            },
+        )
+
+    return StreamingResponse(
+        _frames(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.post(
     "/{experiment_id}/capture-idea",
     response_model=CaptureIdeaResponse,
     status_code=status.HTTP_200_OK,
@@ -2618,7 +2698,7 @@ async def capture_experiment_idea(
             )
             for att in captured.frozen_attachments
         ],
-        confirmation_message=captured.confirmation_message,
+        user_message_id=captured.user_message_id,
     )
 
 

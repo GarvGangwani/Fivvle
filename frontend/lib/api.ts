@@ -498,6 +498,8 @@ export async function streamUniversalChatMessage(
       answered_question_id: string;
       skipped?: boolean;
     } | null;
+    /** Agent-initiated post-capture refine handoff (no new user bubble). */
+    kick?: "post_capture_refine" | null;
   },
 ): Promise<void> {
   const authHeader = await getAuthHeader();
@@ -514,6 +516,9 @@ export async function streamUniversalChatMessage(
   }
   if (options?.mcq_answer != null) {
     body.mcq_answer = options.mcq_answer;
+  }
+  if (options?.kick != null) {
+    body.kick = options.kick;
   }
 
   let response: Response;
@@ -672,6 +677,116 @@ export async function streamUniversalChatMessage(
       }
     } else if (event.event === "error") {
       let message = "Universal chat failed, please try again";
+      try {
+        const data = JSON.parse(event.data) as { message?: string };
+        if (typeof data.message === "string" && data.message.trim()) {
+          message = data.message;
+        }
+      } catch {
+        /* keep default */
+      }
+      callbacks.onError(message);
+    }
+  };
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const parser = createSSEParser();
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      for (const event of parser.push(decoder.decode(value, { stream: true }))) {
+        dispatch(event);
+      }
+    }
+    for (const event of parser.flush()) dispatch(event);
+  } catch {
+    if (signal?.aborted) return;
+    callbacks.onError("Connection lost — retry");
+  }
+}
+
+/** Stream the pre-capture greeting (template tokens; seeded on the universal thread). */
+export async function streamCaptureGreeting(
+  experimentId: string,
+  callbacks: {
+    onAssistantToken: (payload: { text: string }) => void;
+    onDone: (payload: {
+      assistant_message_id: string;
+      thread_id: string;
+    }) => void;
+    onError: (message: string) => void;
+  },
+  signal?: AbortSignal,
+): Promise<void> {
+  const authHeader = await getAuthHeader();
+  let response: Response;
+  try {
+    response = await fetch(
+      apiUrl(`/experiments/${experimentId}/chat/universal/capture-greeting/stream`),
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeader },
+        body: "{}",
+        signal,
+      },
+    );
+  } catch (err) {
+    if (signal?.aborted) return;
+    throw new ApiError(
+      0,
+      { error: err instanceof Error ? err.message : "Network error" },
+      null,
+    );
+  }
+
+  const requestId = response.headers.get("X-Request-ID");
+  if (!response.ok || !response.body) {
+    let parsed: unknown = null;
+    const contentType = response.headers.get("content-type") ?? "";
+    if (contentType.includes("application/json")) {
+      const raw = await response.text();
+      parsed = raw ? JSON.parse(raw) : null;
+    } else {
+      parsed = await response.text();
+    }
+    if (response.status === 401) {
+      await handleSessionExpired();
+    }
+    throw new ApiError(response.status, parsed, requestId);
+  }
+
+  const dispatch = (event: SSEEvent): void => {
+    if (event.event === "assistant_token") {
+      try {
+        const data = JSON.parse(event.data) as { text?: string };
+        if (typeof data.text === "string" && data.text) {
+          callbacks.onAssistantToken({ text: data.text });
+        }
+      } catch {
+        /* ignore */
+      }
+    } else if (event.event === "done") {
+      try {
+        const data = JSON.parse(event.data) as {
+          assistant_message_id?: string;
+          thread_id?: string;
+        };
+        if (
+          typeof data.assistant_message_id === "string" &&
+          typeof data.thread_id === "string"
+        ) {
+          callbacks.onDone({
+            assistant_message_id: data.assistant_message_id,
+            thread_id: data.thread_id,
+          });
+        }
+      } catch {
+        /* ignore */
+      }
+    } else if (event.event === "error") {
+      let message = "Greeting failed — retry";
       try {
         const data = JSON.parse(event.data) as { message?: string };
         if (typeof data.message === "string" && data.message.trim()) {

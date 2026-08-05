@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -21,9 +22,6 @@ from app.services.idea_theme_service import classify_idea_theme
 _logger = get_logger(__name__)
 
 _RAW_IDEA_MAX_LEN = 2000
-CAPTURE_CONFIRMATION_MESSAGE = (
-    "Captured — this is your original idea, sealed. Let's get to work."
-)
 
 
 class IdeaAlreadyCapturedError(Exception):
@@ -56,7 +54,7 @@ class CaptureOriginalIdeaResult:
     original_idea_captured_at: datetime
     idea_theme: IdeaTheme
     frozen_attachments: list[FrozenAttachmentRef]
-    confirmation_message: str
+    user_message_id: UUID
 
 
 async def capture_original_idea(
@@ -70,7 +68,8 @@ async def capture_original_idea(
     """Freeze the original idea + attachments + theme. Write-once.
 
     Does not modify raw_idea, refined_idea, or spark_version.
-    Persists a brief confirmation on the universal chat thread.
+    Persists the idea as a USER message on the universal chat thread
+    (with attachment chips metadata) so the founder sees their submission.
     """
     if experiment.original_idea is not None:
         raise IdeaAlreadyCapturedError()
@@ -101,11 +100,17 @@ async def capture_original_idea(
     experiment.original_idea = stripped
     experiment.original_idea_captured_at = captured_at
     experiment.idea_theme = theme
+    # Seed the mutable working copy so SPARK → REFINING / ask_refine_agent
+    # can start immediately after capture (original_idea stays immutable).
+    if not (experiment.raw_idea or "").strip():
+        experiment.raw_idea = stripped
 
-    await _persist_capture_confirmation(
+    user_msg = await _persist_capture_user_message(
         db,
         experiment=experiment,
         user_id=user_id,
+        idea_text=stripped,
+        frozen_attachments=frozen_rows,
     )
 
     await db.commit()
@@ -116,6 +121,7 @@ async def capture_original_idea(
         experiment_id=str(experiment.id),
         theme=theme,
         attachment_count=len(frozen_rows),
+        user_message_id=str(user_msg.id),
     )
 
     return CaptureOriginalIdeaResult(
@@ -124,17 +130,19 @@ async def capture_original_idea(
         original_idea_captured_at=experiment.original_idea_captured_at or captured_at,
         idea_theme=theme,
         frozen_attachments=frozen_rows,
-        confirmation_message=CAPTURE_CONFIRMATION_MESSAGE,
+        user_message_id=user_msg.id,
     )
 
 
-async def _persist_capture_confirmation(
+async def _persist_capture_user_message(
     db: AsyncSession,
     *,
     experiment: Experiment,
     user_id: UUID,
-) -> None:
-    """Seed the universal rail with the post-capture confirmation."""
+    idea_text: str,
+    frozen_attachments: list[FrozenAttachmentRef],
+) -> ChatMessage:
+    """Persist the captured idea as a visible USER bubble on the universal rail."""
     thread: ChatThread | None = None
     if experiment.universal_thread_id is not None:
         thread = await db.get(ChatThread, experiment.universal_thread_id)
@@ -148,17 +156,35 @@ async def _persist_capture_confirmation(
         experiment.universal_thread_id = thread.id
 
     parent_id = thread.active_leaf_message_id
-    assistant = ChatMessage(
+    metadata: dict[str, Any] | None = None
+    if frozen_attachments:
+        metadata = {
+            "attachments": [
+                {
+                    "id": str(att.id),
+                    "filename": att.original_filename,
+                    "content_kind": att.content_kind,
+                }
+                for att in frozen_attachments
+            ],
+            "capture_submission": True,
+        }
+    else:
+        metadata = {"capture_submission": True}
+
+    user_msg = ChatMessage(
         thread_id=thread.id,
-        role=ChatRole.ASSISTANT,
-        content=CAPTURE_CONFIRMATION_MESSAGE,
+        role=ChatRole.USER,
+        content=idea_text,
         experiment_id=experiment.id,
         turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
         parent_message_id=parent_id,
+        metadata_json=metadata,
     )
-    db.add(assistant)
+    db.add(user_msg)
     await db.flush()
-    thread.active_leaf_message_id = assistant.id
+    thread.active_leaf_message_id = user_msg.id
+    return user_msg
 
 
 async def _resolve_and_freeze_attachments(

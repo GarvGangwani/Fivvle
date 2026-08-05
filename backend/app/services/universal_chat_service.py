@@ -147,6 +147,8 @@ class UniversalStreamPrep:
     mcq_answer: dict[str, Any] | None = None
     # Card selection/skip: no new USER row in the universal thread (no echo bubble).
     suppress_user_echo: bool = False
+    # Agent-initiated post-capture refine handoff (forces ask_refine_agent).
+    kick: str | None = None
 
 
 def _merge_turn_metadata(
@@ -922,6 +924,7 @@ async def prepare_universal_stream(
     current_open_phase: str | None = None,
     mcq_answer: Any = None,
     replace_message_id: UUID | None = None,
+    kick: str | None = None,
 ) -> UniversalStreamPrep:
     """Persist + commit the user row before the SSE generator starts.
 
@@ -932,12 +935,16 @@ async def prepare_universal_stream(
     USER row — the answer stays invisible in the rail and attaches under the
     existing active leaf. Attachment IDs are ignored on that path.
 
+    ``kick="post_capture_refine"`` is agent-initiated after idea capture: no
+    new USER row; forces ``ask_refine_agent`` on the frozen original idea.
+
     ``replace_message_id`` forks the active branch (message edit): history is
     the chain up to that message's parent; the new USER row becomes the leaf.
     """
     mcq_inject = _mcq_answer_as_dict(mcq_answer)
-    suppress_user_echo = mcq_inject is not None
-    # MCQ clicks are invisible — do not consume / inject attachments.
+    kick_refine = kick == "post_capture_refine"
+    suppress_user_echo = mcq_inject is not None or kick_refine
+    # MCQ / kick clicks are invisible — do not consume / inject attachments.
     ids = [] if suppress_user_echo else list(attachment_ids or [])
 
     experiment = await _load_owned_experiment(db, current_user, experiment_id)
@@ -952,14 +959,25 @@ async def prepare_universal_stream(
             db, thread=thread, replace_message_id=replace_message_id
         )
 
-    display_content, llm_message, attachment_meta = await _prepare_attachment_turn(
-        db,
-        user=current_user,
-        message=message,
-        attachment_ids=ids,
-        allow_consumed_attachments=is_edit,
-    )
-    clean_message = _sanitize(message)
+    if kick_refine:
+        original = (experiment.original_idea or "").strip()
+        clean_message = (
+            "The founder just sealed their original idea. Pressure-test it now: "
+            "ask one sharp clarifying question via ask_refine_agent.\n\n"
+            f"<original_idea>\n{original}\n</original_idea>"
+        )
+        display_content = clean_message
+        llm_message = clean_message
+        attachment_meta = None
+    else:
+        display_content, llm_message, attachment_meta = await _prepare_attachment_turn(
+            db,
+            user=current_user,
+            message=message,
+            attachment_ids=ids,
+            allow_consumed_attachments=is_edit,
+        )
+        clean_message = _sanitize(message)
 
     if parent_id is not None:
         history = await get_branch_up_to(db, parent_id)
@@ -1028,6 +1046,7 @@ async def prepare_universal_stream(
         pacing_delay=pacing_delay,
         mcq_answer=mcq_inject,
         suppress_user_echo=suppress_user_echo,
+        kick=kick if kick_refine else None,
     )
 
 
@@ -1191,10 +1210,93 @@ async def _iter_universal_turn_events(
         refine_already_streamed = False
         mcq_inject = dict(prep.mcq_answer) if prep.mcq_answer else None
         mcq_forced = False
+        kick_forced = False
 
         try:
             while True:
                 _raise_if_turn_cancelled(cancel)
+                if prep.kick == "post_capture_refine" and not kick_forced:
+                    kick_forced = True
+                    tool_rounds += 1
+                    tool_use = llm_client.ToolUseRequest(
+                        id=f"capture-refine-{prep.turn_id}",
+                        name=_TOOL_REFINE,
+                        input={"query": prep.clean_message},
+                    )
+                    tool_call_msg = ChatMessage(
+                        thread_id=prep.thread_id,
+                        role=ChatRole.TOOL_CALL,
+                        content=f"Called: {tool_use.name}",
+                        experiment_id=experiment.id,
+                        turn_kind=ChatTurnKind.UNIVERSAL_CHAT,
+                        parent_message_id=chain_parent_id,
+                        tool_payload={
+                            "tool_name": tool_use.name,
+                            "arguments": tool_use.input,
+                        },
+                    )
+                    db.add(tool_call_msg)
+                    await db.flush()
+                    await set_active_leaf(db, prep.thread_id, tool_call_msg.id)
+                    await db.commit()
+                    chain_parent_id = tool_call_msg.id
+                    yield (
+                        "tool_call",
+                        {
+                            "tool_name": tool_use.name,
+                            "message_id": str(tool_call_msg.id),
+                        },
+                    )
+                    in_flight_tool_result_id: UUID | None = None
+                    refine_owned = False
+                    refine_text = ""
+                    try:
+                        async for evt in _stream_refine_tool(
+                            db,
+                            experiment,
+                            user,
+                            tool_use,
+                            prep,
+                            chain_parent_id,
+                            mcq_answer=None,
+                            cancel=cancel,
+                        ):
+                            if evt[0] == "_refine_outcome":
+                                refine_owned = bool(evt[1].get("ok"))
+                                refine_text = str(evt[1].get("assistant_text") or "")
+                                if evt[1].get("already_streamed"):
+                                    refine_already_streamed = True
+                            elif evt[0] == "_chain_parent":
+                                chain_parent_id = evt[1]["id"]  # type: ignore[index]
+                                result_content = evt[1]["content_json"]
+                                in_flight_tool_result_id = None
+                                _append_tool_followups(
+                                    provider,
+                                    api_messages,
+                                    assistant_turn=_synthetic_mcq_assistant_turn(
+                                        provider, tool_use
+                                    ),
+                                    tool_uses=[tool_use],
+                                    result_contents=[result_content],
+                                )
+                            elif evt[0] == "_in_flight_tool_result":
+                                in_flight_tool_result_id = evt[1]["id"]
+                            else:
+                                yield evt
+                    except (asyncio.CancelledError, GeneratorExit):
+                        await _delete_in_flight_tool_result(
+                            db, in_flight_tool_result_id
+                        )
+                        raise
+                    refreshed = await db.get(Experiment, experiment.id)
+                    if refreshed is not None:
+                        experiment = refreshed
+                    if refine_owned:
+                        skip_master_final = True
+                        assistant_text = refine_text
+                        break
+                    continue
+
                 if mcq_inject is not None and not mcq_forced:
                     mcq_forced = True
                     tool_rounds += 1
