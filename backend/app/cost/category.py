@@ -43,6 +43,8 @@ _PHASE_TO_CATEGORY: dict[str, CostCategory] = {
     "chat_attachment": CostCategory.REFINEMENT,
     "evidence_chat": CostCategory.REFINEMENT,
     "universal_chat": CostCategory.REFINEMENT,
+    "idea_theme": CostCategory.REFINEMENT,
+    "refiner_opener": CostCategory.REFINEMENT,
     # Cognitive validation / research engine (validation report)
     "planner": CostCategory.COGNITIVE_VALIDATION,
     "searcher": CostCategory.COGNITIVE_VALIDATION,
