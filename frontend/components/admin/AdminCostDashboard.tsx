@@ -70,7 +70,7 @@ function KpiCard({
       </p>
       <p
         className={`mt-2 text-2xl font-semibold tracking-tight ${
-          accent ? "text-[var(--fv-accent)]" : "text-[var(--fv-text)]"
+          accent ? "text-accent" : "text-[var(--fv-text)]"
         }`}
       >
         {value}
@@ -111,7 +111,7 @@ function VerticalBarChart({
                 />
               )}
               <div
-                className="w-full max-w-[48px] rounded-t-md bg-[var(--fv-accent)]/85 transition-all"
+                className="w-full max-w-[48px] rounded-t-md bg-accent/85 transition-all"
                 style={{ height: `${heightPct}%` }}
                 role="img"
                 aria-label={`${item.label}: ${formatUsd(item.value)}`}
@@ -169,7 +169,7 @@ function HorizontalBarList({
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-[var(--fv-border)]/50">
               <div
-                className="h-full rounded-full bg-[var(--fv-accent)]/80"
+                className="h-full rounded-full bg-accent/80"
                 style={{ width: `${widthPct}%` }}
               />
             </div>
@@ -201,7 +201,7 @@ function DailyTrendChart({ rows }: { rows: DailyCostRow[] }) {
     <div>
       <div className="mb-3 flex flex-wrap gap-4 text-[11px] text-[var(--fv-text-muted)]">
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-[var(--fv-accent)]" />
+          <span className="h-2.5 w-2.5 rounded-sm bg-accent" />
           LLM
         </span>
         <span className="inline-flex items-center gap-1.5">
@@ -237,7 +237,7 @@ function DailyTrendChart({ rows }: { rows: DailyCostRow[] }) {
               >
                 {llm > 0 && (
                   <div
-                    className="w-full bg-[var(--fv-accent)]/85"
+                    className="w-full bg-accent/85"
                     style={{ flexGrow: llmPct }}
                   />
                 )}
@@ -341,7 +341,7 @@ function UserCostTable({
                 key={row.user_id}
                 onClick={() => onSelectUser(row.user_id)}
                 className={`cursor-pointer border-b border-[var(--fv-border)]/60 text-[var(--fv-text-soft)] transition-colors hover:bg-[var(--fv-border)]/20 ${
-                  isSelected ? "bg-[var(--fv-accent)]/10" : ""
+                  isSelected ? "bg-accent/10" : ""
                 }`}
               >
                 <td className="py-3 pr-4">
@@ -361,7 +361,7 @@ function UserCostTable({
                 <td className="py-3">
                   <div className="h-2 w-28 overflow-hidden rounded-full bg-[var(--fv-border)]/50">
                     <div
-                      className="h-full rounded-full bg-[var(--fv-accent)]/80"
+                      className="h-full rounded-full bg-accent/80"
                       style={{ width: `${widthPct}%` }}
                     />
                   </div>
@@ -680,7 +680,7 @@ export function AdminCostDashboard() {
             onClick={() => setDays(option)}
             className={`rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
               days === option
-                ? "bg-[var(--fv-accent-muted)] text-[var(--fv-accent)]"
+                ? "bg-accent-muted text-accent"
                 : "text-[var(--fv-text-muted)] hover:bg-[var(--fv-hover-overlay)]"
             }`}
           >
@@ -699,7 +699,7 @@ export function AdminCostDashboard() {
           {summary && (
             <section className="mb-10">
               <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-[var(--fv-text)]">
-                <TrendingUp className="h-4 w-4 text-[var(--fv-accent)]" />
+                <TrendingUp className="h-4 w-4 text-accent" />
                 Overview
               </h2>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

@@ -132,7 +132,7 @@ export function ArchivedProjectsContent() {
           </p>
           <Link
             href="/"
-            className="mt-6 inline-block font-label-md text-label-md uppercase text-brand-primary no-underline hover:underline"
+            className="mt-6 inline-block font-label-md text-label-md uppercase text-accent no-underline hover:underline"
           >
             Go to active experiments
           </Link>

@@ -36,7 +36,6 @@ class ExperimentProjectContext:
     # True once original_idea has been write-once captured.
     has_original_idea: bool
     original_idea: str | None
-    idea_theme: str | None
     refined_one_liner: str | None
     target_audience: str | None
     has_validation_report: bool
@@ -68,8 +67,6 @@ class ExperimentProjectContext:
         lines.append(f"has_original_idea: {str(self.has_original_idea).lower()}")
         if self.original_idea:
             lines.append(f"original_idea: {self.original_idea}")
-        if self.idea_theme:
-            lines.append(f"idea_theme: {self.idea_theme}")
         if self.raw_idea:
             lines.append(f"raw_idea: {self.raw_idea}")
         if self.refined_one_liner:
@@ -208,7 +205,6 @@ async def get_experiment_project_context(
     has_original_idea = exp.original_idea is not None
     original = exp.original_idea.strip() if exp.original_idea else ""
     original_idea = _truncate(original, _RAW_IDEA_MAX) if original else None
-    idea_theme = (exp.idea_theme.strip().lower() if exp.idea_theme else None) or None
 
     phase_info = await fetch_spark_phase_version_info(db, exp)
 
@@ -220,7 +216,6 @@ async def get_experiment_project_context(
         raw_idea=raw_idea,
         has_original_idea=has_original_idea,
         original_idea=original_idea,
-        idea_theme=idea_theme,
         refined_one_liner=refined_one_liner,
         target_audience=target_audience,
         has_validation_report=exp.validation_report is not None,

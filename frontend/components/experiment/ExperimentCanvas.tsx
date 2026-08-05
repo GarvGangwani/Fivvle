@@ -20,16 +20,24 @@ import ReactFlow, {
 import "reactflow/dist/style.css";
 import { useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui/ToastProvider";
-import { getExperiment } from "@/lib/api";
+import { getExperiment, setExperimentTheme } from "@/lib/api";
 import {
   createExperimentEvent,
   rerunEvidence,
 } from "@/lib/experiment-api";
+import {
+  DEFAULT_PALETTE_NAME,
+  isThemePaletteName,
+  paletteAccentOverride,
+  type ThemePaletteName,
+} from "@/lib/theme-palettes";
 import type { CanvasNodeId, Experiment, ExperimentStatus, SatelliteNodeId } from "@/lib/types";
 import { ACT_CONFIG } from "./act-config";
 import { BlueprintDecor } from "./BlueprintDecor";
 import { CanvasToolbar } from "./CanvasToolbar";
 import { UniversalChatDock } from "./UniversalChatDock";
+import { ThemeConsentDialog } from "./theme/ThemeConsentDialog";
+import { ThemePaletteControl } from "./theme/ThemePaletteControl";
 import {
   CORE_NODE_CENTER,
   DEFAULT_CANVAS_ZOOM,
@@ -44,6 +52,11 @@ import {
   snapToGrid,
 } from "./canvas-helpers";
 import { originAttachmentsForArtifact } from "./idea-capture-helpers";
+import {
+  applyRouteAccent,
+  canvasAccentCssVars,
+  type CanvasAccentOverride,
+} from "./canvas-accent";
 import {
   DeepDiveOverlay,
   type DeepDiveAct,
@@ -123,9 +136,18 @@ const FRAME_CANVAS_DURATION_MS = 200;
 type Props = {
   experiment: Experiment;
   onExperimentChange?: (experiment: Experiment) => void;
+  /**
+   * Escape hatch that wins over the experiment's palette. Only affects this
+   * wrapper — FloatingAppNav / dashboard sit outside it and stay platform purple.
+   */
+  accentOverride?: CanvasAccentOverride | string | null;
 };
 
-function CanvasInner({ experiment, onExperimentChange }: Props) {
+function CanvasInner({
+  experiment,
+  onExperimentChange,
+  accentOverride,
+}: Props) {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const initialAct = searchParams.get("act");
@@ -175,6 +197,69 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     const updated = await getExperiment(experiment.id);
     onExperimentChange(updated);
   }, [experiment.id, onExperimentChange]);
+
+  /** Held locally so a palette switch recolors before the PATCH round-trips. */
+  const [activePalette, setActivePalette] = useState<string | null>(
+    experiment.theme_palette ?? null,
+  );
+  useEffect(() => {
+    setActivePalette(experiment.theme_palette ?? null);
+  }, [experiment.theme_palette]);
+
+  const [paletteConsent, setPaletteConsent] = useState<{
+    palette: string;
+    resolve: () => void;
+  } | null>(null);
+  const [paletteBusy, setPaletteBusy] = useState(false);
+
+  const applyPalette = useCallback(
+    async (next: ThemePaletteName | null) => {
+      const previous = activePalette;
+      setActivePalette(next);
+      try {
+        const updated = await setExperimentTheme(experiment.id, next);
+        onExperimentChange?.(updated);
+      } catch {
+        setActivePalette(previous);
+        toast("Could not save the canvas theme. Try again.", "error");
+      }
+    },
+    [activePalette, experiment.id, onExperimentChange, toast],
+  );
+
+  /**
+   * Resolves once the founder answers, so the dock can await consent before
+   * handing the canvas to refine. Default suggestions need no prompt.
+   */
+  const requestPaletteConsent = useCallback(
+    (paletteName: string) =>
+      new Promise<void>((resolve) => {
+        if (
+          !isThemePaletteName(paletteName) ||
+          paletteName === DEFAULT_PALETTE_NAME
+        ) {
+          resolve();
+          return;
+        }
+        setPaletteConsent({ palette: paletteName, resolve });
+      }),
+    [],
+  );
+
+  const closePaletteConsent = useCallback(() => {
+    paletteConsent?.resolve();
+    setPaletteConsent(null);
+    setPaletteBusy(false);
+  }, [paletteConsent]);
+
+  const acceptSuggestedPalette = useCallback(async () => {
+    if (!paletteConsent) return;
+    setPaletteBusy(true);
+    if (isThemePaletteName(paletteConsent.palette)) {
+      await applyPalette(paletteConsent.palette);
+    }
+    closePaletteConsent();
+  }, [applyPalette, closePaletteConsent, paletteConsent]);
 
   const {
     messages: refineMessages,
@@ -329,7 +414,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
           ? {
               originalIdea: experiment.original_idea ?? "",
               capturedAt: experiment.original_idea_captured_at ?? null,
-              theme: experiment.idea_theme ?? null,
               attachments: originAttachmentsForArtifact(
                 experiment.id,
                 experiment.origin_attachments,
@@ -534,8 +618,25 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     [setNodes, updatePosition],
   );
 
+  const resolvedAccent = useMemo(
+    () => accentOverride ?? paletteAccentOverride(activePalette),
+    [accentOverride, activePalette],
+  );
+
+  const accentStyle = useMemo(
+    () => canvasAccentCssVars(resolvedAccent),
+    [resolvedAccent],
+  );
+
+  // Themes the canvas-route side rail, which renders above this wrapper.
+  useEffect(() => applyRouteAccent(resolvedAccent), [resolvedAccent]);
+
   return (
-    <div className="relative h-full w-full canvas-grid-bg overflow-hidden">
+    <div
+      className="relative h-full w-full canvas-grid-bg overflow-hidden"
+      data-canvas-accent-scope=""
+      style={accentStyle}
+    >
       {!loaded ? (
         <div className="absolute inset-0 flex items-center justify-center">
           <span className="font-mono text-mono-md uppercase text-ink-tertiary">
@@ -581,6 +682,20 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       )}
 
       <CanvasToolbar onReset={handleResetLayout} onFitView={handleFitView} />
+      <ThemePaletteControl
+        active={activePalette}
+        suggested={experiment.suggested_palette ?? null}
+        onSelect={(palette) => void applyPalette(palette)}
+      />
+      {paletteConsent ? (
+        <ThemeConsentDialog
+          projectName={experiment.name ?? null}
+          paletteName={paletteConsent.palette}
+          busy={paletteBusy}
+          onAccept={() => void acceptSuggestedPalette()}
+          onDecline={closePaletteConsent}
+        />
+      ) : null}
       <UniversalChatDock
         experimentId={experiment.id}
         projectName={experiment.name}
@@ -589,6 +704,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         onOpenPhase={openPhaseOverlay}
         needsIdeaCapture={!experimentHasOriginalIdea(experiment)}
         onIdeaCaptured={onExperimentRefresh}
+        onPaletteSuggested={requestPaletteConsent}
       />
       <DeepDiveOverlay
         isOpen={overlayAct !== null}

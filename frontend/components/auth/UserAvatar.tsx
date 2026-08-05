@@ -32,7 +32,7 @@ export function UserAvatar({
   if (isSafeAvatarUrl(photoUrl)) {
     return (
       <div
-        className={`relative shrink-0 overflow-hidden rounded-full bg-[var(--fv-accent-muted)] ${sizeClass} ${className}`}
+        className={`relative shrink-0 overflow-hidden rounded-full bg-accent-muted ${sizeClass} ${className}`}
       >
         <Image
           src={photoUrl}
@@ -48,7 +48,7 @@ export function UserAvatar({
 
   return (
     <div
-      className={`flex shrink-0 items-center justify-center rounded-full bg-[var(--fv-accent-muted)] font-semibold text-[var(--fv-accent)] ${sizeClass} ${className}`}
+      className={`flex shrink-0 items-center justify-center rounded-full bg-accent-muted font-semibold text-accent ${sizeClass} ${className}`}
       aria-hidden={!displayName && !email}
     >
       {initial}

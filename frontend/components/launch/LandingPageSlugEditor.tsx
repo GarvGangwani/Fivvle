@@ -35,7 +35,7 @@ const ghostButtonClass =
   "inline-flex items-center gap-1.5 border-2 border-border-master bg-surface-card px-3 py-2 font-label-md text-label-sm uppercase tracking-wider text-ink-primary shadow-brutal-sm transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-md disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-brutal-sm";
 
 const primaryButtonClass =
-  "inline-flex items-center gap-1.5 border-2 border-border-master bg-brand-primary px-3 py-2 font-label-md text-label-sm uppercase tracking-wider text-ink-inverse shadow-brutal-sm transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-md disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-brutal-sm";
+  "inline-flex items-center gap-1.5 border-2 border-border-master bg-accent px-3 py-2 font-label-md text-label-sm uppercase tracking-wider text-ink-inverse shadow-brutal-sm transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-md disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-x-0 disabled:hover:translate-y-0 disabled:hover:shadow-brutal-sm";
 
 function sanitizeSlugInput(value: string): string {
   return value
@@ -182,7 +182,7 @@ export function LandingPageSlugEditor({
           </p>
         ) : null}
         <p
-          className={`truncate font-mono text-body-sm text-brand-primary${embedded ? "" : " mt-1"}`}
+          className={`truncate font-mono text-body-sm text-accent${embedded ? "" : " mt-1"}`}
           title={publicHost}
         >
           {publicHost}
@@ -230,7 +230,7 @@ export function LandingPageSlugEditor({
         </button>
       </div>
 
-      <div className="flex overflow-hidden border-2 border-border-master bg-surface-elevated focus-within:border-brand-primary">
+      <div className="flex overflow-hidden border-2 border-border-master bg-surface-elevated focus-within:border-accent">
         <input
           type="text"
           value={draftSlug}

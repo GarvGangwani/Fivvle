@@ -114,7 +114,7 @@ export function ResourcesDrawer({
           <button
             type="submit"
             disabled={saving}
-            className="border-2 border-border-master bg-brand-primary px-3 py-2 font-label-md text-label-sm uppercase text-ink-inverse"
+            className="border-2 border-border-master bg-accent px-3 py-2 font-label-md text-label-sm uppercase text-ink-inverse"
           >
             Save
           </button>
@@ -148,7 +148,7 @@ export function ResourcesDrawer({
                   href={r.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-1 block break-all font-body-sm text-body-sm text-brand-primary"
+                  className="mt-1 block break-all font-body-sm text-body-sm text-accent"
                 >
                   {r.url}
                 </a>

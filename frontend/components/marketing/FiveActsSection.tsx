@@ -18,7 +18,7 @@ const ACTS = [
     title: "REFINE",
     subtitle: "Pressure-test the hypothesis through a targeted chat.",
     icon: "chat",
-    className: "bg-brand-primary text-ink-inverse",
+    className: "bg-accent text-ink-inverse",
     iconClassName: "text-ink-inverse",
   },
   {

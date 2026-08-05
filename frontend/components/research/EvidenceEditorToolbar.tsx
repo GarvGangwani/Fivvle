@@ -54,7 +54,7 @@ function ToolbarButton({
       title={label}
       className={`flex h-8 w-8 items-center justify-center border-2 border-border-master transition-shadow disabled:opacity-40 ${
         active
-          ? "bg-brand-primary text-ink-inverse"
+          ? "bg-accent text-ink-inverse"
           : "bg-surface-card text-ink-primary hover:shadow-brutal-sm"
       }`}
     >
@@ -82,7 +82,7 @@ function SwatchButton({
       aria-pressed={active}
       title={label}
       className={`flex h-7 w-7 items-center justify-center border-2 transition-shadow hover:shadow-brutal-sm ${
-        active ? "border-brand-primary" : "border-border-master"
+        active ? "border-accent" : "border-border-master"
       } ${color === null ? "bg-surface-card text-ink-primary" : ""}`}
       style={color === null ? undefined : { backgroundColor: color }}
     >
@@ -158,7 +158,7 @@ function FontSizeDropdown({ editor }: { editor: Editor }) {
               onClick={() => applyFontSize(size)}
               className={`px-2 py-1.5 text-left font-mono text-mono-sm ${
                 size === currentFontSize
-                  ? "bg-brand-primary text-ink-inverse"
+                  ? "bg-accent text-ink-inverse"
                   : "text-ink-primary hover:bg-surface-muted"
               }`}
             >

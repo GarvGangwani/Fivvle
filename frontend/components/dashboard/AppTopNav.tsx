@@ -18,7 +18,7 @@ export function AppTopNav() {
   const linkClass = (active: boolean) =>
     `border-b-2 pb-0.5 font-label-md text-label-md uppercase no-underline ${
       active
-        ? "border-brand-primary text-brand-primary"
+        ? "border-accent text-accent"
         : "border-transparent text-ink-secondary hover:text-ink-primary"
     }`;
 

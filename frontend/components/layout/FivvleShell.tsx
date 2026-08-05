@@ -100,7 +100,7 @@ function FivvleShellInner({
           <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <p className="hidden max-w-[140px] truncate text-[13px] sm:block md:max-w-none">
               <span className="text-[var(--fv-text-soft)]">{getGreeting()}</span>{" "}
-              <span className="font-medium text-[var(--fv-accent)]">
+              <span className="font-medium text-accent">
                 {firstName}
               </span>
             </p>
@@ -119,7 +119,7 @@ function FivvleShellInner({
             href="/"
             className={`flex min-h-[48px] flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] no-underline ${
               mobileTabActive(pathname, "projects", experimentId)
-                ? "text-[var(--fv-accent)]"
+                ? "text-accent"
                 : "text-[var(--fv-text-muted)]"
             }`}
           >
@@ -130,7 +130,7 @@ function FivvleShellInner({
             href="/new"
             className={`flex min-h-[48px] flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] no-underline ${
               mobileTabActive(pathname, "new", experimentId)
-                ? "text-[var(--fv-accent)]"
+                ? "text-accent"
                 : "text-[var(--fv-text-muted)]"
             }`}
           >
@@ -141,7 +141,7 @@ function FivvleShellInner({
             href={experimentHref}
             className={`flex min-h-[48px] flex-1 flex-col items-center justify-center gap-1 py-2 text-[11px] no-underline ${
               mobileTabActive(pathname, "experiment", experimentId)
-                ? "text-[var(--fv-accent)]"
+                ? "text-accent"
                 : "text-[var(--fv-text-muted)]"
             }`}
           >

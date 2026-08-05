@@ -20,7 +20,7 @@ export function EmptyState({
       className={`fv-fade-up flex flex-col items-center px-6 py-16 text-center ${className}`}
     >
       {icon && (
-        <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--fv-accent-muted)] ring-1 ring-[color-mix(in_srgb,var(--fv-accent)_20%,transparent)]">
+        <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-muted ring-1 ring-[color-mix(in_srgb,var(--fv-accent)_20%,transparent)]">
           {icon}
         </div>
       )}

@@ -10,7 +10,7 @@ const TESTIMONIALS = [
     name: "Alex Rivera",
     role: "CEO, NeuraStack",
     initials: "AR",
-    tileClassName: "bg-brand-primary text-ink-inverse",
+    tileClassName: "bg-accent text-ink-inverse",
     quote:
       "We killed a feature in 48 hours because Fivvle showed zero signal. That saved us three months of build time we would have wasted.",
   },

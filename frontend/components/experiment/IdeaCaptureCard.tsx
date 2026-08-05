@@ -319,7 +319,7 @@ export function IdeaCaptureCard({
     <section
       aria-label="Capture your idea"
       className={`relative flex max-h-[min(50vh,24rem)] w-full flex-col rounded-t-md rounded-b-none border border-b-0 border-border-master bg-[var(--fv-surface-muted)] px-2.5 pb-2 pt-2 ${
-        dragActive ? "border-[var(--fv-accent)]" : ""
+        dragActive ? "border-accent" : ""
       }`}
       onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
@@ -331,14 +331,14 @@ export function IdeaCaptureCard({
           className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-t-md bg-[color-mix(in_srgb,var(--fv-accent)_12%,transparent)]"
           aria-hidden
         >
-          <div className="rounded-md border border-dashed border-[var(--fv-accent)] bg-[var(--fv-surface-card)] px-3 py-2 font-mono text-[10px] uppercase tracking-wide text-[var(--fv-accent)]">
+          <div className="rounded-md border border-dashed border-accent bg-[var(--fv-surface-card)] px-3 py-2 font-mono text-[10px] uppercase tracking-wide text-accent">
             Drop files to attach
           </div>
         </div>
       ) : null}
 
       <div className="shrink-0 space-y-1.5 pb-2">
-        <p className="font-mono text-mono-sm uppercase tracking-[0.14em] text-[var(--fv-accent)]">
+        <p className="font-mono text-mono-sm uppercase tracking-[0.14em] text-accent">
           Capture
         </p>
         <h3 className="text-[13px] font-medium leading-snug text-ink-primary">
@@ -356,7 +356,7 @@ export function IdeaCaptureCard({
           rows={4}
           placeholder="Describe your idea…"
           aria-label="Your idea"
-          className="min-h-[4.5rem] w-full resize-none rounded-sm border border-border-master bg-[var(--fv-surface-card)] px-2.5 py-2 text-[13px] leading-snug text-ink-primary placeholder:text-ink-tertiary focus:border-[var(--fv-accent)] focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          className="min-h-[4.5rem] w-full resize-none rounded-sm border border-border-master bg-[var(--fv-surface-card)] px-2.5 py-2 text-[13px] leading-snug text-ink-primary placeholder:text-ink-tertiary focus:border-accent focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
         />
 
         {draftAttachments.length > 0 ? (
@@ -391,7 +391,7 @@ export function IdeaCaptureCard({
                 </div>
                 {item.status === "uploading" ? (
                   <Loader2
-                    className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--fv-accent)]"
+                    className="h-3.5 w-3.5 shrink-0 animate-spin text-accent"
                     aria-hidden
                   />
                 ) : item.status === "error" ? (
@@ -399,7 +399,7 @@ export function IdeaCaptureCard({
                     type="button"
                     onClick={() => retryDraftAttachment(item.localId)}
                     disabled={locked}
-                    className="shrink-0 px-1 font-mono text-[10px] uppercase text-[var(--fv-accent)] hover:underline disabled:opacity-40"
+                    className="shrink-0 px-1 font-mono text-[10px] uppercase text-accent hover:underline disabled:opacity-40"
                   >
                     Retry
                   </button>
@@ -409,7 +409,7 @@ export function IdeaCaptureCard({
                   onClick={() => removeDraftAttachment(item.localId)}
                   aria-label={`Remove ${item.filename}`}
                   disabled={locked}
-                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[var(--fv-text-muted)] hover:bg-[var(--fv-accent-muted)] hover:text-[var(--fv-text)] disabled:opacity-40"
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm text-[var(--fv-text-muted)] hover:bg-accent-muted hover:text-[var(--fv-text)] disabled:opacity-40"
                 >
                   <X className="h-3.5 w-3.5" aria-hidden />
                 </button>
@@ -435,7 +435,7 @@ export function IdeaCaptureCard({
           disabled={locked || draftAttachments.length >= MAX_DRAFT_ATTACHMENTS}
           title="Attach file"
           aria-label="Attach file"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-ink-tertiary transition-colors hover:bg-[var(--fv-accent-muted)] hover:text-[var(--fv-accent)] disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-ink-tertiary transition-colors hover:bg-accent-muted hover:text-accent disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Paperclip className="h-3.5 w-3.5" aria-hidden />
         </button>
@@ -443,7 +443,7 @@ export function IdeaCaptureCard({
           type="button"
           disabled={!canCapture}
           onClick={handleCapture}
-          className="h-7 shrink-0 rounded-sm border border-border-master bg-[var(--fv-accent)] px-3 font-mono text-[10px] uppercase tracking-wider text-white transition-colors hover:bg-[var(--fv-accent-hover)] disabled:cursor-not-allowed disabled:opacity-40"
+          className="h-7 shrink-0 rounded-sm border border-border-master bg-accent px-3 font-mono text-[10px] uppercase tracking-wider text-accent-fg transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
         >
           {submitting ? "Capturing…" : "Capture"}
         </button>

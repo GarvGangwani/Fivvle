@@ -1,6 +1,3 @@
-/** Origin Artifact palette — classified once at capture, then frozen. */
-export type OriginArtifactTheme = "violet" | "pink" | "green" | "orange";
-
 /** Fixed near-black — never themed (borders, shadow, body text, mono labels). */
 export const ORIGIN_INK = "#0A0A0A";
 
@@ -13,46 +10,14 @@ export type OriginArtifactThemeTokens = {
   link: string;
 };
 
-export const ORIGIN_THEME_TOKENS: Record<
-  OriginArtifactTheme,
-  OriginArtifactThemeTokens
-> = {
-  violet: {
-    tint: "#F1ECFE",
-    highlight: "#B197FC",
-    link: "#6D28D9",
-  },
-  pink: {
-    tint: "#FDEAF2",
-    highlight: "#FF80B5",
-    link: "#FF4D9D",
-  },
-  green: {
-    tint: "#E9F7EE",
-    highlight: "#6EE7A8",
-    link: "#0F8A54",
-  },
-  orange: {
-    tint: "#FEEFE3",
-    highlight: "#FDBA74",
-    link: "#DD5B12",
-  },
+/**
+ * Artifact fills, derived from the accent in scope rather than a frozen palette,
+ * so the artifact follows the experiment's canvas theme like the rest of the
+ * canvas. `color-mix` is substituted on the element, which is why these resolve
+ * against the canvas accent and not the :root platform purple.
+ */
+export const ORIGIN_ACCENT_TOKENS: OriginArtifactThemeTokens = {
+  tint: "color-mix(in srgb, var(--fv-accent) 9%, #ffffff)",
+  highlight: "color-mix(in srgb, var(--fv-accent) 50%, #ffffff)",
+  link: "color-mix(in srgb, var(--fv-accent) 88%, #000000)",
 };
-
-export const ORIGIN_ARTIFACT_THEMES: OriginArtifactTheme[] = [
-  "violet",
-  "pink",
-  "green",
-  "orange",
-];
-
-export function isOriginArtifactTheme(
-  value: string | null | undefined,
-): value is OriginArtifactTheme {
-  return (
-    value === "violet" ||
-    value === "pink" ||
-    value === "green" ||
-    value === "orange"
-  );
-}

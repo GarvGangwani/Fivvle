@@ -52,7 +52,7 @@ function SafeCitationLink({ citation }: { citation: Citation }) {
       href={citation.url}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-ink-primary underline decoration-2 underline-offset-2 hover:text-brand-primary"
+      className="inline-flex items-center gap-1 text-ink-primary underline decoration-2 underline-offset-2 hover:text-accent"
       title={citation.title}
     >
       {citation.title}
@@ -229,7 +229,7 @@ function CitationRefs({
           <a
             key={key}
             href={`#citation-${index}`}
-            className="ml-1 font-mono text-mono-sm text-brand-primary no-underline hover:underline"
+            className="ml-1 font-mono text-mono-sm text-accent no-underline hover:underline"
             title={citation.title}
           >
             [{index}]

@@ -69,7 +69,7 @@ export function AddAttachmentMenu({ experimentId, onAdd, onClose }: Props) {
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={busy}
-          className="w-full text-left px-4 py-3 font-body text-body-md hover:bg-brand-primary-soft border-b-2 border-border-master flex items-center gap-2 disabled:opacity-50"
+          className="w-full text-left px-4 py-3 font-body text-body-md hover:bg-accent-muted border-b-2 border-border-master flex items-center gap-2 disabled:opacity-50"
         >
           <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
             upload_file
@@ -79,7 +79,7 @@ export function AddAttachmentMenu({ experimentId, onAdd, onClose }: Props) {
         <button
           type="button"
           onClick={() => setMode("link")}
-          className="w-full text-left px-4 py-3 font-body text-body-md hover:bg-brand-primary-soft flex items-center gap-2"
+          className="w-full text-left px-4 py-3 font-body text-body-md hover:bg-accent-muted flex items-center gap-2"
         >
           <span className="material-symbols-outlined" style={{ fontSize: 18 }}>
             link
@@ -146,7 +146,7 @@ export function AddAttachmentMenu({ experimentId, onAdd, onClose }: Props) {
           type="button"
           onClick={() => void handleLinkSubmit()}
           disabled={!isValidUrl(linkUrl) || !linkTitle.trim() || busy}
-          className="flex-1 rounded-sm bg-brand-primary text-ink-inverse px-3 py-2 border-2 border-border-master font-label-md text-label-md uppercase shadow-brutal-sm hover:shadow-brutal-md disabled:opacity-50 transition-all"
+          className="flex-1 rounded-sm bg-accent text-ink-inverse px-3 py-2 border-2 border-border-master font-label-md text-label-md uppercase shadow-brutal-sm hover:shadow-brutal-md disabled:opacity-50 transition-all"
         >
           {busy ? "ADDING…" : "ADD LINK"}
         </button>

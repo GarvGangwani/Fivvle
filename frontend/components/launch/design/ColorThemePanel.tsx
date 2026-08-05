@@ -301,7 +301,7 @@ function HexField({
               (e.target as HTMLInputElement).blur();
             }
           }}
-          className={`min-w-0 flex-1 border-2 border-border-master bg-surface-elevated px-2 py-1.5 font-mono text-body-sm uppercase outline-none focus:border-brand-primary disabled:opacity-50 ${
+          className={`min-w-0 flex-1 border-2 border-border-master bg-surface-elevated px-2 py-1.5 font-mono text-body-sm uppercase outline-none focus:border-accent disabled:opacity-50 ${
             invalid ? "border-status-critical" : ""
           }`}
         />

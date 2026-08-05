@@ -83,7 +83,7 @@ export function HomeOverviewContent() {
           </p>
           <Link
             href="/new"
-            className={`${marketingButtonClass} mt-8 inline-flex bg-brand-primary px-8 py-4 font-label-md text-label-md uppercase text-ink-inverse no-underline shadow-brutal-md`}
+            className={`${marketingButtonClass} mt-8 inline-flex bg-accent px-8 py-4 font-label-md text-label-md uppercase text-ink-inverse no-underline shadow-brutal-md`}
           >
             START YOUR FIRST VALIDATION →
           </Link>
@@ -116,7 +116,7 @@ export function HomeOverviewContent() {
         </p>
         <Link
           href="/experiments"
-          className="font-label-md text-label-md uppercase text-brand-primary no-underline hover:underline"
+          className="font-label-md text-label-md uppercase text-accent no-underline hover:underline"
         >
           View all →
         </Link>
@@ -131,7 +131,7 @@ export function HomeOverviewContent() {
       <div className="mt-10 flex justify-center">
         <Link
           href="/new"
-          className={`${marketingButtonClass} inline-flex bg-brand-primary px-8 py-4 font-label-md text-label-md uppercase text-ink-inverse no-underline shadow-brutal-md`}
+          className={`${marketingButtonClass} inline-flex bg-accent px-8 py-4 font-label-md text-label-md uppercase text-ink-inverse no-underline shadow-brutal-md`}
         >
           START NEW VALIDATION
         </Link>

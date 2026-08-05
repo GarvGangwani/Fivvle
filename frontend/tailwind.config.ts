@@ -10,7 +10,16 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Brand — routed through accent tokens
+        // App accent — single source of truth (--fv-accent*). Prefer these.
+        accent: {
+          DEFAULT: "var(--fv-accent)",
+          hover: "var(--fv-accent-hover)",
+          muted: "var(--fv-accent-muted)",
+          fg: "var(--fv-accent-fg)",
+          ring: "var(--fv-accent-ring)",
+        },
+
+        // Brand aliases — same tokens (legacy class names still resolve)
         "brand-primary": "var(--fv-accent)",
         "brand-primary-deep": "var(--fv-brand-deep)",
         "brand-primary-soft": "var(--fv-brand-soft)",
@@ -53,7 +62,7 @@ const config: Config = {
           success: "var(--fv-success)",
           warning: "var(--fv-warning)",
           danger: "var(--fv-danger)",
-          "on-accent": "var(--fv-on-accent)",
+          "on-accent": "var(--fv-accent-fg)",
           border: "var(--fv-border)",
         },
 

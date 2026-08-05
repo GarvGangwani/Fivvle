@@ -60,7 +60,7 @@ export function AIComposerPill() {
         className="fixed bottom-8 left-1/2 z-50 hidden w-full max-w-2xl -translate-x-1/2 items-center gap-2 rounded-full border-2 border-border-master bg-surface-card p-2 shadow-brutal-md md:flex"
       >
         <span
-          className="material-symbols-outlined pl-3 text-brand-primary"
+          className="material-symbols-outlined pl-3 text-accent"
           aria-hidden
         >
           auto_awesome
@@ -78,7 +78,7 @@ export function AIComposerPill() {
         <button
           type="submit"
           disabled={submitting || !message.trim()}
-          className="shrink-0 rounded-full bg-brand-primary px-6 py-3 font-label-md text-label-md uppercase text-ink-inverse disabled:opacity-60"
+          className="shrink-0 rounded-full bg-accent px-6 py-3 font-label-md text-label-md uppercase text-ink-inverse disabled:opacity-60"
         >
           {submitting ? "PROCESSING..." : "COMPOSE"}
         </button>

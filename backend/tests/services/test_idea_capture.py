@@ -1,4 +1,4 @@
-"""Tests for idea theme classification and original-idea capture."""
+"""Tests for canvas palette classification and original-idea capture."""
 
 from __future__ import annotations
 
@@ -22,10 +22,14 @@ from app.services.idea_capture_service import (
     IdeaAlreadyCapturedError,
     capture_original_idea,
 )
+from app.services.idea_theme_palettes import (
+    DEFAULT_THEME_PALETTE,
+    THEME_PALETTES,
+)
 from app.services.idea_theme_service import (
     _THEME_MODEL,
     _THEME_PROVIDER,
-    classify_idea_theme,
+    classify_theme_palette,
 )
 
 
@@ -73,29 +77,34 @@ async def _seed_user_experiment(db: AsyncSession) -> tuple[User, Experiment]:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("idea", "theme"),
+    ("idea", "palette"),
     [
-        ("A dating app for Indian couples tracking milestones", "pink"),
-        ("Fintech wallet for SMB payments and investing", "green"),
-        ("Food delivery for neighborhood restaurants", "orange"),
-        ("A B2B SaaS CRM for logistics fleets", "violet"),
+        ("A dating app for Indian couples tracking milestones", "rose"),
+        ("Fintech wallet for SMB payments and investing", "emerald"),
+        ("Food delivery for neighborhood restaurants", "amber"),
+        ("A project tracker for remote product teams", "sky"),
+        ("A co-op roguelike with cross-platform matchmaking", "crimson"),
+        ("Habit tracker for physiotherapy patients", "teal"),
+        ("Spaced-repetition tutor for high school physics", "indigo"),
+        ("A B2B CRM for logistics fleets", "founder-purple"),
     ],
 )
-async def test_classify_idea_theme_maps_domains(
+async def test_classify_theme_palette_maps_domains(
     db_session: AsyncSession,
     idea: str,
-    theme: str,
+    palette: str,
 ) -> None:
-    parsed = IdeaThemeOutput(theme=theme)  # type: ignore[arg-type]
+    parsed = IdeaThemeOutput(theme=palette)  # type: ignore[arg-type]
     mock_complete = AsyncMock(return_value=(parsed, _make_llm_meta()))
 
     with patch(
         "app.services.idea_theme_service.llm_client.complete_structured",
         mock_complete,
     ):
-        result = await classify_idea_theme(db_session, idea, experiment_id=uuid4())
+        result = await classify_theme_palette(db_session, idea, experiment_id=uuid4())
 
-    assert result == theme
+    assert result == palette
+    assert result in THEME_PALETTES
     _, kwargs = mock_complete.call_args
     assert kwargs["provider"] == _THEME_PROVIDER
     assert kwargs["model"] == _THEME_MODEL
@@ -105,27 +114,46 @@ async def test_classify_idea_theme_maps_domains(
 
 
 @pytest.mark.asyncio
-async def test_classify_idea_theme_soft_fails_to_violet(
+async def test_classify_theme_palette_soft_fails_to_default(
     db_session: AsyncSession,
 ) -> None:
     with patch(
         "app.services.idea_theme_service.llm_client.complete_structured",
         AsyncMock(side_effect=RuntimeError("llm down")),
     ):
-        result = await classify_idea_theme(db_session, "any idea", experiment_id=uuid4())
-    assert result == "violet"
+        result = await classify_theme_palette(
+            db_session,
+            "any idea",
+            experiment_id=uuid4(),
+        )
+    assert result == DEFAULT_THEME_PALETTE
 
 
 @pytest.mark.asyncio
-async def test_classify_idea_theme_empty_input_returns_violet(
+async def test_classify_theme_palette_rejects_unknown_name(
+    db_session: AsyncSession,
+) -> None:
+    """A palette outside the curated set must not reach the canvas."""
+    parsed = IdeaThemeOutput.model_construct(theme="chartreuse")
+
+    with patch(
+        "app.services.idea_theme_service.llm_client.complete_structured",
+        AsyncMock(return_value=(parsed, _make_llm_meta())),
+    ):
+        result = await classify_theme_palette(db_session, "an idea")
+    assert result == DEFAULT_THEME_PALETTE
+
+
+@pytest.mark.asyncio
+async def test_classify_theme_palette_empty_input_returns_default(
     db_session: AsyncSession,
 ) -> None:
     with patch(
         "app.services.idea_theme_service.llm_client.complete_structured",
         AsyncMock(),
     ) as mock_complete:
-        result = await classify_idea_theme(db_session, "   ")
-    assert result == "violet"
+        result = await classify_theme_palette(db_session, "   ")
+    assert result == DEFAULT_THEME_PALETTE
     mock_complete.assert_not_called()
 
 
@@ -146,8 +174,8 @@ async def test_capture_original_idea_writes_fields_and_freezes_attachments(
     await db_session.refresh(att)
 
     with patch(
-        "app.services.idea_capture_service.classify_idea_theme",
-        AsyncMock(return_value="pink"),
+        "app.services.idea_capture_service.classify_theme_palette",
+        AsyncMock(return_value="rose"),
     ):
         result = await capture_original_idea(
             db_session,
@@ -161,11 +189,13 @@ async def test_capture_original_idea_writes_fields_and_freezes_attachments(
     await db_session.refresh(att)
 
     assert result.original_idea == "A dating app for couples."
-    assert result.idea_theme == "pink"
+    assert result.suggested_palette == "rose"
     assert result.user_message_id is not None
     assert result.original_idea_captured_at is not None
     assert experiment.original_idea == "A dating app for couples."
-    assert experiment.idea_theme == "pink"
+    assert experiment.suggested_palette == "rose"
+    # Suggestion only — the canvas stays on the default until the founder accepts.
+    assert experiment.theme_palette is None
     assert experiment.original_idea_captured_at is not None
     assert experiment.raw_idea == "A dating app for couples."
     assert att.origin_experiment_id == experiment.id
@@ -191,7 +221,7 @@ async def test_capture_original_idea_second_call_raises_and_preserves(
     user, experiment = await _seed_user_experiment(db_session)
     experiment.original_idea = "Already frozen"
     experiment.original_idea_captured_at = datetime.now(UTC)
-    experiment.idea_theme = "green"
+    experiment.suggested_palette = "emerald"
     await db_session.commit()
     await db_session.refresh(experiment)
 
@@ -206,7 +236,7 @@ async def test_capture_original_idea_second_call_raises_and_preserves(
 
     await db_session.refresh(experiment)
     assert experiment.original_idea == "Already frozen"
-    assert experiment.idea_theme == "green"
+    assert experiment.suggested_palette == "emerald"
 
 
 @pytest.mark.asyncio
@@ -222,10 +252,8 @@ async def test_project_context_exposes_original_idea_flags(
     assert "has_original_idea: false" in empty_block
     assert "\noriginal_idea:" not in empty_block
     assert not empty_block.startswith("original_idea:")
-    assert "idea_theme:" not in empty_block
 
     experiment.original_idea = "Frozen origin text for context"
-    experiment.idea_theme = "orange"
     experiment.original_idea_captured_at = datetime.now(UTC)
     await db_session.commit()
     await db_session.refresh(experiment)
@@ -233,7 +261,7 @@ async def test_project_context_exposes_original_idea_flags(
     ctx = await get_experiment_project_context(db_session, experiment)
     block = ctx.to_prompt_block()
     assert ctx.has_original_idea is True
-    assert ctx.idea_theme == "orange"
     assert "has_original_idea: true" in block
     assert "original_idea: Frozen origin text for context" in block
-    assert "idea_theme: orange" in block
+    # Palette is presentation-only — it must not leak into the LLM context.
+    assert "palette" not in block

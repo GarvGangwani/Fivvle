@@ -27,7 +27,7 @@ export default function NewExperimentPage() {
 
   return (
     <div className="mx-auto max-w-2xl px-gutter pb-16 pt-24">
-      <div className="mb-2 font-label-md uppercase text-brand-primary">
+      <div className="mb-2 font-label-md uppercase text-accent">
         NEW VALIDATION
       </div>
       <h1 className="mb-4 font-display text-display-lg uppercase">
@@ -68,7 +68,7 @@ export default function NewExperimentPage() {
           type="button"
           onClick={() => void handleCreate()}
           disabled={!canCreate}
-          className="w-full rounded-sm border-2 border-border-master bg-brand-primary px-8 py-4 font-label-md text-label-md uppercase tracking-wider text-ink-inverse shadow-brutal-md transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-lg active:translate-x-0 active:translate-y-0 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
+          className="w-full rounded-sm border-2 border-border-master bg-accent px-8 py-4 font-label-md text-label-md uppercase tracking-wider text-ink-inverse shadow-brutal-md transition-all hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-brutal-lg active:translate-x-0 active:translate-y-0 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
         >
           {creating ? "CREATING..." : "PROCEED TO CANVAS →"}
         </button>

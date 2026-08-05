@@ -7,6 +7,6 @@ export const marketingButtonClass =
   "inline-flex items-center justify-center gap-2 rounded-sm border-2 border-border-master shadow-brutal-sm transition-all motion-reduce:transition-none active:translate-x-0.5 active:translate-y-0.5 active:shadow-none motion-reduce:active:translate-x-0 motion-reduce:active:translate-y-0";
 
 export const sectionEyebrowClass =
-  "font-label-md text-label-md uppercase text-brand-primary";
+  "font-label-md text-label-md uppercase text-accent";
 
 export const sectionShellClass = "py-24 px-gutter";

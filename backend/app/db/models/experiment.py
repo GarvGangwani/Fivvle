@@ -72,9 +72,22 @@ class Experiment(Base):
         DateTime(timezone=True),
         nullable=True,
     )
-    # Origin Artifact palette — classified once at capture, then frozen.
+    # Legacy Origin Artifact bucket (violet|pink|green|orange). Superseded by
+    # theme_palette / suggested_palette — no longer written at capture.
     idea_theme: Mapped[str | None] = mapped_column(
         String(20),
+        nullable=True,
+    )
+    # Active canvas palette, one of the curated names in idea_theme_palettes.
+    # Null = platform default (founder purple); only the founder sets this.
+    theme_palette: Mapped[str | None] = mapped_column(
+        String(40),
+        nullable=True,
+    )
+    # Palette the classifier picked at capture. Kept separate from the active
+    # choice so the canvas control can always offer "AI-Suggested".
+    suggested_palette: Mapped[str | None] = mapped_column(
+        String(40),
         nullable=True,
     )
     refined_idea: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

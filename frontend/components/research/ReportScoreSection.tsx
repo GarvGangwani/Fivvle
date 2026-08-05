@@ -201,7 +201,7 @@ function SectionScoreCard({
       aria-controls={`score-detail-${detail.section_id}`}
       className={`w-full border-2 border-border-master p-3 text-left transition-all ${
         selected
-          ? "bg-brand-primary text-ink-inverse shadow-brutal-md"
+          ? "bg-accent text-ink-inverse shadow-brutal-md"
           : "bg-surface-elevated text-ink-primary shadow-brutal-sm hover:-translate-y-0.5 hover:shadow-brutal-md"
       }`}
     >
@@ -304,7 +304,7 @@ export function ReportScoreSection({
         aria-expanded={overallSelected}
         className={`mt-3 w-full border-2 border-border-master p-4 text-left transition-all ${
           overallSelected
-            ? "bg-brand-primary text-ink-inverse shadow-brutal-md"
+            ? "bg-accent text-ink-inverse shadow-brutal-md"
             : "bg-surface-elevated text-ink-primary shadow-brutal-sm hover:-translate-y-0.5 hover:shadow-brutal-md"
         }`}
       >

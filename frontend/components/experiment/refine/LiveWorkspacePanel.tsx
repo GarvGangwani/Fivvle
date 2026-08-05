@@ -257,7 +257,7 @@ export function LiveWorkspacePanel({
 
   return (
     <div className="p-6 flex flex-col h-full overflow-y-auto">
-      <div className="font-mono text-mono-sm uppercase text-brand-primary mb-6 tracking-wider">
+      <div className="font-mono text-mono-sm uppercase text-accent mb-6 tracking-wider">
         LIVE WORKSPACE
       </div>
 

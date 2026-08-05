@@ -40,19 +40,19 @@ function ActNodeComponent({ data }: NodeProps<ActNodeData>) {
         "group z-20 w-64 rounded-md border-2 border-border-master bg-surface-card p-4 shadow-brutal-md transition-[border-color,box-shadow,background-color,opacity]",
         !isLocked && "cursor-grab fv-brutal-hover",
         isLocked && "cursor-not-allowed opacity-40",
-        showFocusRing && "ring-2 ring-brand-primary ring-offset-2",
+        showFocusRing && "ring-2 ring-accent-ring ring-offset-2",
       )}
     >
       <div
         className={joinClasses(
           "mb-3 flex items-center gap-2",
-          isActive && "text-brand-primary",
+          isActive && "text-accent",
         )}
       >
         <div
           className={joinClasses(
             "h-2 w-2 rounded-full",
-            isActive ? "animate-pulse bg-brand-primary" : "bg-ink-primary",
+            isActive ? "animate-pulse bg-accent" : "bg-ink-primary",
           )}
         />
         <span className="font-label-md text-label-md font-black uppercase">
@@ -116,7 +116,7 @@ function ActNodeComponent({ data }: NodeProps<ActNodeData>) {
                   data.onRerun?.();
                 }}
                 disabled={data.rerunning}
-                className="w-full rounded-sm border-2 border-border-master bg-brand-primary px-3 py-2 font-label-md text-label-md uppercase tracking-wider text-ink-inverse shadow-brutal-sm transition-[box-shadow,opacity] hover:shadow-brutal-md disabled:opacity-50"
+                className="w-full rounded-sm border-2 border-border-master bg-accent px-3 py-2 font-label-md text-label-md uppercase tracking-wider text-ink-inverse shadow-brutal-sm transition-[box-shadow,opacity] hover:shadow-brutal-md disabled:opacity-50"
               >
                 {data.rerunning
                   ? "RE-RUNNING..."

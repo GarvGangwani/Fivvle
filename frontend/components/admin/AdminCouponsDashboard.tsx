@@ -580,7 +580,7 @@ export function AdminCouponsDashboard() {
           <p className="text-[11px] font-medium uppercase tracking-wide text-[var(--fv-text-muted)]">
             Total USD gifted
           </p>
-          <p className="mt-2 text-2xl font-semibold text-[var(--fv-accent)]">
+          <p className="mt-2 text-2xl font-semibold text-accent">
             {totalUsdGifted}
           </p>
         </div>

@@ -53,7 +53,7 @@ export function StartupUrlCard({
             onClick={(e) => {
               if (!isLive) e.preventDefault();
             }}
-            className={`block truncate font-mono text-body-sm uppercase text-brand-primary ${
+            className={`block truncate font-mono text-body-sm uppercase text-accent ${
               isLive ? "underline-offset-2 hover:underline" : "cursor-default"
             }`}
             title={publicHost}

@@ -63,7 +63,7 @@ export function BrutalistEditableField({
     len > softCap || len > hardCap
       ? "text-status-critical"
       : len >= softCap || len >= warnAt
-        ? "text-brand-primary"
+        ? "text-accent"
         : "text-ink-tertiary";
 
   const locked = disabled || saving;
@@ -72,7 +72,7 @@ export function BrutalistEditableField({
     <div className={className}>
       <div
         onInput={handleInput}
-        className="border-2 border-border-master bg-surface-elevated p-3 shadow-brutal-md focus-within:border-brand-primary"
+        className="border-2 border-border-master bg-surface-elevated p-3 shadow-brutal-md focus-within:border-accent"
       >
         <EditableCopy
           key={remountKey}

@@ -60,7 +60,7 @@ function SettingsToggle({
         onClick={() => onChange(!checked)}
         className={`relative mt-0.5 h-6 w-11 shrink-0 rounded-full border transition-colors ${
           checked
-            ? "border-[var(--fv-accent)] bg-[var(--fv-accent)]"
+            ? "border-accent bg-accent"
             : "border-[var(--fv-border-strong)] bg-[var(--fv-surface-2)]"
         }`}
       >
@@ -164,7 +164,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                     onClick={() => setThemeMode(option.value)}
                     className={`flex flex-col items-center gap-2 rounded-xl border px-3 py-3 text-center transition-colors ${
                       active
-                        ? "border-[var(--fv-accent)] bg-[var(--fv-accent-muted)] text-[var(--fv-accent)]"
+                        ? "border-accent bg-accent-muted text-accent"
                         : "border-[var(--fv-border)] bg-[var(--fv-surface-2)] text-[var(--fv-text-soft)] hover:border-[var(--fv-border-strong)] hover:text-[var(--fv-text)]"
                     }`}
                     aria-pressed={active}
@@ -245,7 +245,7 @@ export function SettingsPanel({ open, onClose }: SettingsPanelProps) {
                 href="https://fivvle.io"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--fv-accent)] no-underline hover:underline"
+                className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-accent no-underline hover:underline"
               >
                 fivvle.io
                 <ExternalLink className="h-3 w-3" />

@@ -7,6 +7,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { createPortal } from "react-dom";
+import { getCanvasAccentPortalTarget } from "@/components/experiment/canvas-accent";
 
 export type MCQAnswer = {
   combinedText: string;
@@ -152,7 +153,7 @@ export function RefineMCQPopup({
     <div
       ref={popupRef}
       style={{ left: position.x, top: position.y }}
-      className="fixed z-[85] w-96 rounded-md bg-brand-primary text-ink-inverse border-2 border-border-master shadow-brutal-lg"
+      className="fixed z-[85] w-96 rounded-md bg-accent text-ink-inverse border-2 border-border-master shadow-brutal-lg"
     >
       <div
         onMouseDown={handleDragStart}
@@ -306,6 +307,6 @@ export function RefineMCQPopup({
         </button>
       </div>
     </div>,
-    document.body,
+    getCanvasAccentPortalTarget(),
   );
 }

@@ -115,7 +115,7 @@ export function ProjectCard({ experiment, archived = false }: ProjectCardProps) 
         </div>
       </div>
 
-      <div className="border-t-2 border-border-master px-card-padding py-3 transition-colors group-hover:bg-brand-primary group-hover:text-ink-inverse">
+      <div className="border-t-2 border-border-master px-card-padding py-3 transition-colors group-hover:bg-accent group-hover:text-ink-inverse">
         <span className="block font-label-md text-label-md uppercase">
           VIEW EXPERIMENT →
         </span>

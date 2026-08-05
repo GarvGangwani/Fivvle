@@ -136,7 +136,7 @@ export function MetricsPaywallModal({
                 Cost
               </span>
               <span className="flex items-center gap-1.5 text-lg font-bold tabular-nums text-[var(--fv-text)]">
-                <Coins className="h-4 w-4 text-[var(--fv-accent)]" aria-hidden />
+                <Coins className="h-4 w-4 text-accent" aria-hidden />
                 {METRICS_PAYWALL_CREDITS} Credits
               </span>
             </div>

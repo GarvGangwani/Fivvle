@@ -8,12 +8,12 @@ type Props = {
 };
 
 const EVENT_BAR_CLASS: Record<string, string> = {
-  pipeline: "bg-brand-primary",
+  pipeline: "bg-accent",
   chat_message: "bg-ink-primary",
-  resource_added: "bg-brand-primary-soft",
+  resource_added: "bg-accent-muted",
   resource_deleted: "bg-ink-tertiary",
-  phase_completed: "bg-brand-primary",
-  verdict_rendered: "bg-brand-primary",
+  phase_completed: "bg-accent",
+  verdict_rendered: "bg-accent",
 };
 
 function timeAgo(value: string): string {
@@ -69,7 +69,7 @@ export function CanvasActivityPanel({ experimentId }: Props) {
             <span className="font-label-md text-label-md uppercase text-ink-primary">
               RECENT ACTIVITY
             </span>
-            <span className="font-mono text-mono-sm text-brand-primary">LIVE_LOG</span>
+            <span className="font-mono text-mono-sm text-accent">LIVE_LOG</span>
           </button>
           <div className="max-h-72 space-y-2 overflow-y-auto p-3">
             {items.length === 0 ? (

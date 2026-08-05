@@ -28,7 +28,7 @@ export function UsageSidebarCard({
     <div className="flex h-full min-h-[280px] flex-col rounded-md border-2 border-border-master bg-surface-elevated p-6 shadow-brutal-md lg:min-h-[320px]">
       <div className="text-center">
         <span
-          className="material-symbols-outlined text-[36px] text-brand-primary"
+          className="material-symbols-outlined text-[36px] text-accent"
           aria-hidden
         >
           query_stats
@@ -72,7 +72,7 @@ export function UsageSidebarCard({
           <div className="mt-3 h-3 border-2 border-border-master bg-surface-card">
             <div
               className={`h-full transition-all ${
-                overTarget ? "bg-status-success" : "bg-brand-primary"
+                overTarget ? "bg-status-success" : "bg-accent"
               }`}
               style={{ width: `${progressPercent}%` }}
               role="progressbar"
@@ -87,7 +87,7 @@ export function UsageSidebarCard({
 
       <Link
         href="/settings#billing"
-        className="mt-auto pt-8 font-label-md text-label-md uppercase text-brand-primary no-underline hover:underline"
+        className="mt-auto pt-8 font-label-md text-label-md uppercase text-accent no-underline hover:underline"
       >
         Manage credits →
       </Link>

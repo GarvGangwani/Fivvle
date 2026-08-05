@@ -70,7 +70,7 @@ export function RefineExpandedNode({ data }: NodeProps<RefineExpandedData>) {
           title="Expanded view"
           badge={
             refinementCount > 0 ? (
-              <span className="border-2 border-border-master bg-brand-primary px-2 py-0.5 font-mono text-mono-sm uppercase text-ink-inverse">
+              <span className="border-2 border-border-master bg-accent px-2 py-0.5 font-mono text-mono-sm uppercase text-ink-inverse">
                 TURN {refinementCount}
               </span>
             ) : null

@@ -12,7 +12,7 @@ type CoreShellData = {
 
 function CoreShellNodeComponent({ data }: NodeProps<CoreShellData>) {
   return (
-    <div className="z-20 w-80 rounded-md border-2 border-border-master bg-brand-primary p-8 text-ink-inverse shadow-brutal-md fv-brutal-hover-glow">
+    <div className="z-20 w-80 rounded-md border-2 border-border-master bg-accent p-8 text-ink-inverse shadow-brutal-md fv-brutal-hover-glow">
       <div className="mb-4 flex items-start justify-between">
         <span className="bg-surface-card px-2 py-0.5 font-mono text-mono-sm uppercase tracking-widest text-ink-primary">
           ACTIVE SHELL

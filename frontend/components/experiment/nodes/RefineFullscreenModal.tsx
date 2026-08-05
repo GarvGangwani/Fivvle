@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
+import { getCanvasAccentPortalTarget } from "@/components/experiment/canvas-accent";
 import { useAuth } from "@/lib/auth-context";
 import type { Experiment } from "@/lib/types";
 import { PanelHeader } from "@/components/ui/PanelHeader";
@@ -84,7 +85,7 @@ export function RefineFullscreenModal({
         title="Fullscreen"
         badge={
           refinementCount > 0 ? (
-            <span className="border-2 border-border-master bg-brand-primary px-2 py-0.5 font-mono text-mono-sm uppercase text-ink-inverse">
+            <span className="border-2 border-border-master bg-accent px-2 py-0.5 font-mono text-mono-sm uppercase text-ink-inverse">
               TURN {refinementCount}
             </span>
           ) : null
@@ -157,6 +158,6 @@ export function RefineFullscreenModal({
         </div>
       </div>
     </div>,
-    document.body,
+    getCanvasAccentPortalTarget(),
   );
 }
