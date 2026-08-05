@@ -55,9 +55,8 @@ import { useResources } from "./hooks/useResources";
 import { ActNode } from "./nodes/ActNode";
 import { CoreShellNode } from "./nodes/CoreShellNode";
 import { OriginArtifactNode } from "./nodes/OriginArtifactNode";
+import { OriginDormantNode } from "./nodes/OriginDormantNode";
 import { useRefineChat } from "./refine/useRefineChat";
-import { SparkExpandedNode } from "./nodes/SparkExpandedNode";
-import { SparkNode, type SparkMetricState } from "./nodes/SparkNode";
 
 const SATELLITE_IDS: SatelliteNodeId[] = [
   "spark",
@@ -76,14 +75,11 @@ const ACT_NODE_IDS: SatelliteNodeId[] = [
   "resources",
 ];
 
-const SPARK_EXPANDED_ID = "spark-expanded" as const;
-
 const nodeTypes: NodeTypes = {
   coreShell: CoreShellNode,
   actNode: ActNode,
-  sparkNode: SparkNode,
-  sparkExpanded: SparkExpandedNode,
   originArtifact: OriginArtifactNode,
+  originDormant: OriginDormantNode,
 };
 
 const edgeTypes: EdgeTypes = {
@@ -129,37 +125,13 @@ type Props = {
   onExperimentChange?: (experiment: Experiment) => void;
 };
 
-function getSparkMetric(experiment: Experiment): {
-  value: string;
-  state: SparkMetricState;
-} {
-  const hasIdea = Boolean(experiment.raw_idea?.trim());
-  const attachmentCount = experiment.attachment_count ?? 0;
-  const refinementStarted = Boolean(experiment.refinement_started_at);
-
-  if (!hasIdea && attachmentCount === 0) {
-    return { value: "NEEDS INPUT", state: "empty" };
-  }
-  if (refinementStarted) {
-    const parts = ["IDEA CAPTURED"];
-    if (attachmentCount > 0) parts.push(`${attachmentCount} FILES`);
-    return { value: parts.join(" · "), state: "locked" };
-  }
-  const parts = ["IDEA DRAFTED"];
-  if (attachmentCount > 0) parts.push(`${attachmentCount} FILES`);
-  return { value: parts.join(" · "), state: "drafted" };
-}
-
 function CanvasInner({ experiment, onExperimentChange }: Props) {
   const { toast } = useToast();
   const searchParams = useSearchParams();
   const initialAct = searchParams.get("act");
-  const initialView = searchParams.get("view");
 
   const [overlayAct, setOverlayAct] = useState<DeepDiveAct | null>(() => {
-    // Legacy deep-link: ?act=spark&view=fullscreen → phase panel
-    if (initialAct === "spark" && initialView === "fullscreen") return "spark";
-    // ?act=refine (and other phase acts) → phase panel only
+    // Legacy ?act=spark deep-links are ignored — capture lives in chat.
     if (
       initialAct === "refine" ||
       initialAct === "evidence" ||
@@ -170,13 +142,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     }
     return null;
   });
-  const [sparkPanelOpen, setSparkPanelOpen] = useState(
-    () => initialAct === "spark" && initialView !== "fullscreen",
-  );
-  const [sparkPanelPosition, setSparkPanelPosition] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
   const [resourcesOpen, setResourcesOpen] = useState(false);
   const [evidenceRerunning, setEvidenceRerunning] = useState(false);
   const [chatDockCollapsed, setChatDockCollapsed] = useState(false);
@@ -202,7 +167,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   const refineSurfaceOpen = overlayAct === "refine";
   const enableOpener =
     refineSurfaceOpen &&
-    (experiment.current_spark_version ?? 0) >= 1 &&
+    experimentHasOriginalIdea(experiment) &&
     Boolean(experiment.raw_idea?.trim());
 
   const onExperimentRefresh = useCallback(async () => {
@@ -227,12 +192,11 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
 
   const phasesComplete = getPhasesComplete(experiment.status);
   const resourceCount = Math.max(experiment.resource_count ?? 0, resources.length);
-  const sparkMetric = useMemo(() => getSparkMetric(experiment), [experiment]);
 
   const metrics = useMemo(
     () =>
       ({
-        spark: sparkMetric.value,
+        spark: experimentHasOriginalIdea(experiment) ? "SEALED" : "—",
         refine: formatCanvasMetric(experiment.chat_message_count),
         evidence: formatCanvasMetric(experiment.evidence_atom_count),
         launch: formatCanvasMetric(experiment.landing_page_view_count),
@@ -242,47 +206,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
             : "—",
         resources: formatCanvasMetric(resourceCount),
       }) satisfies Record<SatelliteNodeId, string>,
-    [experiment, resourceCount, sparkMetric.value],
-  );
-
-  const computeInitialPanelPosition = useCallback(() => {
-    const sparkPos = positions.spark ?? DEFAULT_POSITIONS.spark;
-    return { x: sparkPos.x + 340, y: sparkPos.y };
-  }, [positions]);
-
-  // When the panel is open but local position is unset (URL deep-link / popstate),
-  // wait until layout has loaded so we read spark-expanded from backend-synced state.
-  useEffect(() => {
-    if (!sparkPanelOpen || !loaded) return;
-    if (sparkPanelPosition !== null) return;
-    setSparkPanelPosition(
-      positions[SPARK_EXPANDED_ID] ?? computeInitialPanelPosition(),
-    );
-  }, [
-    sparkPanelOpen,
-    loaded,
-    sparkPanelPosition,
-    positions,
-    computeInitialPanelPosition,
-  ]);
-
-  const setSparkUrl = useCallback(
-    (state: "closed" | "expanded" | "fullscreen") => {
-      const url = new URL(window.location.href);
-      if (state === "closed") {
-        url.searchParams.delete("act");
-        url.searchParams.delete("view");
-      } else if (state === "fullscreen") {
-        // Phase panel deep-link — no intermediate windowed view.
-        url.searchParams.set("act", "spark");
-        url.searchParams.delete("view");
-      } else {
-        url.searchParams.set("act", "spark");
-        url.searchParams.set("view", state);
-      }
-      window.history.pushState({}, "", url.toString());
-    },
-    [],
+    [experiment, resourceCount],
   );
 
   const setOverlayUrl = useCallback((act: DeepDiveAct | null) => {
@@ -306,52 +230,31 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         if (lockState.isLocked) {
           toast(
             lockState.unlockRequirement ??
-              "Save your idea in Spark first to unlock Refine.",
+              "Capture your original idea in chat to unlock Refine.",
             "info",
           );
           return;
         }
       }
-      setSparkPanelOpen(false);
-      setSparkPanelPosition(null);
       setOverlayAct(act);
       setOverlayUrl(act);
     },
     [experiment, setOverlayUrl, toast],
   );
 
-  const closeSparkPanel = useCallback(() => {
-    setSparkPanelOpen(false);
-    setSparkPanelPosition(null);
-    setSparkUrl("closed");
-  }, [setSparkUrl]);
-
   useEffect(() => {
     const onPopState = () => {
       const params = new URLSearchParams(window.location.search);
       const act = params.get("act");
-      const view = params.get("view");
       if (
         act === "evidence" ||
         act === "launch" ||
         act === "signal" ||
         act === "refine"
       ) {
-        setSparkPanelOpen(false);
-        setSparkPanelPosition(null);
         setOverlayAct(act);
-      } else if (act === "spark" && view === "fullscreen") {
-        setSparkPanelOpen(false);
-        setSparkPanelPosition(null);
-        setOverlayAct("spark");
-      } else if (act === "spark") {
-        setOverlayAct(null);
-        setSparkPanelPosition(null);
-        setSparkPanelOpen(true);
       } else {
         setOverlayAct(null);
-        setSparkPanelOpen(false);
-        setSparkPanelPosition(null);
       }
     };
     window.addEventListener("popstate", onPopState);
@@ -362,7 +265,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     setEvidenceRerunning(true);
     try {
       await rerunEvidence(experiment.id);
-      toast("Evidence re-run started against the current Spark.", "info");
+      toast("Evidence re-run started against the current origin.", "info");
       const updated = await getExperiment(experiment.id);
       onExperimentChange?.(updated);
     } catch {
@@ -397,7 +300,9 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       },
     } as const;
 
-    const base: Node[] = [
+    const hasOrigin = experimentHasOriginalIdea(experiment);
+
+    return [
       {
         id: "core",
         type: "coreShell",
@@ -416,11 +321,11 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       },
       {
         id: "spark",
-        type: experimentHasOriginalIdea(experiment)
+        type: hasOrigin
           ? ("originArtifact" as const)
-          : ("sparkNode" as const),
+          : ("originDormant" as const),
         position: positions.spark ?? DEFAULT_POSITIONS.spark,
-        data: experimentHasOriginalIdea(experiment)
+        data: hasOrigin
           ? {
               originalIdea: experiment.original_idea ?? "",
               capturedAt: experiment.original_idea_captured_at ?? null,
@@ -431,14 +336,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
               ),
             }
           : {
-              rawIdea: experiment.raw_idea ?? null,
-              sparkMetric: {
-                value: "LOCKED",
-                state: "locked" as SparkMetricState,
-              },
-              isFocused: false,
-              isRunning: false,
-              currentSparkVersion,
+              projectName: experiment.name ?? null,
             },
       },
       ...ACT_NODE_IDS.map((id) => {
@@ -473,40 +371,12 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
         };
       }),
     ];
-
-    if (
-      sparkPanelOpen &&
-      sparkPanelPosition &&
-      !experimentHasOriginalIdea(experiment)
-    ) {
-      base.push({
-        id: SPARK_EXPANDED_ID,
-        type: "sparkExpanded",
-        position: sparkPanelPosition,
-        draggable: true,
-        selectable: true,
-        data: {
-          experiment,
-          onClose: closeSparkPanel,
-          onFullscreen: () => openPhaseOverlay("spark"),
-          onExperimentChange,
-        },
-      });
-    }
-
-    return base;
   }, [
     experiment,
     phasesComplete,
     positions,
-    sparkMetric,
-    sparkPanelOpen,
     overlayAct,
-    sparkPanelPosition,
     metrics,
-    closeSparkPanel,
-    openPhaseOverlay,
-    onExperimentChange,
     evidenceRerunning,
     handleEvidenceRerun,
   ]);
@@ -605,8 +475,6 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
   }, [resetLayout, fitView]);
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
-    if (node.id === SPARK_EXPANDED_ID) return;
-
     const lockState = getNodeLockState(node.id, experiment);
     if (lockState.isLocked) {
       toast(
@@ -617,8 +485,7 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
     }
 
     if (node.id === "spark") {
-      // Soft-hide spark editor: post-capture shows Origin Artifact (read-only).
-      // Pre-capture is locked via getNodeLockState — never open the editable surface.
+      // Origin slot is read-only (artifact) or dormant (capture in chat).
       return;
     }
     if (node.id === "refine") {
@@ -656,20 +523,13 @@ function CanvasInner({ experiment, onExperimentChange }: Props) {
       if (node.id === "core") return;
 
       const snapped = snapToGrid(node.position);
-      const finalPos =
-        node.id === SPARK_EXPANDED_ID
-          ? snapped
-          : snapOutOfExclusionZone(snapped);
+      const finalPos = snapOutOfExclusionZone(snapped);
 
       setNodes((current) =>
         current.map((n) => (n.id === node.id ? { ...n, position: finalPos } : n)),
       );
 
       updatePosition(node.id as CanvasNodeId, finalPos);
-
-      if (node.id === SPARK_EXPANDED_ID) {
-        setSparkPanelPosition(finalPos);
-      }
     },
     [setNodes, updatePosition],
   );

@@ -49,7 +49,6 @@ import type {
 } from "@/lib/types";
 
 export type UniversalOpenPhase =
-  | "spark"
   | "refine"
   | "evidence"
   | "launch"
@@ -176,7 +175,6 @@ function parseNavigateResult(
   const result = asRecord(root.result) ?? root;
   const navigateTo = result.navigate_to;
   if (
-    navigateTo !== "spark" &&
     navigateTo !== "refine" &&
     navigateTo !== "evidence" &&
     navigateTo !== "launch" &&
@@ -972,7 +970,6 @@ export const UniversalChatDock = memo(function UniversalChatDock({
                 if (tool_name === "open_phase_panel") {
                   const phase = (payload as { phase?: string }).phase;
                   if (
-                    phase === "spark" ||
                     phase === "refine" ||
                     phase === "evidence" ||
                     phase === "launch" ||

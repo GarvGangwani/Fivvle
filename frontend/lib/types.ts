@@ -311,14 +311,6 @@ export interface Experiment {
   signal_stale_reasons?: string[];
 }
 
-export interface SparkVersion {
-  id: string;
-  version_number: number;
-  raw_idea: string | null;
-  attachment_ids_snapshot: string[];
-  created_at: string;
-}
-
 // --- Clarifying question block (refinement pre-research) ---
 
 export type ClarifyingSelectionMode = "single" | "multiple";

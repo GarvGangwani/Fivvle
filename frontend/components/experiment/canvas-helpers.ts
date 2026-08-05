@@ -53,11 +53,6 @@ export function getNodeLockState(
       return { isLocked: false };
 
     case "refine":
-      if ((experiment.current_spark_version ?? 0) < 1) {
-        // Soft unlock refine after capture even before spark_version bump (PR3 removes spark editor).
-        // Still require capture (gated above). Allow refine once idea exists.
-        return { isLocked: false };
-      }
       return { isLocked: false };
 
     case "evidence": {

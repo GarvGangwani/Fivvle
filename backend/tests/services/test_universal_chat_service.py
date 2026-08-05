@@ -163,6 +163,7 @@ async def _seed_user_and_experiment(
     status: ExperimentStatus = ExperimentStatus.SPARK,
     raw_idea: str = "An app that helps founders validate ideas faster.",
     refined_idea: dict[str, Any] | None = None,
+    has_original_idea: bool = True,
 ) -> tuple[User, Experiment]:
     user = User(
         firebase_uid=f"univ-svc-{uuid4()}",
@@ -173,12 +174,16 @@ async def _seed_user_and_experiment(
     await db.commit()
     await db.refresh(user)
 
+    sealed = has_original_idea and bool(raw_idea.strip())
     experiment = Experiment(
         user_id=user.id,
         name="Universal Chat Project",
         raw_idea=raw_idea,
         refined_idea=refined_idea,
         status=status,
+        original_idea=raw_idea.strip() if sealed else None,
+        original_idea_captured_at=datetime.now(UTC) if sealed else None,
+        idea_theme="violet" if sealed else None,
     )
     db.add(experiment)
     await db.commit()
@@ -2121,9 +2126,7 @@ async def test_master_loop_ask_refine_agent_persists_linearly(
             "log_entry": None,
         },
     }
-    assert result.assistant_message.content == (
-        "Refine suggested tightening the one-liner."
-    )
+    assert result.assistant_message.content == "Let's tighten the one-liner."
 
 
 @pytest.mark.asyncio

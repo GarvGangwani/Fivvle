@@ -35,7 +35,7 @@ class CreateExperimentRequest(BaseModel):
     raw_idea: str | None = Field(
         default=None,
         max_length=2000,
-        description="Optional. Prefer empty at create; edit via PATCH /spark.",
+        description="Optional. Prefer empty at create; sealed via POST /capture-idea.",
     )
 
 
