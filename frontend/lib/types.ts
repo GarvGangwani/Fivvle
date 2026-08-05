@@ -905,7 +905,7 @@ export interface CaptureIdeaResponse {
     original_filename: string;
     content_kind: string;
   }>;
-  confirmation_message: string;
+  user_message_id: string;
 }
 
 export interface AttachmentUploadUrl {

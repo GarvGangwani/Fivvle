@@ -134,7 +134,6 @@ async def test_capture_original_idea_writes_fields_and_freezes_attachments(
     db_session: AsyncSession,
 ) -> None:
     user, experiment = await _seed_user_experiment(db_session)
-    raw_before = experiment.raw_idea
     att = ChatAttachment(
         user_id=user.id,
         original_filename="moodboard.png",
@@ -163,16 +162,26 @@ async def test_capture_original_idea_writes_fields_and_freezes_attachments(
 
     assert result.original_idea == "A dating app for couples."
     assert result.idea_theme == "pink"
-    assert result.confirmation_message
-    assert "sealed" in result.confirmation_message.lower()
+    assert result.user_message_id is not None
     assert result.original_idea_captured_at is not None
     assert experiment.original_idea == "A dating app for couples."
     assert experiment.idea_theme == "pink"
     assert experiment.original_idea_captured_at is not None
-    assert experiment.raw_idea == raw_before
+    assert experiment.raw_idea == "A dating app for couples."
     assert att.origin_experiment_id == experiment.id
     assert len(result.frozen_attachments) == 1
     assert result.frozen_attachments[0].id == att.id
+
+    from app.db.enums import ChatRole
+    from app.db.models.chat_message import ChatMessage
+
+    user_msg = await db_session.get(ChatMessage, result.user_message_id)
+    assert user_msg is not None
+    assert user_msg.role == ChatRole.USER
+    assert user_msg.content == "A dating app for couples."
+    assert user_msg.metadata_json is not None
+    assert user_msg.metadata_json.get("capture_submission") is True
+    assert len(user_msg.metadata_json.get("attachments") or []) == 1
 
 
 @pytest.mark.asyncio

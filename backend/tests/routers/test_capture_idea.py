@@ -27,7 +27,6 @@ def test_capture_idea_writes_and_second_returns_409(
     _sync_user(client)
     created = _create_experiment(client)
     experiment_id = created["id"]
-    raw_idea = created["raw_idea"]
 
     with patch(
         "app.services.idea_capture_service.classify_idea_theme",
@@ -47,7 +46,18 @@ def test_capture_idea_writes_and_second_returns_409(
     assert body["idea_theme"] == "violet"
     assert body["original_idea_captured_at"] is not None
     assert body["frozen_attachments"] == []
-    assert "sealed" in body["confirmation_message"].lower()
+    assert body["user_message_id"]
+
+    msgs = client.get(
+        f"/experiments/{experiment_id}/chat/universal/messages",
+        headers=_AUTH_HEADER,
+    )
+    assert msgs.status_code == 200
+    rail = msgs.json()["messages"]
+    user_rows = [m for m in rail if m["role"] == "user"]
+    assert len(user_rows) >= 1
+    assert user_rows[-1]["content"] == "First capture of the original idea text."
+    assert user_rows[-1]["id"] == body["user_message_id"]
 
     second = client.post(
         f"/experiments/{experiment_id}/capture-idea",
@@ -59,7 +69,9 @@ def test_capture_idea_writes_and_second_returns_409(
 
     detail = client.get(f"/experiments/{experiment_id}", headers=_AUTH_HEADER)
     assert detail.status_code == 200
-    assert detail.json()["raw_idea"] == raw_idea
+    # Working copy seeded from capture so refine can start immediately.
+    assert detail.json()["raw_idea"] == "First capture of the original idea text."
+    assert detail.json()["original_idea"] == "First capture of the original idea text."
 
 
 def test_capture_idea_unauthenticated_returns_401(client: TestClient) -> None:

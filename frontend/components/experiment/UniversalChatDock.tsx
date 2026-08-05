@@ -32,6 +32,7 @@ import {
   cancelUniversalChatTurn,
   captureExperimentIdea,
   getUniversalChatMessages,
+  streamCaptureGreeting,
   streamUniversalChatMessage,
   uploadChatAttachments,
 } from "@/lib/api";
@@ -847,6 +848,13 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   const { toast } = useToast();
   const [collapsed, setCollapsed] = useState(false);
   const [capturing, setCapturing] = useState(false);
+  /** Capture card waits until the greeting stream finishes (or history already has it). */
+  const [captureGreetingComplete, setCaptureGreetingComplete] = useState(
+    () => !needsIdeaCapture,
+  );
+  const greetingAbortRef = useRef<AbortController | null>(null);
+  const needsIdeaCaptureRef = useRef(needsIdeaCapture);
+  needsIdeaCaptureRef.current = needsIdeaCapture;
   const [messages, setMessages] = useState<DockMessage[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -884,35 +892,6 @@ export const UniversalChatDock = memo(function UniversalChatDock({
       ? `Ask me anything about ${named}.`
       : "Ask me anything about your project.";
 
-  const handleIdeaCapture = useCallback(
-    async (payload: { ideaText: string; attachmentIds: string[] }) => {
-      if (capturing) return;
-      setCapturing(true);
-      try {
-        await captureExperimentIdea(experimentId, {
-          idea_text: payload.ideaText,
-          attachment_ids: payload.attachmentIds,
-        });
-        await onIdeaCaptured?.();
-        // Reload rail so the persisted confirmation message appears.
-        const history = await getUniversalChatMessages(experimentId);
-        setMessages(history.messages ?? []);
-      } catch (err) {
-        if (err instanceof ApiError && err.status === 409) {
-          await onIdeaCaptured?.();
-          return;
-        }
-        const message =
-          err instanceof Error && err.message
-            ? err.message
-            : "Couldn’t capture your idea. Try again.";
-        toast(message, "error");
-      } finally {
-        setCapturing(false);
-      }
-    },
-    [capturing, experimentId, onIdeaCaptured, toast],
-  );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -932,6 +911,168 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     streamingAssistantTextRef.current = "";
     setStreamingAssistantText("");
   }, []);
+
+  const handleIdeaCapture = useCallback(
+    async (payload: { ideaText: string; attachmentIds: string[] }) => {
+      if (capturing) return;
+      setCapturing(true);
+      try {
+        await captureExperimentIdea(experimentId, {
+          idea_text: payload.ideaText,
+          attachment_ids: payload.attachmentIds,
+        });
+        await onIdeaCaptured?.();
+        const history = await getUniversalChatMessages(experimentId);
+        setMessages(history.messages ?? []);
+        setPendingQuestion(pendingQuestionFromMessages(history.messages ?? []));
+        forceScrollRef.current = true;
+
+        // Agent-initiated refine handoff — no new founder message.
+        const abort = new AbortController();
+        streamAbortRef.current?.abort();
+        streamAbortRef.current = abort;
+        setSending(true);
+        setWorkingLabel("Thinking through your idea…");
+        resetStreamingState();
+        heldPendingQuestionRef.current = null;
+        stoppedRef.current = false;
+        onOpenPhase?.("refine");
+
+        try {
+          await streamUniversalChatMessage(
+            experimentId,
+            "",
+            {
+              onTurnStarted: ({ turn_id }) => {
+                activeTurnIdRef.current = turn_id;
+              },
+              onToolCall: ({ tool_name, message_id }) => {
+                if (abort.signal.aborted || stoppedRef.current) return;
+                const label = workingLabelForTool(tool_name);
+                if (label) setWorkingLabel(label);
+                setMessages((prev) => [
+                  ...prev,
+                  stubToolCallMessage(tool_name, message_id),
+                ]);
+                forceScrollRef.current = true;
+              },
+              onToolResult: ({ tool_name, message_id, payload }) => {
+                if (abort.signal.aborted || stoppedRef.current) return;
+                const toolPayload =
+                  typeof payload.tool_name === "string"
+                    ? payload
+                    : { tool_name, ...payload };
+                if (tool_name === "ask_refine_agent") {
+                  const refine = parseRefineSubagentResult(toolPayload);
+                  if (refine) {
+                    heldPendingQuestionRef.current =
+                      refineResultAsPendingQuestion(message_id, refine);
+                  }
+                }
+                if (tool_name === "open_phase_panel") {
+                  const phase = (payload as { phase?: string }).phase;
+                  if (
+                    phase === "spark" ||
+                    phase === "refine" ||
+                    phase === "evidence" ||
+                    phase === "launch" ||
+                    phase === "signal"
+                  ) {
+                    onOpenPhase?.(phase);
+                  }
+                }
+                setMessages((prev) => [
+                  ...prev,
+                  toolResultFromEvent(tool_name, message_id, payload),
+                ]);
+                forceScrollRef.current = true;
+              },
+              onSubagentToken: () => {},
+              onAssistantToken: ({ text }) => {
+                if (abort.signal.aborted || stoppedRef.current) return;
+                setWorkingLabel(null);
+                streamingAssistantTextRef.current += text;
+                setStreamingAssistantText(streamingAssistantTextRef.current);
+              },
+              onDone: ({ assistant_message_id }) => {
+                if (abort.signal.aborted || stoppedRef.current) return;
+                setWorkingLabel(null);
+                activeTurnIdRef.current = null;
+                const committed = streamingAssistantTextRef.current;
+                if (committed && assistant_message_id) {
+                  setMessages((prev) => [
+                    ...prev,
+                    {
+                      id: assistant_message_id,
+                      role: "assistant",
+                      content: committed,
+                      turn_kind: "universal_chat",
+                      created_at: new Date().toISOString(),
+                      tool_payload: null,
+                    },
+                  ]);
+                }
+                const held = heldPendingQuestionRef.current;
+                heldPendingQuestionRef.current = null;
+                if (held) setPendingQuestion(held);
+                requestAnimationFrame(() => {
+                  streamingAssistantTextRef.current = "";
+                  setStreamingAssistantText("");
+                });
+                void getUniversalChatMessages(experimentId).then((next) => {
+                  setMessages(next.messages ?? []);
+                  setPendingQuestion(
+                    pendingQuestionFromMessages(next.messages ?? []),
+                  );
+                });
+              },
+              onError: (message) => {
+                if (abort.signal.aborted || stoppedRef.current) return;
+                setWorkingLabel(null);
+                toast(message, "error");
+                resetStreamingState();
+              },
+            },
+            abort.signal,
+            {
+              current_open_phase: "refine",
+              kick: "post_capture_refine",
+            },
+          );
+        } catch {
+          if (!abort.signal.aborted) {
+            toast("Couldn’t start refine. Try asking in chat.", "error");
+          }
+        } finally {
+          if (streamAbortRef.current === abort) {
+            streamAbortRef.current = null;
+          }
+          setSending(false);
+          setWorkingLabel(null);
+        }
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409) {
+          await onIdeaCaptured?.();
+          return;
+        }
+        const message =
+          err instanceof Error && err.message
+            ? err.message
+            : "Couldn’t capture your idea. Try again.";
+        toast(message, "error");
+      } finally {
+        setCapturing(false);
+      }
+    },
+    [
+      capturing,
+      experimentId,
+      onIdeaCaptured,
+      onOpenPhase,
+      resetStreamingState,
+      toast,
+    ],
+  );
 
   const readyAttachmentIds = draftAttachments
     .filter((a) => a.status === "ready" && a.serverId)
@@ -1165,6 +1306,7 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     return () => {
       // Abort SSE only — do NOT cancel the server turn on unmount/reload.
       streamAbortRef.current?.abort();
+      greetingAbortRef.current?.abort();
       if (pollTimerRef.current) {
         clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
@@ -1185,8 +1327,22 @@ export const UniversalChatDock = memo(function UniversalChatDock({
   );
 
   useEffect(() => {
+    if (!needsIdeaCapture) {
+      setCaptureGreetingComplete(true);
+    }
+  }, [needsIdeaCapture]);
+
+  useEffect(() => {
     let cancelled = false;
     setHistoryLoading(true);
+    greetingAbortRef.current?.abort();
+    greetingAbortRef.current = null;
+    const needsCapture = needsIdeaCaptureRef.current;
+    if (!needsCapture) {
+      setCaptureGreetingComplete(true);
+    } else {
+      setCaptureGreetingComplete(false);
+    }
 
     const stopPolling = () => {
       if (pollTimerRef.current) {
@@ -1251,14 +1407,82 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     };
 
     void getUniversalChatMessages(experimentId)
-      .then((data) => {
+      .then(async (data) => {
         if (cancelled) return;
         applyHistory(data);
+
+        const hasAssistant = data.messages.some((m) => m.role === "assistant");
+        if (!needsCapture || hasAssistant || data.messages.length > 0) {
+          if (needsCapture) setCaptureGreetingComplete(true);
+          return;
+        }
+
+        // Seed + stream greeting before showing the capture card.
+        const abort = new AbortController();
+        greetingAbortRef.current = abort;
+        setSending(true);
+        resetStreamingState();
+        setHistoryLoading(false);
+
+        try {
+          await streamCaptureGreeting(
+            experimentId,
+            {
+              onAssistantToken: ({ text }) => {
+                if (cancelled || abort.signal.aborted) return;
+                streamingAssistantTextRef.current += text;
+                setStreamingAssistantText(streamingAssistantTextRef.current);
+                forceScrollRef.current = true;
+              },
+              onDone: ({ assistant_message_id }) => {
+                if (cancelled || abort.signal.aborted) return;
+                const committed = streamingAssistantTextRef.current;
+                if (committed) {
+                  setMessages([
+                    {
+                      id: assistant_message_id,
+                      role: "assistant",
+                      content: committed,
+                      turn_kind: "universal_chat",
+                      created_at: new Date().toISOString(),
+                      tool_payload: null,
+                    },
+                  ]);
+                }
+                resetStreamingState();
+                setSending(false);
+                setCaptureGreetingComplete(true);
+              },
+              onError: (message) => {
+                if (cancelled || abort.signal.aborted) return;
+                toast(message, "error");
+                resetStreamingState();
+                setSending(false);
+                // Fail open so the founder can still capture.
+                setCaptureGreetingComplete(true);
+              },
+            },
+            abort.signal,
+          );
+        } catch {
+          if (!cancelled && !abort.signal.aborted) {
+            toast("Couldn’t load greeting. You can still capture your idea.", "error");
+            setSending(false);
+            setCaptureGreetingComplete(true);
+          }
+        } finally {
+          if (greetingAbortRef.current === abort) {
+            greetingAbortRef.current = null;
+          }
+        }
       })
       .catch(() => {
         if (cancelled) return;
         setMessages([]);
         setPendingQuestion(null);
+        if (needsCapture) {
+          setCaptureGreetingComplete(true);
+        }
       })
       .finally(() => {
         if (!cancelled) setHistoryLoading(false);
@@ -1266,8 +1490,10 @@ export const UniversalChatDock = memo(function UniversalChatDock({
     return () => {
       cancelled = true;
       stopPolling();
+      greetingAbortRef.current?.abort();
+      greetingAbortRef.current = null;
     };
-  }, [experimentId]);
+  }, [experimentId, resetStreamingState, toast]);
 
   const updateNearBottom = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -1880,7 +2106,10 @@ export const UniversalChatDock = memo(function UniversalChatDock({
           <div className="flex h-full items-center justify-center">
             <p className="text-sm text-[var(--fv-text-muted)]">Loading…</p>
           </div>
-        ) : messages.length === 0 && !sending && !pendingQuestion ? (
+        ) : messages.length === 0 &&
+          !sending &&
+          !pendingQuestion &&
+          !streamingAssistantText ? (
           <div className="flex h-full items-center justify-center px-4">
             <p className="text-center text-sm text-[var(--fv-text-muted)]">
               {emptyCopy}
@@ -1990,15 +2219,17 @@ export const UniversalChatDock = memo(function UniversalChatDock({
       </div>
 
       {needsIdeaCapture ? (
-        <div className="shrink-0 px-4 pb-3 pt-2">
-          <div className="overflow-hidden rounded-md border border-border-master">
-            <IdeaCaptureCard
-              disabled={capturing}
-              submitting={capturing}
-              onCapture={handleIdeaCapture}
-            />
+        captureGreetingComplete ? (
+          <div className="shrink-0 px-4 pb-3 pt-2">
+            <div className="overflow-hidden rounded-md border border-border-master">
+              <IdeaCaptureCard
+                disabled={capturing || sending}
+                submitting={capturing}
+                onCapture={handleIdeaCapture}
+              />
+            </div>
           </div>
-        </div>
+        ) : null
       ) : pendingQuestion ? (
         <div className="shrink-0 px-4 pb-3 pt-2">
           <div className="overflow-hidden rounded-t-md">
