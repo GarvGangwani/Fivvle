@@ -388,6 +388,12 @@ class GetExperimentDetailResponse(BaseModel):
     founder_decision_version: int | None = Field(default=None, ge=1)
     spark_last_edited_at: datetime | None = None
     refinement_started_at: datetime | None = None
+    # Progressive canvas reveal signals. refine_completed_at is the founder's
+    # explicit "done refining" stamp; landing_page_live_at is durable where
+    # status is not (re-finalizing refine can move status back to REFINED, and a
+    # revealed phase must never disappear).
+    refine_completed_at: datetime | None = None
+    landing_page_live_at: datetime | None = None
     current_spark_version: int = 0
     current_refined_idea_version: int = 0
     current_edited_doc_version: int | None = None
@@ -460,6 +466,11 @@ async def _build_experiment_detail_response(
     spark_info = await fetch_spark_phase_version_info(db, experiment)
     origin_attachments = await _list_origin_attachments(db, experiment.id)
     has_original = experiment.original_idea is not None
+    # Queried rather than read off experiment.landing_page — not every caller of
+    # this builder eager-loads that relation.
+    landing_live_at = await db.scalar(
+        select(LandingPage.live_at).where(LandingPage.experiment_id == experiment.id)
+    )
 
     return GetExperimentDetailResponse(
         id=experiment.id,
@@ -484,6 +495,8 @@ async def _build_experiment_detail_response(
         founder_decision_version=experiment.founder_decision_version,
         spark_last_edited_at=experiment.spark_last_edited_at,
         refinement_started_at=experiment.refinement_started_at,
+        refine_completed_at=experiment.refine_completed_at,
+        landing_page_live_at=landing_live_at,
         current_spark_version=spark_info.current_spark_version,
         current_refined_idea_version=spark_info.current_refined_idea_version,
         current_edited_doc_version=spark_info.current_edited_doc_version,

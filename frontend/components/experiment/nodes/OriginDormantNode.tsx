@@ -32,12 +32,10 @@ function OriginDormantNodeComponent({ data }: NodeProps<OriginDormantNodeData>) 
         {name ? `Awaiting ${name}` : "Awaiting capture"}
       </h3>
 
-      <p className="mb-4 font-body text-body-sm text-ink-tertiary">
+      {/* No LOCKED chip — phases are revealed progressively, so nothing on the
+          canvas is presented as locked. */}
+      <p className="font-body text-body-sm text-ink-tertiary">
         Describe your idea in chat to seal the original.
-      </p>
-
-      <p className="font-label-md text-label-md uppercase text-ink-tertiary">
-        LOCKED
       </p>
 
       <Handle

@@ -9,11 +9,11 @@ afterEach(() => {
 
 describe("PanelHeader", () => {
   it("default variant renders the title", () => {
-    render(<PanelHeader title="Metrics + verdict" phaseLabel="Phase 05 · Signal" />);
+    render(<PanelHeader title="Metrics + verdict" phaseLabel="SIGNAL" />);
     expect(
       screen.getByRole("heading", { name: "Metrics + verdict" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Phase 05 · Signal")).toBeInTheDocument();
+    expect(screen.getByText("SIGNAL")).toBeInTheDocument();
   });
 
   it("minimal variant renders a hairline with no title chrome", () => {

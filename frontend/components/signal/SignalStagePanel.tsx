@@ -188,7 +188,7 @@ export function SignalStagePanel({
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto bg-canvas-bg">
       <PanelHeader
-        phaseLabel="Phase 05 · Signal"
+        phaseLabel="SIGNAL"
         title="Metrics + verdict"
       />
 

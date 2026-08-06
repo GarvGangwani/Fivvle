@@ -38,6 +38,9 @@ class ExperimentProjectContext:
     original_idea: str | None
     refined_one_liner: str | None
     target_audience: str | None
+    # True once the founder tapped "Done refining" (reveals Evidence on the
+    # canvas). Not implied by refined_one_liner being present.
+    refine_completed: bool
     has_validation_report: bool
     has_landing_page: bool
     has_insight_report: bool
@@ -73,6 +76,7 @@ class ExperimentProjectContext:
             lines.append(f"refined_one_liner: {self.refined_one_liner}")
         if self.target_audience:
             lines.append(f"target_audience: {self.target_audience}")
+        lines.append(f"refine_completed: {str(self.refine_completed).lower()}")
         lines.append(f"has_validation_report: {str(self.has_validation_report).lower()}")
         lines.append(f"has_landing_page: {str(self.has_landing_page).lower()}")
         lines.append(f"has_insight_report: {str(self.has_insight_report).lower()}")
@@ -218,6 +222,7 @@ async def get_experiment_project_context(
         original_idea=original_idea,
         refined_one_liner=refined_one_liner,
         target_audience=target_audience,
+        refine_completed=exp.refine_completed_at is not None,
         has_validation_report=exp.validation_report is not None,
         has_landing_page=exp.landing_page is not None,
         has_insight_report=exp.insight_report is not None,

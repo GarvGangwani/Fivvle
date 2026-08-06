@@ -652,6 +652,23 @@ body:has([data-fivvle-public-landing]) {
   animation: fv-fade-up 600ms ease-out 150ms both;
 }
 
+/* Canvas phase reveal — runs on mount, so a satellite that appears when the
+   previous phase completes eases in instead of popping. */
+@keyframes fv-node-reveal {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.fv-node-reveal {
+  animation: fv-node-reveal 200ms ease-out both;
+}
+
 .fv-tab-pill {
   padding: 6px 20px;
   border-radius: 8px;

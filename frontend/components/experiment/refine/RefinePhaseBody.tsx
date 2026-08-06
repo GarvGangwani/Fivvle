@@ -7,6 +7,7 @@
 import type { Experiment } from "@/lib/types";
 import { LiveWorkspacePanel } from "../refine/LiveWorkspacePanel";
 import type { RefineChatMessageModel } from "../refine/RefineChatMessage";
+import { RefineCompleteBar } from "../refine/RefineCompleteBar";
 
 type Props = {
   experiment: Experiment;
@@ -20,8 +21,8 @@ export function RefinePhaseBody({
   onFinalizedOrReset,
 }: Props) {
   return (
-    <div className="flex h-full min-h-0 flex-1 overflow-hidden">
-      <div className="min-h-0 w-full flex-1 overflow-y-auto">
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <LiveWorkspacePanel
           experiment={experiment}
           messages={messages}
@@ -29,6 +30,12 @@ export function RefinePhaseBody({
           onReset={onFinalizedOrReset}
         />
       </div>
+      {/* Pinned so advancing the experiment is always reachable, and visibly
+          separate from the idea-level FINALIZE control inside the workspace. */}
+      <RefineCompleteBar
+        experiment={experiment}
+        onCompleted={onFinalizedOrReset}
+      />
     </div>
   );
 }

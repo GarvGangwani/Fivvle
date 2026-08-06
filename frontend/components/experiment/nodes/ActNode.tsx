@@ -4,7 +4,6 @@ import { memo } from "react";
 import { Handle, Position, type NodeProps } from "reactflow";
 
 export type ActNodeData = {
-  index: string;
   actName: string;
   title: string;
   icon: string;
@@ -13,10 +12,6 @@ export type ActNodeData = {
   validationPercent?: number;
   isRunning: boolean;
   isFocused?: boolean;
-  isLocked?: boolean;
-  unlockRequirement?: string;
-  /** @deprecated Prefer isLocked — kept for temporary back-compat */
-  isDisabled?: boolean;
   isStale?: boolean;
   basedOnVersion?: number | null;
   currentSparkVersion?: number;
@@ -29,17 +24,19 @@ function joinClasses(...parts: Array<string | false | undefined>): string {
   return parts.filter(Boolean).join(" ");
 }
 
+/**
+ * Canvas phase satellite. Only mounted once the phase is revealed (see
+ * getPhaseRevealState), so there is no locked variant — the reveal animation
+ * runs on mount, covering both initial load and a phase unlocking live.
+ */
 function ActNodeComponent({ data }: NodeProps<ActNodeData>) {
   const isActive = data.isRunning;
-  const isLocked = Boolean(data.isLocked ?? data.isDisabled);
-  const showFocusRing = !isLocked && (Boolean(data.isFocused) || isActive);
+  const showFocusRing = Boolean(data.isFocused) || isActive;
 
   return (
     <div
       className={joinClasses(
-        "group z-20 w-64 rounded-md border-2 border-border-master bg-surface-card p-4 shadow-brutal-md transition-[border-color,box-shadow,background-color,opacity]",
-        !isLocked && "cursor-grab fv-brutal-hover",
-        isLocked && "cursor-not-allowed opacity-40",
+        "fv-node-reveal group z-20 w-64 cursor-grab rounded-md border-2 border-border-master bg-surface-card p-4 shadow-brutal-md transition-[border-color,box-shadow,background-color,opacity] fv-brutal-hover",
         showFocusRing && "ring-2 ring-accent-ring ring-offset-2",
       )}
     >
@@ -56,7 +53,7 @@ function ActNodeComponent({ data }: NodeProps<ActNodeData>) {
           )}
         />
         <span className="font-label-md text-label-md font-black uppercase">
-          PHASE {data.index}: {data.actName}
+          {data.actName}
         </span>
       </div>
 
@@ -70,21 +67,18 @@ function ActNodeComponent({ data }: NodeProps<ActNodeData>) {
             {data.metricLabel}
           </p>
           <p className="font-headline text-headline-md leading-none uppercase">
-            {isLocked ? "LOCKED" : data.metricValue}
+            {data.metricValue}
           </p>
         </div>
         <span
-          className={joinClasses(
-            "material-symbols-outlined text-ink-primary/20",
-            !isLocked && "group-hover:text-ink-primary",
-          )}
+          className="material-symbols-outlined text-ink-primary/20 group-hover:text-ink-primary"
           aria-hidden="true"
         >
-          {isLocked ? "lock" : data.icon}
+          {data.icon}
         </span>
       </div>
 
-      {data.validationPercent !== undefined && !isLocked ? (
+      {data.validationPercent !== undefined ? (
         <div className="mt-4 bg-ink-primary/5 p-2">
           <span className="text-mono-sm font-black uppercase">
             {data.validationPercent}% VALIDATED
@@ -92,7 +86,7 @@ function ActNodeComponent({ data }: NodeProps<ActNodeData>) {
         </div>
       ) : null}
 
-      {data.isStale && !isLocked ? (
+      {data.isStale ? (
         <div className="-mx-4 -mb-4 mt-3 border-t-2 border-brutalist-yellow bg-brutalist-yellow/20 p-2">
           <div className="flex items-center gap-2 px-4">
             <span

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -88,6 +88,33 @@ async def finalize_refinement(
     await db.commit()
     _logger.info(
         "refine_finalize",
+        experiment_id=str(experiment.id),
+        status=experiment.status.value,
+    )
+    return experiment
+
+
+async def mark_refine_complete(
+    db: AsyncSession,
+    experiment: Experiment,
+) -> Experiment:
+    """Stamp ``refine_completed_at`` once — the signal that reveals Evidence.
+
+    Idempotent by design: the founder can tap "Done refining" again (or the
+    request can be retried) without moving the stamp or erroring. Deliberately
+    independent of ``finalize_refinement`` — finalizing edits the idea, this
+    declares the phase done.
+    """
+    if experiment.refine_completed_at is not None:
+        return experiment
+
+    experiment.refine_completed_at = func.clock_timestamp()
+    await db.commit()
+    # expire_on_commit=False, so the attribute still holds the SQL function
+    # until we read the server-generated value back.
+    await db.refresh(experiment, ["refine_completed_at"])
+    _logger.info(
+        "refine_marked_complete",
         experiment_id=str(experiment.id),
         status=experiment.status.value,
     )

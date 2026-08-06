@@ -291,6 +291,10 @@ export interface Experiment {
   founder_decision_version?: number | null;
   spark_last_edited_at?: string | null;
   refinement_started_at?: string | null;
+  /** Set when the founder tapped "Done refining" — reveals Evidence. */
+  refine_completed_at?: string | null;
+  /** Set when the landing page went public — reveals Signal. */
+  landing_page_live_at?: string | null;
   current_spark_version?: number;
   current_refined_idea_version?: number;
   current_edited_doc_version?: number | null;

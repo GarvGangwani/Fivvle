@@ -1,8 +1,13 @@
 import type { Experiment, NodePosition, SatelliteNodeId } from "@/lib/types";
 
-export type NodeLockState = {
-  isLocked: boolean;
-  unlockRequirement?: string;
+export type PhaseRevealState = {
+  isVisible: boolean;
+  /**
+   * What the founder still has to do. Only surfaced when something tries to open
+   * a phase that has not been revealed (a stale `?act=` deep link, or the chat
+   * agent navigating ahead) — a hidden node cannot be clicked.
+   */
+  requirement?: string;
 };
 
 /** True once write-once original_idea has been captured (PR1/PR2). */
@@ -12,99 +17,106 @@ export function experimentHasOriginalIdea(experiment: Experiment): boolean {
   return Boolean(experiment.original_idea?.trim());
 }
 
-const LANDING_PAGE_CREATED = new Set([
-  "LANDING_DRAFT",
-  "LANDING_LIVE",
-  "INSIGHT_GENERATING",
-  "INSIGHT_READY",
-  "INSIGHT_FAILED",
-  "ARCHIVED",
-]);
-
-function hasRefinedIdeaPayload(experiment: Experiment): boolean {
-  if (experiment.refined_idea_current != null) return true;
-  const idea = experiment.refined_idea;
-  if (idea == null) return false;
-  if (typeof idea === "string") return idea.trim().length > 0;
-  return Boolean(
-    idea.refined_one_liner?.trim() || idea.headline?.trim(),
+/**
+ * Launch is done when the landing page went public. `live_at` is the durable
+ * signal: status can leave LANDING_LIVE (re-finalizing refine, insight
+ * generation) while the page stays live.
+ */
+export function launchIsComplete(experiment: Experiment): boolean {
+  return (
+    experiment.landing_page_live_at != null ||
+    LANDING_LIVE_OR_LATER.has(experiment.status)
   );
 }
 
 /**
- * Workflow lock for canvas satellites.
- * Pre-capture: all phases (including spark) are dormant until original idea is sealed.
- * Post-capture: Spark + Resources are open; Evidence / Launch / Signal key on status.
+ * Evidence is done when a validation report exists. RESEARCH_FAILED is not in
+ * RESEARCH_READY_OR_LATER, so a failed run does not count as complete.
  */
-export function getNodeLockState(
+export function evidenceIsComplete(experiment: Experiment): boolean {
+  return (
+    experiment.validation_report != null ||
+    (experiment.evidence_atom_count ?? 0) > 0 ||
+    RESEARCH_READY_OR_LATER.has(experiment.status) ||
+    launchIsComplete(experiment)
+  );
+}
+
+/**
+ * Refine is done only when the founder explicitly said so — never inferred from
+ * a populated refined_idea (which the Refiner writes on most turns) or from turn
+ * count. The evidence fallback keeps pre-existing experiments coherent: rows
+ * that already have a report predate the stamp, and their phases must stay
+ * reachable.
+ */
+export function refineIsComplete(experiment: Experiment): boolean {
+  return (
+    experiment.refine_completed_at != null || evidenceIsComplete(experiment)
+  );
+}
+
+/**
+ * Progressive reveal for canvas satellites. A phase node mounts only once the
+ * previous phase is complete — there is no locked state, because an unreachable
+ * phase simply is not on the canvas yet.
+ *
+ * Every signal is durable (an explicit stamp, or a persisted report / live
+ * page), so a revealed phase can never disappear on the next status change.
+ */
+export function getPhaseRevealState(
   nodeId: string,
   experiment: Experiment,
-): NodeLockState {
+): PhaseRevealState {
+  // The origin slot is not a phase: it holds the dormant capture prompt before
+  // capture and the sealed artifact after, so it is always on the canvas.
+  if (nodeId === "spark" || nodeId === "core") return { isVisible: true };
+
   if (!experimentHasOriginalIdea(experiment)) {
     return {
-      isLocked: true,
-      unlockRequirement: "Capture your original idea in chat to unlock phases.",
+      isVisible: false,
+      requirement: "Describe your idea in chat to start the experiment.",
     };
   }
 
   switch (nodeId) {
-    case "spark":
-    case "resources":
-      return { isLocked: false };
-
     case "refine":
-      return { isLocked: false };
+    case "resources":
+      return { isVisible: true };
 
-    case "evidence": {
-      const unlocked =
-        experiment.status === "REFINED" ||
-        REFINED_OR_LATER.has(experiment.status) ||
-        hasRefinedIdeaPayload(experiment);
-      if (!unlocked) {
-        return {
-          isLocked: true,
-          unlockRequirement:
-            "Finalize your refinement to unlock Evidence.",
-        };
-      }
-      return { isLocked: false };
-    }
+    case "evidence":
+      return refineIsComplete(experiment)
+        ? { isVisible: true }
+        : {
+            isVisible: false,
+            requirement: "Finish refining to unlock Evidence.",
+          };
 
-    case "launch": {
-      // Canvas detail exposes validation_report summary + evidence_atom_count
-      // (no validation_report_id). Status RESEARCH_READY+ also implies evidence ran.
-      const hasValidationReport =
-        experiment.validation_report != null ||
-        (experiment.evidence_atom_count ?? 0) > 0 ||
-        RESEARCH_READY_OR_LATER.has(experiment.status);
-      if (!hasValidationReport) {
-        return {
-          isLocked: true,
-          unlockRequirement:
-            "Complete Evidence research to unlock Launch.",
-        };
-      }
-      return { isLocked: false };
-    }
+    case "launch":
+      return evidenceIsComplete(experiment)
+        ? { isVisible: true }
+        : {
+            isVisible: false,
+            requirement: "Complete Evidence research to unlock Launch.",
+          };
 
-    case "signal": {
-      // No landing_page_id on canvas Experiment; LANDING_DRAFT / LIVE (+ later)
-      // means a page was generated. landing_page_view_count alone is not enough
-      // (can be 0 on a live unused page).
-      const hasLandingPage = LANDING_PAGE_CREATED.has(experiment.status);
-      if (!hasLandingPage) {
-        return {
-          isLocked: true,
-          unlockRequirement:
-            "Deploy your Launch page to unlock Signal.",
-        };
-      }
-      return { isLocked: false };
-    }
+    case "signal":
+      return launchIsComplete(experiment)
+        ? { isVisible: true }
+        : {
+            isVisible: false,
+            requirement: "Publish your Launch page to unlock Signal.",
+          };
 
     default:
-      return { isLocked: false };
+      return { isVisible: true };
   }
+}
+
+export function isPhaseNodeVisible(
+  nodeId: string,
+  experiment: Experiment,
+): boolean {
+  return getPhaseRevealState(nodeId, experiment).isVisible;
 }
 
 export const DEFAULT_POSITIONS: Record<SatelliteNodeId, NodePosition> = {

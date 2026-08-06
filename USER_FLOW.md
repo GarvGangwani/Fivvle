@@ -226,6 +226,7 @@ See: ADR 0019, `docs/planning/chat-mode-refinement.md`, ARCHITECTURE.md Sequence
 | GET | `/experiments/{id}` | Get full experiment + relations |
 | PATCH | `/experiments/{id}` | Edit refined idea |
 | POST | `/experiments/{id}/refine` | Re-run refinement with feedback |
+| POST | `/experiments/{id}/refine/complete` | Founder marks refine done — reveals Evidence on the canvas (idempotent) |
 | POST | `/experiments/{id}/confirm` | Accept refinement, trigger research |
 | PATCH | `/experiments/{id}/theme` | Set the experiment's canvas palette (null = default) |
 | GET | `/experiments/{id}/validation-report` | Fetch research output |

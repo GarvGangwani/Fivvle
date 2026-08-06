@@ -41,9 +41,8 @@ const PANEL_RIGHT_EXPANDED = "right-[calc(480px+3rem)]";
 const PANEL_RIGHT_COLLAPSED = "right-[calc(2.5rem+3rem)]";
 
 function overlayTitle(act: DeepDiveAct): string {
-  if (act === "launch") return "Phase 04: Launch";
   const config = ACT_CONFIG[act];
-  return `PHASE ${config.index}: ${config.actName} — ${config.title}`;
+  return `${config.actName} — ${config.title}`;
 }
 
 type RefinePanelProps = {
