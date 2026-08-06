@@ -81,7 +81,7 @@ export function RefineFullscreenModal({
   return createPortal(
     <div className="fixed inset-0 z-50 bg-canvas-bg flex flex-col">
       <PanelHeader
-        phaseLabel="PHASE 02 · REFINE"
+        phaseLabel="REFINE"
         title="Fullscreen"
         badge={
           refinementCount > 0 ? (

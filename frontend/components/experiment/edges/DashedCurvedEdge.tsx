@@ -44,19 +44,12 @@ function boxesEqual(a: NodeBox | null, b: NodeBox | null): boolean {
   );
 }
 
-type CurvedEdgeData = {
-  isLocked?: boolean;
-};
-
 function DashedCurvedEdgeComponent({
   id,
   source,
   target,
   style,
-  data,
-}: EdgeProps<CurvedEdgeData>) {
-  const isLocked = Boolean(data?.isLocked);
-  const opacity = isLocked ? 0.4 : 1;
+}: EdgeProps) {
   const { sourceBox, targetBox } = useStore(
     (s: ReactFlowState) => {
       const sourceNode = s.nodeInternals.get(source);
@@ -135,7 +128,7 @@ function DashedCurvedEdgeComponent({
   if (!startPoint || !endPoint || !pathD) return null;
 
   return (
-    <g className="react-flow__edge-path" style={{ zIndex: 0, opacity }}>
+    <g className="react-flow__edge-path" style={{ zIndex: 0 }}>
       <path
         id={id}
         d={pathD}

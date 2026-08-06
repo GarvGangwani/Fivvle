@@ -66,7 +66,7 @@ export function RefineExpandedNode({ data }: NodeProps<RefineExpandedData>) {
     >
       <div className="shrink-0 cursor-grab active:cursor-grabbing">
         <PanelHeader
-          phaseLabel="PHASE 02 · REFINE"
+          phaseLabel="REFINE"
           title="Expanded view"
           badge={
             refinementCount > 0 ? (

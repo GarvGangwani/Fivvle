@@ -45,9 +45,10 @@ import {
   MIN_CANVAS_ZOOM,
   experimentHasOriginalIdea,
   formatCanvasMetric,
-  getNodeLockState,
+  getPhaseRevealState,
   getPhasesComplete,
   isActRunning,
+  isPhaseNodeVisible,
   snapOutOfExclusionZone,
   snapToGrid,
 } from "./canvas-helpers";
@@ -117,18 +118,20 @@ const REACT_FLOW_STYLE = { background: "transparent" } as const;
 
 const CONTROLS_STYLE = { left: 24, bottom: 64, margin: 0 };
 
+/** Only between mounted nodes — a hidden phase must not leave a dangling line. */
 function buildSatelliteEdges(experiment: Experiment): Edge[] {
-  return SATELLITE_IDS.map((id) => ({
-    id: `e-${id}`,
-    source: id,
-    sourceHandle: "out",
-    target: "core",
-    targetHandle: "core-anchor",
-    type: "dashed-straight",
-    selectable: false,
-    focusable: false,
-    data: { isLocked: getNodeLockState(id, experiment).isLocked },
-  }));
+  return SATELLITE_IDS.filter((id) => isPhaseNodeVisible(id, experiment)).map(
+    (id) => ({
+      id: `e-${id}`,
+      source: id,
+      sourceHandle: "out",
+      target: "core",
+      targetHandle: "core-anchor",
+      type: "dashed-straight",
+      selectable: false,
+      focusable: false,
+    }),
+  );
 }
 
 const FRAME_CANVAS_DURATION_MS = 200;
@@ -155,10 +158,12 @@ function CanvasInner({
   const [overlayAct, setOverlayAct] = useState<DeepDiveAct | null>(() => {
     // Legacy ?act=spark deep-links are ignored — capture lives in chat.
     if (
-      initialAct === "refine" ||
-      initialAct === "evidence" ||
-      initialAct === "launch" ||
-      initialAct === "signal"
+      (initialAct === "refine" ||
+        initialAct === "evidence" ||
+        initialAct === "launch" ||
+        initialAct === "signal") &&
+      // A link saved before the phase was revealed must not open it.
+      isPhaseNodeVisible(initialAct, experiment)
     ) {
       return initialAct;
     }
@@ -310,16 +315,12 @@ function CanvasInner({
       act: DeepDiveAct,
       _options?: { sourceRef?: { source_url?: string | null } | null },
     ) => {
-      if (act === "refine") {
-        const lockState = getNodeLockState("refine", experiment);
-        if (lockState.isLocked) {
-          toast(
-            lockState.unlockRequirement ??
-              "Capture your original idea in chat to unlock Refine.",
-            "info",
-          );
-          return;
-        }
+      // Guards the paths that can reach a phase without a node to click: stale
+      // `?act=` links and the chat agent navigating ahead of the reveal.
+      const reveal = getPhaseRevealState(act, experiment);
+      if (!reveal.isVisible) {
+        toast(reveal.requirement ?? "That phase isn't unlocked yet.", "info");
+        return;
       }
       setOverlayAct(act);
       setOverlayUrl(act);
@@ -332,10 +333,11 @@ function CanvasInner({
       const params = new URLSearchParams(window.location.search);
       const act = params.get("act");
       if (
-        act === "evidence" ||
-        act === "launch" ||
-        act === "signal" ||
-        act === "refine"
+        (act === "evidence" ||
+          act === "launch" ||
+          act === "signal" ||
+          act === "refine") &&
+        isPhaseNodeVisible(act, experiment)
       ) {
         setOverlayAct(act);
       } else {
@@ -344,7 +346,7 @@ function CanvasInner({
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
-  }, []);
+  }, [experiment]);
 
   const handleEvidenceRerun = useCallback(async () => {
     setEvidenceRerunning(true);
@@ -423,19 +425,19 @@ function CanvasInner({
               projectName: experiment.name ?? null,
             },
       },
-      ...ACT_NODE_IDS.map((id) => {
+      // Progressive reveal: a phase only mounts once the previous one is done,
+      // so nothing on the canvas is ever locked.
+      ...ACT_NODE_IDS.filter((id) => isPhaseNodeVisible(id, experiment)).map((id) => {
         const config = ACT_CONFIG[id];
         const stale =
           id in phaseStale
             ? phaseStale[id as keyof typeof phaseStale]
             : null;
-        const lockState = getNodeLockState(id, experiment);
         return {
           id,
           type: "actNode" as const,
           position: positions[id] ?? DEFAULT_POSITIONS[id],
           data: {
-            index: config.index,
             actName: config.actName,
             title: config.title,
             icon: config.icon,
@@ -443,8 +445,6 @@ function CanvasInner({
             metricValue: metrics[id],
             isRunning: isActRunning(id, experiment.status),
             isFocused: overlayAct === id,
-            isLocked: lockState.isLocked,
-            unlockRequirement: lockState.unlockRequirement,
             isStale: stale?.isStale ?? false,
             basedOnVersion: stale?.basedOnVersion ?? null,
             currentSparkVersion,
@@ -559,15 +559,6 @@ function CanvasInner({
   }, [resetLayout, fitView]);
 
   const onNodeClick: NodeMouseHandler = (_, node) => {
-    const lockState = getNodeLockState(node.id, experiment);
-    if (lockState.isLocked) {
-      toast(
-        lockState.unlockRequirement ?? "This phase isn't unlocked yet.",
-        "info",
-      );
-      return;
-    }
-
     if (node.id === "spark") {
       // Origin slot is read-only (artifact) or dormant (capture in chat).
       return;

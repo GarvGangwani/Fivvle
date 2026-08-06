@@ -38,6 +38,7 @@ from app.services.refine_session_service import (
     RefineSessionError,
     finalize_refinement,
     get_owned_experiment,
+    mark_refine_complete,
     reset_refinement_session,
 )
 from app.services.refiner_opener_service import generate_and_persist_opener
@@ -100,6 +101,36 @@ async def finalize_refinement_endpoint(
     try:
         experiment = await get_owned_experiment(db, experiment_id, current_user)
         await finalize_refinement(db, experiment)
+    except RefineSessionError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail=exc.message,
+        ) from None
+
+    experiment = await _reload_for_detail(db, experiment_id, current_user.id)
+    return await _build_experiment_detail_response(db, experiment)
+
+
+@router.post(
+    "/experiments/{experiment_id}/refine/complete",
+    response_model=GetExperimentDetailResponse,
+    status_code=status.HTTP_200_OK,
+)
+@limiter.limit(AUTH_RATE_LIMIT, key_func=user_key)
+async def complete_refine_endpoint(
+    request: Request,
+    response: Response,
+    experiment_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_session)],
+    current_user: Annotated[User, Depends(get_current_user)],
+) -> GetExperimentDetailResponse:
+    """Founder declares refine done, revealing Evidence on the canvas.
+
+    Idempotent: repeating the call keeps the original stamp and still returns 200.
+    """
+    try:
+        experiment = await get_owned_experiment(db, experiment_id, current_user)
+        await mark_refine_complete(db, experiment)
     except RefineSessionError as exc:
         raise HTTPException(
             status_code=exc.status_code,

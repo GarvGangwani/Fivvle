@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 export type PanelHeaderProps = {
   variant?: "default" | "minimal";
-  /** Small uppercase label above the title (e.g. "Phase 05 · Signal"). */
+  /** Small uppercase label above the title (e.g. "SIGNAL"). */
   phaseLabel?: string;
   title?: string;
   badge?: ReactNode;

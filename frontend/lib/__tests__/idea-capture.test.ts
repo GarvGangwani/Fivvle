@@ -5,7 +5,7 @@ import {
   shouldShowCaptureCard,
   shouldShowOriginArtifact,
 } from "@/components/experiment/idea-capture-helpers";
-import { getNodeLockState } from "@/components/experiment/canvas-helpers";
+import { isPhaseNodeVisible } from "@/components/experiment/canvas-helpers";
 import type { Experiment } from "@/lib/types";
 
 function baseExperiment(overrides: Partial<Experiment> = {}): Experiment {
@@ -69,17 +69,20 @@ describe("idea capture helpers", () => {
     expect(mapped[0]?.file_url).toBeNull();
   });
 
-  it("locks all phases before capture and unlocks spark after", () => {
-    const locked = baseExperiment();
-    expect(getNodeLockState("spark", locked).isLocked).toBe(true);
-    expect(getNodeLockState("refine", locked).isLocked).toBe(true);
-    expect(getNodeLockState("evidence", locked).isLocked).toBe(true);
+  it("hides every phase before capture and reveals refine after", () => {
+    const precapture = baseExperiment();
+    expect(isPhaseNodeVisible("refine", precapture)).toBe(false);
+    expect(isPhaseNodeVisible("resources", precapture)).toBe(false);
+    expect(isPhaseNodeVisible("evidence", precapture)).toBe(false);
+    // Origin slot holds the capture prompt, so it stays on the canvas.
+    expect(isPhaseNodeVisible("spark", precapture)).toBe(true);
 
     const captured = baseExperiment({
       has_original_idea: true,
       original_idea: "Captured",
     });
-    expect(getNodeLockState("spark", captured).isLocked).toBe(false);
-    expect(getNodeLockState("refine", captured).isLocked).toBe(false);
+    expect(isPhaseNodeVisible("refine", captured)).toBe(true);
+    expect(isPhaseNodeVisible("resources", captured)).toBe(true);
+    expect(isPhaseNodeVisible("evidence", captured)).toBe(false);
   });
 });

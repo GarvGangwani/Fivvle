@@ -14,6 +14,9 @@ export default defineConfig({
     environment: "jsdom",
     include: [
       "lib/**/*.test.ts",
+      // .ts as well as .tsx: helper modules colocated under components/ get
+      // logic-only tests, and those were being silently skipped.
+      "components/**/__tests__/**/*.test.ts",
       "components/**/__tests__/**/*.test.tsx",
       "components/**/*.test.tsx",
     ],

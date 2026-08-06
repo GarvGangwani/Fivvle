@@ -1002,6 +1002,16 @@ export async function finalizeRefinement(
   });
 }
 
+/** Founder declares refine done, revealing Evidence. Idempotent server-side. */
+export async function completeRefine(
+  experimentId: string,
+): Promise<Experiment> {
+  return apiFetch<Experiment>(`/experiments/${experimentId}/refine/complete`, {
+    method: "POST",
+    body: {},
+  });
+}
+
 export async function resetRefineSession(
   experimentId: string,
 ): Promise<Experiment> {

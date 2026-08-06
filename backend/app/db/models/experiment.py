@@ -158,6 +158,14 @@ class Experiment(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    # Founder's explicit "done refining" stamp — the signal that reveals Evidence
+    # on the canvas. Never derived from refined_idea presence or turn count, and
+    # never cleared: re-finalizing or resetting the session must not un-reveal a
+    # phase the founder already reached. Write-once (see mark_refine_complete).
+    refine_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
